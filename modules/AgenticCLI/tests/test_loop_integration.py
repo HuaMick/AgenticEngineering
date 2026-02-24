@@ -16,15 +16,15 @@ import pytest
 
 @pytest.fixture
 def loops_dir(tmp_path):
-    """Create a temporary loops directory."""
-    loops_dir = tmp_path / ".agentic" / "loops"
+    """Create a temporary sessions directory (unified store for loops)."""
+    loops_dir = tmp_path / ".agentic" / "sessions"
     loops_dir.mkdir(parents=True)
     return loops_dir
 
 
 @pytest.fixture
 def mock_loops_dir(loops_dir, monkeypatch):
-    """Patch _get_loops_dir to use temp directory."""
+    """Patch StateStore.get_dir to use temp directory."""
     from agenticcli.commands import loop
 
     monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
@@ -35,7 +35,8 @@ def mock_loops_dir(loops_dir, monkeypatch):
 def sample_loop_data():
     """Return sample loop data for testing."""
     return {
-        "loop_id": "12345678-1234-1234-1234-123456789abc",
+        "session_id": "12345678-1234-1234-1234-123456789abc",
+        "type": "loop",
         "pid": 12345,
         "prompt": "Implement the feature",
         "prompt_source": "string",
@@ -71,17 +72,17 @@ class TestLoopHelperFunctions:
         result = loop._store.get_dir()
 
         assert result.exists()
-        assert result == new_home / ".agentic" / "loops"
+        assert result == new_home / ".agentic" / "sessions"
 
     def test_save_and_load_loop(self, mock_loops_dir, sample_loop_data):
         """Test saving and loading a loop."""
         from agenticcli.commands import loop
 
         loop._store.save(sample_loop_data)
-        loaded = loop._store.load(sample_loop_data["loop_id"])
+        loaded = loop._store.load(sample_loop_data["session_id"])
 
         assert loaded is not None
-        assert loaded["loop_id"] == sample_loop_data["loop_id"]
+        assert loaded["session_id"] == sample_loop_data["session_id"]
         assert loaded["prompt"] == sample_loop_data["prompt"]
         assert loaded["iterations"] == sample_loop_data["iterations"]
 
@@ -101,16 +102,16 @@ class TestLoopHelperFunctions:
         loop._store.save(sample_loop_data)
 
         second_loop = sample_loop_data.copy()
-        second_loop["loop_id"] = "87654321-4321-4321-4321-cba987654321"
+        second_loop["session_id"] = "87654321-4321-4321-4321-cba987654321"
         second_loop["prompt"] = "Another task"
         loop._store.save(second_loop)
 
-        result = loop._store.list_all()
+        result = loop._store.list_all(filter_fn=lambda r: r.get("type") == "loop")
 
         assert len(result) == 2
-        loop_ids = [lp["loop_id"] for lp in result]
-        assert sample_loop_data["loop_id"] in loop_ids
-        assert second_loop["loop_id"] in loop_ids
+        loop_ids = [lp["session_id"] for lp in result]
+        assert sample_loop_data["session_id"] in loop_ids
+        assert second_loop["session_id"] in loop_ids
 
     def test_list_all_loops_skips_invalid_files(self, mock_loops_dir):
         """Test that list_all_loops skips invalid JSON files."""
@@ -465,7 +466,7 @@ class TestLoopStopCommand:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=False,
         )
 
@@ -483,7 +484,7 @@ class TestLoopStopCommand:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=False,
         )
 
@@ -510,7 +511,7 @@ class TestLoopStopCommand:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=True,
         )
 
@@ -559,12 +560,12 @@ class TestLoopStatusCommand:
 
         # Mock is_process_running to return True
         with patch.object(loop, "is_process_running", return_value=True):
-            args = SimpleNamespace(loop_id=sample_loop_data["loop_id"][:8])
+            args = SimpleNamespace(loop_id=sample_loop_data["session_id"][:8])
             loop.cmd_status(args)
 
         captured = capsys.readouterr()
         assert "Loop " in captured.out
-        assert sample_loop_data["loop_id"][:8] in captured.out
+        assert sample_loop_data["session_id"][:8] in captured.out
         assert "running" in captured.out.lower()
         assert "Max Iterations" in captured.out
         assert "Current Iteration" in captured.out
@@ -576,7 +577,7 @@ class TestLoopStatusCommand:
         loop._store.save(sample_loop_data)
 
         with patch.object(loop, "is_process_running", return_value=True):
-            args = SimpleNamespace(loop_id=sample_loop_data["loop_id"][:8])
+            args = SimpleNamespace(loop_id=sample_loop_data["session_id"][:8])
             loop.cmd_status(args)
 
         captured = capsys.readouterr()
@@ -591,12 +592,12 @@ class TestLoopStatusCommand:
         loop._store.save(sample_loop_data)
 
         with patch.object(loop, "is_process_running", return_value=True):
-            args = SimpleNamespace(loop_id=sample_loop_data["loop_id"][:8])
+            args = SimpleNamespace(loop_id=sample_loop_data["session_id"][:8])
             loop.cmd_status(args)
 
         captured = capsys.readouterr()
         output = json.loads(captured.out)
-        assert output["loop_id"] == sample_loop_data["loop_id"]
+        assert output["session_id"] == sample_loop_data["session_id"]
         assert output["status"] == "running"
         assert "iterations" in output
 
@@ -627,7 +628,7 @@ class TestLoopHistoryCommand:
 
         captured = capsys.readouterr()
         assert "Ralph Loop History" in captured.out
-        assert sample_loop_data["loop_id"][:8] in captured.out
+        assert sample_loop_data["session_id"][:8] in captured.out
 
     def test_history_active_only(self, mock_loops_dir, sample_loop_data, capsys):
         """Test history with active only filter."""
@@ -638,7 +639,7 @@ class TestLoopHistoryCommand:
 
         # Save completed loop
         completed = sample_loop_data.copy()
-        completed["loop_id"] = "completed-loop-id-1234"
+        completed["session_id"] = "completed-loop-id-1234"
         completed["status"] = "completed"
         loop._store.save(completed)
 
@@ -648,7 +649,7 @@ class TestLoopHistoryCommand:
             loop.cmd_history(args)
 
         captured = capsys.readouterr()
-        assert sample_loop_data["loop_id"][:8] in captured.out
+        assert sample_loop_data["session_id"][:8] in captured.out
 
     def test_history_filter_by_status(self, mock_loops_dir, sample_loop_data, capsys):
         """Test history with status filter."""
@@ -659,7 +660,7 @@ class TestLoopHistoryCommand:
 
         # Save completed loop
         completed = sample_loop_data.copy()
-        completed["loop_id"] = "completed-loop-id-1234"
+        completed["session_id"] = "completed-loop-id-1234"
         completed["status"] = "completed"
         loop._store.save(completed)
 
@@ -678,7 +679,7 @@ class TestLoopHistoryCommand:
         # Create multiple loops
         for i in range(5):
             data = sample_loop_data.copy()
-            data["loop_id"] = f"loop-id-{i}-1234-1234-1234"
+            data["session_id"] = f"loop-id-{i}-1234-1234-1234"
             loop._store.save(data)
 
         args = SimpleNamespace(active=False, status=None, limit=2)
@@ -860,7 +861,7 @@ class TestIterationTracking:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=False,
         )
 

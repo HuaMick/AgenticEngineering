@@ -27,20 +27,20 @@ class TestPlanValidate:
     def test_validate_valid_plan(self, cli_runner, temp_repo):
         """Test validating a valid plan folder."""
         plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
-        stdout, stderr, code = cli_runner(["plan", "validate", str(plan_path)])
+        stdout, stderr, code = cli_runner(["agent", "plan", "validate", str(plan_path)])
         assert "Validating:" in stdout
         assert code == 0
 
     def test_validate_missing_path(self, cli_runner, temp_dir):
         """Test validating a non-existent path."""
-        stdout, stderr, code = cli_runner(["plan", "validate", str(temp_dir / "nonexistent")])
+        stdout, stderr, code = cli_runner(["agent", "plan", "validate", str(temp_dir / "nonexistent")])
         assert "does not exist" in stderr or code == 1
 
     def test_validate_missing_plan_files(self, cli_runner, temp_dir):
         """Test validating a plan without plan_*.yml files (flattened structure)."""
         plan_path = temp_dir / "invalid_plan"
         plan_path.mkdir()
-        stdout, stderr, code = cli_runner(["plan", "validate", str(plan_path)])
+        stdout, stderr, code = cli_runner(["agent", "plan", "validate", str(plan_path)])
         assert "No plan_*.yml" in stdout or code == 1
 
 
@@ -71,7 +71,7 @@ class TestPlanScaffold:
     def test_scaffold_creates_structure(self, cli_runner, temp_repo):
         """Test scaffold creates proper folder structure (flattened)."""
         # cli_runner already runs in temp_repo which is a git repo
-        stdout, stderr, code = cli_runner(["plan", "scaffold", "260103AE_new_feature"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "scaffold", "260103AE_new_feature"])
 
         # Check output
         assert "Created planning folder" in stdout
@@ -85,7 +85,7 @@ class TestPlanScaffold:
 
     def test_scaffold_existing_folder(self, cli_runner, mock_cwd, temp_repo):
         """Test scaffold fails if folder exists."""
-        stdout, stderr, code = cli_runner(["plan", "scaffold", "260103AE_test"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "scaffold", "260103AE_test"])
         assert "already exists" in stderr
         assert code == 1
 
@@ -96,7 +96,7 @@ class TestPlanTask:
     def test_task_start(self, cli_runner, temp_repo):
         """Test starting a task (flattened structure)."""
         plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
-        stdout, stderr, code = cli_runner(["plan", "task", "start", "02", "--plan", str(plan_path)])
+        stdout, stderr, code = cli_runner(["agent", "plan", "task", "start", "02", "--plan", str(plan_path)])
         assert "in_progress" in stdout
         assert code == 0
 
@@ -111,7 +111,7 @@ class TestPlanTask:
         """Test completing a task."""
         plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "complete", "02", "--plan", str(plan_path)]
+            ["agent", "plan", "task", "complete", "02", "--plan", str(plan_path)]
         )
         assert "completed" in stdout
         assert code == 0
@@ -119,6 +119,6 @@ class TestPlanTask:
     def test_task_not_found(self, cli_runner, temp_repo):
         """Test starting a non-existent task."""
         plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
-        stdout, stderr, code = cli_runner(["plan", "task", "start", "99", "--plan", str(plan_path)])
+        stdout, stderr, code = cli_runner(["agent", "plan", "task", "start", "99", "--plan", str(plan_path)])
         assert "not found" in stderr
         assert code == 1

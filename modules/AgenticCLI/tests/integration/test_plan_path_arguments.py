@@ -175,7 +175,7 @@ class TestPlanValidatePathArguments:
     def test_validate_with_plan_flag(self, cli_runner, plan_to_validate):
         """Test plan validate with --plan flag."""
         result = cli_runner([
-            "plan", "validate",
+            "agent", "plan", "validate",
             "--plan", str(plan_to_validate)
         ])
 
@@ -185,7 +185,7 @@ class TestPlanValidatePathArguments:
     def test_validate_with_short_plan_flag(self, cli_runner, plan_to_validate):
         """Test plan validate with -p short flag."""
         result = cli_runner([
-            "plan", "validate",
+            "agent", "plan", "validate",
             "-p", str(plan_to_validate)
         ])
 
@@ -195,7 +195,7 @@ class TestPlanValidatePathArguments:
     def test_validate_with_positional_path(self, cli_runner, plan_to_validate):
         """Test plan validate with positional path argument (backward compatibility)."""
         result = cli_runner([
-            "plan", "validate",
+            "agent", "plan", "validate",
             str(plan_to_validate)
         ])
 
@@ -205,7 +205,7 @@ class TestPlanValidatePathArguments:
     def test_validate_with_folder_name_match(self, cli_runner, plan_to_validate):
         """Test plan validate with partial folder name."""
         result = cli_runner([
-            "plan", "validate",
+            "agent", "plan", "validate",
             "--plan", "260202CL_validate_test"
         ])
 
@@ -220,7 +220,7 @@ class TestPlanValidatePathArguments:
         missing orchestration file.
         """
         result = cli_runner([
-            "plan", "validate",
+            "agent", "plan", "validate",
             "--plan", str(plan_to_validate),
             "--strict"
         ])
@@ -233,7 +233,7 @@ class TestPlanValidatePathArguments:
         """Test plan validate with --plan flag and JSON output."""
         result = cli_runner([
             "-j",
-            "plan", "validate",
+            "agent", "plan", "validate",
             "--plan", str(plan_to_validate)
         ])
 
@@ -252,7 +252,7 @@ class TestPlanValidatePathArguments:
 
         # Pass both; --plan should win (valid plan)
         result = cli_runner([
-            "plan", "validate",
+            "agent", "plan", "validate",
             str(invalid_plan),  # positional (should be ignored)
             "--plan", str(plan_to_validate)  # flag (should be used)
         ])
@@ -263,7 +263,7 @@ class TestPlanValidatePathArguments:
     def test_validate_nonexistent_plan(self, cli_runner):
         """Test plan validate with nonexistent plan path."""
         result = cli_runner([
-            "plan", "validate",
+            "agent", "plan", "validate",
             "--plan", "/nonexistent/validate/folder"
         ])
 
@@ -312,7 +312,7 @@ class TestPlanArchivePathArguments:
     def test_archive_with_plan_flag(self, cli_runner, plan_to_archive, temp_repo):
         """Test plan archive with --plan flag."""
         result = cli_runner([
-            "plan", "archive",
+            "agent", "plan", "archive",
             "--plan", str(plan_to_archive)
         ])
 
@@ -326,7 +326,7 @@ class TestPlanArchivePathArguments:
     def test_archive_with_short_plan_flag(self, cli_runner, plan_to_archive, temp_repo):
         """Test plan archive with -p short flag."""
         result = cli_runner([
-            "plan", "archive",
+            "agent", "plan", "archive",
             "-p", str(plan_to_archive)
         ])
 
@@ -340,7 +340,7 @@ class TestPlanArchivePathArguments:
     def test_archive_with_positional_path(self, cli_runner, plan_to_archive, temp_repo):
         """Test plan archive with positional path argument (backward compatibility)."""
         result = cli_runner([
-            "plan", "archive",
+            "agent", "plan", "archive",
             str(plan_to_archive)
         ])
 
@@ -354,7 +354,7 @@ class TestPlanArchivePathArguments:
     def test_archive_with_folder_name_match(self, cli_runner, plan_to_archive, temp_repo):
         """Test plan archive with partial folder name."""
         result = cli_runner([
-            "plan", "archive",
+            "agent", "plan", "archive",
             "--plan", "260202CL_archive_test"
         ])
 
@@ -368,7 +368,7 @@ class TestPlanArchivePathArguments:
     def test_archive_without_path_argument_fails(self, cli_runner):
         """Test plan archive without any path argument fails."""
         result = cli_runner([
-            "plan", "archive"
+            "agent", "plan", "archive"
         ])
 
         assert result.returncode != 0
@@ -377,7 +377,7 @@ class TestPlanArchivePathArguments:
     def test_archive_nonexistent_plan(self, cli_runner):
         """Test plan archive with nonexistent plan path."""
         result = cli_runner([
-            "plan", "archive",
+            "agent", "plan", "archive",
             "--plan", "/nonexistent/archive/folder"
         ])
 
@@ -403,7 +403,7 @@ class TestPlanArchivePathArguments:
 
         # Pass both positional and --plan flag; --plan should win
         result = cli_runner([
-            "plan", "archive",
+            "agent", "plan", "archive",
             str(other_plan),  # positional (should be ignored)
             "--plan", str(plan_to_archive)  # flag (should be used)
         ])

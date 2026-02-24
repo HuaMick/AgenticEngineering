@@ -23,9 +23,8 @@ from agenticcli.utils.tmux import (
     send_to_pane,
 )
 from agenticcli.utils.tmux_notify import (
-    notify_questions_in_tmux,
     display_tmux_message,
-    clear_notification_pane,
+    notify_question_window,
 )
 from agenticcli.utils.question_formatter import (
     format_question_notification,
@@ -244,19 +243,14 @@ class TestNotificationUpdateOnAnswer:
         question_file = pending_dir / "Q-20260203-140000-dddd.yml"
         question_file.write_text(yaml.dump(question))
 
-        # Mock tmux session
-        mock_list_panes = MagicMock()
-        mock_list_panes.stdout = "%0:shell\n%1:questions\n"
-
-        mock_send_keys_clear = MagicMock()
-        mock_send_keys_line = MagicMock()
-        mock_send_keys_enter = MagicMock()
+        # Mock tmux session and subprocess
+        mock_run = MagicMock()
+        mock_run.returncode = 0
 
         with patch.dict("os.environ", {"TMUX": "/tmp/tmux-1000/default,1234,0"}):
-            with patch("subprocess.run", return_value=mock_list_panes):
+            with patch("subprocess.run", return_value=mock_run):
                 # First notification - question is pending
-                questions_list = [question]
-                result = notify_questions_in_tmux(questions_folder, questions_list)
+                result = notify_question_window(question_count=1)
                 assert result is True
 
         # Simulate answering the question (move to answered/)
@@ -266,41 +260,21 @@ class TestNotificationUpdateOnAnswer:
         answered_question["answered_at"] = time.time()
         answered_question["answered_by"] = "human"
 
-        # Move to answered directory
         answered_file = answered_dir / "Q-20260203-140000-dddd_question.yml"
         answered_file.write_text(yaml.dump(answered_question))
-        answer_file = answered_dir / "Q-20260203-140000-dddd.yml"
-        answer_file.write_text(yaml.dump({"answer": answered_question["answer"]}))
         question_file.unlink()
 
         with patch.dict("os.environ", {"TMUX": "/tmp/tmux-1000/default,1234,0"}):
-            with patch("subprocess.run", return_value=mock_list_panes):
-                # Second notification - no pending questions
-                result = notify_questions_in_tmux(questions_folder, [])
-                assert result is True
-
-    def test_clear_notification_pane(self, questions_folder):
-        """Test clearing notification pane when all questions answered."""
-        mock_list_panes = MagicMock()
-        mock_list_panes.stdout = "%0:shell\n%1:questions\n"
-
-        mock_send_keys = MagicMock()
-
-        with patch.dict("os.environ", {"TMUX": "/tmp/tmux-1000/default,1234,0"}):
-            with patch("subprocess.run", return_value=mock_list_panes):
-                result = clear_notification_pane()
-                # Should succeed in finding and clearing pane
-                assert result is True
-
-    def test_send_to_pane_with_clear(self):
-        """Test sending content to pane with clear flag."""
-        mock_run = MagicMock()
-
-        with patch.dict("os.environ", {"TMUX": "/tmp/tmux-1000/default,1234,0"}):
             with patch("subprocess.run", return_value=mock_run):
-                send_to_pane("%1", "Test content\nLine 2", clear=True)
-                # Function should execute without error
-                # Actual command verification is in unit tests
+                # Second notification - no pending questions
+                result = notify_question_window(question_count=0)
+                assert result is True
+
+    def test_notify_question_window_not_in_tmux(self):
+        """Verify notify_question_window returns False when not in tmux."""
+        with patch.dict("os.environ", {}, clear=True):
+            result = notify_question_window(question_count=1)
+            assert result is False
 
     def test_tmux_message_display(self):
         """Test displaying message in tmux status bar."""

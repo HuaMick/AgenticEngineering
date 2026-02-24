@@ -367,8 +367,22 @@ def env_run(
 # ===========================================================================
 
 stories_app = typer.Typer(help="Find and manage user stories", no_args_is_help=True)
-app.add_typer(stories_app, name="stories", hidden=True)
-app.add_typer(stories_app, name="st", hidden=True)
+
+
+@app.command("stories", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_stories(ctx: typer.Context):
+    """Deprecated: use 'agentic agent stories'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic stories' has moved. Use 'agentic agent stories' instead.")
+    raise typer.Exit(1)
+
+
+@app.command("st", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_st(ctx: typer.Context):
+    """Deprecated: use 'agentic agent stories'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic st' has moved. Use 'agentic agent stories' instead.")
+    raise typer.Exit(1)
 
 
 def _stories_handle(args):
@@ -476,8 +490,22 @@ def stories_affected(
 # ===========================================================================
 
 manifest_app = typer.Typer(help="Manage agent manifests", no_args_is_help=True)
-app.add_typer(manifest_app, name="manifest", hidden=True)
-app.add_typer(manifest_app, name="mf", hidden=True)
+
+
+@app.command("manifest", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_manifest(ctx: typer.Context):
+    """Deprecated: use 'agentic agent manifest'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic manifest' has moved. Use 'agentic agent manifest' instead.")
+    raise typer.Exit(1)
+
+
+@app.command("mf", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_mf(ctx: typer.Context):
+    """Deprecated: use 'agentic agent manifest'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic mf' has moved. Use 'agentic agent manifest' instead.")
+    raise typer.Exit(1)
 
 
 def _manifest_handle(args):
@@ -631,9 +659,10 @@ def session_spawn(
 @session_app.command("list")
 def session_list(
     all_sessions: Annotated[bool, typer.Option("--all", "-a", help="Show all sessions including completed")] = False,
+    type_filter: Annotated[Optional[str], typer.Option("--type", "-t", help="Filter by type: session, loop, orchestration")] = None,
 ):
-    """List sessions (active only by default, use --all for all)."""
-    _session_handle(_ns(command="session", session_command="list", json=_global["json"], debug=_global["debug"], show_all=all_sessions))
+    """List sessions, loops, and orchestrations (active only by default, use --all for all)."""
+    _session_handle(_ns(command="session", session_command="list", json=_global["json"], debug=_global["debug"], show_all=all_sessions, type=type_filter))
 
 
 @session_app.command("stop")
@@ -691,76 +720,54 @@ def session_logs(
     ))
 
 
-@session_app.command("dashboard")
-def session_dashboard(
-    refresh: Annotated[int, typer.Option("--refresh", "-r", help="Refresh interval in seconds")] = 5,
-):
-    """Live dashboard showing active sessions with auto-refresh."""
-    _session_handle(_ns(
-        command="session", session_command="dashboard",
-        json=_global["json"], debug=_global["debug"],
-        refresh=refresh,
-    ))
+orchestrate_app = typer.Typer(help="Run automated orchestration commands", no_args_is_help=True)
+session_app.add_typer(orchestrate_app, name="orchestrate")
 
 
-@session_app.command("orchestrate")
-def session_orchestrate(
-    mode: Annotated[Optional[str], typer.Option("--mode", "-m", help="Orchestration mode: planning, executor, friction, or loop")] = None,
+@orchestrate_app.command("planning")
+def session_orchestrate_planning(
     plan: Annotated[Optional[str], typer.Option("--plan", help="Scope to a specific plan folder")] = None,
-    prompt_file: Annotated[Optional[str], typer.Option("--prompt-file", "-f", help="Override process file path")] = None,
-    role: Annotated[Optional[str], typer.Option("--role", "-r", help="Role for bootstrap context (defaults to mode)")] = None,
-    model: Annotated[Optional[str], typer.Option("--model", help="Model to use")] = None,
-    planning_loop: Annotated[bool, typer.Option("--planning-loop", help="Run automated planning loop instead of interactive session")] = False,
-    background: Annotated[bool, typer.Option("--background", "-b", help="Run planning loop in background")] = False,
-    max_iterations: Annotated[int, typer.Option("--max-iterations", "-n", help="Max planning loop iterations")] = 10,
-    completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text for planning loop")] = None,
-    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter for story discovery")] = None,
+    background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
+    max_iterations: Annotated[int, typer.Option("--max-iterations", "-n", help="Max iterations")] = 10,
+    completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter")] = None,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions", help="Skip permission prompts")] = False,
-    no_tmux: Annotated[bool, typer.Option("--no-tmux", help="Disable tmux 3-pane layout")] = False,
-    dashboard_refresh: Annotated[int, typer.Option("--dashboard-refresh", help="Session dashboard refresh interval in seconds")] = 5,
-    question_refresh: Annotated[int, typer.Option("--question-refresh", help="Question dashboard refresh interval in seconds")] = 10,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Create tmux layout, verify panes, print JSON, then exit")] = False,
 ):
-    """Launch interactive Claude session with orchestration context or run automated planning loop."""
-    _stability_banner("orchestrate")
+    """Run automated orchestration planning for all plans that need it."""
     from agenticcli.commands.orchestrate import cmd_orchestrate
     cmd_orchestrate(_ns(
         command="orchestrate",
         json=_global["json"], debug=_global["debug"],
-        mode=mode, plan=plan, prompt_file=prompt_file, role=role,
-        model=model, planning_loop=planning_loop, background=background,
+        action="planning", plan=plan, background=background,
         max_iterations=max_iterations, completion_promise=completion_promise,
         project=project, directory=directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
-        no_tmux=no_tmux, dashboard_refresh=dashboard_refresh,
-        question_refresh=question_refresh,
+        dry_run=dry_run,
     ))
 
 
-
-# ===========================================================================
-# TERMINAL
-# ===========================================================================
-
-terminal_app = typer.Typer(help="Web terminal UI for AgenticFrontend", no_args_is_help=True)
-session_app.add_typer(terminal_app, name="terminal")
-
-
-
-def _terminal_handle(args):
-    _dispatch("terminal", args)
-
-
-@terminal_app.command("serve")
-def terminal_serve(
-    port: Annotated[int, typer.Option("--port", "-p", help="Port to listen on")] = 8765,
-    open_browser: Annotated[bool, typer.Option("--open", help="Auto-open browser on start")] = False,
+@orchestrate_app.command("executing")
+def session_orchestrate_executing(
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Scope to a specific plan folder")] = None,
+    background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
+    max_iterations: Annotated[int, typer.Option("--max-iterations", "-n", help="Max phase executions")] = 10,
+    completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter")] = None,
+    directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
+    dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions", help="Skip permission prompts for spawned agents")] = False,
 ):
-    """Start the AgenticFrontend web terminal server."""
-    _terminal_handle(_ns(
-        command="terminal", terminal_command="serve",
+    """Run automated orchestration execution for plans with completed MMDs."""
+    from agenticcli.commands.orchestrate import cmd_orchestrate
+    cmd_orchestrate(_ns(
+        command="orchestrate",
         json=_global["json"], debug=_global["debug"],
-        port=port, open_browser=open_browser,
+        action="executing", plan=plan, background=background,
+        max_iterations=max_iterations, completion_promise=completion_promise,
+        project=project, directory=directory,
+        dangerously_skip_permissions=dangerously_skip_permissions,
+        dry_run=False,
     ))
 
 
@@ -837,71 +844,6 @@ def loop_history(
         active=active, status=status, limit=limit,
     ))
 
-
-# ===========================================================================
-# PLANNER
-# ===========================================================================
-
-planner_app = typer.Typer(help="Automated orchestration planning loop", no_args_is_help=True)
-session_app.add_typer(planner_app, name="planner")
-
-
-
-def _planner_handle(args):
-    _dispatch("planner", args)
-
-
-@planner_app.command("start")
-def planner_start(
-    max_iterations: Annotated[int, typer.Option("--max-iterations", "-m", help="Max iterations")] = 10,
-    background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
-    completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
-    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter for story discovery")] = None,
-    directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
-    worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path (alias for --directory)")] = None,
-    dangerously_skip_permissions: Annotated[bool, typer.Option(
-        "--dangerously-skip-permissions", help="Skip permission prompts")] = False,
-):
-    """Start the orchestration planner loop."""
-    if worktree and directory:
-        from agenticcli.console import print_error
-        print_error("--worktree and --directory are mutually exclusive.")
-        raise typer.Exit(1)
-    effective_directory = worktree or directory
-
-    _planner_handle(_ns(
-        command="planner", planner_command="start",
-        json=_global["json"], debug=_global["debug"],
-        max_iterations=max_iterations, background=background,
-        completion_promise=completion_promise, project=project,
-        directory=effective_directory,
-        dangerously_skip_permissions=dangerously_skip_permissions,
-    ))
-
-
-@planner_app.command("stop")
-def planner_stop(
-    planner_id: str = typer.Argument(..., help="Planner loop ID to stop"),
-    force: Annotated[bool, typer.Option("--force", "-f", help="Force kill")] = False,
-):
-    """Stop a running planner loop."""
-    _planner_handle(_ns(
-        command="planner", planner_command="stop",
-        json=_global["json"], debug=_global["debug"],
-        planner_id=planner_id, force=force,
-    ))
-
-
-@planner_app.command("status")
-def planner_status(
-    planner_id: Annotated[Optional[str], typer.Argument(help="Planner loop ID (omit for all)")] = None,
-):
-    """Show planner loop status."""
-    _planner_handle(_ns(
-        command="planner", planner_command="status",
-        json=_global["json"], debug=_global["debug"],
-        planner_id=planner_id,
-    ))
 
 
 # ===========================================================================
@@ -1022,125 +964,76 @@ def _question_handle(args):
     _dispatch("question", args)
 
 
-@question_app.command("list")
-def question_list(
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
-    status: Annotated[str, typer.Option("--status", help="Filter by status")] = "pending",
-    tmux_refresh: Annotated[bool, typer.Option("--tmux-refresh", help="Refresh tmux pane")] = False,
-):
-    """List questions with optional status filter."""
-    _question_handle(_ns(
-        command="question", question_command="list",
-        json=_global["json"], debug=_global["debug"],
-        plan=plan, status=status, tmux_refresh=tmux_refresh,
-    ))
+@question_app.command("list", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def question_list(ctx: typer.Context):
+    """Deprecated: use 'agentic plan question list'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic question list' has moved. Use 'agentic plan question list' instead.")
+    raise typer.Exit(1)
 
 
-@question_app.command("show")
-def question_show(
-    question_id: str = typer.Argument(..., help="Question ID"),
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
-):
-    """Show detailed information for a question."""
-    _question_handle(_ns(
-        command="question", question_command="show",
-        json=_global["json"], debug=_global["debug"],
-        question_id=question_id, plan=plan,
-    ))
+@question_app.command("show", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def question_show(ctx: typer.Context):
+    """Deprecated: use 'agentic plan question show'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic question show' has moved. Use 'agentic plan question show' instead.")
+    raise typer.Exit(1)
 
 
-@question_app.command("answer")
-def question_answer(
-    question_id: Annotated[Optional[str], typer.Argument(help="Question ID to answer")] = None,
-    text: Annotated[Optional[str], typer.Option("--text", help="Answer text")] = None,
-    confidence: Annotated[Optional[str], typer.Option("--confidence", help="Confidence level")] = None,
-    interactive: Annotated[bool, typer.Option("--interactive", "-i", help="Use interactive wizard")] = False,
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
-):
-    """Answer a pending question."""
-    ns = _ns(
-        command="question", question_command="answer",
-        json=_global["json"], debug=_global["debug"],
-        text=text, confidence=confidence, interactive=interactive, plan=plan,
-    )
-    # Only set question_id if provided
-    if question_id is not None:
-        ns.question_id = question_id
-    _question_handle(ns)
+@question_app.command("answer", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def question_answer(ctx: typer.Context):
+    """Deprecated: use 'agentic plan question answer'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic question answer' has moved. Use 'agentic plan question answer' instead.")
+    raise typer.Exit(1)
 
 
-@question_app.command("ask", hidden=True)
-def question_ask(
-    text: str = typer.Argument(..., help="Question text"),
-    severity: Annotated[str, typer.Option("--severity", help="Severity level")] = "medium",
-    context: Annotated[Optional[str], typer.Option("--context", help="Additional context")] = None,
-    suggest: Annotated[Optional[List[str]], typer.Option("--suggest", help="Suggested answer (repeatable)")] = None,
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
-):
-    """Create a new question."""
-    _question_handle(_ns(
-        command="question", question_command="ask",
-        json=_global["json"], debug=_global["debug"],
-        text=text, severity=severity, context=context, suggest=suggest, plan=plan,
-    ))
+@question_app.command("ask", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def question_ask(ctx: typer.Context):
+    """Deprecated: use 'agentic agent question ask'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic question ask' has moved. Use 'agentic agent question ask' instead.")
+    raise typer.Exit(1)
 
 
-@question_app.command("defer", hidden=True)
-def question_defer(
-    question_id: str = typer.Argument(..., help="Question ID to defer"),
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
-):
-    """Defer a pending question."""
-    _question_handle(_ns(
-        command="question", question_command="defer",
-        json=_global["json"], debug=_global["debug"],
-        question_id=question_id, plan=plan,
-    ))
+@question_app.command("defer", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def question_defer(ctx: typer.Context):
+    """Deprecated: use 'agentic agent question defer'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic question defer' has moved. Use 'agentic agent question defer' instead.")
+    raise typer.Exit(1)
 
 
-@question_app.command("watch", hidden=True)
-def question_watch(
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
-):
-    """Watch question folders and display updates."""
-    _question_handle(_ns(
-        command="question", question_command="watch",
-        json=_global["json"], debug=_global["debug"],
-        plan=plan,
-    ))
+@question_app.command("watch", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def question_watch(ctx: typer.Context):
+    """Deprecated: use 'agentic agent question watch'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic question watch' has moved. Use 'agentic agent question watch' instead.")
+    raise typer.Exit(1)
 
 
-@question_app.command("watch-daemon", hidden=True)
-def question_watch_daemon(
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
-):
-    """Start question watcher in background as daemon."""
-    _question_handle(_ns(
-        command="question", question_command="watch-daemon",
-        json=_global["json"], debug=_global["debug"],
-        plan=plan,
-    ))
+@question_app.command("watch-daemon", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def question_watch_daemon(ctx: typer.Context):
+    """Deprecated: use 'agentic agent question watch-daemon'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic question watch-daemon' has moved. Use 'agentic agent question watch-daemon' instead.")
+    raise typer.Exit(1)
 
 
-@question_app.command("watch-stop", hidden=True)
-def question_watch_stop():
-    """Stop running question watcher daemon."""
-    _question_handle(_ns(
-        command="question", question_command="watch-stop",
-        json=_global["json"], debug=_global["debug"],
-    ))
+@question_app.command("watch-stop", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def question_watch_stop(ctx: typer.Context):
+    """Deprecated: use 'agentic agent question watch-stop'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic question watch-stop' has moved. Use 'agentic agent question watch-stop' instead.")
+    raise typer.Exit(1)
 
 
-@question_app.command("dashboard")
-def question_dashboard(
-    refresh: Annotated[int, typer.Option("--refresh", "-r", help="Refresh interval in seconds")] = 10,
-):
-    """Live dashboard showing pending questions across all live plans."""
-    _question_handle(_ns(
-        command="question", question_command="dashboard",
-        json=_global["json"], debug=_global["debug"],
-        refresh=refresh,
-    ))
+@question_app.command("dashboard", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def question_dashboard(ctx: typer.Context):
+    """Deprecated: use 'agentic plan question dashboard'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic question dashboard' has moved. Use 'agentic plan question dashboard' instead.")
+    raise typer.Exit(1)
 
 
 # ===========================================================================
@@ -1148,8 +1041,22 @@ def question_dashboard(
 # ===========================================================================
 
 entrypoint_app = typer.Typer(help="Discover and execute workflow entrypoints", no_args_is_help=True)
-app.add_typer(entrypoint_app, name="entrypoint", hidden=True)
-app.add_typer(entrypoint_app, name="ep", hidden=True)
+
+
+@app.command("entrypoint", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_entrypoint(ctx: typer.Context):
+    """Deprecated: use 'agentic agent entrypoint'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic entrypoint' has moved. Use 'agentic agent entrypoint' instead.")
+    raise typer.Exit(1)
+
+
+@app.command("ep", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_ep(ctx: typer.Context):
+    """Deprecated: use 'agentic agent entrypoint'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic ep' has moved. Use 'agentic agent entrypoint' instead.")
+    raise typer.Exit(1)
 
 
 def _entrypoint_handle(args):
@@ -1192,8 +1099,22 @@ def entrypoint_execute(
 # ===========================================================================
 
 context_app = typer.Typer(help="CCI context retrieval for agents", no_args_is_help=True)
-app.add_typer(context_app, name="context", hidden=True)
-app.add_typer(context_app, name="ctx", hidden=True)
+
+
+@app.command("context", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_context(ctx: typer.Context):
+    """Deprecated: use 'agentic agent context'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic context' has moved. Use 'agentic agent context' instead.")
+    raise typer.Exit(1)
+
+
+@app.command("ctx", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_ctx(ctx: typer.Context):
+    """Deprecated: use 'agentic agent context'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic ctx' has moved. Use 'agentic agent context' instead.")
+    raise typer.Exit(1)
 
 
 def _context_handle(args):
@@ -1276,74 +1197,39 @@ def _plan_handle(args):
 
 
 # --- plan new ---
-@plan_app.command("new")
-def plan_new(
-    objective: Annotated[Optional[str], typer.Argument(help="Planning objective description")] = None,
-    branch: Annotated[Optional[str], typer.Option("--branch", "-b", help="Git branch name (auto-generated from objective if omitted)")] = None,
-    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan folder description suffix")] = None,
-    base: Annotated[str, typer.Option("--base", help="Base branch for worktree")] = "main",
-    execute: Annotated[bool, typer.Option("--execute", "-x", help="Auto-execute after planning completes")] = False,
-    max_turns: Annotated[int, typer.Option("--max-turns", help="Max turns for planner agent")] = 25,
-    dangerously_skip_permissions: Annotated[bool, typer.Option(
-        "--dangerously-skip-permissions", help="Skip permission prompts for spawned sessions")] = False,
-):
-    """Create plan and spawn planner agent."""
-    if not objective:
-        from agenticcli.console import print_error
-        print_error("Objective is required. Usage: agentic plan new \"your objective\"")
-        raise typer.Exit(1)
-    _plan_handle(_ns(
-        command="plan", plan_command="new",
-        json=_global["json"], debug=_global["debug"],
-        objective=objective, branch=branch, description=description,
-        base=base, execute=execute, max_turns=max_turns,
-        dangerously_skip_permissions=dangerously_skip_permissions,
-    ))
+@plan_app.command("new", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def plan_new(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan new'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan new' has moved. Use 'agentic agent plan new' instead.")
+    raise typer.Exit(1)
 
 
 # --- plan init ---
-@plan_app.command("init", hidden=True)
-def plan_init(
-    branch: str = typer.Argument(..., help="Branch name for worktree"),
-    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan description")] = None,
-    base: Annotated[str, typer.Option("--base", "-b", help="Base branch")] = "main",
-    objective: Annotated[Optional[str], typer.Option("--objective", "-o", help="Plan objective")] = None,
-):
-    """Initialize worktree and plan folder with proper naming."""
-    _plan_handle(_ns(
-        command="plan", plan_command="init",
-        json=_global["json"], debug=_global["debug"],
-        branch=branch, description=description, base=base, objective=objective,
-    ))
+@plan_app.command("init", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def plan_init(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan init'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan init' has moved. Use 'agentic agent plan init' instead.")
+    raise typer.Exit(1)
 
 
 # --- plan bootstrap ---
-@plan_app.command("bootstrap", hidden=True)
-def plan_bootstrap(
-    branch: str = typer.Argument(..., help="Branch name for the plan"),
-    objective: Annotated[str, typer.Option("--objective", "-o", help="Plan objective")] = ...,
-    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan description")] = None,
-):
-    """Bootstrap a new plan with an objective."""
-    _plan_handle(_ns(
-        command="plan", plan_command="bootstrap",
-        json=_global["json"], debug=_global["debug"],
-        branch=branch, objective=objective, description=description,
-    ))
+@plan_app.command("bootstrap", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def plan_bootstrap(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan bootstrap'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan bootstrap' has moved. Use 'agentic agent plan bootstrap' instead.")
+    raise typer.Exit(1)
 
 
 # --- plan scaffold ---
-@plan_app.command("scaffold", hidden=True)
-def plan_scaffold(
-    name: str = typer.Argument(..., help="Folder name"),
-    worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path")] = None,
-):
-    """Create planning folder structure."""
-    _plan_handle(_ns(
-        command="plan", plan_command="scaffold",
-        json=_global["json"], debug=_global["debug"],
-        name=name, worktree=worktree,
-    ))
+@plan_app.command("scaffold", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def plan_scaffold(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan scaffold'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan scaffold' has moved. Use 'agentic agent plan scaffold' instead.")
+    raise typer.Exit(1)
 
 
 # --- plan status ---
@@ -1358,24 +1244,12 @@ def plan_status(
 
 
 # --- plan validate ---
-@plan_app.command("validate", hidden=True)
-def plan_validate(
-    path: Optional[str] = typer.Argument(None, help="Path to plan folder"),
-    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path (takes priority over positional)")] = None,
-    strict: Annotated[bool, typer.Option("--strict", help="Fail on stub templates")] = False,
-    check_fences: Annotated[bool, typer.Option("--check-fences", help="Validate UAT fence compliance")] = False,
-):
-    """Validate plan folder structure and YAML."""
-    resolved = plan or path
-    if not resolved:
-        from agenticcli.console import print_error
-        print_error("Path is required. Usage: agentic plan validate <path> or --plan <path>")
-        raise typer.Exit(1)
-    _plan_handle(_ns(
-        command="plan", plan_command="validate",
-        json=_global["json"], debug=_global["debug"],
-        path=resolved, strict=strict, check_fences=check_fences,
-    ))
+@plan_app.command("validate", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def plan_validate(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan validate'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan validate' has moved. Use 'agentic agent plan validate' instead.")
+    raise typer.Exit(1)
 
 
 # --- plan list ---
@@ -1386,50 +1260,43 @@ def plan_list():
 
 
 # --- plan archive ---
-@plan_app.command("archive", hidden=True)
-def plan_archive(
-    path: Optional[str] = typer.Argument(None, help="Path to plan folder to archive"),
-    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path (takes priority over positional)")] = None,
-):
-    """Copy plan to completed folder."""
-    resolved = plan or path
-    if not resolved:
-        from agenticcli.console import print_error
-        print_error("Path is required. Usage: agentic plan archive <path> or --plan <path>")
-        raise typer.Exit(1)
-    _plan_handle(_ns(command="plan", plan_command="archive", json=_global["json"], debug=_global["debug"], path=resolved))
+@plan_app.command("archive", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def plan_archive(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan archive'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan archive' has moved. Use 'agentic agent plan archive' instead.")
+    raise typer.Exit(1)
 
 
 # --- plan unarchive ---
-@plan_app.command("unarchive", hidden=True)
-def plan_unarchive(
-    plan: Annotated[str, typer.Option("--plan", "-p", help="Plan folder name")] = ...,
-    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
-):
-    """Move plan from completed back to live."""
-    _plan_handle(_ns(
-        command="plan", plan_command="unarchive",
-        json=_global["json"], debug=_global["debug"],
-        plan=plan, force=force,
-    ))
+@plan_app.command("unarchive", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def plan_unarchive(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan unarchive'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan unarchive' has moved. Use 'agentic agent plan unarchive' instead.")
+    raise typer.Exit(1)
 
 
 # --- plan task (nested sub-app) ---
 plan_task_app = typer.Typer(help="Manage tasks in plan files", no_args_is_help=True)
-plan_app.add_typer(plan_task_app, name="task", hidden=True)
+@plan_app.command("task", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_plan_task(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan task'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan task' has moved. Use 'agentic agent plan task' instead.")
+    raise typer.Exit(1)
 
 
 @plan_task_app.command("start")
 def plan_task_start(
     task_id: str = typer.Argument(..., help="Task ID"),
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
-    no_archive: Annotated[bool, typer.Option("--no-archive", help="Suppress auto-archival")] = False,
 ):
     """Mark task as in_progress."""
     _plan_handle(_ns(
         command="plan", plan_command="task", task_action="start",
         json=_global["json"], debug=_global["debug"],
-        task_id=task_id, plan=plan, no_archive=no_archive,
+        task_id=task_id, plan=plan,
     ))
 
 
@@ -1437,13 +1304,12 @@ def plan_task_start(
 def plan_task_complete(
     task_id: str = typer.Argument(..., help="Task ID"),
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
-    no_archive: Annotated[bool, typer.Option("--no-archive", help="Suppress auto-archival")] = False,
 ):
     """Mark task as completed."""
     _plan_handle(_ns(
         command="plan", plan_command="task", task_action="complete",
         json=_global["json"], debug=_global["debug"],
-        task_id=task_id, plan=plan, no_archive=no_archive,
+        task_id=task_id, plan=plan,
     ))
 
 
@@ -1524,13 +1390,12 @@ def plan_task_update(
     status: Annotated[str, typer.Option("--status", "-s", help="New status")] = ...,
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
     note: Annotated[Optional[str], typer.Option("--note", "-n", help="Completion note")] = None,
-    no_archive: Annotated[bool, typer.Option("--no-archive", help="Suppress auto-archival")] = False,
 ):
     """Update task status in plan file."""
     _plan_handle(_ns(
         command="plan", plan_command="task", task_action="update",
         json=_global["json"], debug=_global["debug"],
-        task_id=task_id, status=status, plan=plan, note=note, no_archive=no_archive,
+        task_id=task_id, status=status, plan=plan, note=note,
     ))
 
 
@@ -1548,7 +1413,12 @@ def plan_task_current(
 
 # --- plan move (nested sub-app) ---
 plan_move_app = typer.Typer(help="Move completed tasks or archive folder", no_args_is_help=True)
-plan_app.add_typer(plan_move_app, name="move", hidden=True)
+@plan_app.command("move", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_plan_move(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan move'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan move' has moved. Use 'agentic agent plan move' instead.")
+    raise typer.Exit(1)
 
 
 @plan_move_app.command("task")
@@ -1596,7 +1466,12 @@ def plan_move_folder(
 
 # --- plan orchestration (nested sub-app) ---
 plan_orch_app = typer.Typer(help="Manage plan orchestration MMD files", no_args_is_help=True)
-plan_app.add_typer(plan_orch_app, name="orchestration", hidden=True)
+@plan_app.command("orchestration", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_plan_orchestration(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan orchestration'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan orchestration' has moved. Use 'agentic agent plan orchestration' instead.")
+    raise typer.Exit(1)
 
 
 @plan_orch_app.command("generate")
@@ -1628,7 +1503,12 @@ def plan_orchestration_validate(
 
 # --- plan phase (nested sub-app) ---
 plan_phase_app = typer.Typer(help="Manage plan phases", no_args_is_help=True)
-plan_app.add_typer(plan_phase_app, name="phase", hidden=True)
+@plan_app.command("phase", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_plan_phase(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan phase'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan phase' has moved. Use 'agentic agent plan phase' instead.")
+    raise typer.Exit(1)
 
 
 @plan_phase_app.command("add")
@@ -1675,7 +1555,12 @@ def plan_phase_update(
 
 # --- plan stories (nested sub-app) ---
 plan_stories_app = typer.Typer(help="Manage user stories in plan files", no_args_is_help=True)
-plan_app.add_typer(plan_stories_app, name="stories", hidden=True)
+@plan_app.command("stories", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def _deprecated_plan_stories(ctx: typer.Context):
+    """Deprecated: use 'agentic agent plan stories'."""
+    from agenticcli.console import print_error
+    print_error("Command 'agentic plan stories' has moved. Use 'agentic agent plan stories' instead.")
+    raise typer.Exit(1)
 
 
 @plan_stories_app.command("list")
@@ -1739,12 +1624,76 @@ def plan_cancel(
     ))
 
 
+# --- plan question ---
+plan_question_app = typer.Typer(help="Manage question queue for plan workflows", no_args_is_help=True)
+plan_app.add_typer(plan_question_app, name="question")
+
+
+@plan_question_app.command("list")
+def plan_question_list(
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
+    status: Annotated[str, typer.Option("--status", help="Filter by status")] = "pending",
+    tmux_refresh: Annotated[bool, typer.Option("--tmux-refresh", help="Refresh tmux pane")] = False,
+):
+    """List questions with optional status filter."""
+    _question_handle(_ns(
+        command="question", question_command="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=plan, status=status, tmux_refresh=tmux_refresh,
+    ))
+
+
+@plan_question_app.command("show")
+def plan_question_show(
+    question_id: str = typer.Argument(..., help="Question ID"),
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
+):
+    """Show detailed information for a question."""
+    _question_handle(_ns(
+        command="question", question_command="show",
+        json=_global["json"], debug=_global["debug"],
+        question_id=question_id, plan=plan,
+    ))
+
+
+@plan_question_app.command("answer")
+def plan_question_answer(
+    question_id: Annotated[Optional[str], typer.Argument(help="Question ID to answer")] = None,
+    text: Annotated[Optional[str], typer.Option("--text", help="Answer text")] = None,
+    confidence: Annotated[Optional[str], typer.Option("--confidence", help="Confidence level (high, medium, low)")] = None,
+    interactive: Annotated[bool, typer.Option("--interactive", "-i", help="Use interactive wizard")] = False,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder path")] = None,
+):
+    """Answer a pending question."""
+    ns = _ns(
+        command="question", question_command="answer",
+        json=_global["json"], debug=_global["debug"],
+        text=text, confidence=confidence, interactive=interactive, plan=plan,
+    )
+    if question_id is not None:
+        ns.question_id = question_id
+    _question_handle(ns)
+
+
+@plan_question_app.command("dashboard")
+def plan_question_dashboard(
+    refresh: Annotated[int, typer.Option("--refresh", "-r", help="Refresh interval in seconds")] = 5,
+    no_tmux_window: Annotated[bool, typer.Option("--no-tmux-window", help="Run TUI directly without creating tmux window", hidden=True)] = False,
+):
+    """Interactive dashboard for answering pending questions."""
+    _question_handle(_ns(
+        command="question", question_command="dashboard",
+        json=_global["json"], debug=_global["debug"],
+        refresh=refresh, no_tmux_window=no_tmux_window,
+    ))
+
+
 # ===========================================================================
 # AGENT GROUP (hidden top-level, agent-facing plumbing)
 # ===========================================================================
 
 agent_app = typer.Typer(help="Agent plumbing commands", no_args_is_help=True)
-app.add_typer(agent_app, name="agent", hidden=True)
+app.add_typer(agent_app, name="agent", hidden=False)
 
 # --- agent plan ---
 agent_plan_app = typer.Typer(help="Plan management plumbing for agents", no_args_is_help=True)
@@ -1759,13 +1708,12 @@ agent_plan_app.add_typer(agent_plan_task_app, name="task")
 def agent_plan_task_start(
     task_id: str = typer.Argument(..., help="Task ID"),
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
-    no_archive: Annotated[bool, typer.Option("--no-archive", help="Suppress auto-archival")] = False,
 ):
     """Mark task as in_progress."""
     _plan_handle(_ns(
         command="plan", plan_command="task", task_action="start",
         json=_global["json"], debug=_global["debug"],
-        task_id=task_id, plan=plan, no_archive=no_archive,
+        task_id=task_id, plan=plan,
     ))
 
 
@@ -1773,13 +1721,12 @@ def agent_plan_task_start(
 def agent_plan_task_complete(
     task_id: str = typer.Argument(..., help="Task ID"),
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
-    no_archive: Annotated[bool, typer.Option("--no-archive", help="Suppress auto-archival")] = False,
 ):
     """Mark task as completed."""
     _plan_handle(_ns(
         command="plan", plan_command="task", task_action="complete",
         json=_global["json"], debug=_global["debug"],
-        task_id=task_id, plan=plan, no_archive=no_archive,
+        task_id=task_id, plan=plan,
     ))
 
 
@@ -1846,13 +1793,12 @@ def agent_plan_task_update(
     status: Annotated[str, typer.Option("--status", "-s", help="New status")] = ...,
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan path")] = None,
     note: Annotated[Optional[str], typer.Option("--note", "-n", help="Completion note")] = None,
-    no_archive: Annotated[bool, typer.Option("--no-archive", help="Suppress auto-archival")] = False,
 ):
     """Update task status in plan file."""
     _plan_handle(_ns(
         command="plan", plan_command="task", task_action="update",
         json=_global["json"], debug=_global["debug"],
-        task_id=task_id, status=status, plan=plan, note=note, no_archive=no_archive,
+        task_id=task_id, status=status, plan=plan, note=note,
     ))
 
 
@@ -2133,6 +2079,31 @@ def agent_plan_bootstrap(
         command="plan", plan_command="bootstrap",
         json=_global["json"], debug=_global["debug"],
         branch=branch, objective=objective, description=description,
+    ))
+
+
+@agent_plan_app.command("new")
+def agent_plan_new(
+    objective: Annotated[Optional[str], typer.Argument(help="Planning objective description")] = None,
+    branch: Annotated[Optional[str], typer.Option("--branch", "-b", help="Git branch name (auto-generated from objective if omitted)")] = None,
+    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan folder description suffix")] = None,
+    base: Annotated[str, typer.Option("--base", help="Base branch for worktree")] = "main",
+    execute: Annotated[bool, typer.Option("--execute", "-x", help="Auto-execute after planning completes")] = False,
+    max_turns: Annotated[int, typer.Option("--max-turns", help="Max turns for planner agent")] = 25,
+    dangerously_skip_permissions: Annotated[bool, typer.Option(
+        "--dangerously-skip-permissions", help="Skip permission prompts for spawned sessions")] = False,
+):
+    """Create plan and spawn planner agent (agent-facing)."""
+    if not objective:
+        from agenticcli.console import print_error
+        print_error("Objective is required. Usage: agentic agent plan new \"your objective\"")
+        raise typer.Exit(1)
+    _plan_handle(_ns(
+        command="plan", plan_command="new",
+        json=_global["json"], debug=_global["debug"],
+        objective=objective, branch=branch, description=description,
+        base=base, execute=execute, max_turns=max_turns,
+        dangerously_skip_permissions=dangerously_skip_permissions,
     ))
 
 

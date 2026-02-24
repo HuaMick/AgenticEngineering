@@ -1,0 +1,183 @@
+review:
+  plan_name: "Fix false STALE status for (--print) background sessions"
+  plan_folder: "260222NE_fix_false_stale_status_for_print_background_sessio"
+  reviewer: planner-reviewer
+  reviewed_at: "2026-02-22"
+  decision: REJECT
+
+  summary: |
+    The plan is technically well-structured with clear problem analysis, accurate
+    code references, and detailed task descriptions. However, it fails two blocking
+    fences: (1) missing affected_stories on the build plan (Story-First Planning
+    fence), and (2) missing orchestration MMD file for a multi-phase plan. Additionally,
+    two template files (plan_teach.yml, plan_audit_clean.yml) remain as unpopulated
+    stubs and should be deleted or populated.
+
+  checklist_results:
+    plan_structure:
+      status: PASS
+      notes: |
+        - name field present at root level
+        - Worktree path is absolute (/home/code/AgenticEngineering-cli-nesting)
+        - Plan folder follows YYMMDDXX_description naming
+        - Context clearly states the problem (4 specific issues identified)
+        - Plan files at folder root, not in subdirectories
+        - No plan_live_ prefix in filenames
+
+    inputs:
+      status: PASS
+      notes: |
+        - Context references are file-level (session.py with line numbers)
+        - Task-level inputs have location paths
+        - Test plan inputs have location and description fields
+        - Referenced file (session.py) exists and was verified
+
+    success_criteria:
+      status: PASS
+      notes: |
+        - Build plan has 7 measurable success criteria
+        - Test plan has 8 success criteria
+        - Criteria define observable outcomes (e.g., "NOT checked for tmux",
+          "30-minute stale threshold")
+        - User-focused validation present via UAT phase
+
+    task_structure:
+      status: PASS
+      notes: |
+        - Each task specifies exact target file (session.py)
+        - Tasks include before/after code snippets for clarity
+        - Operations properly ordered (P1 add flag -> P2 use flag -> P3 add signal -> etc.)
+        - Each task has concrete acceptance criteria
+        - Code references verified against actual codebase (line numbers match)
+
+    pattern_alignment:
+      status: PASS
+      notes: |
+        - Internal CLI code change, Domain->Workflow->Entrypoint not applicable
+        - Phase dependencies are implicit through sequential ordering
+        - Test plan includes mandatory loops (audit-test-fix, UAT)
+
+    loop_structure:
+      status: PASS
+      notes: |
+        - Test plan has loop_structures section with 3 loops
+        - test-fix-loop for component testing (max 5 iterations)
+        - audit-test-fix-loop for test audit (max 3 iterations, mandatory)
+        - user-story-validation-loop for UAT (max 3 iterations)
+        - Exit criteria are explicit and verifiable
+        - Escalation paths defined for all loops
+
+    context_quality:
+      status: PASS
+      notes: |
+        - No inline definitions duplicating shared assets
+        - File references resolve to existing targets (session.py verified)
+        - No duplicate definitions across files
+
+  fence_results:
+    rlm_usage:
+      status: SKIP
+      reason: "Plan does not reference RLM patterns"
+
+    mmd_presence:
+      status: FAIL
+      reason: |
+        No orchestration_*.mmd file exists in the plan folder. The plan has
+        multiple plan files (build, test, teach, audit_clean) and the test plan
+        references multiple agents (test-runner, build-python, test-audit,
+        test-builder, test-user-simulator) in loop participants, indicating this
+        is intended for orchestrated execution. The exception for single-task
+        plans does not apply (6 phases, 7 tasks in build plan alone).
+
+    file_placement:
+      status: PASS
+      notes: |
+        - All plan_*.yml files at folder root
+        - No forbidden naming patterns
+        - No nested plan files in subfolders
+
+    codebase_verification:
+      status: PASS
+      notes: |
+        - Target file session.py exists and was verified
+        - Code references in tasks match actual codebase:
+          - Line 416: stale_threshold = 10 (confirmed)
+          - Lines 424-432: tmux signal block (confirmed)
+          - No existing print_mode flag (confirmed)
+          - No existing _check_child_processes function (confirmed)
+        - No pending tasks are already implemented (all genuinely pending)
+
+    self_review_validation:
+      status: PASS
+      notes: |
+        - Plan inputs don't duplicate shared asset content
+        - File references validated and resolve to existing files
+        - No deprecated patterns referenced
+
+    infrastructure_implementation:
+      status: PASS
+      notes: |
+        Agents referenced in test plan are all IMPLEMENTED:
+        - test-runner: IMPLEMENTED
+        - build-python: IMPLEMENTED
+        - test-audit: IMPLEMENTED
+        - test-builder: IMPLEMENTED
+        - test-user-simulator: IMPLEMENTED
+        No CICD, packaging, or other unimplemented infrastructure referenced.
+
+    story_first_planning:
+      status: FAIL
+      reason: |
+        BLOCKING: plan_build.yml is a build plan (blocked_plan_type) and MUST
+        have affected_stories field. Neither affected_stories nor
+        no_stories_rationale is present in the build plan metadata.
+
+        The test plan references US-CLI-031 in UAT tasks (story_id field), but
+        the build plan itself lacks the required affected_stories field at root
+        level. Per planning-standard.yml escape_hatch_rules:
+        "Plans in blocked_plan_types MUST have affected_stories -- no escape
+        hatch available."
+
+        Required fix: Add to plan_build.yml:
+          affected_stories:
+            - "US-CLI-031"
+
+    open_questions_validation:
+      status: PASS
+      reason: "No open_questions section present - valid (not all plans need it)"
+
+  additional_issues:
+    - issue: "Stub template files not cleaned up"
+      severity: minor
+      detail: |
+        plan_teach.yml and plan_audit_clean.yml remain as unpopulated stubs
+        with _template_status: stub. Per the template header instructions:
+        "OPTIONS: 1. POPULATE or 2. DELETE." These should be either populated
+        with actual teach/audit content or deleted if not needed for this plan.
+      recommendation: |
+        Since this is a focused bugfix plan (not a guidance/teaching change),
+        plan_teach.yml is likely unnecessary -- DELETE it. plan_audit_clean.yml
+        should be populated with post-implementation cleanup tasks or deleted.
+
+  feedback:
+    blocking:
+      - |
+        Add affected_stories to plan_build.yml. This is a build plan and MUST
+        have affected_stories per Story-First Planning fence. The test plan
+        already references US-CLI-031 in UAT tasks, so add at root level:
+          affected_stories:
+            - "US-CLI-031"
+      - |
+        Create orchestration MMD file (orchestration_fix_false_stale_status.mmd)
+        or equivalent. The plan has 6 build phases plus a multi-phase test plan
+        with agent-based loops, indicating orchestrated execution. Include GOAL,
+        AGENT_ROUTING, and PHASES metadata.
+
+    non_blocking:
+      - |
+        Delete or populate stub template files (plan_teach.yml,
+        plan_audit_clean.yml). Stubs trigger validation warnings and add
+        noise to the plan folder.
+      - |
+        Consider adding impacted_artifacts to the build plan for better
+        orchestration visibility (similar to how the test plan includes them).

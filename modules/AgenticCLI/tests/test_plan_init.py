@@ -33,7 +33,7 @@ class TestPlanInit:
     def test_init_auto_creates_worktree(self, cli_runner, temp_repo):
         """Test init auto-creates worktree when it doesn't exist."""
         stdout, stderr, code = cli_runner(
-            ["plan", "init", "nonexistent-branch", "--description", "my feature"]
+            ["agent", "plan", "init", "nonexistent-branch", "--description", "my feature"]
         )
 
         # Should succeed by auto-creating the worktree
@@ -46,7 +46,7 @@ class TestPlanInit:
         worktree_path = create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "my feature"]
+            ["agent", "plan", "init", branch, "--description", "my feature"]
         )
 
         # Should succeed
@@ -70,7 +70,7 @@ class TestPlanInit:
         branch = "auth"
         create_worktree_for_test(temp_repo, branch)
 
-        stdout, stderr, code = cli_runner(["plan", "init", branch])
+        stdout, stderr, code = cli_runner(["agent", "plan", "init", branch])
 
         assert code == 0
 
@@ -88,7 +88,7 @@ class TestPlanInit:
 
         # Now run plan init
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "test"]
+            ["agent", "plan", "init", branch, "--description", "test"]
         )
 
         assert code == 0
@@ -108,14 +108,14 @@ class TestPlanInit:
 
         # First create a plan
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "first"]
+            ["agent", "plan", "init", branch, "--description", "first"]
         )
         assert code == 0
 
         # Try to create another plan with same description
         # This should fail because the folder name will be the same
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "first"]
+            ["agent", "plan", "init", branch, "--description", "first"]
         )
 
         assert code == 2
@@ -127,7 +127,7 @@ class TestPlanInit:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "init", branch, "--description", "json output test"]
+            ["-j", "agent", "plan", "init", branch, "--description", "json output test"]
         )
 
         assert code == 0
@@ -166,7 +166,7 @@ class TestPlanInit:
         )
 
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--base", "develop", "--description", "test"]
+            ["agent", "plan", "init", branch, "--base", "develop", "--description", "test"]
         )
 
         assert code == 0
@@ -177,7 +177,7 @@ class TestPlanInit:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "My Feature: Bug Fix #123!"]
+            ["agent", "plan", "init", branch, "--description", "My Feature: Bug Fix #123!"]
         )
 
         assert code == 0
@@ -201,7 +201,7 @@ class TestPlanInit:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "structure"]
+            ["agent", "plan", "init", branch, "--description", "structure"]
         )
 
         assert code == 0
@@ -230,7 +230,7 @@ class TestPlanInitWorkspaceUpdate:
         # Run plan init — this will create a new worktree (no pre-existing one)
         branch = "ws-new"
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "workspace test"]
+            ["agent", "plan", "init", branch, "--description", "workspace test"]
         )
 
         assert code == 0
@@ -264,7 +264,7 @@ class TestPlanInitWorkspaceUpdate:
 
         # Run plan init — worktree already exists so it should be reused
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "reuse test"]
+            ["agent", "plan", "init", branch, "--description", "reuse test"]
         )
 
         assert code == 0
@@ -286,7 +286,7 @@ class TestPlanInitWorkspaceUpdate:
 
         branch = "ws-json"
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "init", branch, "--description", "json ws test"]
+            ["-j", "agent", "plan", "init", branch, "--description", "json ws test"]
         )
 
         assert code == 0
@@ -303,7 +303,7 @@ class TestPlanInitWorkspaceUpdate:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "no workspace"]
+            ["agent", "plan", "init", branch, "--description", "no workspace"]
         )
 
         # Should succeed without error
@@ -316,7 +316,7 @@ class TestPlanInitEnforcement:
     def test_init_auto_creates_worktree_for_new_branch(self, cli_runner, temp_repo):
         """Test init auto-creates worktree for a new branch."""
         stdout, stderr, code = cli_runner(
-            ["plan", "init", "no-worktree", "--description", "test"]
+            ["agent", "plan", "init", "no-worktree", "--description", "test"]
         )
 
         # Should succeed by auto-creating the worktree
@@ -330,14 +330,14 @@ class TestPlanInitEnforcement:
 
         # Create first plan
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "first"]
+            ["agent", "plan", "init", branch, "--description", "first"]
         )
         assert code == 0
 
         # Try to create another plan for same branch
         # Should fail because branch already has a live plan
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "second"]
+            ["agent", "plan", "init", branch, "--description", "second"]
         )
 
         # Should fail with code 2 (plan exists) since same branch can't have two plans
@@ -356,7 +356,7 @@ class TestPlanInitHelp:
 
     def test_init_help(self, cli_runner):
         """Test plan init shows help."""
-        stdout, stderr, code = cli_runner(["plan", "init", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "init", "--help"])
         assert "branch" in stdout.lower() or code == 0
 
 
@@ -366,7 +366,7 @@ class TestPlanInitEdgeCases:
     def test_init_empty_branch_fails(self, cli_runner):
         """Test init fails with empty branch name."""
         # This should fail at argument parsing level
-        stdout, stderr, code = cli_runner(["plan", "init"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "init"])
         assert code != 0
 
     def test_init_worktree_id_from_repo_suffix(self, cli_runner, temp_repo):
@@ -375,7 +375,7 @@ class TestPlanInitEdgeCases:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "init", branch, "--description", "test"]
+            ["-j", "agent", "plan", "init", branch, "--description", "test"]
         )
 
         assert code == 0

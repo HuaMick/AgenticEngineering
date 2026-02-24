@@ -1,7 +1,7 @@
 """Shared JSON-on-disk state store for CLI command modules.
 
 Replaces duplicated _get_*_dir / _load_* / _save_* / _list_* boilerplate
-in session.py, loop.py, planner.py, and orchestrate.py.
+in session.py, loop.py, and orchestrate.py.
 """
 
 from __future__ import annotations

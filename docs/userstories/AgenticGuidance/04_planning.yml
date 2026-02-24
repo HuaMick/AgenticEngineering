@@ -341,3 +341,76 @@ stories:
   test_status: untested
   test_notes: ''
   tested_by_plan: null
+- id: US-GD-056
+  title: Audit Task Nesting Enforcement
+  category: planning
+  priority: critical
+  as_a: planner-audit agent
+  i_want: to detect plans with tasks at root level instead of nested under phases
+  so_that: downstream parsers iterating phases[].tasks[] do not silently skip work
+  acceptance_criteria:
+  - 'Detect root-level tasks: key and flag as HIGH severity STRUCTURE VIOLATION'
+  - Detect phases without a tasks: list and flag as MEDIUM severity
+  - 'Blocking failure when phases: is missing AND tasks: is at root level'
+  - Findings reported under structure_hierarchy section in audit report
+  - Violations include actionable recommendation to restructure into phases[].tasks[]
+  related_agents:
+  - planner-audit
+  related_files:
+  - modules/AgenticGuidance/agents/planner/planner-audit/process.yml
+  - modules/AgenticGuidance/assets/definitions/plans.yml
+  related_stories:
+  - US-GD-053
+  - US-GD-057
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260223UT_260223ut_fix_planner_audit_to_enforce_task_levels
+- id: US-GD-057
+  title: Programmatic Task Nesting Validation
+  category: planning
+  priority: critical
+  as_a: PlanService validating plan structure
+  i_want: validate_plan_structure() to reject plans with root-level tasks
+  so_that: malformed plans are caught deterministically, not just by LLM interpretation
+  acceptance_criteria:
+  - 'validate_plan_structure() checks for root-level tasks: key in each plan file'
+  - 'Root-level tasks: flagged as error: "tasks found at root level, must be nested under phases"'
+  - Each phase entry checked for presence of tasks: list
+  - 'Phase without tasks: flagged as warning: "Phase has no tasks defined"'
+  - Validation runs on plan creation and plan update operations
+  - ValidationResult includes structure_hierarchy findings
+  related_services:
+  - PlanService
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  - modules/AgenticGuidance/assets/specifications/plan-schema.yml
+  related_stories:
+  - US-GD-121
+  - US-GD-056
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260223UT_260223ut_fix_planner_audit_to_enforce_task_levels
+- id: US-GD-058
+  title: Plan Schema Nesting Constraint Documentation
+  category: planning
+  priority: high
+  as_a: planner agent creating plans
+  i_want: the plan schema to explicitly document that tasks must be nested under phases
+  so_that: plan creators have clear structural requirements
+  acceptance_criteria:
+  - plan-schema.yml validation_rules include explicit nesting constraint
+  - 'Rule: "tasks must only appear under phases[].tasks[], never at root level"'
+  - plans.yml required_fields documents the phases->tasks hierarchy
+  - Constraint is referenced by planner-build, planner-test, and planner-cleaning process.yml
+  related_files:
+  - modules/AgenticGuidance/assets/specifications/plan-schema.yml
+  - modules/AgenticGuidance/assets/definitions/plans.yml
+  related_stories:
+  - US-GD-056
+  - US-GD-057
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260223UT_260223ut_fix_planner_audit_to_enforce_task_levels

@@ -1,0 +1,135 @@
+_template_status: active
+
+name: "Fix planner-audit to enforce task nesting levels"
+worktree: "/home/code/AgenticEngineering"
+branch: ""
+status: planning
+created: "2026-02-23"
+
+objective: |
+  Add programmatic task nesting validation to PlanService.validate_plan_structure()
+  and update schema documentation so that plans with root-level `tasks:` keys are
+  deterministically rejected. Currently, the planner-audit agent's process.yml has
+  the right instructions (lines 55-86) but enforcement is purely LLM-driven.
+  The PlanService.validate_plan_structure() method (plan.py:1305-1408) does NOT
+  check for root-level tasks. This creates a gap where malformed plans can be
+  persisted and downstream parsers iterating phases[].tasks[] silently skip work.
+
+scope:
+  includes:
+    - "modules/AgenticGuidance/src/agenticguidance/services/plan.py"
+    - "modules/AgenticGuidance/assets/specifications/plan-schema.yml"
+    - "modules/AgenticGuidance/assets/definitions/plans.yml"
+  excludes:
+    - "modules/AgenticCLI/"
+
+impacted_files:
+  - path: "modules/AgenticGuidance/src/agenticguidance/services/plan.py"
+    change_type: modify
+    change_category: implementation
+    reason: "Add root-level tasks detection and phase-tasks completeness checks to validate_plan_structure()"
+  - path: "modules/AgenticGuidance/assets/specifications/plan-schema.yml"
+    change_type: modify
+    change_category: docs
+    reason: "Add explicit nesting constraint to validation_rules section"
+  - path: "modules/AgenticGuidance/assets/definitions/plans.yml"
+    change_type: modify
+    change_category: docs
+    reason: "Add nesting constraint note to required_fields and validation_checklist"
+
+impacted_artifacts:
+  - artifact_type: service
+    artifact_identifier: "PlanService.validate_plan_structure"
+    impact_type: behavior_change
+    description: "Method now detects root-level tasks and phases without tasks lists"
+  - artifact_type: schema
+    artifact_identifier: "plan-schema.yml:validation_rules"
+    impact_type: behavior_change
+    description: "Explicit nesting constraint added to plan-level and phase-level rules"
+
+phases:
+  - name: "Phase 1 - Add nesting validation to PlanService"
+    id: "phase_01"
+    status: pending
+    tasks:
+      - id: "IM_001"
+        name: "Add root-level tasks detection to validate_plan_structure()"
+        status: pending
+        description: |
+          Edit PlanService.validate_plan_structure() in plan.py (line 1344-1408).
+          After the YAML structure validation loop that checks required_fields,
+          add checks inside the per-file loop:
+
+          1. Check if data has a root-level 'tasks' key:
+             if "tasks" in data and isinstance(data["tasks"], list):
+                 errors.append(f"Root-level 'tasks' key in {plan_file.name}: "
+                               "tasks must be nested under phases[].tasks[], "
+                               "not at plan root level")
+
+          2. Check each phase entry for a 'tasks' key:
+             for phase in phases:
+                 if "tasks" not in phase:
+                     warnings.append(f"Phase '{phase.get('name', '?')}' in "
+                                     f"{plan_file.name} has no tasks defined")
+
+          3. Check for blocking condition (root tasks + no phases):
+             if "tasks" in data and "phases" not in data:
+                 errors.append(f"BLOCKING: {plan_file.name} has tasks at root "
+                               "level with no phases key - plan is malformed")
+
+          The checks should be placed AFTER the required fields check and BEFORE
+          the phase/task ID uniqueness loop.
+        target_files:
+          - "modules/AgenticGuidance/src/agenticguidance/services/plan.py"
+        success_criteria:
+          - "validate_plan_structure() returns error when plan file has root-level tasks: key"
+          - "validate_plan_structure() returns warning when a phase has no tasks: list"
+          - "validate_plan_structure() returns error when tasks: at root and phases: missing"
+          - "Existing valid plans continue to pass validation (no regressions)"
+
+  - name: "Phase 2 - Update schema documentation"
+    id: "phase_02"
+    status: pending
+    tasks:
+      - id: "IM_002"
+        name: "Add nesting constraint to plan-schema.yml validation_rules"
+        status: pending
+        description: |
+          Edit plan-schema.yml validation_rules section (line 364-389).
+          Add a new rule to plan_level rules:
+            - "tasks key must NOT appear at root level; tasks must be nested under phases[].tasks[]"
+
+          Add a new rule to phase_level rules:
+            - "tasks list must be present (phases without tasks are empty shells)"
+
+          These rules document the programmatic validation added in IM_001.
+        target_files:
+          - "modules/AgenticGuidance/assets/specifications/plan-schema.yml"
+        success_criteria:
+          - "plan_level validation_rules include nesting constraint"
+          - "phase_level validation_rules include tasks-required constraint"
+
+      - id: "IM_003"
+        name: "Add nesting note to plans.yml validation_checklist"
+        status: pending
+        description: |
+          Edit plans.yml validation_checklist.structure section (line 446-451).
+          Add a new check:
+            - "Tasks nested under phases[].tasks[] only, never at root level"
+
+          This aligns the definitions file with the schema and programmatic validation.
+        target_files:
+          - "modules/AgenticGuidance/assets/definitions/plans.yml"
+        success_criteria:
+          - "validation_checklist.structure includes nesting check"
+
+success_criteria:
+  - "PlanService.validate_plan_structure() rejects plans with root-level tasks"
+  - "PlanService.validate_plan_structure() warns about phases without tasks lists"
+  - "plan-schema.yml and plans.yml document the nesting constraint"
+  - "Existing valid plans continue to pass validation"
+
+related_stories:
+  - US-GD-056
+  - US-GD-057
+  - US-GD-058

@@ -463,6 +463,48 @@ class TestDependencyResolution:
         assert "unmet_dep" in blocked.reason
         assert "Waiting for:" in blocked.reason
 
+    def test_blocked_reason_questions_only(self, tmp_path):
+        """Blocked reason shows blocking questions when no dep issues."""
+        plan_dir = create_test_plan(
+            tmp_path,
+            "question_blocked",
+            has_mmd=True,
+            task_statuses=[{"id": "T1", "status": "pending"}],
+        )
+        create_question_file(plan_dir, severity="blocking", question_id="Q-20260221-120000-a1b2")
+        create_question_file(plan_dir, severity="blocking", question_id="Q-20260221-120001-c3d4")
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        queue = service.get_priority_queue()
+
+        blocked = next(a for a in queue if a.action == "blocked")
+        assert blocked.reason == "Blocked by 2 pending blocking question(s)"
+
+    def test_blocked_reason_deps_and_questions(self, tmp_path):
+        """Blocked reason combines deps and questions when both present."""
+        # Create pending dependency
+        create_test_plan(
+            tmp_path,
+            "unmet_dep",
+            task_statuses=[{"id": "T1", "status": "pending"}],
+        )
+
+        # Create plan blocked by both deps and questions
+        plan_dir = create_test_plan(
+            tmp_path,
+            "double_blocked",
+            has_mmd=True,
+            task_statuses=[{"id": "T1", "status": "pending"}],
+            dependencies=["unmet_dep"],
+        )
+        create_question_file(plan_dir, severity="blocking", question_id="Q-20260221-130000-e5f6")
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        queue = service.get_priority_queue()
+
+        blocked = next(a for a in queue if a.plan_name == "double_blocked")
+        assert blocked.reason == "Waiting for: unmet_dep; also blocked by 1 question(s)"
+
     def test_dependencies_dict_format(self, tmp_path):
         """Dependencies with dict format are parsed correctly."""
         plan_dir = tmp_path / "test_plan"
@@ -1161,3 +1203,230 @@ class TestEdgeCases:
 
         state = isolated_service.get_state()
         assert state is None
+
+
+# Helper for question tests
+
+def create_question_file(plan_dir: Path, severity: str = "blocking", question_id: str = "Q-20260221-120000-a1b2") -> Path:
+    """Create a question YAML file in a plan's questions/pending/ directory."""
+    pending_dir = plan_dir / "questions" / "pending"
+    pending_dir.mkdir(parents=True, exist_ok=True)
+
+    question_data = {
+        "id": question_id,
+        "text": "Test question?",
+        "context": "Test context",
+        "severity": severity,
+        "asked_by": "agent",
+        "created_at": 1740100000.0,
+        "status": "pending",
+    }
+
+    question_file = pending_dir / f"{question_id}.yml"
+    question_file.write_text(yaml.dump(question_data))
+    return question_file
+
+
+class TestBlockingQuestions:
+    """Test blocking question detection."""
+
+    def test_has_blocking_questions_returns_true_when_blocking_exist(self, tmp_path):
+        """_has_blocking_questions returns (True, 1) when blocking question exists."""
+        plan_dir = create_test_plan(tmp_path, "test_plan")
+        create_question_file(plan_dir, severity="blocking")
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        has_blocking, count = service._has_blocking_questions(plan_dir)
+
+        assert has_blocking is True
+        assert count == 1
+
+    def test_has_blocking_questions_returns_false_when_no_blocking(self, tmp_path):
+        """_has_blocking_questions returns (False, 0) when no blocking questions."""
+        plan_dir = create_test_plan(tmp_path, "test_plan")
+        create_question_file(plan_dir, severity="medium")
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        has_blocking, count = service._has_blocking_questions(plan_dir)
+
+        assert has_blocking is False
+        assert count == 0
+
+    def test_has_blocking_questions_missing_dir(self, tmp_path):
+        """_has_blocking_questions returns (False, 0) when no questions directory."""
+        plan_dir = create_test_plan(tmp_path, "test_plan")
+        # No questions directory created - just the plan
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        has_blocking, count = service._has_blocking_questions(plan_dir)
+
+        assert has_blocking is False
+        assert count == 0
+
+    def test_discover_plans_blocks_on_questions(self, tmp_path):
+        """discover_plans sets action_required='blocked' when blocking questions exist."""
+        plan_dir = create_test_plan(
+            tmp_path,
+            "test_plan",
+            has_mmd=True,
+            task_statuses=[{"id": "T1", "status": "pending"}],
+        )
+        create_question_file(plan_dir, severity="blocking")
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        plans = service.discover_plans()
+
+        assert len(plans) == 1
+        assert plans[0].action_required == "blocked"
+        assert plans[0].blocking_questions > 0
+
+
+class TestDetermineAction:
+    """Test _determine_action_required edge cases."""
+
+    def test_determine_action_empty_plan_no_mmd(self, tmp_path):
+        """Empty plan without orchestration returns 'needs_planning'."""
+        service = RalphLoopService(plans_dir=tmp_path)
+        action = service._determine_action_required(
+            has_orchestration=False,
+            pending_tasks=0,
+            completed_tasks=0,
+        )
+
+        assert action == "needs_planning"
+
+    def test_determine_action_empty_plan_with_mmd(self, tmp_path):
+        """Empty plan with orchestration returns 'completed'."""
+        service = RalphLoopService(plans_dir=tmp_path)
+        action = service._determine_action_required(
+            has_orchestration=True,
+            pending_tasks=0,
+            completed_tasks=0,
+        )
+
+        assert action == "completed"
+
+
+class TestCompletionStatus:
+    """Test get_completion_status method."""
+
+    def test_get_completion_status_blocked_by_questions(self, tmp_path):
+        """Completion status counts plans blocked by questions."""
+        plan_dir = create_test_plan(
+            tmp_path,
+            "test_plan",
+            has_mmd=True,
+            task_statuses=[{"id": "T1", "status": "pending"}],
+        )
+        create_question_file(plan_dir, severity="blocking")
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        status = service.get_completion_status()
+
+        assert status["blocked_by_questions"] == 1
+        assert status["can_emit_promise"] is False
+
+    def test_get_completion_status_all_complete(self, tmp_path):
+        """Completion status shows can_emit_promise when all plans complete."""
+        create_test_plan(
+            tmp_path,
+            "plan_one",
+            has_mmd=True,
+            task_statuses=[{"id": "T1", "status": "completed"}],
+        )
+        create_test_plan(
+            tmp_path,
+            "plan_two",
+            has_mmd=True,
+            task_statuses=[
+                {"id": "T1", "status": "completed"},
+                {"id": "T2", "status": "completed"},
+            ],
+        )
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        status = service.get_completion_status()
+
+        assert status["can_emit_promise"] is True
+        assert status["all_complete"] is True
+        assert status["in_progress"] == 0
+        assert status["blocked_by_questions"] == 0
+        assert status["blocked_by_deps"] == 0
+        assert status["completed"] == 2
+
+    def test_get_completion_status_blocked_by_deps(self, tmp_path):
+        """Completion status counts plans blocked by unmet dependencies."""
+        # Create pending dependency plan
+        create_test_plan(
+            tmp_path,
+            "dep_plan",
+            has_mmd=True,
+            task_statuses=[{"id": "T1", "status": "pending"}],
+        )
+        # Create plan blocked by dependency
+        create_test_plan(
+            tmp_path,
+            "blocked_plan",
+            has_mmd=True,
+            task_statuses=[{"id": "T1", "status": "pending"}],
+            dependencies=["dep_plan"],
+        )
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        status = service.get_completion_status()
+
+        assert status["blocked_by_deps"] == 1
+        assert status["in_progress"] == 1  # dep_plan is executable
+        assert status["can_emit_promise"] is False
+
+    def test_get_completion_status_can_emit_with_dep_blocked(self, tmp_path):
+        """can_emit_promise is True even with dep-blocked plans (deps may be external)."""
+        # Only a dep-blocked plan, no in_progress or question-blocked
+        create_test_plan(
+            tmp_path,
+            "blocked_plan",
+            has_mmd=True,
+            task_statuses=[{"id": "T1", "status": "pending"}],
+            dependencies=["nonexistent_external_dep"],
+        )
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        status = service.get_completion_status()
+
+        assert status["blocked_by_deps"] == 1
+        assert status["in_progress"] == 0
+        assert status["blocked_by_questions"] == 0
+        assert status["can_emit_promise"] is True
+        assert status["all_complete"] is False  # not truly all complete
+
+    def test_get_completion_status_in_progress_count(self, tmp_path):
+        """in_progress counts both execute and needs_planning plans."""
+        create_test_plan(
+            tmp_path,
+            "exec_plan",
+            has_mmd=True,
+            task_statuses=[{"id": "T1", "status": "pending"}],
+        )
+        create_test_plan(
+            tmp_path,
+            "needs_plan",
+            has_mmd=False,
+        )
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        status = service.get_completion_status()
+
+        assert status["in_progress"] == 2
+        assert status["can_emit_promise"] is False
+
+    def test_get_completion_status_empty_dir(self, tmp_path):
+        """Empty directory returns all zeros and can_emit_promise True."""
+        service = RalphLoopService(plans_dir=tmp_path)
+        status = service.get_completion_status()
+
+        assert status["all_complete"] is True
+        assert status["blocked_by_deps"] == 0
+        assert status["blocked_by_questions"] == 0
+        assert status["in_progress"] == 0
+        assert status["completed"] == 0
+        assert status["can_emit_promise"] is True

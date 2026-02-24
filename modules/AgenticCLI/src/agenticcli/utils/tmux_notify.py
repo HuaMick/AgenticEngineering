@@ -1,72 +1,13 @@
 """Tmux notification display utilities.
 
-Provides functions for displaying question notifications in tmux panes,
-including pane management and status bar messages.
+Provides functions for alerting users about pending questions via tmux
+status bar messages. Uses a dedicated tmux window approach rather than
+split panes.
 """
 
 import subprocess
-from pathlib import Path
-from typing import Optional
 
-from agenticcli.utils.tmux import (
-    is_in_tmux,
-    get_or_create_notification_pane,
-    send_to_pane,
-    get_pane_by_title,
-)
-from agenticcli.utils.question_formatter import (
-    format_question_notification,
-)
-
-
-def notify_questions_in_tmux(plan_folder: Path, questions: list[dict]) -> bool:
-    """Display question notifications in a tmux notification pane.
-
-    Checks if running in tmux, creates or updates the notification pane
-    with formatted question list, and displays a status bar message.
-
-    Args:
-        plan_folder: Path to the plan folder (for context, not currently used)
-        questions: List of pending question dictionaries
-
-    Returns:
-        True if notification was successfully displayed in tmux,
-        False if not in tmux or operation failed.
-
-    Example:
-        >>> from pathlib import Path
-        >>> plan_folder = Path("/path/to/plan")
-        >>> questions = [{"question_id": "Q001", "severity": "high", ...}]
-        >>> if not notify_questions_in_tmux(plan_folder, questions):
-        ...     # Fallback to stderr notification
-        ...     print("Questions pending - check stderr", file=sys.stderr)
-    """
-    # Check if in tmux session
-    if not is_in_tmux():
-        return False
-
-    try:
-        # Get or create the notification pane
-        pane_id = get_or_create_notification_pane(pane_name="questions")
-
-        # Format the questions
-        formatted_content = format_question_notification(questions)
-
-        # Send formatted content to the pane
-        send_to_pane(pane_id, formatted_content, clear=True)
-
-        # Display status bar message
-        question_count = len(questions)
-        if question_count > 0:
-            message = f"{question_count} pending question{'s' if question_count != 1 else ''} - check pane"
-            display_tmux_message(message)
-
-        return True
-
-    except (RuntimeError, subprocess.CalledProcessError) as e:
-        # Tmux operations failed - return False for graceful degradation
-        # Could log this if logging is available
-        return False
+from agenticcli.utils.tmux import is_in_tmux
 
 
 def display_tmux_message(message: str, duration_ms: int = 5000) -> None:
@@ -97,39 +38,48 @@ def display_tmux_message(message: str, duration_ms: int = 5000) -> None:
         pass
 
 
-def clear_notification_pane() -> bool:
-    """Clear the notification pane and show 'No pending questions' message.
+def notify_question_window(question_count: int = 0) -> bool:
+    """Alert the user that questions are pending via tmux status bar.
 
-    Finds the questions notification pane and displays a message indicating
-    all questions have been answered.
+    Sends a tmux display-message and optionally highlights the 'questions'
+    window in the status bar. This replaces the old split-pane notification
+    approach.
+
+    Args:
+        question_count: Number of pending questions (for the message text).
 
     Returns:
-        True if pane was found and cleared, False otherwise.
-
-    Example:
-        >>> clear_notification_pane()
-        True
+        True if notification was sent, False if not in tmux or failed.
     """
     if not is_in_tmux():
         return False
 
+    if question_count > 1:
+        message = f"{question_count} questions pending - switch to [questions] window"
+    else:
+        message = "New question pending - switch to [questions] window"
+
     try:
-        # Find the questions pane
-        pane_id = get_pane_by_title("questions")
-        if not pane_id:
-            return False
-
-        # Create a "no questions" message
-        from agenticcli.utils.question_formatter import format_question_notification
-        no_questions_content = format_question_notification([])
-
-        # Send to pane
-        send_to_pane(pane_id, no_questions_content, clear=True)
-
-        # Display status message
-        display_tmux_message("All questions answered")
-
-        return True
-
-    except (RuntimeError, subprocess.CalledProcessError):
+        subprocess.run(
+            ["tmux", "display-message", "-d", "5000", message],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        # If the primary notification fails, report failure to caller.
         return False
+
+    # Best-effort: highlight the questions window via monitor-activity.
+    # Failures here are silently ignored; the primary notification already succeeded.
+    try:
+        subprocess.run(
+            ["tmux", "set-option", "-t", "questions", "monitor-activity", "on"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        pass
+
+    return True

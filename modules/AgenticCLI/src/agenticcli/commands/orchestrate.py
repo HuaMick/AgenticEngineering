@@ -1,6 +1,6 @@
-"""Orchestrate command - run automated orchestration planning for all plans.
+"""Orchestrate command - run automated orchestration planning and execution for plans.
 
-Runs the planning loop directly as the sole automated planning entry point.
+Provides `planning` and `executing` actions for the orchestration lifecycle.
 Supports --dry-run mode for testable tmux layout verification.
 """
 
@@ -253,8 +253,164 @@ def _run_dry_run(args, ctx=None):
     sys.exit(0)
 
 
+def _run_executing_loop(args, ctx=None):
+    """Run automated execution loop.
+
+    Args:
+        args: Parsed arguments with background, max_iterations, etc.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import console, is_json_output, print_error, print_json, print_success
+
+    max_iterations = getattr(args, "max_iterations", 10)
+    background = getattr(args, "background", False)
+    completion_promise = getattr(args, "completion_promise", None)
+    project = getattr(args, "project", None)
+    plan_folder = getattr(args, "plan", None)
+    working_dir = getattr(args, "directory", None) or os.getcwd()
+    skip_perms = getattr(args, "dangerously_skip_permissions", False)
+
+    loop_id = os.environ.get("AGENTIC_EXEC_LOOP_ID")
+    if not loop_id:
+        loop_id = f"exec-{uuid.uuid4().hex[:12]}"
+
+    state = {
+        "session_id": loop_id,
+        "type": "execution",
+        "status": "starting",
+        "started_at": datetime.now().isoformat(),
+        "completed_at": None,
+        "pid": None,
+        "max_iterations": max_iterations,
+        "current_iteration": 0,
+        "plans_processed": [],
+        "plans_failed": [],
+        "phases_completed": [],
+        "phases_failed": [],
+        "errors": [],
+        "completion_promise": completion_promise,
+        "directory": working_dir,
+        "plan_folder": plan_folder,
+    }
+
+    if background:
+        cmd = [sys.executable, "-m", "agenticcli.entry", "session", "orchestrate", "executing"]
+        cmd.extend(["--max-iterations", str(max_iterations)])
+        if completion_promise:
+            cmd.extend(["--completion-promise", completion_promise])
+        if project:
+            cmd.extend(["--project", project])
+        if plan_folder:
+            cmd.extend(["--plan", plan_folder])
+        if skip_perms:
+            cmd.append("--dangerously-skip-permissions")
+        cmd.extend(["--directory", working_dir])
+
+        logs_dir = _store.get_dir() / loop_id
+        logs_dir.mkdir(parents=True, exist_ok=True)
+
+        stdout_log = open(logs_dir / "stdout.log", "w")
+        stderr_log = open(logs_dir / "stderr.log", "w")
+
+        from agenticcli.utils.subprocess_utils import get_clean_env
+        env = get_clean_env()
+        env["AGENTIC_EXEC_LOOP_ID"] = loop_id
+
+        try:
+            process = subprocess.Popen(
+                cmd,
+                cwd=working_dir,
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_log,
+                stderr=stderr_log,
+                start_new_session=True,
+                env=env,
+            )
+        finally:
+            stdout_log.close()
+            stderr_log.close()
+
+        state["pid"] = process.pid
+        state["status"] = "running"
+        _store.save(state)
+
+        if is_json_output():
+            print_json({
+                "session_id": loop_id,
+                "type": "execution",
+                "pid": process.pid,
+                "status": "running",
+                "background": True,
+                "max_iterations": max_iterations,
+            })
+        else:
+            print_success(f"Execution loop {loop_id} started in background (PID: {process.pid})")
+            console.print(f"[dim]Max iterations: {max_iterations}[/dim]")
+        return
+
+    # Foreground execution
+    state["pid"] = os.getpid()
+    state["status"] = "running"
+    _store.save(state)
+
+    from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
+
+    plans_dir = Path(working_dir) / "docs" / "plans" / "live"
+    workflow = OrchestrationWorkflow(plans_dir=plans_dir, working_dir=working_dir)
+    runner = ExecutionRunner(
+        workflow=workflow,
+        project=project,
+        plan_folder=plan_folder,
+        dangerously_skip_permissions=skip_perms,
+    )
+
+    try:
+        success = runner.run(
+            max_iterations=max_iterations,
+            completion_promise=completion_promise,
+        )
+        state["status"] = "completed" if success else "failed"
+        state["completed_at"] = datetime.now().isoformat()
+        state["plans_processed"] = runner.state["plans_processed"]
+        state["plans_failed"] = runner.state.get("plans_failed", [])
+        state["phases_completed"] = runner.state.get("phases_completed", [])
+        state["phases_failed"] = runner.state.get("phases_failed", [])
+        state["errors"] = runner.state["errors"]
+        state["current_iteration"] = runner.state["iteration"]
+        _store.save(state)
+
+        if is_json_output():
+            print_json({
+                "session_id": loop_id,
+                "type": "execution",
+                "status": state["status"],
+                "iterations": runner.state["iteration"],
+                "plans_processed": runner.state["plans_processed"],
+                "plans_failed": runner.state.get("plans_failed", []),
+                "phases_completed": runner.state.get("phases_completed", []),
+                "phases_failed": runner.state.get("phases_failed", []),
+                "errors": runner.state["errors"],
+            })
+        else:
+            if success:
+                print_success(f"Execution loop {loop_id} completed")
+                console.print(f"[dim]Plans processed: {len(runner.state['plans_processed'])}[/dim]")
+                console.print(f"[dim]Phases completed: {len(runner.state.get('phases_completed', []))}[/dim]")
+            else:
+                print_error(f"Execution loop {loop_id} finished with errors")
+                for err in runner.state["errors"]:
+                    console.print(f"[red]  {err}[/red]")
+    except Exception as e:
+        state["status"] = "failed"
+        state["completed_at"] = datetime.now().isoformat()
+        state["errors"].append(str(e))
+        _store.save(state)
+        print_error(f"Execution loop failed: {e}")
+        sys.exit(1)
+
+
 def cmd_orchestrate(args, ctx=None):
-    """Run automated orchestration planning for all plans that need it.
+    """Run automated orchestration planning or execution.
 
     Args:
         args: Parsed arguments with action, plan, background, max_iterations, etc.
@@ -268,8 +424,10 @@ def cmd_orchestrate(args, ctx=None):
         return
 
     action = getattr(args, "action", None)
-    if action != "planning":
-        print_error(f"Unknown action '{action}'. Valid actions: planning")
+    if action == "planning":
+        _run_planning_loop(args, ctx)
+    elif action == "executing":
+        _run_executing_loop(args, ctx)
+    else:
+        print_error(f"Unknown action '{action}'. Valid actions: planning, executing")
         sys.exit(1)
-
-    _run_planning_loop(args, ctx)

@@ -154,7 +154,7 @@ class TestFullPlanCreationFlow:
         """Test complete plan creation workflow from init to validate."""
         # Step 1: Initialize plan
         stdout, stderr, code = cli_in_repo(
-            "plan", "scaffold", "integration-test"
+            "agent", "plan", "scaffold", "integration-test"
         )
         assert code == 0, f"Plan scaffold failed: {stderr}"
         assert "Created planning folder" in stdout
@@ -182,14 +182,14 @@ class TestFullPlanCreationFlow:
 
         # Step 3: Add multiple tasks to the plan
         stdout, stderr, code = cli_in_repo(
-            "plan", "task", "add", "Create initial design document",
+            "agent", "plan", "task", "add", "Create initial design document",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Task add failed: {stderr}"
         assert "Added" in stdout
 
         stdout, stderr, code = cli_in_repo(
-            "plan", "task", "add", "Implement core module",
+            "agent", "plan", "task", "add", "Implement core module",
             "--plan", str(plan_path),
             "--priority", "high"
         )
@@ -197,7 +197,7 @@ class TestFullPlanCreationFlow:
         assert "Added" in stdout
 
         stdout, stderr, code = cli_in_repo(
-            "plan", "task", "add", "Write unit tests",
+            "agent", "plan", "task", "add", "Write unit tests",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Task add failed: {stderr}"
@@ -211,7 +211,7 @@ class TestFullPlanCreationFlow:
 
         # Step 4: Generate orchestration MMD file
         stdout, stderr, code = cli_in_repo(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Orchestration generate failed: {stderr}"
@@ -228,14 +228,14 @@ class TestFullPlanCreationFlow:
 
         # Step 5: Validate the complete plan
         stdout, stderr, code = cli_in_repo(
-            "plan", "validate"
+            "agent", "plan", "validate"
         )
         assert code in [0, 1], f"Unexpected validation exit code: {code}, stderr: {stderr}"
 
     def test_plan_creation_with_json_output(self, cli_in_repo, integration_repo):
         """Test plan creation workflow with JSON output mode."""
         # Scaffold with JSON output
-        stdout, stderr, code = cli_in_repo("--json", "plan", "scaffold", "json-test")
+        stdout, stderr, code = cli_in_repo("--json", "agent", "plan", "scaffold", "json-test")
         assert code == 0, f"Plan scaffold failed: {stderr}"
         data = json.loads(stdout)
         assert "folder" in data or "path" in data or "name" in data
@@ -250,7 +250,7 @@ class TestFullPlanCreationFlow:
         # Add task with JSON output
         stdout, stderr, code = cli_in_repo(
             "-j",
-            "plan", "task", "add", "JSON mode task",
+            "agent", "plan", "task", "add", "JSON mode task",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Task add failed: {stderr}"
@@ -259,7 +259,7 @@ class TestFullPlanCreationFlow:
 
         # Generate orchestration
         stdout, stderr, code = cli_in_repo(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -268,7 +268,7 @@ class TestFullPlanCreationFlow:
         mmd_files = list(plan_path.glob("orchestration_*.mmd"))
         if mmd_files:
             stdout, stderr, code = cli_in_repo(
-                "-j", "plan", "orchestration", "validate",
+                "-j", "agent", "plan", "orchestration", "validate",
                 "--plan", str(plan_path)
             )
             if code == 0 and stdout.strip():
@@ -277,7 +277,7 @@ class TestFullPlanCreationFlow:
 
     def test_plan_creation_with_success_criteria(self, cli_in_repo, integration_repo):
         """Test plan creation with success criteria."""
-        stdout, stderr, code = cli_in_repo("plan", "scaffold", "criteria-test")
+        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "criteria-test")
         assert code == 0
 
         plan_path = integration_repo / "docs" / "plans" / "live" / "criteria-test"
@@ -298,7 +298,7 @@ class TestFullPlanCreationFlow:
 
         # Generate orchestration
         stdout, stderr, code = cli_in_repo(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -306,11 +306,11 @@ class TestFullPlanCreationFlow:
     def test_plan_creation_idempotency(self, cli_in_repo, integration_repo):
         """Test that plan creation handles existing artifacts correctly."""
         # Initial scaffold
-        stdout, stderr, code = cli_in_repo("plan", "scaffold", "idempotent-test")
+        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "idempotent-test")
         assert code == 0
 
         # Second scaffold should fail
-        stdout, stderr, code = cli_in_repo("plan", "scaffold", "idempotent-test")
+        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "idempotent-test")
         assert code == 1, "Expected scaffold to fail for existing folder"
         assert "already exists" in stdout or "already exists" in stderr
 
@@ -321,14 +321,14 @@ class TestFullPlanCreationFlow:
 
         # Generate orchestration
         stdout, stderr, code = cli_in_repo(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
 
         # Second generate without --force should fail
         stdout, stderr, code = cli_in_repo(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Expected generate to fail without --force"
@@ -336,7 +336,7 @@ class TestFullPlanCreationFlow:
 
         # Generate with --force should succeed
         stdout, stderr, code = cli_in_repo(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
@@ -422,7 +422,7 @@ class TestPlanCreationEdgeCases:
 
     def test_plan_creation_with_special_characters(self, edge_cli, edge_case_repo):
         """Test plan creation with special characters in description."""
-        stdout, stderr, code = edge_cli("plan", "scaffold", "test-special")
+        stdout, stderr, code = edge_cli("agent", "plan", "scaffold", "test-special")
         assert code == 0
 
         plan_path = edge_case_repo / "docs" / "plans" / "live" / "test-special"
@@ -439,7 +439,7 @@ class TestPlanCreationEdgeCases:
 
     def test_plan_creation_empty_phases(self, edge_cli, edge_case_repo):
         """Test that orchestration fails gracefully with empty phases."""
-        stdout, stderr, code = edge_cli("plan", "scaffold", "empty-phases")
+        stdout, stderr, code = edge_cli("agent", "plan", "scaffold", "empty-phases")
         assert code == 0
 
         plan_path = edge_case_repo / "docs" / "plans" / "live" / "empty-phases"
@@ -455,7 +455,7 @@ class TestPlanCreationEdgeCases:
             yaml.dump(plan_content, f, default_flow_style=False)
 
         stdout, stderr, code = edge_cli(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Expected failure with empty phases"
@@ -464,7 +464,7 @@ class TestPlanCreationEdgeCases:
 
     def test_task_list_after_creation(self, edge_cli, edge_case_repo):
         """Test that task list shows all added tasks correctly."""
-        stdout, stderr, code = edge_cli("plan", "scaffold", "list-test")
+        stdout, stderr, code = edge_cli("agent", "plan", "scaffold", "list-test")
         assert code == 0
 
         plan_path = edge_case_repo / "docs" / "plans" / "live" / "list-test"
@@ -472,11 +472,11 @@ class TestPlanCreationEdgeCases:
 
         _write_plan_file(output_file, phases=["P1:Build", "P2:Test"])
 
-        edge_cli("plan", "task", "add", "First task", "--plan", str(plan_path))
-        edge_cli("plan", "task", "add", "Second task", "--plan", str(plan_path))
-        edge_cli("plan", "task", "add", "Third task", "--plan", str(plan_path))
+        edge_cli("agent", "plan", "task", "add", "First task", "--plan", str(plan_path))
+        edge_cli("agent", "plan", "task", "add", "Second task", "--plan", str(plan_path))
+        edge_cli("agent", "plan", "task", "add", "Third task", "--plan", str(plan_path))
 
-        stdout, stderr, code = edge_cli("plan", "task", "list", "--plan", str(plan_path))
+        stdout, stderr, code = edge_cli("agent", "plan", "task", "list", "--plan", str(plan_path))
         assert code == 0
         assert "First task" in stdout or "3" in stdout
 
@@ -562,7 +562,7 @@ class TestPlanCreationValidation:
         self, validation_cli, validation_repo
     ):
         """Test that orchestration validates successfully after generation."""
-        validation_cli("plan", "scaffold", "validate-test")
+        validation_cli("agent", "plan", "scaffold", "validate-test")
 
         plan_path = validation_repo / "docs" / "plans" / "live" / "validate-test"
         output_file = plan_path / "plan_build.yml"
@@ -573,18 +573,18 @@ class TestPlanCreationValidation:
             phases=["P1:Design", "P2:Build", "P3:Test", "P4:Deploy"],
         )
 
-        validation_cli("plan", "task", "add", "Design task", "--plan", str(plan_path))
-        validation_cli("plan", "task", "add", "Build task", "--plan", str(plan_path))
-        validation_cli("plan", "task", "add", "Test task", "--plan", str(plan_path))
+        validation_cli("agent", "plan", "task", "add", "Design task", "--plan", str(plan_path))
+        validation_cli("agent", "plan", "task", "add", "Build task", "--plan", str(plan_path))
+        validation_cli("agent", "plan", "task", "add", "Test task", "--plan", str(plan_path))
 
         stdout, stderr, code = validation_cli(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Orchestration generation failed: {stderr}"
 
         stdout, stderr, code = validation_cli(
-            "plan", "orchestration", "validate",
+            "agent", "plan", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Orchestration validation failed: {stderr}"
@@ -594,7 +594,7 @@ class TestPlanCreationValidation:
         """Test that validation JSON output has expected structure."""
         import json
 
-        validation_cli("plan", "scaffold", "json-validate")
+        validation_cli("agent", "plan", "scaffold", "json-validate")
 
         plan_path = validation_repo / "docs" / "plans" / "live" / "json-validate"
         output_file = plan_path / "plan_build.yml"
@@ -602,12 +602,12 @@ class TestPlanCreationValidation:
         _write_plan_file(output_file, phases=["P1:Build", "P2:Test"])
 
         validation_cli(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path)
         )
 
         stdout, stderr, code = validation_cli(
-            "-j", "plan", "orchestration", "validate",
+            "-j", "agent", "plan", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0

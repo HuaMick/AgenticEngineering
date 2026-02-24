@@ -1,0 +1,76 @@
+name: redesign_question_notification_tmux_tui - audit_clean
+status: pending
+objective: 'Post-implementation audit to verify plan folder compliance, confirm no
+  ntfy
+
+  residue remains, and ensure the new TUI subpackage is properly structured.
+
+  '
+phases:
+- id: A01
+  name: Plan folder compliance audit
+  status: pending
+  tasks:
+  - id: A01_T01
+    name: Verify plan folder structure and YAML correctness
+    status: completed
+    priority: medium
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/docs/plans/live/260221TU_redesign_question_notification_tmux_tui/
+    target_files: []
+    guidance: 'Run `agentic plan validate` and confirm no warnings or errors for this
+      plan folder.
+
+      Verify all plan YAML files have correct root-level keys (not nested under "plan:").
+
+      Confirm plan_completed.yml is updated when all build tasks are done.
+
+      '
+    success_criteria:
+    - '`agentic plan validate` returns no errors for 260221TU plan folder'
+    - All plan YAMLs use root-level keys (phases:, tasks:, status:)
+    - plan_completed.yml tracks completed items
+- id: A02
+  name: Code quality audit
+  status: pending
+  tasks:
+  - id: A02_T01
+    name: Verify tui/ subpackage structure
+    status: completed
+    priority: medium
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/
+    target_files: []
+    guidance: "Confirm the following files exist and have correct content:\n  - agenticcli/tui/__init__.py\
+      \ (empty package marker)\n  - agenticcli/tui/question_tui.py (QuestionTUI class)\n\
+      \nConfirm question_tui.py has module docstring, class docstring, and method\
+      \ docstrings.\nConfirm no bare except clauses (use specific exception types).\n\
+      Confirm no hardcoded paths (uses Path / repo_root parameter).\n"
+    success_criteria:
+    - tui/__init__.py exists
+    - tui/question_tui.py has QuestionTUI with proper docstrings
+    - No hardcoded absolute paths in question_tui.py
+  - id: A02_T02
+    name: Final ntfy residue scan
+    status: completed
+    priority: high
+    agent: build-python
+    inputs: []
+    target_files: []
+    guidance: "Final scan confirming complete ntfy removal:\n\n  find /home/code/AgenticEngineering/modules\
+      \ -name \"ntfy*.py\" 2>/dev/null\n  grep -r \"ntfy\" /home/code/AgenticEngineering/modules/AgenticCLI/src/\
+      \ 2>/dev/null\n\nBoth should return no results. If any found, block audit completion.\n"
+    success_criteria:
+    - No ntfy*.py files exist under modules/
+    - No references to 'ntfy' in agenticcli source files
+cleanup_targets:
+- modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+- modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+- The deprecated notify_questions_in_tmux() function in tmux_notify.py
+- The deprecated clear_notification_pane() function in tmux_notify.py
+- Module-level _reply_poller singleton in commands/question.py
+documentation:
+- Update agenticcli/commands/question.py module docstring to describe TUI
+- Update agenticcli/utils/tmux_notify.py module docstring

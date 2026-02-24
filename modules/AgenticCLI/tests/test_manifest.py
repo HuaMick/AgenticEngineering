@@ -74,33 +74,33 @@ class TestManifestShow:
 
     def test_show_help(self, cli_runner):
         """Test manifest show --help output."""
-        stdout, stderr, code = cli_runner(["manifest", "show", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "show", "--help"])
         assert "show" in stdout.lower()
         assert "path" in stdout
         assert code == 0
 
     def test_show_manifest_file(self, cli_runner, sample_manifest):
         """Test showing a manifest file."""
-        stdout, stderr, code = cli_runner(["manifest", "show", str(sample_manifest)])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "show", str(sample_manifest)])
         assert "test-agent" in stdout
         assert code == 0
 
     def test_show_agent_directory(self, cli_runner, agent_directory):
         """Test showing manifest from agent directory."""
-        stdout, stderr, code = cli_runner(["manifest", "show", str(agent_directory)])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "show", str(agent_directory)])
         assert "test-agent" in stdout
         assert code == 0
 
     def test_show_missing_path(self, cli_runner, temp_dir):
         """Test show with non-existent path."""
-        stdout, stderr, code = cli_runner(["manifest", "show", str(temp_dir / "nonexistent")])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "show", str(temp_dir / "nonexistent")])
         assert code == 1
 
     def test_show_no_manifest(self, cli_runner, temp_dir):
         """Test show with directory that has no manifest."""
         empty_dir = temp_dir / "empty"
         empty_dir.mkdir()
-        stdout, stderr, code = cli_runner(["manifest", "show", str(empty_dir)])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "show", str(empty_dir)])
         assert code == 1
 
 
@@ -109,14 +109,14 @@ class TestManifestList:
 
     def test_list_help(self, cli_runner):
         """Test manifest list --help output."""
-        stdout, stderr, code = cli_runner(["manifest", "list", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "list", "--help"])
         assert "list" in stdout.lower()
         assert code == 0
 
     def test_list_no_manifests(self, cli_runner, temp_repo):
         """Test list when no manifests exist."""
         # temp_repo already has no manifests by default
-        stdout, stderr, code = cli_runner(["manifest", "list"])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "list"])
         assert code == 0
         assert "No manifests found" in stdout or "Found 0" in stdout or "manifest" in stdout.lower()
 
@@ -135,7 +135,7 @@ class TestManifestList:
                 "type": "builder",
             }, f)
 
-        stdout, stderr, code = cli_runner(["manifest", "list"])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "list"])
         assert code == 0
         assert "agent-one" in stdout
 
@@ -155,7 +155,7 @@ class TestManifestList:
                 "version": "1.0.0",
             }, f)
 
-        stdout, stderr, code = cli_runner(["--json", "manifest", "list"])
+        stdout, stderr, code = cli_runner(["--json", "agent", "manifest", "list"])
         assert code == 0
         data = json.loads(stdout)
         assert "manifests" in data
@@ -167,13 +167,13 @@ class TestManifestValidate:
 
     def test_validate_help(self, cli_runner):
         """Test manifest validate --help output."""
-        stdout, stderr, code = cli_runner(["manifest", "validate", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "validate", "--help"])
         assert "validate" in stdout.lower()
         assert code == 0
 
     def test_validate_valid_manifest(self, cli_runner, sample_manifest):
         """Test validating a valid manifest."""
-        stdout, stderr, code = cli_runner(["manifest", "validate", str(sample_manifest)])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "validate", str(sample_manifest)])
         assert code == 0
         assert "valid" in stdout.lower()
 
@@ -183,7 +183,7 @@ class TestManifestValidate:
         with open(invalid_manifest, "w") as f:
             yaml.dump({"version": "1.0.0"}, f)
 
-        stdout, stderr, code = cli_runner(["manifest", "validate", str(invalid_manifest)])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "validate", str(invalid_manifest)])
         assert code == 1
         assert "Missing required field" in stdout or "issue" in stdout.lower()
 
@@ -191,7 +191,7 @@ class TestManifestValidate:
         """Test validate with JSON output."""
         import json
 
-        stdout, stderr, code = cli_runner(["--json", "manifest", "validate", str(sample_manifest)])
+        stdout, stderr, code = cli_runner(["--json", "agent", "manifest", "validate", str(sample_manifest)])
         assert code == 0
         data = json.loads(stdout)
         assert "valid" in data
@@ -203,11 +203,11 @@ class TestManifestValidate:
         with open(minimal_manifest, "w") as f:
             yaml.dump({"name": "minimal-agent"}, f)
 
-        stdout, stderr, code = cli_runner(["manifest", "validate", str(minimal_manifest)])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "validate", str(minimal_manifest)])
         assert code == 0  # Valid but with warnings
         assert "warning" in stdout.lower() or "Missing recommended" in stdout
 
     def test_validate_missing_file(self, cli_runner, temp_dir):
         """Test validating a non-existent file."""
-        stdout, stderr, code = cli_runner(["manifest", "validate", str(temp_dir / "nonexistent.yml")])
+        stdout, stderr, code = cli_runner(["agent", "manifest", "validate", str(temp_dir / "nonexistent.yml")])
         assert code == 1

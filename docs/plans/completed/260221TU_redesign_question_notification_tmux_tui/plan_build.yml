@@ -1,0 +1,1008 @@
+name: redesign_question_notification_tmux_tui
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: completed
+priority: high
+objective: 'Replace the ntfy push-notification system with a tmux-based TUI for question
+
+  notification and answering. The new TUI will run as a persistent tmux window
+
+  showing all pending questions in real-time and allow answering directly from
+
+  the terminal. This works well over Termux/SSH on Android.
+
+
+  The existing QuestionQueue service and YAML storage are kept unchanged.
+
+  The existing user-facing CLI commands (list, show, answer) continue to work.
+
+  The `agentic question dashboard` command evolves into the full TUI entry point.
+
+
+  ntfy STAYS for notification-only (alerting user to jump into Termux).
+
+  ntfy reply/answer flow is removed (NtfyReplyPoller, NtfyQuestionAgent,
+
+  ntfy_state.yml). The user answers questions in the TUI, not via ntfy replies.
+
+
+  See ui_design.md in this plan folder for detailed UI wireframes, interaction
+
+  flows, and the clear-reprint-select rendering pattern.
+
+  '
+affected_stories:
+- US-CLI-060
+- US-CLI-061
+- US-CLI-066
+- US-CLI-120
+open_questions:
+- id: OQ-1
+  text: 'Should the TUI run in a dedicated tmux window (new window in current session)
+
+    or as a split pane? A window gives more screen space on small Termux screens;
+
+    a pane keeps everything in view simultaneously.
+
+    '
+  severity: medium
+  context: 'Termux on Android typically uses small screens. The existing notification
+    pane
+
+    code uses split-window -h (horizontal split, 30%). A dedicated window avoids
+
+    squeezing both the agent and the TUI into one screen.
+
+    '
+  decision: Use a dedicated tmux window named 'questions' for the TUI dashboard.
+- id: OQ-2
+  text: 'Should the TUI support multi-plan view (all live plans) or be scoped to one
+
+    plan at a time? The current dashboard already scans all live plans.
+
+    '
+  severity: low
+  context: 'Multi-plan view is more useful because multiple agents may be running
+    concurrently.
+
+    The existing `cmd_dashboard` already scans docs/plans/live/*/questions/pending/*.
+
+    '
+  decision: Multi-plan view (scan all live plans) matching current dashboard behavior.
+- id: OQ-3
+  text: 'Which rendering pattern: Rich Live (start/stop around input), or
+
+    clear-reprint-select (console.clear + print + select.select on stdin)?
+
+    '
+  severity: high
+  context: 'Rich Live conflicts with stdin reads. The pause-resume dance is fragile
+
+    on Termux. We need single-keypress navigation (arrow keys, Tab, Enter)
+
+    for a navigable list. This requires tty.setcbreak() mode. Rich Live is
+
+    incompatible with cbreak mode.
+
+    '
+  decision: 'Use cbreak mode (tty.setcbreak) for single-keypress navigation +
+
+    Rich Console for rendering (clear + print). Restore line mode for
+
+    freeform text input. No Rich Live. See ui_design.md Sections 3 and 8.
+
+    '
+- id: OQ-4
+  text: 'How should iterative Q&A work when the user needs more information
+
+    before answering a question?
+
+    '
+  severity: medium
+  context: 'Some questions require context the agent hasn''t provided. The user
+
+    needs a way to say "I need more info about X" and have the agent
+
+    respond with clarification (possibly as a new follow-up question).
+
+    '
+  decision: 'Add ''m'' key action (more info). Submits answer with need_more_info:
+    true
+
+    flag. Agent reads this flag, provides clarification as a new question.
+
+    TUI auto-refreshes to show the follow-up. See ui_design.md Section 5.
+
+    '
+success_criteria:
+- ntfy still sends push notifications when a question is asked (notification only,
+  no reply)
+- '`agentic question dashboard` launches a Rich TUI in a dedicated tmux window named
+  ''questions'''
+- TUI auto-refreshes pending questions from all live plans (polling interval configurable)
+- 'TUI supports inline answering: select a question, type answer, press Enter'
+- TUI shows question ID, severity (color-coded), plan name, question text, suggested
+  answers
+- Answering via TUI calls the existing QuestionQueue.answer() service method
+- TUI supports deferring a question (equivalent to `agentic question defer`)
+- Watch daemon (`agentic agent question watch-daemon`) uses tmux window notification
+  instead of ntfy
+- NtfyQuestionAgent and NtfyReplyPoller removed; ntfy.py kept for notification-only
+- ntfy_state.yml is no longer created by any command
+- Existing `agentic question list/show/answer` CLI commands continue to work
+- All existing question-related tests pass with no regressions
+impacted_artifacts:
+  modified_files:
+  - path: modules/AgenticCLI/src/agenticcli/commands/question.py
+    change_type: modify
+    reason: Evolve cmd_dashboard into TUI launcher; remove ntfy answer loop from cmd_ask
+  - path: modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    change_type: modify
+    reason: Replace NtfyReplyPoller with tmux window notification callback
+  - path: modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+    change_type: modify
+    reason: Add notify_question_window() to open/focus the questions tmux window
+  - path: modules/AgenticCLI/src/agenticcli/utils/question_formatter.py
+    change_type: modify
+    reason: Add Rich-compatible formatter used by the TUI panel
+  - path: modules/AgenticGuidance/src/agenticguidance/models/question.py
+    change_type: modify
+    reason: 'Add need_more_info: bool field to Question dataclass for iterative Q&A'
+  created_files:
+  - path: modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    change_type: create
+    reason: 'New TUI class: QuestionTUI with navigable list, cbreak keyboard, Rich
+      rendering'
+  - path: modules/AgenticCLI/src/agenticcli/tui/__init__.py
+    change_type: create
+    reason: Package init for tui subpackage
+  deleted_files:
+  - path: modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    change_type: delete
+    reason: ntfy reply/answer agent replaced by TUI answering
+phases:
+- id: P01
+  name: Build QuestionTUI core (Rich Live)
+  status: completed
+  description: 'Create the new `agenticcli/tui/` subpackage and implement `QuestionTUI`
+    using
+
+    Rich''s Live + Layout API. This gives a persistent, auto-refreshing terminal UI
+
+    that works over SSH and Termux without requiring Textual (which needs a proper
+
+    TTY). The TUI renders a questions table in the top panel and an answer form
+
+    at the bottom.
+
+    '
+  tasks:
+  - id: P01_T01
+    name: Create tui/ package and question_tui.py scaffold
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/question_formatter.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/__init__.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    guidance: "IMPORTANT: Read ui_design.md in this plan folder first. It contains\
+      \ the\nfull UI wireframes, interaction flows, and rendering pattern.\n\nCreate\
+      \ the tui subpackage under agenticcli/tui/.\n\n__init__.py should be empty (just\
+      \ a package marker).\n\nquestion_tui.py implements QuestionTUI - a **navigable\
+      \ list** where the\nuser moves a cursor with arrow keys/Tab and presses Enter\
+      \ to answer.\nSee ui_design.md Sections 2-8 for full spec.\n\nRendering pattern\
+      \ (ui_design.md Section 8):\n- tty.setcbreak() for single-keypress reading (arrow\
+      \ keys, Enter, q, d, m, s)\n- Rich Console for output (console.clear() + console.print())\n\
+      - select.select() on stdin with timeout for auto-refresh\n- Restore line mode\
+      \ (termios) for freeform text input, then back to cbreak\n- No Rich Live, no\
+      \ Textual, no curses\n\nClass interface:\n\n  class QuestionTUI:\n      def\
+      \ __init__(self, repo_root: Path, refresh_seconds: int = 5):\n          self.console\
+      \ = Console()\n          self.cursor = 0          # index of highlighted row\n\
+      \          self.questions = []      # list of (question_data, plan_path)\n \
+      \         ...\n\n      def run(self) -> None:\n          \"\"\"Main loop in\
+      \ cbreak mode. See ui_design.md Section 8.\"\"\"\n          # Save terminal\
+      \ settings, enter cbreak, loop, restore on exit\n\n      def _refresh_questions(self)\
+      \ -> None:\n          \"\"\"Scan docs/plans/live/*/questions/pending/*.yml\"\
+      \"\"\n\n      def _render(self) -> None:\n          \"\"\"Clear + print table\
+      \ with cursor row highlighted ([reverse])\"\"\"\n\n      def _read_key_with_timeout(self,\
+      \ timeout: float) -> str | None:\n          \"\"\"select.select on stdin. Reads\
+      \ escape sequences for arrows.\"\"\"\n\n      def _handle_answer(self) -> None:\n\
+      \          \"\"\"Restore line mode, show detail, get answer, submit, cbreak\
+      \ again.\"\"\"\n\n      def _handle_defer(self) -> None:\n          \"\"\"Single-keypress\
+      \ Y/n confirmation, then defer.\"\"\"\n\n      def _handle_more_info(self) ->\
+      \ None:\n          \"\"\"Restore line mode, get info request, submit with need_more_info.\"\
+      \"\"\n\n      def _handle_show(self) -> None:\n          \"\"\"Show full detail\
+      \ read-only, any key returns to list.\"\"\"\n\nKeyboard controls (ui_design.md\
+      \ Section 3):\n  \u2191/k = cursor up, \u2193/j = cursor down, Tab = next (wraps)\n\
+      \  Enter = answer selected, d = defer selected, m = more info\n  s = show detail,\
+      \ q/Ctrl-C = quit\n\nThe cursor row uses Rich [reverse] style for highlighting.\n\
+      After answering/deferring, cursor auto-advances to next question.\n\nTable columns\
+      \ (ui_design.md Section 2):\n  Plan (14 chars, truncated) | Severity (color)\
+      \ | Question (rest)\nNo # column needed - cursor replaces numbered selection.\n\
+      \nAdaptive widths based on console.width:\n  < 65 cols: Plan=10, Severity abbreviated\
+      \ (BLK/HI/MED/LO)\n  65-80 cols: standard layout\n  > 80 cols: extra Question\
+      \ space\n\nImport structure:\n  import select, sys, tty, termios, time, yaml\n\
+      \  from pathlib import Path\n  from rich.console import Console\n  from rich.table\
+      \ import Table\n  from rich.panel import Panel\n"
+    success_criteria:
+    - '`agenticcli/tui/__init__.py` exists (empty package marker)'
+    - '`agenticcli/tui/question_tui.py` exists with `QuestionTUI` class'
+    - '`QuestionTUI.__init__` accepts `repo_root` and `refresh_seconds`'
+    - '`QuestionTUI.run()` method exists and starts Rich Live loop'
+    - '`QuestionTUI._build_questions_table()` scans `docs/plans/live/*/questions/pending/*.yml`'
+    - File imports do not include ntfy or watchdog
+  - id: P01_T02
+    name: Implement answer flow inside QuestionTUI
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    guidance: "IMPORTANT: Read ui_design.md Sections 4-7 for the full interaction\
+      \ flows.\n\nComplete _handle_answer, _handle_defer, _handle_more_info, _handle_show\n\
+      and the main keypress dispatch loop in run().\n\nThe main loop runs in cbreak\
+      \ mode (see P01_T01). Keypress dispatch:\n  key == '\\r' (Enter)  --> _handle_answer()\n\
+      \  key == 'd'           --> _handle_defer()\n  key == 'm'           --> _handle_more_info()\n\
+      \  key == 's'           --> _handle_show()\n  key == arrow/j/k/Tab --> move\
+      \ cursor\n\nAnswer flow (ui_design.md Section 4):\n1. User presses Enter on\
+      \ highlighted question\n2. _handle_answer():\n   - Restore line mode: termios.tcsetattr(sys.stdin,\
+      \ TCSADRAIN, old_settings)\n   - console.clear()\n   - Print full question detail\
+      \ (severity, text, context, asked_by, time)\n   - If suggested_answers: show\
+      \ navigable menu (\u2191\u2193 + Enter in cbreak)\n     OR if freeform: use\
+      \ input() for text (line mode)\n   - Confirm: single-keypress y/n/e (back in\
+      \ cbreak)\n   - Submit via QuestionQueue(plan_path).answer_question(id, text,\
+      \ answered_by=\"human\")\n   - Auto-advance: self.cursor moves to next question\n\
+      \   - Re-enter cbreak: tty.setcbreak(sys.stdin.fileno())\n\nNOTE on suggested\
+      \ answer navigation: if the question has suggested_answers,\nstay in cbreak\
+      \ mode and let \u2191\u2193 navigate the options, Enter selects, c\nswitches\
+      \ to freeform input. Only switch to line mode for freeform typing.\n\nMore info\
+      \ flow (ui_design.md Section 5):\n1. User presses 'm' on highlighted question\n\
+      2. _handle_more_info():\n   - Restore line mode\n   - Show question text briefly\n\
+      \   - Prompt: \"What info do you need?\"\n   - input() for the request text\n\
+      \   - Submit as answer with need_more_info=True:\n     QuestionQueue.answer_question(id,\
+      \ f\"Need more info: {text}\",\n         answered_by=\"human\", confidence=None)\n\
+      \   - The answer YAML should include need_more_info: true\n   - Re-enter cbreak\n\
+      \nDefer flow (ui_design.md Section 6):\n1. User presses 'd' on highlighted question\n\
+      2. _handle_defer():\n   - Stay in cbreak mode (single-keypress y/n)\n   - Show:\
+      \ \"Defer? [Y/n]\"\n   - y/Enter: mark_deferred() + write YAML, auto-advance\
+      \ cursor\n   - n: cancel, back to list\n\nShow flow (ui_design.md Section 7):\n\
+      1. User presses 's' on highlighted question\n2. _handle_show():\n   - console.clear()\n\
+      \   - Print full question detail (read-only)\n   - \"Press any key to return...\"\
+      \n   - Read single keypress (cbreak), return to list\n\nAuto-advance after answer/defer:\n\
+      \  After submitting, self.cursor should point to the next pending question.\n\
+      \  If the answered question was the last one, cursor moves up to the new last.\n\
+      \  If no questions remain, show empty state.\n\nError handling: if QuestionQueue\
+      \ raises (e.g., question already answered),\nprint brief error, wait for keypress,\
+      \ return to list. Never crash the TUI.\n"
+    success_criteria:
+    - Enter on cursor row opens answer flow for that question
+    - "Suggested answers navigable with \u2191\u2193 + Enter (stays in cbreak)"
+    - Freeform answer switches to line mode for input(), then back to cbreak
+    - Answering calls QuestionQueue.answer_question() on correct plan path
+    - '''m'' opens more-info flow, submits with need_more_info flag'
+    - '''d'' shows single-keypress Y/n confirmation, defers on Y'
+    - '''s'' shows full detail read-only, any key returns'
+    - Cursor auto-advances to next question after answer/defer
+    - Terminal always restored to original settings on exit (try/finally)
+    - Ctrl-C exits cleanly (no traceback, terminal restored)
+- id: P02
+  name: Wire TUI into dashboard command and tmux window launcher
+  status: completed
+  description: "Replace the existing `cmd_dashboard` in question.py with a launcher\
+    \ that:\n(a) If already inside tmux: opens a new tmux window named 'questions'\
+    \ and runs\n    `agentic question dashboard --no-tmux-window` inside it, OR runs\
+    \ the TUI\n    directly in the current window.\n(b) If not in tmux: runs the TUI\
+    \ directly in the current terminal.\nAlso update tmux_notify.py to add a `notify_question_window()`\
+    \ function that\nfocuses/creates the 'questions' tmux window instead of using\
+    \ a split pane.\n"
+  tasks:
+  - id: P02_T01
+    name: Replace cmd_dashboard with QuestionTUI launcher
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Replace the existing `cmd_dashboard` function body with a new implementation\n\
+      that delegates to QuestionTUI.\n\nNew `cmd_dashboard` logic:\n\n  def cmd_dashboard(args,\
+      \ ctx=None):\n      import subprocess\n      from agenticcli.utils.tmux import\
+      \ is_in_tmux, session_exists\n      from agenticcli.tui.question_tui import\
+      \ QuestionTUI\n\n      refresh = getattr(args, \"refresh\", 5)\n      no_window\
+      \ = getattr(args, \"no_tmux_window\", False)\n      repo_root = _get_repo_root()\n\
+      \n      if is_in_tmux() and not no_window:\n          # Launch TUI in a dedicated\
+      \ tmux window named 'questions'\n          _launch_tui_in_tmux_window(repo_root,\
+      \ refresh)\n      else:\n          # Run TUI directly in current terminal\n\
+      \          tui = QuestionTUI(repo_root=repo_root, refresh_seconds=refresh)\n\
+      \          tui.run()\n\nAdd `_launch_tui_in_tmux_window(repo_root, refresh)`\
+      \ as a module-level helper:\n\n  def _launch_tui_in_tmux_window(repo_root: Path,\
+      \ refresh: int) -> None:\n      import subprocess\n      WINDOW_NAME = \"questions\"\
+      \n      # Check if 'questions' window already exists in current session\n  \
+      \    result = subprocess.run(\n          [\"tmux\", \"list-windows\", \"-F\"\
+      , \"#{window_name}\"],\n          capture_output=True, text=True\n      )\n\
+      \      existing = result.stdout.strip().split(\"\\n\") if result.returncode\
+      \ == 0 else []\n      if WINDOW_NAME in existing:\n          # Switch to it\n\
+      \          subprocess.run([\"tmux\", \"select-window\", \"-t\", WINDOW_NAME])\n\
+      \      else:\n          # Create new window and run TUI inside it\n        \
+      \  subprocess.run([\n              \"tmux\", \"new-window\", \"-n\", WINDOW_NAME,\n\
+      \              f\"agentic question dashboard --no-tmux-window --refresh {refresh}\"\
+      \n          ])\n\nAdd `_get_repo_root()` as module-level helper (extract from\
+      \ existing build_table() logic):\n\n  def _get_repo_root() -> Path:\n      import\
+      \ subprocess\n      try:\n          result = subprocess.run(\n             \
+      \ [\"git\", \"rev-parse\", \"--show-toplevel\"],\n              capture_output=True,\
+      \ text=True, check=True,\n          )\n          return Path(result.stdout.strip())\n\
+      \      except (subprocess.CalledProcessError, FileNotFoundError):\n        \
+      \  return Path.cwd()\n\nAlso add `--no-tmux-window` and `--refresh` argument\
+      \ parsing in the CLI\nregistration for the dashboard command (in cli.py or commands/question.py\n\
+      wherever the argparse/typer definition lives).\n"
+    success_criteria:
+    - '`cmd_dashboard` uses `QuestionTUI` instead of the old Rich Live table loop'
+    - 'When in tmux: creates/focuses ''questions'' window and runs TUI there'
+    - 'When not in tmux: runs TUI directly'
+    - '`--no-tmux-window` flag bypasses window creation (used for recursive launch)'
+    - '`--refresh N` controls refresh interval (default 5)'
+    - Old inline `build_table()` helper removed from `cmd_dashboard`
+  - id: P02_T02
+    name: Add notify_question_window() to tmux_notify.py
+    status: completed
+    priority: medium
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+    guidance: "Add a new function `notify_question_window(question_count: int) ->\
+      \ bool` that:\n1. Checks `is_in_tmux()` - returns False if not in tmux\n2. Sends\
+      \ a tmux display-message alert: \"N pending questions - open 'questions' window\"\
+      \n3. Optionally flashes the 'questions' window if it exists (using\n   `tmux\
+      \ select-window -t questions` then back) - but only if the user is\n   NOT already\
+      \ in the questions window.\n4. Returns True on success, False on failure.\n\n\
+      This function is simpler than `notify_questions_in_tmux()` (the old split-pane\n\
+      notifier). The new pattern is: agents trigger a short status-bar flash to alert\n\
+      the human, and the human switches to the 'questions' tmux window to respond.\n\
+      \nKeep the old `notify_questions_in_tmux()` function but mark it as deprecated\n\
+      with a docstring note (do not delete it yet - cleanup happens in P04).\n"
+    success_criteria:
+    - '`notify_question_window(count)` function exists in tmux_notify.py'
+    - Function calls `tmux display-message` with question count
+    - Returns True when tmux is available, False otherwise
+    - Old `notify_questions_in_tmux` still exists (not yet deleted)
+- id: P03
+  name: Replace ntfy notification in watch-daemon with tmux window notification
+  status: completed
+  description: 'Update `question_watcher.py` and `cmd_watch_daemon` so that when a
+    new
+
+    question arrives, the notification callback calls `notify_question_window()`
+
+    instead of the ntfy push notification path. The NtfyReplyPoller daemon thread
+
+    is removed from the watcher service.
+
+    '
+  tasks:
+  - id: P03_T01
+    name: Remove NtfyReplyPoller from question_watcher.py
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    guidance: 'Read question_watcher.py in full. Identify the NtfyReplyPoller class
+      and any
+
+      code that imports from agenticcli.utils.ntfy or agenticcli.services.ntfy_question_agent.
+
+
+      Remove:
+
+      - The NtfyReplyPoller class entirely
+
+      - Any import of ntfy utilities
+
+      - Any code in QuestionWatcher.__init__ that starts the NtfyReplyPoller thread
+
+      - Any code in QuestionWatcher.stop() that stops the NtfyReplyPoller thread
+
+
+      The QuestionWatcherHandler and watchdog Observer remain unchanged.
+
+      The callback mechanism remains unchanged (filesystem events still trigger callbacks).
+
+
+      After removal, the notification callback set on the watcher will be
+
+      `notify_question_window` (wired in P03_T02).
+
+      '
+    success_criteria:
+    - No import of ntfy in question_watcher.py
+    - NtfyReplyPoller class does not exist in question_watcher.py
+    - QuestionWatcherHandler class is unchanged
+    - QuestionWatcher (or equivalent Observer wrapper) still starts/stops correctly
+  - id: P03_T02
+    name: Wire notify_question_window as watcher callback in cmd_watch_daemon
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Find `cmd_watch_daemon` and `cmd_watch` in question.py.\n\nCurrently\
+      \ these commands set up a notification callback that calls ntfy\n(directly or\
+      \ via NtfyQuestionAgent). Replace that callback with:\n\n  from agenticcli.utils.tmux_notify\
+      \ import notify_question_window\n\n  def _on_questions_changed():\n      # Count\
+      \ pending questions across all live plans\n      count = _count_pending_questions()\n\
+      \      notify_question_window(count)\n\nAdd `_count_pending_questions() -> int`\
+      \ as a module-level helper that scans\n`docs/plans/live/*/questions/pending/*.yml`\
+      \ and returns the total count.\n\nRemove any ntfy imports from question.py (search\
+      \ for \"ntfy\" and remove those\nimport statements and any ntfy-specific logic\
+      \ in cmd_watch / cmd_watch_daemon).\n\nThe watch-daemon PID file management\
+      \ and process lifecycle code remain unchanged.\n"
+    success_criteria:
+    - cmd_watch_daemon callback calls `notify_question_window()` not ntfy
+    - No import of ntfy in commands/question.py
+    - '`_count_pending_questions()` helper exists and scans live plans'
+    - cmd_watch and cmd_watch_daemon start/stop lifecycle unchanged
+  - id: P03_T03
+    name: Remove ntfy integration from cmd_ask
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "Read cmd_ask in question.py. This command is used by agents to ask\
+      \ a question\nand (currently) triggers an ntfy push notification to the phone.\n\
+      \nReplace the ntfy send call with a call to `notify_question_window(count=1)`.\n\
+      The QuestionQueue.ask() call that persists the question to YAML must remain.\n\
+      \nPattern before (pseudocode):\n  queue.ask(question)\n  send_ntfy(topic, title,\
+      \ message)  # <- remove this\n\nPattern after:\n  queue.ask(question)\n  from\
+      \ agenticcli.utils.tmux_notify import notify_question_window\n  notify_question_window(count=1)\
+      \   # <- alert tmux status bar\n\nAlso remove any import of NtfyQuestionAgent\
+      \ from question.py.\nIf the module-level `_reply_poller` singleton exists at\
+      \ the top of question.py,\nremove that line (it references NtfyReplyPoller which\
+      \ is being deleted).\n"
+    success_criteria:
+    - cmd_ask no longer calls send_ntfy or any ntfy function
+    - cmd_ask still calls QuestionQueue.ask() to persist the question
+    - cmd_ask calls notify_question_window() after persisting
+    - Module-level `_reply_poller` singleton removed from question.py
+    - No import of NtfyQuestionAgent or NtfyReplyPoller in question.py
+- id: P04
+  name: Cleanup ntfy files and deprecated code
+  status: completed
+  description: 'Delete the ntfy source files (ntfy.py, ntfy_question_agent.py) and
+    remove
+
+    the deprecated notify_questions_in_tmux split-pane function from tmux_notify.py.
+
+    Update any remaining imports across the codebase.
+
+    '
+  tasks:
+  - id: P04_T01
+    name: Delete ntfy_question_agent.py (keep ntfy.py for notifications)
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
+    target_files: []
+    guidance: "Delete ntfy_question_agent.py ONLY. Keep ntfy.py - it is still used\
+      \ for\nsending push notifications (notification-only, no reply flow).\n\nDelete:\n\
+      \  - modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py\n\nSearch\
+      \ for remaining imports and remove them:\n  grep -r \"from agenticcli.services.ntfy_question_agent\"\
+      \ modules/\n  grep -r \"NtfyQuestionAgent\" modules/\n\nThe _send_ntfy_if_configured()\
+      \ function in commands/question.py should be\nSIMPLIFIED to just send a basic\
+      \ push notification (no NtfyQuestionAgent,\nno state tracking, no sequential\
+      \ delivery). Just call send_ntfy() from\nagenticcli.utils.ntfy with the question\
+      \ text and severity.\n\nUse `git rm` to stage the deletion.\n"
+    success_criteria:
+    - '`agenticcli/services/ntfy_question_agent.py` does not exist'
+    - '`agenticcli/utils/ntfy.py` still exists (notification sender)'
+    - No remaining imports of NtfyQuestionAgent anywhere in modules/
+    - _send_ntfy_if_configured simplified to direct send (no agent, no state)
+  - id: P04_T02
+    name: Remove deprecated notify_questions_in_tmux from tmux_notify.py
+    status: completed
+    priority: low
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+    guidance: "Remove the `notify_questions_in_tmux()` function and `clear_notification_pane()`\n\
+      from tmux_notify.py. These relied on the split-pane approach and are replaced\n\
+      by `notify_question_window()`.\n\nAlso remove the import of `format_question_notification`\
+      \ from question_formatter.py\nif it is no longer used in tmux_notify.py after\
+      \ these removals.\n\nKeep `display_tmux_message()` - it is still used by `notify_question_window()`.\n\
+      \nUpdate the module docstring to reflect the new purpose:\n  \"Provides functions\
+      \ for alerting users to pending questions via tmux.\"\n"
+    success_criteria:
+    - '`notify_questions_in_tmux()` does not exist in tmux_notify.py'
+    - '`clear_notification_pane()` does not exist in tmux_notify.py'
+    - '`notify_question_window()` exists in tmux_notify.py'
+    - '`display_tmux_message()` still exists in tmux_notify.py'
+    - No unused imports remain in tmux_notify.py
+- id: P05
+  name: UAT issues and polish
+  status: active
+  description: 'Issues discovered during UAT testing and polish items.
+
+    '
+  tasks:
+  - id: P05_T01
+    name: Standardize deprecation message format
+    status: completed
+    priority: low
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "In cli.py there are 9 deprecation stubs for the `agentic question`\
+      \ subcommands.\nFour stubs use a short format (\"Command moved.\") and five\
+      \ use the full format\n(\"Command 'agentic question X' has moved.\"). Standardize\
+      \ all 9 to the full format.\n\nThe 9 stubs and their current print_error calls\
+      \ are:\n\nSHORT FORMAT (3 stubs - lines 1057, 1065, 1073 - user-facing commands):\n\
+      \  Line 1054: question_list()\n    current:  print_error(\"Command moved. Use\
+      \ 'agentic plan question list' instead.\")\n    fixed:    print_error(\"Command\
+      \ 'agentic question list' has moved. Use 'agentic plan question list' instead.\"\
+      )\n\n  Line 1062: question_show()\n    current:  print_error(\"Command moved.\
+      \ Use 'agentic plan question show' instead.\")\n    fixed:    print_error(\"\
+      Command 'agentic question show' has moved. Use 'agentic plan question show'\
+      \ instead.\")\n\n  Line 1070: question_answer()\n    current:  print_error(\"\
+      Command moved. Use 'agentic plan question answer' instead.\")\n    fixed:  \
+      \  print_error(\"Command 'agentic question answer' has moved. Use 'agentic plan\
+      \ question answer' instead.\")\n\nSHORT FORMAT (1 stub - line 1121 - dashboard):\n\
+      \  Line 1118: question_dashboard()\n    current:  print_error(\"Command moved.\
+      \ Use 'agentic plan question dashboard' instead.\")\n    fixed:    print_error(\"\
+      Command 'agentic question dashboard' has moved. Use 'agentic plan question dashboard'\
+      \ instead.\")\n\nALREADY CORRECT FORMAT (5 stubs - lines 1081, 1089, 1097, 1105,\
+      \ 1113):\n  question_ask()        line 1081  - already uses full format, no\
+      \ change needed\n  question_defer()      line 1089  - already uses full format,\
+      \ no change needed\n  question_watch()      line 1097  - already uses full format,\
+      \ no change needed\n  question_watch_daemon() line 1105 - already uses full\
+      \ format, no change needed\n  question_watch_stop() line 1113  - already uses\
+      \ full format, no change needed\n\nMake the 4 short-format stubs match the 5\
+      \ long-format stubs. The full target\nformat is:\n  \"Command 'agentic question\
+      \ <cmd>' has moved. Use 'agentic <group> question <cmd>' instead.\"\n\nOnly\
+      \ change the 4 print_error strings inside question_list, question_show,\nquestion_answer,\
+      \ and question_dashboard. Do not change any other code.\n"
+    success_criteria:
+    - All 9 deprecation stubs use the same message format
+    - 'question_list() prints: Command ''agentic question list'' has moved. Use ''agentic
+      plan question list'' instead.'
+    - 'question_show() prints: Command ''agentic question show'' has moved. Use ''agentic
+      plan question show'' instead.'
+    - 'question_answer() prints: Command ''agentic question answer'' has moved. Use
+      ''agentic plan question answer'' instead.'
+    - 'question_dashboard() prints: Command ''agentic question dashboard'' has moved.
+      Use ''agentic plan question dashboard'' instead.'
+  - id: P05_T02
+    name: Simplify ntfy message to summary only
+    status: completed
+    priority: medium
+    agent: build-python
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "COMPLETED: ntfy message now sends plan name + count instead of question\
+      \ text.\nTitle: \"N questions pending\", Body: \"Plan: <name> \u2014 open TUI\
+      \ to answer\"\n"
+    success_criteria:
+    - ntfy body does not contain question text
+    - ntfy body shows plan folder name and count
+  - id: P05_T03
+    name: Fix deferred questions appearing in pending list
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "UAT FAILURE (US-CLI-063): After deferring a question, it still appears\
+      \ in\n`agentic plan question list --status pending` because cmd_list calls\n\
+      service.list_pending_questions() which returns ALL .yml files from pending/\n\
+      regardless of their status field.\n\nRoot cause: QuestionQueue.list_pending_questions()\
+      \ in\nagenticguidance/services/question.py (lines 403-428) scans pending/*.yml\n\
+      and returns every file without filtering on the status field. When cmd_defer\n\
+      defers a question it calls question.mark_deferred() (sets status=\"deferred\"\
+      )\nand writes it back to the SAME pending/{id}.yml -- the file is NOT moved.\n\
+      So list_pending_questions() always returns deferred questions alongside\ntruly\
+      \ pending ones.\n\nFix location: commands/question.py, function cmd_list(),\
+      \ the \"pending\" branch.\n\nCurrent code (lines 272-273):\n  if status_filter\
+      \ == \"pending\":\n      questions = service.list_pending_questions()\n\nReplace\
+      \ with:\n  if status_filter == \"pending\":\n      questions = service.list_pending_questions()\n\
+      \      # list_pending_questions() returns all files in pending/ including\n\
+      \      # deferred ones (status=\"deferred\"). Filter to truly pending only.\n\
+      \      questions = [q for q in questions if q.status == \"pending\"]\n\nThe\
+      \ \"deferred\" branch (lines 291-293) already works correctly:\n  elif status_filter\
+      \ == \"deferred\":\n      all_questions = service.list_pending_questions()\n\
+      \      questions = [q for q in all_questions if q.status == \"deferred\"]\n\n\
+      The \"all\" branch (lines 295-307) calls list_pending_questions() without\n\
+      filtering, so deferred questions already pass through. No change needed there.\n\
+      \nDo NOT change AgenticGuidance -- the service intentionally returns all files\n\
+      in pending/; filtering by display status is the CLI's responsibility.\n"
+    success_criteria:
+    - Deferred questions are excluded from `agentic plan question list` (default pending
+      view)
+    - Deferred questions appear in `agentic plan question list --status deferred`
+    - Deferred questions appear in `agentic plan question list --status all`
+    - Pending (non-deferred) questions still appear in the default list
+  - id: P05_T04
+    name: Show answer confidence in question show command
+    status: completed
+    priority: medium
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/models/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "UAT FAILURE (US-CLI-064): `agentic plan question show <id>` displays\n\
+      answer text but never shows confidence. The Question dataclass (in\nagenticguidance/models/question.py)\
+      \ has NO confidence field -- confidence\nlives in the Answer dataclass (answer.confidence:\
+      \ Optional[str]).\n\nWhen answer_question() is called, it writes TWO files to\
+      \ answered/:\n  answered/{id}.yml         -- the Answer record (contains confidence)\n\
+      \  answered/{id}_question.yml -- the Question record (no confidence)\n\ncmd_show\
+      \ (in commands/question.py, line 407) calls service.get_question(id),\nwhich\
+      \ reads answered/{id}_question.yml. The confidence is NOT in that file.\n\n\
+      Fix location: commands/question.py, cmd_show(), the \"answered\" display block\n\
+      starting around line 450:\n  if question.status == \"answered\" and question.answer:\n\
+      \      ...\n      console.print(Panel(question.answer, title=\"Answer\", border_style=\"\
+      green\"))\n\nAfter the question is confirmed answered, load the companion answer\
+      \ file:\n\n  # Load companion answer record to get confidence\n  answer_confidence\
+      \ = None\n  if question.status == \"answered\":\n      try:\n          from\
+      \ agenticguidance.models.question import yaml_to_answer\n          answer_file\
+      \ = plan_path / \"questions\" / \"answered\" / f\"{question_id}.yml\"\n    \
+      \      if answer_file.exists():\n              answer_obj = yaml_to_answer(answer_file.read_text(encoding=\"\
+      utf-8\"))\n              answer_confidence = answer_obj.confidence\n      except\
+      \ Exception:\n          pass  # graceful degradation\n\nThen display confidence\
+      \ in the Rich output after the answered_by line:\n  if answer_confidence:\n\
+      \      console.print(f\"[bold]Confidence:[/bold] {answer_confidence}\")\n\n\
+      For JSON output (around line 414-416), also include confidence:\n  if is_json_output():\n\
+      \      data = question.to_dict()\n      data[\"confidence\"] = answer_confidence\
+      \  # add after loading it\n      print_json(data)\n      return\n\nMove the\
+      \ answer file loading block BEFORE the is_json_output() check so\nthe confidence\
+      \ is available for both JSON and Rich output paths.\n"
+    success_criteria:
+    - show command displays Confidence field when question is answered and confidence
+      is set
+    - show command omits Confidence line when confidence is None/not set
+    - JSON output includes a confidence key (value may be null)
+    - show command still works for pending/deferred questions (no answer file expected)
+  - id: P05_T05
+    name: Add valid values to --confidence help text
+    status: completed
+    priority: low
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "UAT documentation gap: Running `agentic plan question answer --help`\
+      \ shows the\n--confidence option with type \"TEXT\" and no explanation of valid\
+      \ values.\n\nLocation: cli.py line 1733, inside the plan_question_answer() typer\
+      \ command:\n  confidence: Annotated[Optional[str], typer.Option(\"--confidence\"\
+      , help=\"Confidence level\")] = None,\n\nChange the help string from \"Confidence\
+      \ level\" to \"Confidence level (high, medium, low)\":\n  confidence: Annotated[Optional[str],\
+      \ typer.Option(\"--confidence\", help=\"Confidence level (high, medium, low)\"\
+      )] = None,\n\nThis is a single-line change. Do not alter any other arguments\
+      \ or logic.\n"
+    success_criteria:
+    - '`agentic plan question answer --help` shows: --confidence  Confidence level
+      (high, medium, low)'
+  - id: P05_T06
+    name: Add creation time column to question list
+    status: completed
+    priority: medium
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "UAT FAILURE (US-CLI-061): The table from `agentic plan question list`\n\
+      shows ID, Text, Severity, Status, Asked By but no creation time.\n\nFix location:\
+      \ commands/question.py, cmd_list(), the Rich table setup block\nstarting at\
+      \ line 333.\n\nCurrent table columns (lines 334-338):\n  table.add_column(\"\
+      ID\", style=\"cyan\", max_width=20)\n  table.add_column(\"Text\", max_width=50)\n\
+      \  table.add_column(\"Severity\")\n  table.add_column(\"Status\")\n  table.add_column(\"\
+      Asked By\")\n\nAdd a \"Created\" column after the \"Asked By\" column:\n  table.add_column(\"\
+      ID\", style=\"cyan\", max_width=20)\n  table.add_column(\"Text\", max_width=50)\n\
+      \  table.add_column(\"Severity\")\n  table.add_column(\"Status\")\n  table.add_column(\"\
+      Asked By\")\n  table.add_column(\"Created\", style=\"dim\")\n\nIn the row loop\
+      \ (starting at line 340), add the formatted timestamp to\ntable.add_row(). The\
+      \ datetime import is already present in cmd_show but\nneeds to be added at the\
+      \ top of cmd_list or as an inline import.\n\nCurrent table.add_row() call (line\
+      \ 369-375):\n  table.add_row(\n      q_id,\n      text,\n      severity_str,\n\
+      \      status_str,\n      question.asked_by,\n  )\n\nReplace with:\n  from datetime\
+      \ import datetime\n  created_str = datetime.fromtimestamp(question.created_at).strftime(\"\
+      %Y-%m-%d %H:%M\")\n  table.add_row(\n      q_id,\n      text,\n      severity_str,\n\
+      \      status_str,\n      question.asked_by,\n      created_str,\n  )\n\nThe\
+      \ datetime import can be placed at the top of the for-loop or as a\nmodule-level\
+      \ import (datetime is already used in cmd_show so it can be\nmoved to the top\
+      \ of the file if preferred).\n"
+    success_criteria:
+    - list table includes a Created column with formatted datetime (YYYY-MM-DD HH:MM)
+    - Created column appears for all status filters (pending, answered, deferred,
+      all)
+  - id: P05_T07
+    name: Sort blocking questions first in list
+    status: completed
+    priority: medium
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "UAT FAILURE (US-CLI-061): Blocking questions are highlighted in red\n\
+      but not sorted to the top. The list is currently sorted only by created_at.\n\
+      \nRoot cause: QuestionQueue.list_pending_questions() (agenticguidance/services/question.py\n\
+      line 422) sorts by created_at only:\n  questions.sort(key=lambda q: q.created_at)\n\
+      \nDo NOT change the service -- sorting for display is the CLI's responsibility.\n\
+      \nFix location: commands/question.py, cmd_list(), after all \"questions\" lists\n\
+      are assembled but BEFORE the Rich table render. Apply after the existing sort\n\
+      or replace it for the pending branch.\n\nApply severity-first sort for the \"\
+      pending\" branch right after the deferred\nfilter (after T03's fix). Similarly\
+      \ apply it for the \"all\" branch sort.\n\nFor the \"pending\" branch (after\
+      \ the status filter added in T03):\n  SEVERITY_ORDER = {\"blocking\": 0, \"\
+      high\": 1, \"medium\": 2, \"low\": 3}\n  questions.sort(key=lambda q: (SEVERITY_ORDER.get(q.severity,\
+      \ 9), q.created_at))\n\nFor the \"answered\" branch (line 288): the answered\
+      \ questions don't have urgency\nso leave them sorted by created_at (no change\
+      \ needed).\n\nFor the \"deferred\" branch (line 292-293): leave sorted by created_at.\n\
+      \nFor the \"all\" branch (line 307):\n  Replace: questions.sort(key=lambda q:\
+      \ q.created_at)\n  With:\n    SEVERITY_ORDER = {\"blocking\": 0, \"high\": 1,\
+      \ \"medium\": 2, \"low\": 3}\n    questions.sort(key=lambda q: (SEVERITY_ORDER.get(q.severity,\
+      \ 9), q.created_at))\n\nSEVERITY_ORDER can be defined once at module level or\
+      \ at the top of cmd_list\nto avoid duplication.\n"
+    success_criteria:
+    - Blocking questions appear first in list output for --status pending
+    - Blocking questions appear first in list output for --status all
+    - Within the same severity, older questions appear first (created_at ascending)
+    - Answered and deferred views remain sorted by created_at (no regression)
+  - id: P05_T08
+    name: Fix asked_by attribution on agent question ask
+    status: completed
+    priority: low
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "UAT issue (US-CLI-060): `agentic agent question ask` hardcodes asked_by=\"\
+      human\"\nin cmd_ask but this command is the agent-facing entrypoint. Questions\
+      \ asked by\nagents should be attributed to \"agent\", not \"human\".\n\nLocation:\
+      \ commands/question.py line 639, inside the service.create_question() call\n\
+      inside cmd_ask():\n\n  question = service.create_question(\n      text=text,\n\
+      \      context=context,\n      severity=severity,\n      asked_by=\"human\"\
+      ,        # line 639 - WRONG for agent-facing command\n      suggested_answers=suggested_answers,\n\
+      \  )\n\nFix: Change line 639 from asked_by=\"human\" to asked_by=\"agent\":\n\
+      \n  question = service.create_question(\n      text=text,\n      context=context,\n\
+      \      severity=severity,\n      asked_by=\"agent\",        # correct: this\
+      \ is called by agent workflows\n      suggested_answers=suggested_answers,\n\
+      \  )\n\nThis is a single-character string change on line 639. Do not alter any\
+      \ other\narguments or surrounding logic.\n"
+    success_criteria:
+    - Questions created via `agentic agent question ask` have asked_by set to 'agent'
+      in the YAML
+    - Line 639 of commands/question.py reads asked_by="agent"
+  - id: P05_T09
+    name: Fix missing ProcessStateRegistry for watch-daemon/watch-stop
+    status: completed
+    priority: critical
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/services/state.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/state.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: "UAT CRITICAL FAILURE (US-CLI-066, US-CLI-067): watch-daemon and watch-stop\n\
+      are completely broken because question.py imports ProcessStateRegistry from\n\
+      agenticcli.services.state -- a module that does not exist.\n\nInvestigation\
+      \ results:\n- agenticcli/services/__init__.py: empty stub -- no ProcessStateRegistry\
+      \ here\n- agenticcli/commands/state.py: exists but uses StateRegistry (from\n\
+      \  agenticguidance.services), NOT ProcessStateRegistry\n- agenticguidance/services/state.py:\
+      \ defines StateRegistry (not ProcessStateRegistry)\n- ProcessStateRegistry does\
+      \ not exist anywhere in the codebase\n\nThe correct class is StateRegistry from\
+      \ agenticguidance.services.state.\nHowever, its API is DIFFERENT from what question.py\
+      \ expects for ProcessStateRegistry.\n\nquestion.py's usage of ProcessStateRegistry\
+      \ (wrong API, must be replaced):\n  Line 847:  registry.get_state(state_key)\
+      \          # returns dict or None\n  Line 850:  state.get(\"pid\", \"unknown\"\
+      )            # dict access\n  Line 864:  registry.get_state(state_key)     \
+      \     # returns dict or None\n  Line 867:  state.get(\"pid\", \"unknown\") \
+      \           # dict access\n  Line 912:  registry.list_processes()          \
+      \    # returns {key: state_dict}\n  Line 936:  registry.mark_stopped(state_key)\
+      \       # update by string key\n  Line 980:  ProcessStateRegistry()        \
+      \         # constructor\n  Line 985:  registry.get_state(state_key)        \
+      \  # returns dict or None\n  Line 1009: registry.mark_stopped(state_key)   \
+      \    # update by string key\n  Line 1037: registry.register_process(key, pid,\
+      \ metadata=...) # register by key+pid\n  Line 1009: registry.mark_stopped(state_key)\
+      \       # update by string key\n\nStateRegistry (correct class) API:\n  StateRegistry()\
+      \                          # constructor (no args needed)\n  registry.register(name,\
+      \ command, metadata) -> ProcessEntry  # uses os.getpid()\n  registry.get(pid:\
+      \ int) -> ProcessEntry | None\n  registry.list_all() -> list[ProcessEntry]\n\
+      \  registry.list_active() -> list[ProcessEntry]\n  registry.update_state(pid,\
+      \ state=ProcessState.STALE)\n  ProcessEntry.pid, .name, .command, .state, .metadata,\
+      \ .started_at, .ended_at\n\nThe watch-daemon pattern needs to be rewritten to\
+      \ use StateRegistry's PID-keyed\nAPI instead of a string-key API. The daemon\
+      \ PID is the natural key.\n\nFull fix strategy for cmd_watch_daemon (lines 831-886)\
+      \ and _ensure_watch_daemon\n(lines 954-1056):\n\n1. Replace all imports of ProcessStateRegistry\
+      \ with StateRegistry:\n     from agenticguidance.services.state import StateRegistry,\
+      \ ProcessState\n\n2. In cmd_watch_daemon (lines 845-873): Replace ProcessStateRegistry\
+      \ usage.\n   Instead of get_state(state_key) -> dict, after _ensure_watch_daemon()\n\
+      \   returns (True, \"started\"), the PID is in the Popen process. The simplest\n\
+      \   fix for the success message is to not look up via registry at all:\n   \
+      \  print_success(\"Question watcher started in background\")\n   (Remove the\
+      \ registry PID lookup in cmd_watch_daemon -- it's cosmetic only.)\n\n3. In _ensure_watch_daemon\
+      \ (lines 954-1056): Replace ProcessStateRegistry:\n\n   Replace:\n     from\
+      \ agenticcli.services.state import ProcessStateRegistry\n     registry = ProcessStateRegistry()\n\
+      \     existing_state = registry.get_state(state_key)\n     if existing_state\
+      \ and existing_state.get(\"status\") == \"running\":\n         pid = existing_state.get(\"\
+      pid\")\n         ...os.kill(pid, 0)...\n         registry.mark_stopped(state_key)\n\
+      \     registry.register_process(state_key, process.pid, metadata={...})\n  \
+      \   registry.mark_stopped(state_key)\n\n   With StateRegistry (PID-keyed):\n\
+      \     from agenticguidance.services.state import StateRegistry, ProcessState\n\
+      \     registry = StateRegistry()\n     # Check for existing running watcher\
+      \ by scanning active entries\n     active = registry.list_active()\n     watcher_entries\
+      \ = [e for e in active\n                        if e.name == f\"question_watcher_{plan_path.name}\"\
+      ]\n     if watcher_entries:\n         existing = watcher_entries[0]\n      \
+      \   try:\n             os.kill(existing.pid, 0)  # PID still alive?\n      \
+      \       return (False, \"already_running\")\n         except (ProcessLookupError,\
+      \ OSError):\n             registry.update_state(existing.pid, state=ProcessState.STALE)\n\
+      \     # ... start process ...\n     registry.register(\n         name=f\"question_watcher_{plan_path.name}\"\
+      ,\n         command=\"question watch-daemon\",\n         metadata={\"plan_path\"\
+      : str(plan_path), \"plan_name\": plan_path.name},\n     )\n     # Note: register()\
+      \ uses os.getpid() -- but we need the child PID.\n     # Since the daemon runs\
+      \ as a subprocess, we cannot register it from\n     # the parent. Instead, skip\
+      \ registry registration for now and rely\n     # on cmd_watch_stop scanning\
+      \ by process name using psutil or /proc.\n\n4. For cmd_watch_stop (lines 889-951):\
+      \ Replace ProcessStateRegistry.\n   The simplest approach that avoids the keyed-registry\
+      \ mismatch is to use\n   StateRegistry.list_active() and filter by name prefix:\n\
+      \     from agenticguidance.services.state import StateRegistry, ProcessState\n\
+      \     registry = StateRegistry()\n     registry.cleanup_dead_processes()\n \
+      \    active = registry.list_active()\n     watcher_entries = [e for e in active\n\
+      \                        if e.name.startswith(\"question_watcher_\")]\n\n  \
+      \ Then stop each watcher using os.kill(entry.pid, signal.SIGTERM) and\n   registry.update_state(entry.pid,\
+      \ state=ProcessState.COMPLETED).\n\n5. The ntfy check in _ensure_watch_daemon\
+      \ (line 973-976) requires ntfy config\n   to start the daemon. This is wrong\
+      \ since ntfy is removed. Remove the\n   ntfy_not_configured guard entirely --\
+      \ the daemon should start regardless\n   of ntfy config. Change:\n     config\
+      \ = _get_ntfy_config()\n     if not config:\n         return (False, \"ntfy_not_configured\"\
+      )\n   To simply remove those 3 lines (no ntfy gate needed).\n\n6. Also fix cmd_watch_daemon\
+      \ (line 876-881) which exits with error if\n   reason == \"ntfy_not_configured\"\
+      . After removing that gate in\n   _ensure_watch_daemon, this branch can no longer\
+      \ be reached, but\n   remove it anyway for hygiene.\n\nAfter these changes,\
+      \ watch-daemon will start without needing ntfy config,\nand watch-stop will\
+      \ stop watchers by PID using StateRegistry.list_active().\n"
+    success_criteria:
+    - watch-daemon starts successfully (no import error)
+    - watch-daemon does not require ntfy to be configured
+    - watch-stop stops running watchers without error
+    - watch-stop exits cleanly (exit code 0) when no daemon is running
+    - No import of ProcessStateRegistry anywhere in commands/question.py
+    - '`from agenticguidance.services.state import StateRegistry` used instead'
+  - id: P05_T10
+    name: Update user stories with new command paths
+    status: completed
+    priority: medium
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/docs/userstories/AgenticCLI/06_question_queue.yml
+    target_files:
+    - /home/code/AgenticEngineering/docs/userstories/AgenticCLI/06_question_queue.yml
+    guidance: "The file docs/userstories/AgenticCLI/06_question_queue.yml still references\n\
+      the old `agentic question` command paths throughout. The CLI was restructured\n\
+      so commands now live under `agentic plan question` (user-facing) and\n`agentic\
+      \ agent question` (agent-facing).\n\nMake the following changes to related_commands\
+      \ and acceptance_criteria strings:\n\nUS-CLI-060 (Ask a Question - agent-facing):\n\
+      \  acceptance_criteria line 10:\n    old: \"agentic question ask <text> creates\
+      \ a question...\"\n    new: \"agentic agent question ask <text> creates a question...\"\
+      \n  related_commands:\n    old: \"agentic question ask 'What testing framework\
+      \ should we use?' --severity high\"\n    new: \"agentic agent question ask 'What\
+      \ testing framework should we use?' --severity high\"\n    old: \"agentic question\
+      \ ask 'Should we add this?' --context 'Feature request from user'\"\n    new:\
+      \ \"agentic agent question ask 'Should we add this?' --context 'Feature request\
+      \ from user'\"\n\nUS-CLI-061 (List Pending Questions - user-facing):\n  acceptance_criteria:\n\
+      \    old: \"agentic question list shows pending questions by default\"\n   \
+      \ new: \"agentic plan question list shows pending questions by default\"\n \
+      \ related_commands:\n    old: \"agentic question list\"\n    new: \"agentic\
+      \ plan question list\"\n    old: \"agentic question list --status all\"\n  \
+      \  new: \"agentic plan question list --status all\"\n\nUS-CLI-062 (Answer a\
+      \ Question - user-facing):\n  acceptance_criteria:\n    old: \"agentic question\
+      \ answer <id> --text <answer> records the answer\"\n    new: \"agentic plan\
+      \ question answer <id> --text <answer> records the answer\"\n    old: \"Without\
+      \ --text, the command prompts...\"\n    new: (no change needed for this line)\n\
+      \  related_commands:\n    old: \"agentic question answer Q-20260203-143022-a1b2\
+      \ --text 'Use pytest' --confidence high\"\n    new: \"agentic plan question\
+      \ answer Q-20260203-143022-a1b2 --text 'Use pytest' --confidence high\"\n\n\
+      US-CLI-063 (Defer a Question - agent-facing):\n  acceptance_criteria:\n    old:\
+      \ \"agentic question defer <id> changes the question status to deferred\"\n\
+      \    new: \"agentic agent question defer <id> changes the question status to\
+      \ deferred\"\n  related_commands:\n    old: \"agentic question defer Q-20260203-143022-a1b2\"\
+      \n    new: \"agentic agent question defer Q-20260203-143022-a1b2\"\n\nUS-CLI-064\
+      \ (View Question Details - user-facing):\n  acceptance_criteria:\n    old: \"\
+      agentic question show <id> displays the full question YAML\"\n    new: \"agentic\
+      \ plan question show <id> displays the full question YAML\"\n  related_commands:\n\
+      \    old: \"agentic question show Q-20260203-143022-a1b2\"\n    new: \"agentic\
+      \ plan question show Q-20260203-143022-a1b2\"\n\nUS-CLI-065 (Watch Questions\
+      \ - agent-facing):\n  acceptance_criteria:\n    old: \"agentic question watch\
+      \ monitors questions/ directory for changes\"\n    new: \"agentic agent question\
+      \ watch monitors questions/ directory for changes\"\n  related_commands:\n \
+      \   old: \"agentic question watch\"\n    new: \"agentic agent question watch\"\
+      \n\nUS-CLI-066 (Run Question Watch as Daemon - agent-facing):\n  acceptance_criteria:\n\
+      \    old: \"agentic question watch-daemon starts watch in background\"\n   \
+      \ new: \"agentic agent question watch-daemon starts watch in background\"\n\
+      \  related_commands:\n    old: \"agentic question watch-daemon\"\n    new: \"\
+      agentic agent question watch-daemon\"\n\nUS-CLI-067 (Stop Question Watch Daemon\
+      \ - agent-facing):\n  acceptance_criteria:\n    old: \"agentic question watch-stop\
+      \ terminates the watch daemon\"\n    new: \"agentic agent question watch-stop\
+      \ terminates the watch daemon\"\n  related_commands:\n    old: \"agentic question\
+      \ watch-stop\"\n    new: \"agentic agent question watch-stop\"\n\nRead the full\
+      \ file first, then make all replacements. The file uses YAML list\nsyntax with\
+      \ \"- \" prefixes on related_commands entries - preserve that formatting.\n"
+    success_criteria:
+    - No 'agentic question' paths remain in 06_question_queue.yml
+    - US-CLI-060, 063, 065, 066, 067 related_commands use 'agentic agent question'
+      prefix
+    - US-CLI-061, 062, 064 related_commands use 'agentic plan question' prefix
+    - acceptance_criteria text updated to match new command paths
+  - id: P05_T11
+    name: Clean stale .pyc cache for deleted ntfy_question_agent
+    status: completed
+    priority: low
+    agent: build-python
+    target_files: []
+    guidance: "The source file agenticcli/services/ntfy_question_agent.py was deleted\
+      \ in P04_T01,\nbut its compiled bytecode cache was not removed. The stale .pyc\
+      \ file causes Python\nto emit import warnings and can confuse IDEs and test\
+      \ runners.\n\nConfirmed stale file (verified to exist):\n  /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/__pycache__/ntfy_question_agent.cpython-312.pyc\n\
+      \nRemove it with:\n  rm /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/__pycache__/ntfy_question_agent.cpython-312.pyc\n\
+      \nAfter deleting, verify no other ntfy_question_agent .pyc files remain:\n \
+      \ find /home/code/AgenticEngineering/modules/AgenticCLI -name \"ntfy_question_agent*.pyc\"\
+      \n\nThe output should be empty. If any other .pyc files are found (e.g., for\
+      \ a\ndifferent Python version), delete those too.\n\nDo not delete ntfy.cpython-*.pyc\
+      \ - ntfy.py still exists and is still used.\n"
+    success_criteria:
+    - No ntfy_question_agent*.pyc files exist anywhere under modules/AgenticCLI/
+    - ntfy.cpython-*.pyc still exists (ntfy.py is kept)
+loops:
+- type: test-fix-loop
+  max_iterations: 5
+  trigger: after P03
+  scope:
+  - /home/code/AgenticEngineering/modules/AgenticCLI
+  command: 'cd /home/code/AgenticEngineering && python3 -m pytest modules/AgenticCLI/tests/
+    -v -k "question" 2>&1
+
+    '
+  exit_criteria: All question-related tests pass (exit code 0)
+- type: test-fix-loop
+  max_iterations: 3
+  trigger: after P04
+  scope:
+  - /home/code/AgenticEngineering/modules/AgenticCLI
+  command: 'cd /home/code/AgenticEngineering && python3 -m pytest modules/AgenticCLI/tests/
+    -v 2>&1
+
+    '
+  exit_criteria: All tests pass (exit code 0), no import errors for ntfy

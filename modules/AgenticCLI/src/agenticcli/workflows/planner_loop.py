@@ -105,6 +105,74 @@ class PlannerLoopWorkflow:
 
         return None
 
+    def spawn_explore_agent(self, plan_folder: str) -> Optional[str]:
+        """Spawn an explore agent to analyze the codebase and update the plan YAML.
+
+        Args:
+            plan_folder: Plan folder name.
+
+        Returns:
+            Session ID if spawned successfully, None otherwise.
+        """
+        cmd = [
+            "agentic", "-j", "session", "spawn",
+            "--role", "explore",
+            "--plan", plan_folder,
+            "-b",
+            "--dangerously-skip-permissions",
+        ]
+
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=60,
+            cwd=self.working_dir,
+        )
+        if result.returncode != 0:
+            logger.error("Failed to spawn explore agent for %s: %s", plan_folder, result.stderr)
+            return None
+
+        try:
+            data = json.loads(result.stdout)
+            session_id = data.get("session_id")
+            logger.info("Spawned explore agent for %s: session %s", plan_folder, session_id)
+            return session_id
+        except (json.JSONDecodeError, KeyError):
+            logger.error("Could not parse explore agent spawn output for %s", plan_folder)
+            return None
+
+    def spawn_story_agent(self, plan_folder: str) -> Optional[str]:
+        """Spawn a story-generator agent for user story generation.
+
+        Args:
+            plan_folder: Plan folder name.
+
+        Returns:
+            Session ID if spawned successfully, None otherwise.
+        """
+        cmd = [
+            "agentic", "-j", "session", "spawn",
+            "--role", "story-generator",
+            "--plan", plan_folder,
+            "-b",
+            "--dangerously-skip-permissions",
+        ]
+
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=60,
+            cwd=self.working_dir,
+        )
+        if result.returncode != 0:
+            logger.error("Failed to spawn story agent for %s: %s", plan_folder, result.stderr)
+            return None
+
+        try:
+            data = json.loads(result.stdout)
+            session_id = data.get("session_id")
+            logger.info("Spawned story agent for %s: session %s", plan_folder, session_id)
+            return session_id
+        except (json.JSONDecodeError, KeyError):
+            logger.error("Could not parse story agent spawn output for %s", plan_folder)
+            return None
+
     def discover_stories(self, plan_folder: str, project: Optional[str] = None) -> list[dict]:
         """Run story discovery for a plan.
 
@@ -115,7 +183,7 @@ class PlannerLoopWorkflow:
         Returns:
             List of story dicts from CLI output.
         """
-        cmd = ["agentic", "--json", "stories", "find"]
+        cmd = ["agentic", "--json", "agent", "stories", "find"]
         if project:
             cmd.extend(["--project", project])
 
@@ -149,12 +217,11 @@ class PlannerLoopWorkflow:
         planner_role = PLAN_TYPE_TO_PLANNER.get(plan_type, "planner-build")
 
         cmd = [
-            "agentic", "session", "spawn",
+            "agentic", "-j", "session", "spawn",
             "--role", planner_role,
             "--plan", plan_folder,
             "-b",
             "--dangerously-skip-permissions",
-            "--json",
         ]
 
         result = subprocess.run(
@@ -184,12 +251,11 @@ class PlannerLoopWorkflow:
             Session ID if spawned successfully, None otherwise.
         """
         cmd = [
-            "agentic", "session", "spawn",
+            "agentic", "-j", "session", "spawn",
             "--role", "planner-reviewer",
             "--plan", plan_folder,
             "-b",
             "--dangerously-skip-permissions",
-            "--json",
         ]
 
         result = subprocess.run(
@@ -240,7 +306,7 @@ class PlannerLoopWorkflow:
         Returns:
             Status string or None if check failed.
         """
-        cmd = ["agentic", "--json", "session", "status", session_id]
+        cmd = ["agentic", "-j", "session", "status", session_id]
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=30,
         )
@@ -305,9 +371,16 @@ class PlannerLoopWorkflow:
         Returns:
             True if generation succeeded.
         """
+        # Check if MMD already exists (planner may have generated it)
+        plan_dir = self.plans_dir / plan_folder
+        existing_mmds = list(plan_dir.glob("orchestration_*.mmd")) if plan_dir.exists() else []
+        if existing_mmds:
+            logger.info("MMD already exists for %s, skipping generation", plan_folder)
+            return True
+
         # Try CLI generation first
         cmd = [
-            "agentic", "plan", "orchestration", "generate",
+            "agentic", "agent", "plan", "orchestration", "generate",
             "--plan", plan_folder,
         ]
         result = subprocess.run(
@@ -337,12 +410,11 @@ class PlannerLoopWorkflow:
             Session ID or None.
         """
         cmd = [
-            "agentic", "session", "spawn",
+            "agentic", "-j", "session", "spawn",
             "--role", "planner-orchestration",
             "--plan", plan_folder,
             "-b",
             "--dangerously-skip-permissions",
-            "--json",
         ]
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=60,
@@ -369,7 +441,7 @@ class PlannerLoopWorkflow:
             True if validation passed.
         """
         cmd = [
-            "agentic", "plan", "orchestration", "validate",
+            "agentic", "agent", "plan", "orchestration", "validate",
             "--plan", plan_folder,
         ]
 
@@ -400,7 +472,7 @@ class PlannerLoopWorkflow:
             True if update succeeded.
         """
         cmd = [
-            "agentic", "plan", "task", action,
+            "agentic", "agent", "plan", "task", action,
             task_id,
             "--plan", plan_folder,
         ]
@@ -413,6 +485,83 @@ class PlannerLoopWorkflow:
             return False
         return True
 
+    def get_plan_status(self, plan_folder: str) -> Optional[str]:
+        """Get the status of a plan based on task completion.
+
+        A plan is "completed" when all tasks are done (pending=0, completed>0),
+        matching the same logic used by `agentic plan list` to show action=archive.
+
+        Args:
+            plan_folder: Plan folder name.
+
+        Returns:
+            "completed" if all tasks are done, status field from plan YAML otherwise,
+            or None if not found.
+        """
+        import yaml
+        plan_dir = self.plans_dir / plan_folder
+        if not plan_dir.exists():
+            return None
+
+        # Check task counts from plan_build.yml (same logic as ralph._analyze_plan_file)
+        plan_build = plan_dir / "plan_build.yml"
+        if plan_build.exists():
+            try:
+                content = yaml.safe_load(plan_build.read_text()) or {}
+                pending = 0
+                completed = 0
+                for phase in content.get("phases", []):
+                    for task in phase.get("tasks", []):
+                        status = task.get("status", "pending")
+                        if status == "completed":
+                            completed += 1
+                        else:
+                            pending += 1
+                # All tasks done = plan completed (ready to archive)
+                if pending == 0 and completed > 0:
+                    return "completed"
+                # Return the status field from the YAML
+                return content.get("status")
+            except (yaml.YAMLError, Exception):
+                pass
+
+        return None
+
+    def archive_plan(self, plan_folder: str) -> bool:
+        """Archive a completed plan via API.
+
+        Handles the case where a prior archive attempt copied to completed/
+        but failed to remove the live source (interrupted operation).
+
+        Args:
+            plan_folder: Plan folder name.
+
+        Returns:
+            True if archived successfully.
+        """
+        try:
+            import shutil
+            from agenticguidance.services.plan import PlanMovementWorkflow, MoveResult
+            plan_path = self.plans_dir / plan_folder
+            workflow = PlanMovementWorkflow(plan_path)
+            result = workflow.archive_plan_folder(force=True)
+            if result.result == MoveResult.SUCCESS:
+                logger.info("Archived plan %s", plan_folder)
+                return True
+            elif result.result == MoveResult.SKIPPED and "already exists" in result.message:
+                # Prior archive copied to completed/ but didn't delete live source
+                if plan_path.exists():
+                    shutil.rmtree(plan_path)
+                    logger.info("Cleaned up stale live folder for already-archived plan %s", plan_folder)
+                    return True
+                return True
+            else:
+                logger.error("Failed to archive plan %s: %s", plan_folder, result.message)
+                return False
+        except Exception as e:
+            logger.error("Exception archiving plan %s: %s", plan_folder, e)
+            return False
+
     def compile_bootstrap_context(self, role: str = "orchestration-planning") -> Optional[dict]:
         """Bootstrap context for the overall planning session.
 
@@ -422,7 +571,7 @@ class PlannerLoopWorkflow:
         Returns:
             Context dict or None if failed.
         """
-        cmd = ["agentic", "--json", "context", "bootstrap", "--role", role]
+        cmd = ["agentic", "--json", "agent", "context", "bootstrap", "--role", role]
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=60,
             cwd=self.working_dir,
@@ -448,9 +597,11 @@ class PlannerLoopRunner:
         self,
         workflow: Optional[PlannerLoopWorkflow] = None,
         project: Optional[str] = None,
+        plan_folder: Optional[str] = None,
     ):
         self.workflow = workflow or PlannerLoopWorkflow()
         self.project = project
+        self.plan_folder = plan_folder
         self.state = {
             "iteration": 0,
             "plans_processed": [],
@@ -490,7 +641,27 @@ class PlannerLoopRunner:
             self.state["iteration"] = iteration
             logger.info("=== Planner loop iteration %d/%d ===", iteration, max_iterations)
 
-            plans = self.workflow.discover_plans_needing_orchestration()
+            # Archive completed plans so they aren't left pending
+            if not self.plan_folder:
+                for plan_dir in sorted(self.workflow.plans_dir.iterdir()):
+                    if plan_dir.is_dir() and self.workflow.get_plan_status(plan_dir.name) == "completed":
+                        logger.info("Archiving completed plan: %s", plan_dir.name)
+                        self.workflow.archive_plan(plan_dir.name)
+            elif self.workflow.get_plan_status(self.plan_folder) == "completed":
+                logger.info("Archiving single completed plan: %s", self.plan_folder)
+                self.workflow.archive_plan(self.plan_folder)
+
+            if self.plan_folder:
+                # Single-plan mode: check if plan already has MMD
+                plan_dir = self.workflow.plans_dir / self.plan_folder
+                existing_mmds = list(plan_dir.glob("orchestration_*.mmd")) if plan_dir.exists() else []
+                if existing_mmds:
+                    logger.info("Plan %s already has MMD. %s", self.plan_folder, promise)
+                    print(promise)
+                    return True
+                plans = [self.plan_folder]
+            else:
+                plans = self.workflow.discover_plans_needing_orchestration()
             if not plans:
                 logger.info("All plans have orchestration MMDs. %s", promise)
                 print(promise)
@@ -524,10 +695,45 @@ class PlannerLoopRunner:
         """
         logger.info("Processing plan: %s", plan_folder)
 
-        # 1. Discover stories (mandatory before phase determination)
-        self.workflow.discover_stories(plan_folder, project=self.project)
+        # 1. Explore: spawn explore agent to analyze codebase and update plan with current state
+        explore_session_id = self.workflow.spawn_explore_agent(plan_folder)
+        if not explore_session_id:
+            self.state["errors"].append({
+                "plan": plan_folder,
+                "error": "Failed to spawn explore agent",
+                "phase": "explore",
+            })
+            return False
 
-        # 2. Determine plan type
+        explore_status = self.workflow.wait_for_session(explore_session_id)
+        if explore_status != "completed":
+            self.state["errors"].append({
+                "plan": plan_folder,
+                "error": f"Explore agent session ended with status: {explore_status}",
+                "phase": "explore",
+            })
+            return False
+
+        # 2. Story generation: spawn story agent to generate user stories
+        story_session_id = self.workflow.spawn_story_agent(plan_folder)
+        if not story_session_id:
+            self.state["errors"].append({
+                "plan": plan_folder,
+                "error": "Failed to spawn story agent",
+                "phase": "story_generation",
+            })
+            return False
+
+        story_status = self.workflow.wait_for_session(story_session_id)
+        if story_status != "completed":
+            self.state["errors"].append({
+                "plan": plan_folder,
+                "error": f"Story agent session ended with status: {story_status}",
+                "phase": "story_generation",
+            })
+            return False
+
+        # 3. Determine plan type
         plan_type = self.workflow.determine_plan_type(plan_folder)
         if not plan_type:
             logger.warning("No plan YAML found for %s, skipping", plan_folder)
@@ -538,7 +744,7 @@ class PlannerLoopRunner:
             })
             return False
 
-        # 3. Spawn planner
+        # 4. Spawn planner (type-specific: build, test, etc.)
         session_id = self.workflow.spawn_planner(plan_folder, plan_type)
         if not session_id:
             self.state["errors"].append({
@@ -548,7 +754,7 @@ class PlannerLoopRunner:
             })
             return False
 
-        # 4. Wait for planner
+        # 5. Wait for planner
         status = self.workflow.wait_for_session(session_id)
         if status != "completed":
             self.state["errors"].append({
@@ -558,7 +764,7 @@ class PlannerLoopRunner:
             })
             return False
 
-        # 5. Review cycle
+        # 6. Review cycle
         approved, review_iters, feedback = self.workflow.run_review_cycle(plan_folder)
         if not approved:
             logger.warning("Plan %s not approved after %d reviews: %s",
@@ -570,7 +776,7 @@ class PlannerLoopRunner:
             })
             return False
 
-        # 6. Generate MMD
+        # 7. Generate MMD
         if not self.workflow.generate_mmd(plan_folder):
             self.state["errors"].append({
                 "plan": plan_folder,
@@ -579,7 +785,7 @@ class PlannerLoopRunner:
             })
             return False
 
-        # 7. Validate MMD
+        # 8. Validate MMD
         if not self.workflow.validate_mmd(plan_folder):
             self.state["errors"].append({
                 "plan": plan_folder,

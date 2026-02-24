@@ -99,7 +99,7 @@ class TestStoriesFind:
 
     def test_find_help(self, cli_runner):
         """Test stories find --help output."""
-        stdout, stderr, code = cli_runner(["stories", "find", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "find", "--help"])
         assert "find" in stdout.lower()
         assert "--project" in stdout
         assert "--changes" in stdout
@@ -110,7 +110,7 @@ class TestStoriesFind:
         original_cwd = os.getcwd()
         os.chdir(temp_dir)
         try:
-            stdout, stderr, code = cli_runner(["stories", "find"])
+            stdout, stderr, code = cli_runner(["agent", "stories", "find"])
             # Should handle gracefully
             assert code in [0, 1]
         finally:
@@ -121,7 +121,7 @@ class TestStoriesFind:
         original_cwd = os.getcwd()
         os.chdir(sample_userstories.parent)
         try:
-            stdout, stderr, code = cli_runner(["stories", "find"])
+            stdout, stderr, code = cli_runner(["agent", "stories", "find"])
             # Should find stories or report none
             assert code in [0, 1]
         finally:
@@ -129,7 +129,7 @@ class TestStoriesFind:
 
     def test_find_with_project_filter(self, cli_runner):
         """Test find with --project filter."""
-        stdout, stderr, code = cli_runner(["stories", "find", "--project", "test"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "find", "--project", "test"])
         # Should attempt to filter - may pass or fail depending on context
         assert code in [0, 1]
 
@@ -139,32 +139,32 @@ class TestStoriesStatus:
 
     def test_status_help(self, cli_runner):
         """Test stories status --help."""
-        stdout, stderr, code = cli_runner(["stories", "status", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "status", "--help"])
         assert code == 0
         assert "status" in stdout.lower()
 
     def test_status_existing_story(self, cli_runner, userstories_dir):
         """Test status for a story with test metadata."""
-        stdout, stderr, code = cli_runner(["stories", "status", "US-TEST-001"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "status", "US-TEST-001"])
         assert code == 0
         assert "US-TEST-001" in stdout
         assert "pass" in stdout.lower()
 
     def test_status_untested_story(self, cli_runner, userstories_dir):
         """Test status for a story without test metadata."""
-        stdout, stderr, code = cli_runner(["stories", "status", "US-TEST-002"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "status", "US-TEST-002"])
         assert code == 0
         assert "US-TEST-002" in stdout
         assert "untested" in stdout.lower()
 
     def test_status_not_found(self, cli_runner, userstories_dir):
         """Test status for nonexistent story."""
-        stdout, stderr, code = cli_runner(["stories", "status", "US-NONEXIST-999"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "status", "US-NONEXIST-999"])
         assert code == 1
 
     def test_status_json_output(self, cli_runner, userstories_dir):
         """Test status with JSON output."""
-        stdout, stderr, code = cli_runner(["--json", "stories", "status", "US-TEST-001"])
+        stdout, stderr, code = cli_runner(["--json", "agent", "stories", "status", "US-TEST-001"])
         assert code == 0
         data = json.loads(stdout)
         assert data["id"] == "US-TEST-001"
@@ -177,14 +177,14 @@ class TestStoriesUpdate:
 
     def test_update_help(self, cli_runner):
         """Test stories update --help."""
-        stdout, stderr, code = cli_runner(["stories", "update", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "update", "--help"])
         assert code == 0
         assert "status" in stdout.lower()
 
     def test_update_pass(self, cli_runner, userstories_dir):
         """Test updating a story to pass."""
         stdout, stderr, code = cli_runner([
-            "stories", "update", "US-TEST-002", "--status", "pass"
+            "agent", "stories", "update", "US-TEST-002", "--status", "pass"
         ])
         assert code == 0
         assert "Updated" in stdout
@@ -200,7 +200,7 @@ class TestStoriesUpdate:
     def test_update_fail_with_notes(self, cli_runner, userstories_dir):
         """Test updating a story to fail with notes."""
         stdout, stderr, code = cli_runner([
-            "stories", "update", "US-TEST-002",
+            "agent", "stories", "update", "US-TEST-002",
             "--status", "fail",
             "--notes", "Command crashed",
         ])
@@ -216,7 +216,7 @@ class TestStoriesUpdate:
     def test_update_with_plan(self, cli_runner, userstories_dir):
         """Test updating a story with plan reference."""
         stdout, stderr, code = cli_runner([
-            "stories", "update", "US-TEST-002",
+            "agent", "stories", "update", "US-TEST-002",
             "--status", "pass",
             "--plan", "260207CL_test",
         ])
@@ -231,14 +231,14 @@ class TestStoriesUpdate:
     def test_update_not_found(self, cli_runner, userstories_dir):
         """Test update for nonexistent story."""
         stdout, stderr, code = cli_runner([
-            "stories", "update", "US-NONEXIST-999", "--status", "pass"
+            "agent", "stories", "update", "US-NONEXIST-999", "--status", "pass"
         ])
         assert code == 1
 
     def test_update_json_output(self, cli_runner, userstories_dir):
         """Test update with JSON output."""
         stdout, stderr, code = cli_runner([
-            "--json", "stories", "update", "US-TEST-002", "--status", "skip"
+            "--json", "agent", "stories", "update", "US-TEST-002", "--status", "skip"
         ])
         assert code == 0
         data = json.loads(stdout)
@@ -251,12 +251,12 @@ class TestStoriesReport:
 
     def test_report_help(self, cli_runner):
         """Test stories report --help."""
-        stdout, stderr, code = cli_runner(["stories", "report", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "report", "--help"])
         assert code == 0
 
     def test_report_basic(self, cli_runner, userstories_dir):
         """Test basic report output."""
-        stdout, stderr, code = cli_runner(["stories", "report"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "report"])
         assert code == 0
         assert "Pass" in stdout
         assert "Fail" in stdout
@@ -264,13 +264,13 @@ class TestStoriesReport:
 
     def test_report_with_project(self, cli_runner, userstories_dir):
         """Test report filtered by project."""
-        stdout, stderr, code = cli_runner(["stories", "report", "--project", "TestProject"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "report", "--project", "TestProject"])
         assert code == 0
         assert "Pass" in stdout
 
     def test_report_json_output(self, cli_runner, userstories_dir):
         """Test report with JSON output."""
-        stdout, stderr, code = cli_runner(["--json", "stories", "report"])
+        stdout, stderr, code = cli_runner(["--json", "agent", "stories", "report"])
         assert code == 0
         data = json.loads(stdout)
         assert "total" in data
@@ -285,7 +285,7 @@ class TestStoriesReport:
     def test_report_json_with_project_filter(self, cli_runner, userstories_dir):
         """Test report JSON with project filter."""
         stdout, stderr, code = cli_runner([
-            "--json", "stories", "report", "--project", "TestProject"
+            "--json", "agent", "stories", "report", "--project", "TestProject"
         ])
         assert code == 0
         data = json.loads(stdout)
@@ -298,12 +298,12 @@ class TestStoriesUntested:
 
     def test_untested_help(self, cli_runner):
         """Test stories untested --help."""
-        stdout, stderr, code = cli_runner(["stories", "untested", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "untested", "--help"])
         assert code == 0
 
     def test_untested_basic(self, cli_runner, userstories_dir):
         """Test basic untested output."""
-        stdout, stderr, code = cli_runner(["stories", "untested"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "untested"])
         assert code == 0
         assert "US-TEST-002" in stdout
         # US-TEST-001 is pass, US-TEST-003 is fail, only US-TEST-002 is untested
@@ -313,14 +313,14 @@ class TestStoriesUntested:
     def test_untested_with_project(self, cli_runner, userstories_dir):
         """Test untested filtered by project."""
         stdout, stderr, code = cli_runner([
-            "stories", "untested", "--project", "TestProject"
+            "agent", "stories", "untested", "--project", "TestProject"
         ])
         assert code == 0
         assert "US-TEST-002" in stdout
 
     def test_untested_json_output(self, cli_runner, userstories_dir):
         """Test untested with JSON output."""
-        stdout, stderr, code = cli_runner(["--json", "stories", "untested"])
+        stdout, stderr, code = cli_runner(["--json", "agent", "stories", "untested"])
         assert code == 0
         data = json.loads(stdout)
         assert data["count"] == 1
@@ -420,7 +420,7 @@ class TestStoriesUpdateRegression:
     def test_update_regression(self, cli_runner, userstories_dir):
         """Test updating a story to regression status."""
         stdout, stderr, code = cli_runner([
-            "stories", "update", "US-TEST-001", "--status", "regression"
+            "agent", "stories", "update", "US-TEST-001", "--status", "regression"
         ])
         assert code == 0
         assert "Updated" in stdout
@@ -436,20 +436,20 @@ class TestStoriesUpdateRegression:
         """Test that report includes regression count."""
         # First set a story to regression
         cli_runner([
-            "stories", "update", "US-TEST-001", "--status", "regression"
+            "agent", "stories", "update", "US-TEST-001", "--status", "regression"
         ])
 
-        stdout, stderr, code = cli_runner(["stories", "report"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "report"])
         assert code == 0
         assert "Regression" in stdout
 
     def test_report_json_includes_regression(self, cli_runner, userstories_dir):
         """Test that JSON report includes regression count."""
         cli_runner([
-            "stories", "update", "US-TEST-001", "--status", "regression"
+            "agent", "stories", "update", "US-TEST-001", "--status", "regression"
         ])
 
-        stdout, stderr, code = cli_runner(["--json", "stories", "report"])
+        stdout, stderr, code = cli_runner(["--json", "agent", "stories", "report"])
         assert code == 0
         data = json.loads(stdout)
         assert "regression" in data
@@ -477,14 +477,14 @@ class TestStoriesBatchUpdate:
 
     def test_batch_update_help(self, cli_runner):
         """Test batch-update --help."""
-        stdout, stderr, code = cli_runner(["stories", "batch-update", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "batch-update", "--help"])
         assert code == 0
         assert "batch-update" in stdout.lower() or "batch" in stdout.lower()
 
     def test_batch_update_pass(self, cli_runner, plan_with_stories, userstories_dir):
         """Test batch updating all affected stories to pass."""
         stdout, stderr, code = cli_runner([
-            "stories", "batch-update",
+            "agent", "stories", "batch-update",
             "--plan", "260210XX_test_plan",
             "--status", "pass",
         ])
@@ -504,7 +504,7 @@ class TestStoriesBatchUpdate:
     def test_batch_update_with_notes(self, cli_runner, plan_with_stories, userstories_dir):
         """Test batch update with notes."""
         stdout, stderr, code = cli_runner([
-            "stories", "batch-update",
+            "agent", "stories", "batch-update",
             "--plan", "260210XX_test_plan",
             "--status", "pass",
             "--notes", "All passed via batch",
@@ -528,7 +528,7 @@ class TestStoriesBatchUpdate:
         )
 
         stdout, stderr, code = cli_runner([
-            "stories", "batch-update",
+            "agent", "stories", "batch-update",
             "--plan", "260210YY_empty",
             "--status", "pass",
         ])
@@ -537,7 +537,7 @@ class TestStoriesBatchUpdate:
     def test_batch_update_json(self, cli_runner, plan_with_stories, userstories_dir):
         """Test batch update with JSON output."""
         stdout, stderr, code = cli_runner([
-            "--json", "stories", "batch-update",
+            "--json", "agent", "stories", "batch-update",
             "--plan", "260210XX_test_plan",
             "--status", "pass",
         ])
@@ -551,7 +551,7 @@ class TestStoriesBatchUpdate:
     def test_batch_update_nonexistent_plan(self, cli_runner, userstories_dir):
         """Test batch update with plan that doesn't exist."""
         stdout, stderr, code = cli_runner([
-            "stories", "batch-update",
+            "agent", "stories", "batch-update",
             "--plan", "nonexistent_plan",
             "--status", "pass",
         ])
@@ -579,13 +579,13 @@ class TestStoriesAffected:
 
     def test_affected_help(self, cli_runner):
         """Test stories affected --help."""
-        stdout, stderr, code = cli_runner(["stories", "affected", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "stories", "affected", "--help"])
         assert code == 0
 
     def test_affected_basic(self, cli_runner, plan_with_stories, userstories_dir):
         """Test listing affected stories for a plan."""
         stdout, stderr, code = cli_runner([
-            "stories", "affected", "--plan", "260210XX_test_plan"
+            "agent", "stories", "affected", "--plan", "260210XX_test_plan"
         ])
         assert code == 0
         assert "US-TEST-001" in stdout
@@ -594,7 +594,7 @@ class TestStoriesAffected:
     def test_affected_json(self, cli_runner, plan_with_stories, userstories_dir):
         """Test affected with JSON output."""
         stdout, stderr, code = cli_runner([
-            "--json", "stories", "affected", "--plan", "260210XX_test_plan"
+            "--json", "agent", "stories", "affected", "--plan", "260210XX_test_plan"
         ])
         assert code == 0
         data = json.loads(stdout)
@@ -610,7 +610,7 @@ class TestStoriesAffected:
     def test_affected_no_plan(self, cli_runner, userstories_dir):
         """Test affected with nonexistent plan."""
         stdout, stderr, code = cli_runner([
-            "stories", "affected", "--plan", "nonexistent_plan"
+            "agent", "stories", "affected", "--plan", "nonexistent_plan"
         ])
         assert code == 1
 
@@ -618,7 +618,7 @@ class TestStoriesAffected:
         """Test that affected shows current test_status from story files."""
         # US-TEST-001 has test_status=pass in the fixture
         stdout, stderr, code = cli_runner([
-            "--json", "stories", "affected", "--plan", "260210XX_test_plan"
+            "--json", "agent", "stories", "affected", "--plan", "260210XX_test_plan"
         ])
         assert code == 0
         data = json.loads(stdout)

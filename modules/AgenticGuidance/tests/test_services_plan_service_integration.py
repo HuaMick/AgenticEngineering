@@ -85,33 +85,31 @@ class TestPlanServiceIntegration:
         assert isinstance(plan.tasks, list)
 
     def test_validate_real_plan_structure_passes(self, service, repo_root):
-        """Test validate on real plan structure passes."""
+        """Test validate on all real plan structures passes."""
         plans_dir = repo_root / "docs" / "plans" / "live"
 
         if not plans_dir.exists():
             pytest.skip("No docs/plans/live directory in repository")
 
-        # Find first valid plan folder
-        plan_folder = None
-        for d in plans_dir.iterdir():
-            if d.is_dir() and "_" in d.name and len(d.name.split("_")[0]) == 8:
-                # Check if it has plan files
-                if list(d.glob("plan_*.yml")):
-                    plan_folder = d
-                    break
+        plan_folders = [
+            d for d in plans_dir.iterdir()
+            if d.is_dir() and "_" in d.name
+            and len(d.name.split("_")[0]) == 8
+            and list(d.glob("plan_*.yml"))
+        ]
 
-        if not plan_folder:
+        if not plan_folders:
             pytest.skip("No valid plan with plan_*.yml files found")
 
-        # Validate structure
-        result = service.validate_plan_structure(plan_folder)
+        failures = []
+        for plan_folder in plan_folders:
+            result = service.validate_plan_structure(plan_folder)
+            if not result.valid:
+                errors = "; ".join(result.errors)
+                failures.append(f"{plan_folder.name}: {errors}")
 
-        # Real plans should be valid (or have only warnings, not errors)
-        if not result.valid:
-            # Show errors for debugging
-            error_msg = f"Plan {plan_folder.name} validation failed:\n"
-            error_msg += "\n".join(f"  - {e}" for e in result.errors)
-            pytest.fail(error_msg)
+        if failures:
+            pytest.fail("Plan validation failed:\n" + "\n".join(f"  - {f}" for f in failures))
 
     def test_list_completed_plans(self, service, repo_root):
         """Test list_plans returns completed plans if they exist."""
@@ -214,3 +212,61 @@ class TestPlanServiceIntegration:
         assert by_folder.plan_folder_name == folder_name
         assert by_rel_path.plan_folder_name == folder_name
         assert by_abs_path.plan_folder_name == folder_name
+
+    def test_validate_nesting_no_false_positives_on_existing_plans(
+        self, service, repo_root, tmp_path
+    ):
+        """Validate that nesting checks produce no false positives on existing plans.
+
+        Creates tmp copies of existing live plans and runs validate_plan_structure()
+        to confirm no spurious root-level-tasks errors are raised.
+        """
+        import shutil
+        import yaml
+
+        plans_dir = repo_root / "docs" / "plans" / "live"
+        if not plans_dir.exists():
+            pytest.skip("No docs/plans/live directory in repository")
+
+        plan_folders = [
+            d for d in plans_dir.iterdir()
+            if d.is_dir()
+            and "_" in d.name
+            and len(d.name.split("_")[0]) == 8
+            and list(d.glob("plan_*.yml"))
+        ]
+
+        if not plan_folders:
+            pytest.skip("No valid plan with plan_*.yml files found")
+
+        # Create a tmp repo structure and copy plans into it
+        tmp_repo = tmp_path / "repo"
+        tmp_repo.mkdir()
+        (tmp_repo / ".git").mkdir()
+        tmp_live = tmp_repo / "docs" / "plans" / "live"
+        tmp_live.mkdir(parents=True)
+
+        tmp_service = PlanService(repo_path=tmp_repo)
+
+        false_positives = []
+        for plan_folder in plan_folders:
+            dst = tmp_live / plan_folder.name
+            shutil.copytree(plan_folder, dst)
+
+            result = tmp_service.validate_plan_structure(dst)
+
+            # Check specifically for root-level task errors (nesting false positives)
+            root_task_errors = [
+                e for e in result.errors
+                if "root" in e.lower() and "task" in e.lower()
+            ]
+            if root_task_errors:
+                false_positives.append(
+                    f"{plan_folder.name}: {'; '.join(root_task_errors)}"
+                )
+
+        if false_positives:
+            pytest.fail(
+                "Nesting validation false positives on existing plans:\n"
+                + "\n".join(f"  - {fp}" for fp in false_positives)
+            )

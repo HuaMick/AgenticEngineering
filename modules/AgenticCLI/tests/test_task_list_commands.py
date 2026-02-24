@@ -178,7 +178,7 @@ class TestTaskHelp:
 
     def test_plan_task_help(self, cli_runner):
         """Test plan task --help shows all subcommands."""
-        stdout, stderr, code = cli_runner(["plan", "task", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "task", "--help"])
         assert code == 0
         # Should show available task operations
         assert "prefill" in stdout or "list" in stdout or "add" in stdout
@@ -189,14 +189,14 @@ class TestTaskList:
 
     def test_task_list_shows_tasks(self, task_cli_runner):
         """Test task list shows all tasks."""
-        stdout, stderr, code = task_cli_runner(["plan", "task", "list"])
+        stdout, stderr, code = task_cli_runner(["agent", "plan", "task", "list"])
         assert code == 0
         # Should show some task content
         assert "task" in stdout.lower() or "phase" in stdout.lower() or "01" in stdout
 
     def test_task_list_json_output(self, task_cli_runner):
         """Test task list with -j returns JSON."""
-        stdout, stderr, code = task_cli_runner(["-j", "plan", "task", "list"])
+        stdout, stderr, code = task_cli_runner(["-j", "agent", "plan", "task", "list"])
         assert code == 0
 
         # Should be valid JSON
@@ -209,7 +209,7 @@ class TestTaskList:
         """Test task list filtering by status."""
         # Try filtering by pending status
         stdout, stderr, code = task_cli_runner(
-            ["-j", "plan", "task", "list", "--status", "pending"]
+            ["-j", "agent", "plan", "task", "list", "--status", "pending"]
         )
         assert code == 0
 
@@ -227,7 +227,7 @@ class TestTaskCurrent:
 
     def test_task_current_returns_task(self, task_cli_runner):
         """Test task current returns the in-progress or next pending task."""
-        stdout, stderr, code = task_cli_runner(["-j", "plan", "task", "current"])
+        stdout, stderr, code = task_cli_runner(["-j", "agent", "plan", "task", "current"])
         assert code == 0
 
         if stdout.strip() and stdout.strip() != "null":
@@ -238,7 +238,7 @@ class TestTaskCurrent:
 
     def test_task_current_prefers_in_progress(self, task_cli_runner):
         """Test task current prefers in_progress over pending."""
-        stdout, stderr, code = task_cli_runner(["-j", "plan", "task", "current"])
+        stdout, stderr, code = task_cli_runner(["-j", "agent", "plan", "task", "current"])
         assert code == 0
 
         if stdout.strip() and stdout.strip() != "null":
@@ -253,14 +253,14 @@ class TestTaskUpdate:
 
     def test_task_update_help(self, cli_runner):
         """Test task update help shows arguments."""
-        stdout, stderr, code = cli_runner(["plan", "task", "update", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "task", "update", "--help"])
         assert code == 0
         assert "status" in stdout.lower() or "task" in stdout.lower()
 
     def test_task_update_changes_status(self, task_cli_runner, task_repo):
         """Test task update actually changes task status in file."""
         # Get current task first
-        current_result = task_cli_runner(["-j", "plan", "task", "current"])
+        current_result = task_cli_runner(["-j", "agent", "plan", "task", "current"])
         if current_result.stdout.strip() and current_result.stdout.strip() != "null":
             current_data = json.loads(current_result.stdout)
             if current_data and current_data.get("id"):
@@ -268,7 +268,7 @@ class TestTaskUpdate:
 
                 # Try to update to completed
                 update_result = task_cli_runner(
-                    ["plan", "task", "update", task_id, "--status", "completed"]
+                    ["agent", "plan", "task", "update", task_id, "--status", "completed"]
                 )
                 # Should succeed or fail gracefully
                 assert update_result.returncode in [0, 1]
@@ -279,7 +279,7 @@ class TestTaskPrefill:
 
     def test_task_prefill_help(self, cli_runner):
         """Test task prefill help shows preset option."""
-        stdout, stderr, code = cli_runner(["plan", "task", "prefill", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "task", "prefill", "--help"])
         assert code == 0
         assert "preset" in stdout.lower() or "load" in stdout.lower()
 
@@ -287,7 +287,7 @@ class TestTaskPrefill:
         """Test task prefill with a preset name."""
         # Try loading planner-build preset (may or may not exist)
         stdout, stderr, code = task_cli_runner(
-            ["plan", "task", "prefill", "--preset", "planner-build"]
+            ["agent", "plan", "task", "prefill", "--preset", "planner-build"]
         )
         # Should succeed or fail gracefully with message
         assert code == 0 or "not found" in stderr.lower() or "error" in stderr.lower()
@@ -298,13 +298,13 @@ class TestTaskAdd:
 
     def test_task_add_help(self, cli_runner):
         """Test task add help shows description option."""
-        stdout, stderr, code = cli_runner(["plan", "task", "add", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "task", "add", "--help"])
         assert code == 0
 
     def test_task_add_creates_task(self, task_cli_runner):
         """Test task add creates a new task."""
         # Add a new task
-        result = task_cli_runner(["plan", "task", "add", "New test task"])
+        result = task_cli_runner(["agent", "plan", "task", "add", "New test task"])
         # Should succeed or provide feedback
         assert result.returncode in [0, 1]
 
@@ -315,11 +315,11 @@ class TestTaskIntegration:
     def test_list_then_current_consistent(self, task_cli_runner):
         """Test that list and current return consistent data."""
         # Get list
-        list_result = task_cli_runner(["-j", "plan", "task", "list"])
+        list_result = task_cli_runner(["-j", "agent", "plan", "task", "list"])
         assert list_result.returncode == 0
 
         # Get current
-        current_result = task_cli_runner(["-j", "plan", "task", "current"])
+        current_result = task_cli_runner(["-j", "agent", "plan", "task", "current"])
         assert current_result.returncode == 0
 
         # If current has a task, it should be in the list
@@ -340,7 +340,7 @@ class TestTaskIntegration:
     def test_update_then_current_reflects_change(self, task_cli_runner):
         """Test that updating a task's status is reflected in current."""
         # Get current task
-        current_result = task_cli_runner(["-j", "plan", "task", "current"])
+        current_result = task_cli_runner(["-j", "agent", "plan", "task", "current"])
 
         if current_result.stdout.strip() and current_result.stdout.strip() != "null":
             current_task = json.loads(current_result.stdout)
@@ -352,6 +352,8 @@ class TestTaskIntegration:
                 # Update to completed
                 task_cli_runner(
                     [
+                        "agent",
+                        "agent",
                         "plan",
                         "task",
                         "update",
@@ -362,7 +364,7 @@ class TestTaskIntegration:
                 )
 
                 # Get current again - should now return different task
-                new_current_result = task_cli_runner(["-j", "plan", "task", "current"])
+                new_current_result = task_cli_runner(["-j", "agent", "plan", "task", "current"])
 
                 if (
                     new_current_result.stdout.strip()
@@ -381,13 +383,13 @@ class TestTaskStatus:
 
     def test_task_status_help(self, cli_runner):
         """Test task status help."""
-        stdout, stderr, code = cli_runner(["plan", "task", "status", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "task", "status", "--help"])
         assert code == 0
 
     def test_task_status_shows_task_details(self, task_cli_runner):
         """Test task status command shows task details."""
         # First get a valid task ID
-        list_result = task_cli_runner(["-j", "plan", "task", "list"])
+        list_result = task_cli_runner(["-j", "agent", "plan", "task", "list"])
         if list_result.stdout.strip():
             task_list = json.loads(list_result.stdout)
             if isinstance(task_list, list) and task_list:
@@ -395,7 +397,7 @@ class TestTaskStatus:
                 if isinstance(first_task, dict) and first_task.get("id"):
                     # Get status for that task
                     status_result = task_cli_runner(
-                        ["plan", "task", "status", first_task["id"]]
+                        ["agent", "plan", "task", "status", first_task["id"]]
                     )
                     # Should succeed
                     assert status_result.returncode in [0, 1]

@@ -1,0 +1,270 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-Fix false STALE status for (--print) background sessions
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260222NE_fix_false_stale_status_for_print_background_sessio/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Add print_mode flag to session data
+%%   P2: Skip tmux check for print_mode sessions
+%%   P3: Add child-process heartbeat signal for print_mode sessions
+%%   P4: Increase staleness threshold for print_mode sessions
+%%   P5: Gate auto-diagnostic spawning for print_mode sessions
+%%   P6: Write unit tests for new health check behavior
+%%   env_setup: Environment Setup
+%%   test_component: Component and Integration Testing
+%%   cleanup: Cleanup
+%%   test_audit: Test Audit
+%%   uat: UAT Validation
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> build-python, P5 -> build-python, P6 -> test-builder, env_setup -> build-python, test_component -> test-builder, cleanup -> planner-cleaning, test_audit -> test-builder, uat -> test-builder
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P5=pending, P6=pending, env_setup=pending, test_component=pending, cleanup=pending, test_audit=pending, uat=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: ADD PRINT_MODE FLAG TO SESSION DATA
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P1_T1
+
+    subgraph P1_SG ["Add print_mode flag to session data"]
+        Phase1[Enter Add print_mode flag to session data] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[P1_T1: Record print_mode flag when spawning background sessions]
+        Task_P1_1 --> Phase1Complete[Add print_mode flag to session data Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: SKIP TMUX CHECK FOR PRINT_MODE SESSIONS
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P2_T1
+
+    subgraph P2_SG ["Skip tmux check for print_mode sessions"]
+        Phase2[Enter Skip tmux check for print_mode sessions] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[P2_T1: Gate tmux signal on print_mode flag]
+        Task_P2_1 --> Phase2Complete[Skip tmux check for print_mode sessions Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: ADD CHILD-PROCESS HEARTBEAT SIGNAL FOR PRINT_MODE SESSIONS
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P3_T1, P3_T2
+
+    subgraph P3_SG ["Add child-process heartbeat signal for print_mode sessions"]
+        Phase3[Enter Add child-process heartbeat signal for print_mode sessions] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[P3_T1: Implement _check_child_processes helper]
+        Task_P3_1 --> Task_P3_2[P3_T2: Add child_processes signal to health check for print_mode sessions]
+        Task_P3_2 --> Phase3Complete[Add child-process heartbeat signal for print_mode sessions Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: INCREASE STALENESS THRESHOLD FOR PRINT_MODE SESSIONS
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P4_T1
+
+    subgraph P4_SG ["Increase staleness threshold for print_mode sessions"]
+        Phase4[Enter Increase staleness threshold for print_mode sessions] --> SpawnAgent4[Spawn build-python Agent]
+        SpawnAgent4 --> Task_P4_1[P4_T1: Use higher stale threshold for print_mode sessions]
+        Task_P4_1 --> Phase4Complete[Increase staleness threshold for print_mode sessions Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: GATE AUTO-DIAGNOSTIC SPAWNING FOR PRINT_MODE SESSIONS
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P5_T1
+
+    subgraph P5_SG ["Gate auto-diagnostic spawning for print_mode sessions"]
+        Phase5[Enter Gate auto-diagnostic spawning for print_mode sessions] --> SpawnAgent5[Spawn build-python Agent]
+        SpawnAgent5 --> Task_P5_1[P5_T1: Prevent auto-diagnostic spawn when PID has active children]
+        Task_P5_1 --> Phase5Complete[Gate auto-diagnostic spawning for print_mode sessions Complete]
+    end
+
+    Phase5Complete --> Phase6
+
+    %% ========================================
+    %% PHASE 6: WRITE UNIT TESTS FOR NEW HEALTH CHECK BEHAVIOR
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing6_SG ["Write unit tests for new health check behavior (Test-Fix-Loop)"]
+        Phase6[Enter Write unit tests for new health check behavior] --> SpawnTestBuilder6[Spawn test-builder Agent]
+        SpawnTestBuilder6 --> RunTests6[Run Tests]
+        RunTests6 --> TestsPassed6{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed6 -- "No: Fix in Iteration" --> SpawnBuilderFix6[Spawn builder Agent for Fixes]
+        SpawnBuilderFix6 --> ApplyFixes6[Apply Implementation Fixes]
+        ApplyFixes6 --> RunTests6
+
+        %% Success path
+        TestsPassed6 -- "Yes: All Pass" --> Phase6Complete[Write unit tests for new health check behavior Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed6 -- "No: Escalate" --> CheckIterations6{Max Iterations Reached?}
+    CheckIterations6 -- "No" --> SpawnTestBuilder6
+    CheckIterations6 -- "Yes" --> EscalateTests6((Ask User: Test Failures Persist))
+
+    Phase6Complete --> Phase7
+
+    %% ========================================
+    %% PHASE 7: ENVIRONMENT SETUP
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: env_001, env_002
+
+    subgraph env_setup_SG ["Environment Setup"]
+        Phase7[Enter Environment Setup] --> SpawnAgent7[Spawn build-python Agent]
+        SpawnAgent7 --> Task_env_setup_1[env_001: Install latest AgenticCLI]
+        Task_env_setup_1 --> Task_env_setup_2[env_002: Verify build changes are present]
+        Task_env_setup_2 --> Phase7Complete[Environment Setup Complete]
+    end
+
+    Phase7Complete --> Phase8
+
+    %% ========================================
+    %% PHASE 8: COMPONENT AND INTEGRATION TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing8_SG ["Component and Integration Testing (Test-Fix-Loop)"]
+        Phase8[Enter Component and Integration Testing] --> SpawnTestBuilder8[Spawn test-builder Agent]
+        SpawnTestBuilder8 --> RunTests8[Run Tests]
+        RunTests8 --> TestsPassed8{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed8 -- "No: Fix in Iteration" --> SpawnBuilderFix8[Spawn builder Agent for Fixes]
+        SpawnBuilderFix8 --> ApplyFixes8[Apply Implementation Fixes]
+        ApplyFixes8 --> RunTests8
+
+        %% Success path
+        TestsPassed8 -- "Yes: All Pass" --> Phase8Complete[Component and Integration Testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed8 -- "No: Escalate" --> CheckIterations8{Max Iterations Reached?}
+    CheckIterations8 -- "No" --> SpawnTestBuilder8
+    CheckIterations8 -- "Yes" --> EscalateTests8((Ask User: Test Failures Persist))
+
+    Phase8Complete --> Phase9
+
+    %% ========================================
+    %% PHASE 9: CLEANUP
+    %% ========================================
+    %% AGENT_ROUTING: planner-cleaning agent
+    %% Tasks: clean_001
+
+    subgraph cleanup_SG ["Cleanup"]
+        Phase9[Enter Cleanup] --> SpawnAgent9[Spawn planner-cleaning Agent]
+        SpawnAgent9 --> Task_cleanup_1[clean_001: Remove test artifacts]
+        Task_cleanup_1 --> Phase9Complete[Cleanup Complete]
+    end
+
+    Phase9Complete --> Phase10
+
+    %% ========================================
+    %% PHASE 10: TEST AUDIT
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing10_SG ["Test Audit (Test-Fix-Loop)"]
+        Phase10[Enter Test Audit] --> SpawnTestBuilder10[Spawn test-builder Agent]
+        SpawnTestBuilder10 --> RunTests10[Run Tests]
+        RunTests10 --> TestsPassed10{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed10 -- "No: Fix in Iteration" --> SpawnBuilderFix10[Spawn builder Agent for Fixes]
+        SpawnBuilderFix10 --> ApplyFixes10[Apply Implementation Fixes]
+        ApplyFixes10 --> RunTests10
+
+        %% Success path
+        TestsPassed10 -- "Yes: All Pass" --> Phase10Complete[Test Audit Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed10 -- "No: Escalate" --> CheckIterations10{Max Iterations Reached?}
+    CheckIterations10 -- "No" --> SpawnTestBuilder10
+    CheckIterations10 -- "Yes" --> EscalateTests10((Ask User: Test Failures Persist))
+
+    Phase10Complete --> Phase11
+
+    %% ========================================
+    %% PHASE 11: UAT VALIDATION
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing11_SG ["UAT Validation (Test-Fix-Loop)"]
+        Phase11[Enter UAT Validation] --> SpawnTestBuilder11[Spawn test-builder Agent]
+        SpawnTestBuilder11 --> RunTests11[Run Tests]
+        RunTests11 --> TestsPassed11{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed11 -- "No: Fix in Iteration" --> SpawnBuilderFix11[Spawn builder Agent for Fixes]
+        SpawnBuilderFix11 --> ApplyFixes11[Apply Implementation Fixes]
+        ApplyFixes11 --> RunTests11
+
+        %% Success path
+        TestsPassed11 -- "Yes: All Pass" --> Phase11Complete[UAT Validation Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed11 -- "No: Escalate" --> CheckIterations11{Max Iterations Reached?}
+    CheckIterations11 -- "No" --> SpawnTestBuilder11
+    CheckIterations11 -- "Yes" --> EscalateTests11((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase11Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests6,EscalateTests8,EscalateTests10,EscalateTests11 userpoint

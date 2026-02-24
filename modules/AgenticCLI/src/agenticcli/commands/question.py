@@ -10,130 +10,69 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Module-level reply poller singleton (started on first question ask)
-_reply_poller: "NtfyReplyPoller | None" = None
+
+def _get_repo_root() -> Path:
+    """Get the git repository root."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        )
+        return Path(result.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return Path.cwd()
+
+
+def _launch_tui_in_tmux_window(repo_root: Path, refresh: int) -> None:
+    """Launch or focus the 'questions' tmux window with the TUI inside."""
+    import subprocess
+
+    WINDOW_NAME = "questions"
+
+    # Check if 'questions' window already exists
+    result = subprocess.run(
+        ["tmux", "list-windows", "-F", "#{window_name}"],
+        capture_output=True, text=True,
+    )
+    existing = result.stdout.strip().split("\n") if result.returncode == 0 else []
+
+    if WINDOW_NAME in existing:
+        # Switch to existing window
+        subprocess.run(["tmux", "select-window", "-t", WINDOW_NAME])
+    else:
+        # Create new window running the TUI (with --no-tmux-window to avoid recursion)
+        subprocess.run([
+            "tmux", "new-window", "-n", WINDOW_NAME,
+            f"agentic plan question dashboard --no-tmux-window --refresh {refresh}",
+        ])
 
 
 def cmd_dashboard(args, ctx=None):
-    """Display a live auto-refreshing dashboard of pending questions.
+    """Launch the interactive Question TUI dashboard.
 
-    Scans docs/plans/live/*/questions/pending/*.yml for pending questions
-    and displays them in a Rich.Live table that updates every N seconds.
-
-    Args:
-        args: Parsed command arguments with refresh interval.
-        ctx: Optional CLIContext.
+    If running in tmux, opens a dedicated 'questions' window.
+    Otherwise, runs the TUI directly in the current terminal.
     """
     import subprocess
-    import time
-    from agenticcli.console import console
-    from rich.live import Live
-    from rich.table import Table
+    from agenticcli.tui.question_tui import QuestionTUI
 
-    refresh_seconds = getattr(args, "refresh", 10)
+    refresh_seconds = getattr(args, "refresh", 5)
+    no_tmux_window = getattr(args, "no_tmux_window", False)
+    repo_root = _get_repo_root()
 
-    def get_repo_root() -> Path:
-        """Get the git repository root."""
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return Path(result.stdout.strip())
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return Path.cwd()
-
-    def build_table() -> Table:
-        """Build the questions dashboard table."""
-        table = Table(show_header=True, header_style="bold cyan", title="Pending Questions")
-        table.add_column("Plan", style="yellow", width=20)
-        table.add_column("ID", width=10)
-        table.add_column("Severity", width=10)
-        table.add_column("Question", style="dim", no_wrap=False)
-
-        repo_root = get_repo_root()
-        live_plans_dir = repo_root / "docs" / "plans" / "live"
-
-        if not live_plans_dir.exists():
-            table.add_row("[dim]No live plans directory[/dim]", "", "", "")
-            return table
-
-        questions = []
-
-        # Scan all live plans for pending questions
-        for plan_dir in live_plans_dir.iterdir():
-            if not plan_dir.is_dir():
-                continue
-
-            pending_dir = plan_dir / "questions" / "pending"
-            if not pending_dir.exists():
-                continue
-
-            for question_file in pending_dir.glob("*.yml"):
-                try:
-                    import yaml
-                    with open(question_file) as f:
-                        question_data = yaml.safe_load(f)
-
-                    if not question_data:
-                        continue
-
-                    questions.append({
-                        "plan": plan_dir.name,
-                        "id": question_data.get("id", "N/A"),
-                        "severity": question_data.get("severity", "low"),
-                        "question": question_data.get("question", ""),
-                    })
-                except Exception:
-                    continue
-
-        if not questions:
-            table.add_row("[dim]No pending questions[/dim]", "", "", "")
-            return table
-
-        # Color-code severity
-        severity_colors = {
-            "critical": "red",
-            "high": "yellow",
-            "medium": "cyan",
-            "low": "dim",
-        }
-
-        # Sort by severity (critical > high > medium > low)
-        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-        questions.sort(key=lambda q: severity_order.get(q["severity"], 4))
-
-        for q in questions:
-            plan_name = q["plan"]
-            if len(plan_name) > 18:
-                plan_name = plan_name[:18] + ".."
-
-            question_text = q["question"].replace("\n", " ")
-            if len(question_text) > 60:
-                question_text = question_text[:60] + "..."
-
-            severity = q["severity"]
-            severity_color = severity_colors.get(severity, "white")
-            severity_display = f"[{severity_color}]{severity.upper()}[/{severity_color}]"
-
-            table.add_row(
-                plan_name,
-                q["id"],
-                severity_display,
-                question_text,
-            )
-
-        return table
-
+    # Check if we should launch in a tmux window
     try:
-        with Live(build_table(), console=console, refresh_per_second=1/refresh_seconds) as live:
-            while True:
-                time.sleep(refresh_seconds)
-                live.update(build_table())
-    except KeyboardInterrupt:
-        console.print("\n[dim]Dashboard stopped[/dim]")
+        from agenticcli.utils.tmux import is_in_tmux
+        in_tmux = is_in_tmux()
+    except ImportError:
+        in_tmux = False
+
+    if in_tmux and not no_tmux_window:
+        _launch_tui_in_tmux_window(repo_root, refresh_seconds)
+    else:
+        tui = QuestionTUI(repo_root=repo_root, refresh_seconds=refresh_seconds)
+        tui.run()
 
 
 def handle(args, ctx=None):
@@ -332,6 +271,11 @@ def cmd_list(args, ctx=None):
     # Get questions based on status filter
     if status_filter == "pending":
         questions = service.list_pending_questions()
+        # list_pending_questions() returns all files in pending/ including
+        # deferred ones (status="deferred"). Filter to truly pending only.
+        questions = [q for q in questions if q.status == "pending"]
+        _SEVERITY_ORDER = {"blocking": 0, "high": 1, "medium": 2, "low": 3}
+        questions.sort(key=lambda q: (_SEVERITY_ORDER.get(q.severity, 9), q.created_at))
     elif status_filter == "answered":
         # List answered questions (read from answered/ directory)
         questions = []
@@ -365,7 +309,8 @@ def cmd_list(args, ctx=None):
                     questions.append(question)
                 except Exception:
                     continue
-        questions.sort(key=lambda q: q.created_at)
+        _SEVERITY_ORDER = {"blocking": 0, "high": 1, "medium": 2, "low": 3}
+        questions.sort(key=lambda q: (_SEVERITY_ORDER.get(q.severity, 9), q.created_at))
     else:
         from agenticcli.console import print_error
 
@@ -397,6 +342,7 @@ def cmd_list(args, ctx=None):
     table.add_column("Severity")
     table.add_column("Status")
     table.add_column("Asked By")
+    table.add_column("Created", style="dim")
 
     for question in questions:
         # Format ID (truncate for display)
@@ -427,12 +373,16 @@ def cmd_list(args, ctx=None):
         else:
             status_str = status
 
+        from datetime import datetime
+
+        created_str = datetime.fromtimestamp(question.created_at).strftime("%Y-%m-%d %H:%M")
         table.add_row(
             q_id,
             text,
             severity_str,
             status_str,
             question.asked_by,
+            created_str,
         )
 
     console.print(table)
@@ -471,9 +421,24 @@ def cmd_show(args, ctx=None):
         print_error(f"Question not found: {question_id}")
         sys.exit(1)
 
+    # Load companion answer record to get confidence
+    answer_confidence = None
+    if question.status == "answered":
+        try:
+            from agenticguidance.models.question import yaml_to_answer
+
+            answer_file = plan_path / "questions" / "answered" / f"{question_id}.yml"
+            if answer_file.exists():
+                answer_obj = yaml_to_answer(answer_file.read_text(encoding="utf-8"))
+                answer_confidence = answer_obj.confidence
+        except Exception:
+            pass
+
     # JSON output
     if is_json_output():
-        print_json(question.to_dict())
+        data = question.to_dict()
+        data["confidence"] = answer_confidence
+        print_json(data)
         return
 
     # Rich panel output
@@ -515,6 +480,8 @@ def cmd_show(args, ctx=None):
         if question.answered_by:
             console.print(f"[bold]Answered by:[/bold] {question.answered_by}")
         console.print(Panel(question.answer, title="Answer", border_style="green"))
+        if answer_confidence:
+            console.print(f"[bold]Confidence:[/bold] {answer_confidence}")
 
     console.print()
 
@@ -697,7 +664,7 @@ def cmd_ask(args, ctx=None):
             text=text,
             context=context,
             severity=severity,
-            asked_by="human",
+            asked_by="agent",
             suggested_answers=suggested_answers,
         )
     except ValueError as e:
@@ -713,8 +680,12 @@ def cmd_ask(args, ctx=None):
     except Exception as e:
         logger.debug("Auto-notify on ask failed: %s", e)
 
-    # Auto-start reply poller so answers from phone are picked up
-    _ensure_reply_poller(plan_path)
+    # Notify tmux question window that a new question is waiting
+    try:
+        from agenticcli.utils.tmux_notify import notify_question_window
+        notify_question_window(question_count=1)
+    except Exception:
+        pass
 
     # Output
     if is_json_output():
@@ -844,7 +815,13 @@ def cmd_watch(args, ctx=None):
             except Exception as e:
                 console.print(f"[dim]Could not refresh tmux: {e}[/dim]")
 
-            # Send ntfy push notifications for new questions
+            # Notify tmux question window and send ntfy push notification
+            try:
+                from agenticcli.utils.tmux_notify import notify_question_window
+                notify_question_window(len(pending))
+            except Exception as e:
+                logger.debug("notify_question_window error: %s", e)
+
             try:
                 _send_ntfy_if_configured(plan_path, pending)
             except Exception as e:
@@ -852,20 +829,6 @@ def cmd_watch(args, ctx=None):
 
         except Exception as e:
             console.print(f"[red]Error processing question change: {e}[/red]")
-
-    # Start ntfy reply poller if configured
-    ntfy_config = _get_ntfy_config()
-    poller = None
-    if ntfy_config:
-        from agenticcli.services.question_watcher import NtfyReplyPoller
-
-        poller = NtfyReplyPoller(
-            plan_path=plan_path,
-            topic=ntfy_config["topic"],
-            server=ntfy_config.get("server", "https://ntfy.sh"),
-        )
-        poller.start()
-        console.print("[green]ntfy reply polling active[/green]")
 
     # Start watcher
     try:
@@ -875,8 +838,6 @@ def cmd_watch(args, ctx=None):
         # Set up signal handler for clean shutdown
         def signal_handler(sig, frame):
             console.print("\n[yellow]Stopping watcher...[/yellow]")
-            if poller:
-                poller.stop()
             stop_question_watcher(observer)
             sys.exit(0)
 
@@ -889,12 +850,31 @@ def cmd_watch(args, ctx=None):
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Stopping watcher...[/yellow]")
-        if poller:
-            poller.stop()
         stop_question_watcher(observer)
     except Exception as e:
         print_error(f"Watcher error: {e}")
         sys.exit(1)
+
+
+def _get_watcher_pidfile(plan_path: Path) -> Path:
+    """Get pidfile path for a plan's question watcher daemon.
+
+    Args:
+        plan_path: Path to plan folder.
+
+    Returns:
+        Path to the pidfile (e.g. ~/.config/agenticguidance/watchers/<plan_name>.pid).
+    """
+    import os as _os
+
+    xdg_config = _os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config:
+        config_dir = Path(xdg_config) / "agenticguidance"
+    else:
+        config_dir = Path.home() / ".config" / "agenticguidance"
+    piddir = config_dir / "watchers"
+    piddir.mkdir(parents=True, exist_ok=True)
+    return piddir / f"{plan_path.name}.pid"
 
 
 def cmd_watch_daemon(args, ctx=None):
@@ -911,46 +891,20 @@ def cmd_watch_daemon(args, ctx=None):
     started, reason = _ensure_watch_daemon(plan_path)
 
     if started:
-        # Retrieve PID from state registry for the success message
-        try:
-            from agenticcli.services.state import ProcessStateRegistry
-
-            registry = ProcessStateRegistry()
-            state_key = f"question_watcher_{plan_path.name}"
-            state = registry.get_state(state_key)
-            pid = state.get("pid", "unknown") if state else "unknown"
-        except Exception:
-            pid = "unknown"
-
+        pidfile = _get_watcher_pidfile(plan_path)
+        pid = pidfile.read_text().strip() if pidfile.exists() else "unknown"
         print_success(f"Question watcher started in background (PID: {pid})")
         print(f"Plan: {plan_path}")
         print("Use 'agentic question watch-stop' to stop the watcher")
 
     elif reason == "already_running":
-        # Retrieve PID for the warning message
-        try:
-            from agenticcli.services.state import ProcessStateRegistry
-
-            registry = ProcessStateRegistry()
-            state_key = f"question_watcher_{plan_path.name}"
-            state = registry.get_state(state_key)
-            pid = state.get("pid", "unknown") if state else "unknown"
-        except Exception:
-            pid = "unknown"
-
+        pidfile = _get_watcher_pidfile(plan_path)
+        pid = pidfile.read_text().strip() if pidfile.exists() else "unknown"
         print_warning(f"Question watcher already running for {plan_path.name} (PID: {pid})")
         print("Use 'agentic question watch-stop' to stop the existing watcher first.")
         sys.exit(1)
 
-    elif reason == "ntfy_not_configured":
-        print_error(
-            "ntfy is not configured. "
-            "Set ntfy.topic in your preferences to enable the watch daemon."
-        )
-        sys.exit(1)
-
     else:
-        # reason == "error"
         print_error("Failed to start daemon. Check logs for details.")
         sys.exit(1)
 
@@ -965,54 +919,46 @@ def cmd_watch_stop(args, ctx=None):
 
     from agenticcli.console import print_error, print_success, print_warning
 
-    # Check if state tracking is available
-    try:
-        from agenticcli.services.state import ProcessStateRegistry
-    except ImportError:
-        print_error(
-            "ProcessStateRegistry not available. "
-            "Cannot stop daemon without state service."
-        )
-        sys.exit(1)
+    # Find all watcher pidfiles
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config:
+        config_dir = Path(xdg_config) / "agenticguidance"
+    else:
+        config_dir = Path.home() / ".config" / "agenticguidance"
+    piddir = config_dir / "watchers"
 
-    # Initialize state registry
-    registry = ProcessStateRegistry()
+    if not piddir.exists():
+        print_warning("No question watcher daemons are running")
+        sys.exit(0)
 
-    # List all question watcher processes
-    all_states = registry.list_processes()
-    watcher_states = [
-        (key, state)
-        for key, state in all_states.items()
-        if key.startswith("question_watcher_")
-    ]
-
-    if not watcher_states:
+    pidfiles = list(piddir.glob("*.pid"))
+    if not pidfiles:
         print_warning("No question watcher daemons are running")
         sys.exit(0)
 
     # Stop all watchers
     stopped_count = 0
-    for state_key, state in watcher_states:
-        if state.get("status") != "running":
-            continue
-
-        pid = state.get("pid")
-        plan_name = state.get("metadata", {}).get("plan_name", "unknown")
+    for pidfile in pidfiles:
+        plan_name = pidfile.stem
 
         try:
-            # Send SIGTERM to process
+            pid = int(pidfile.read_text().strip())
+        except (ValueError, OSError):
+            pidfile.unlink(missing_ok=True)
+            continue
+
+        try:
             os.kill(pid, signal.SIGTERM)
-            registry.mark_stopped(state_key)
             print_success(f"Stopped watcher for {plan_name} (PID: {pid})")
             stopped_count += 1
         except ProcessLookupError:
-            # Process already dead, just clean up state
-            registry.mark_stopped(state_key)
             print_warning(f"Watcher for {plan_name} (PID: {pid}) was not running")
         except PermissionError:
             print_error(f"Permission denied to stop PID {pid} for {plan_name}")
         except Exception as e:
             print_error(f"Failed to stop watcher for {plan_name}: {e}")
+        finally:
+            pidfile.unlink(missing_ok=True)
 
     if stopped_count == 0:
         print_warning("No running watchers were stopped")
@@ -1023,61 +969,44 @@ def cmd_watch_stop(args, ctx=None):
 def _ensure_watch_daemon(plan_path: Path) -> tuple[bool, str]:
     """Idempotently ensure a question watch-daemon is running for a plan.
 
-    Checks ntfy configuration, verifies no existing daemon is alive, and
-    starts a background watcher process if needed. Safe to call from any
-    context — never raises to the caller.
+    Verifies no existing daemon is alive, and starts a background watcher
+    process if needed. Uses PID files for daemon tracking. Safe to call
+    from any context — never raises to the caller.
 
     Args:
         plan_path: Path to plan folder.
 
     Returns:
         Tuple of (started, reason) where reason is one of:
-        "started", "already_running", "ntfy_not_configured", "error".
+        "started", "already_running", "error".
     """
     import os
     import subprocess
 
     try:
-        # 1. Check ntfy configuration
-        config = _get_ntfy_config()
-        if not config:
-            logger.debug("_ensure_watch_daemon: ntfy not configured, skipping")
-            return (False, "ntfy_not_configured")
+        pidfile = _get_watcher_pidfile(plan_path)
 
-        # 2. Import state registry
-        try:
-            from agenticcli.services.state import ProcessStateRegistry
-        except ImportError:
-            logger.debug("_ensure_watch_daemon: ProcessStateRegistry not available")
-            return (False, "error")
+        # Check for existing running watcher
+        if pidfile.exists():
+            try:
+                pid = int(pidfile.read_text().strip())
+                os.kill(pid, 0)
+                # PID is alive — daemon already running
+                logger.debug(
+                    "_ensure_watch_daemon: already running for %s (PID %d)",
+                    plan_path.name,
+                    pid,
+                )
+                return (False, "already_running")
+            except (ProcessLookupError, OSError, ValueError):
+                # PID is dead or invalid — clean up stale pidfile
+                logger.info(
+                    "_ensure_watch_daemon: stale pidfile for %s, cleaning up",
+                    plan_path.name,
+                )
+                pidfile.unlink(missing_ok=True)
 
-        registry = ProcessStateRegistry()
-        state_key = f"question_watcher_{plan_path.name}"
-
-        # 3. Check for existing running watcher
-        existing_state = registry.get_state(state_key)
-        if existing_state and existing_state.get("status") == "running":
-            pid = existing_state.get("pid")
-            if pid:
-                try:
-                    os.kill(pid, 0)
-                    # PID is alive — daemon already running
-                    logger.debug(
-                        "_ensure_watch_daemon: already running for %s (PID %d)",
-                        plan_path.name,
-                        pid,
-                    )
-                    return (False, "already_running")
-                except (ProcessLookupError, OSError):
-                    # PID is dead — clean up stale state before proceeding
-                    logger.info(
-                        "_ensure_watch_daemon: stale PID %d for %s, cleaning up",
-                        pid,
-                        plan_path.name,
-                    )
-                    registry.mark_stopped(state_key)
-
-        # 4. Start daemon via subprocess (same pattern as cmd_watch_daemon)
+        # Start daemon via subprocess
         cmd = [
             "nohup",
             "python3",
@@ -1102,16 +1031,8 @@ def _ensure_watch_daemon(plan_path: Path) -> tuple[bool, str]:
             start_new_session=True,
         )
 
-        # 5. Register in state registry
-        registry.register_process(
-            state_key,
-            process.pid,
-            metadata={
-                "plan_path": str(plan_path),
-                "plan_name": plan_path.name,
-                "command": "question watch-daemon",
-            },
-        )
+        # Write pidfile for daemon tracking
+        pidfile.write_text(str(process.pid))
 
         logger.info(
             "_ensure_watch_daemon: started for %s (PID %d)",
@@ -1123,40 +1044,6 @@ def _ensure_watch_daemon(plan_path: Path) -> tuple[bool, str]:
     except Exception as e:
         logger.debug("_ensure_watch_daemon: error: %s", e)
         return (False, "error")
-
-
-def _ensure_reply_poller(plan_path: Path) -> None:
-    """Start an NtfyReplyPoller if ntfy is configured and one isn't running.
-
-    The poller runs in a daemon thread and auto-answers questions when the
-    user replies via ntfy from their phone. Only one poller is started per
-    process (module-level singleton).
-
-    Args:
-        plan_path: Path to plan folder.
-    """
-    global _reply_poller
-
-    # Already running
-    if _reply_poller is not None and _reply_poller._running:
-        return
-
-    config = _get_ntfy_config()
-    if not config:
-        return
-
-    try:
-        from agenticcli.services.question_watcher import NtfyReplyPoller
-
-        _reply_poller = NtfyReplyPoller(
-            plan_path=plan_path,
-            topic=config["topic"],
-            server=config.get("server", "https://ntfy.sh"),
-        )
-        _reply_poller.start()
-        logger.debug("Auto-started reply poller for %s", plan_path.name)
-    except Exception as e:
-        logger.debug("Failed to start reply poller: %s", e)
 
 
 def _get_ntfy_config() -> dict | None:
@@ -1195,11 +1082,10 @@ def _get_ntfy_config() -> dict | None:
 
 
 def _send_ntfy_if_configured(plan_path: Path, questions: list) -> None:
-    """Send ntfy notification for the first unsent pending question only.
+    """Send a simple ntfy push notification for pending questions.
 
-    Uses NtfyQuestionAgent for sequential delivery. Only sends a new
-    question notification if no question is currently active (waiting
-    for user reply).
+    Notification-only: tells the user questions are waiting. The user
+    answers questions in the TUI, not via ntfy replies.
 
     Args:
         plan_path: Path to plan folder.
@@ -1210,79 +1096,33 @@ def _send_ntfy_if_configured(plan_path: Path, questions: list) -> None:
         if not config:
             return
 
-        from agenticcli.services.ntfy_question_agent import (
-            NtfyQuestionAgent,
-            load_state,
-        )
+        from agenticcli.utils.ntfy import send_ntfy
 
-        state = load_state(plan_path)
-
-        # If there's already a current question, don't send another
-        if state.current_question_id:
-            logger.debug("ntfy: current question active (%s), skipping",
-                         state.current_question_id)
-            return
-
-        # Sort pending by created_at, send only the first
         pending = [q for q in questions if getattr(q, "status", "") == "pending"]
         if not pending:
             return
 
-        pending.sort(key=lambda q: getattr(q, "created_at", 0))
+        count = len(pending)
+        plan_name = plan_path.name if plan_path else "unknown"
+        title = f"{count} question{'s' if count > 1 else ''} pending"
+        body = f"Plan: {plan_name} — open TUI to answer"
 
-        agent = NtfyQuestionAgent(plan_path, config["topic"], config["server"])
-        agent._handle_next(state)
-
+        send_ntfy(
+            topic=config["topic"],
+            title=title,
+            message=body,
+            server=config.get("server", "https://ntfy.sh"),
+        )
     except Exception as e:
         logger.debug("ntfy notification error: %s", e)
 
 
 def _auto_refresh_tmux_notifications(plan_path: Path):
-    """Helper to auto-refresh tmux notifications after question changes.
-
-    Loads current pending questions and updates the tmux notification pane
-    if running in a tmux session.
-
-    Args:
-        plan_path: Path to plan folder.
-    """
+    """Notify user about pending questions via tmux status bar."""
     try:
-        from agenticcli.utils.tmux import is_in_tmux
-
-        if not is_in_tmux():
-            return
-
-        # Load current pending questions
         service = _get_service(plan_path)
-        pending_questions = service.list_pending_questions()
-
-        # Convert to dict format expected by notify function
-        questions_data = [q.to_dict() for q in pending_questions]
-
-        # Import notify function
-        try:
-            from agenticcli.utils.tmux_notify import notify_questions_in_tmux
-
-            # Call notification function
-            success = notify_questions_in_tmux(plan_path, questions_data)
-
-            if not success:
-                # Notification failed but don't raise error
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.debug("Failed to update tmux notification (not in tmux or error)")
-
-        except ImportError:
-            # tmux_notify module not available, skip silently
-            pass
-        except Exception as e:
-            # Log but don't fail on notification errors
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to refresh tmux notifications: {e}")
-
-    except Exception as e:
-        # Silently ignore if tmux utils not available or other errors
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.debug(f"Could not auto-refresh tmux notifications: {e}")
+        pending = service.list_pending_questions()
+        from agenticcli.utils.tmux_notify import notify_question_window
+        notify_question_window(question_count=len(pending))
+    except Exception:
+        pass

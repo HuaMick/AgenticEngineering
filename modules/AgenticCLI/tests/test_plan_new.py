@@ -139,12 +139,12 @@ class TestPlanNew:
 
     def test_new_requires_objective(self, cli_runner):
         """Test 'plan new' with no args shows error."""
-        stdout, stderr, code = cli_runner(["plan", "new"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "new"])
         assert code != 0
 
     def test_new_help_shows_all_args(self, cli_runner):
         """Test 'plan new --help' lists all expected arguments."""
-        stdout, stderr, code = cli_runner(["plan", "new", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "new", "--help"])
         assert code == 0
         combined = stdout + stderr
         assert "--branch" in combined or "-b" in combined
@@ -161,7 +161,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "Test feature", "--branch", branch]
+            ["agent", "plan", "new", "Test feature", "--branch", branch]
         )
 
         assert code == 0
@@ -179,7 +179,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "Add dark mode"]
+            ["agent", "plan", "new", "Add dark mode"]
         )
 
         assert code == 0
@@ -192,7 +192,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "Some objective", "--branch", "my-custom-branch"]
+            ["agent", "plan", "new", "Some objective", "--branch", "my-custom-branch"]
         )
 
         assert code == 0
@@ -203,7 +203,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "JSON test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "JSON test", "--branch", branch]
         )
 
         assert code == 0
@@ -220,7 +220,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "Execute test", "--branch", branch, "--execute"]
+            ["-j", "agent", "plan", "new", "Execute test", "--branch", branch, "--execute"]
         )
 
         assert code == 0
@@ -233,7 +233,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "No execute test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "No execute test", "--branch", branch]
         )
 
         assert code == 0
@@ -246,7 +246,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "Turns test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "Turns test", "--branch", branch]
         )
 
         assert code == 0
@@ -259,7 +259,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "Turns custom", "--branch", branch, "--max-turns", "50"]
+            ["-j", "agent", "plan", "new", "Turns custom", "--branch", branch, "--max-turns", "50"]
         )
 
         assert code == 0
@@ -272,7 +272,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "Build yml test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "Build yml test", "--branch", branch]
         )
 
         assert code == 0
@@ -286,7 +286,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "Next steps test", "--branch", branch]
+            ["agent", "plan", "new", "Next steps test", "--branch", branch]
         )
 
         assert code == 0
@@ -298,7 +298,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "My long objective", "--branch", branch,
+            ["-j", "agent", "plan", "new", "My long objective", "--branch", branch,
              "--description", "short desc"]
         )
 
@@ -315,7 +315,7 @@ class TestPlanNewErrorCases:
     def test_new_creates_worktree_if_missing(self, cli_runner, temp_repo):
         """Test plan new creates worktree when it doesn't exist (via plan init)."""
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "No worktree test", "--branch", "auto-create-branch"]
+            ["agent", "plan", "new", "No worktree test", "--branch", "auto-create-branch"]
         )
         # cmd_init creates the worktree automatically
         assert code == 0
@@ -327,13 +327,13 @@ class TestPlanNewErrorCases:
 
         # First creation
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "Dup test", "--branch", branch]
+            ["agent", "plan", "new", "Dup test", "--branch", branch]
         )
         assert code == 0
 
         # Second creation with same params should fail
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "Dup test", "--branch", branch]
+            ["agent", "plan", "new", "Dup test", "--branch", branch]
         )
         assert code == 2  # Plan folder already exists
 
@@ -511,7 +511,7 @@ class TestPlanNewPlannerSpawn:
 
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
             stdout, stderr, code = cli_runner(
-                ["plan", "new", "Spawn test", "--branch", branch]
+                ["agent", "plan", "new", "Spawn test", "--branch", branch]
             )
 
         assert code == 0
@@ -538,7 +538,7 @@ class TestPlanNewPlannerSpawn:
 
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
             stdout, stderr, code = cli_runner(
-                ["plan", "new", "Validate test", "--branch", branch]
+                ["agent", "plan", "new", "Validate test", "--branch", branch]
             )
 
         # cmd_new should still succeed (plan folder created) but report planner failure
@@ -573,7 +573,7 @@ class TestPlanNewPlannerSpawn:
 
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=capture_run):
             stdout, stderr, code = cli_runner(
-                ["plan", "new", "Max turns test", "--branch", branch, "--max-turns", "15"]
+                ["agent", "plan", "new", "Max turns test", "--branch", branch, "--max-turns", "15"]
             )
 
         assert code == 0
@@ -612,7 +612,7 @@ class TestPlanNewPlannerSpawn:
 
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=capture_run):
             stdout, stderr, code = cli_runner(
-                ["plan", "new", "Skip perms test", "--branch", branch,
+                ["agent", "plan", "new", "Skip perms test", "--branch", branch,
                  "--dangerously-skip-permissions"]
             )
 
@@ -639,7 +639,7 @@ class TestPlanNewOrchestration:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "Orchestration test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "Orchestration test", "--branch", branch]
         )
 
         assert code == 0
@@ -697,7 +697,7 @@ phases:
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
             with patch.object(plan_module, "cmd_orchestration_validate", side_effect=track_validate):
                 stdout, stderr, code = cli_runner(
-                    ["plan", "new", "Validate orch", "--branch", branch]
+                    ["agent", "plan", "new", "Validate orch", "--branch", branch]
                 )
 
         assert code == 0
@@ -729,7 +729,7 @@ phases:
 
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
             stdout, stderr, code = cli_runner(
-                ["plan", "new", "Orch fail test", "--branch", branch]
+                ["agent", "plan", "new", "Orch fail test", "--branch", branch]
             )
 
         # Should still succeed even if orchestration fails
@@ -743,7 +743,7 @@ phases:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "No exec test", "--branch", branch]
+            ["agent", "plan", "new", "No exec test", "--branch", branch]
         )
 
         assert code == 0
@@ -819,7 +819,7 @@ phases:
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
             with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
                 stdout, stderr, code = cli_runner(
-                    ["plan", "new", "Exec test", "--branch", branch, "--execute"]
+                    ["agent", "plan", "new", "Exec test", "--branch", branch, "--execute"]
                 )
 
         assert code == 0
@@ -891,7 +891,7 @@ phases:
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
             with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
                 stdout, stderr, code = cli_runner(
-                    ["plan", "new", "Sequential", "--branch", branch, "--execute"]
+                    ["agent", "plan", "new", "Sequential", "--branch", branch, "--execute"]
                 )
 
         assert code == 0
@@ -952,7 +952,7 @@ phases:
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
             with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
                 stdout, stderr, code = cli_runner(
-                    ["plan", "new", "Skip test", "--branch", branch, "--execute"]
+                    ["agent", "plan", "new", "Skip test", "--branch", branch, "--execute"]
                 )
 
         assert code == 0
@@ -1017,7 +1017,7 @@ phases:
             with patch.object(plan_module, "cmd_orchestration_validate", side_effect=failing_validate):
                 with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["plan", "new", "Block test", "--branch", branch, "--execute"]
+                        ["agent", "plan", "new", "Block test", "--branch", branch, "--execute"]
                     )
 
         # Should not spawn any builders if validation failed
@@ -1039,7 +1039,7 @@ class TestPlanNewIntegration:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "End to end test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "End to end test", "--branch", branch]
         )
 
         assert code == 0
@@ -1102,7 +1102,7 @@ phases:
         with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
             with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
                 stdout, stderr, code = cli_runner(
-                    ["-j", "plan", "new", "E2E exec", "--branch", branch, "--execute"]
+                    ["-j", "agent", "plan", "new", "E2E exec", "--branch", branch, "--execute"]
                 )
 
         assert code == 0

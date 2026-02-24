@@ -107,7 +107,7 @@ class TestUSORCH001InitiatePlanning:
         )
 
         stdout, stderr, code = cli_runner(
-            ["plan", "new", objective, "--branch", branch]
+            ["agent", "plan", "new", objective, "--branch", branch]
         )
 
         assert code == 0, f"Command should succeed. stderr: {stderr}"
@@ -141,7 +141,7 @@ class TestUSORCH001InitiatePlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", objective, "--branch", branch]
+            ["-j", "agent", "plan", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -167,7 +167,7 @@ class TestUSORCH001InitiatePlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", objective, "--branch", branch]
+            ["-j", "agent", "plan", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -195,7 +195,7 @@ class TestUSORCH001InitiatePlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", objective, "--branch", branch]
+            ["-j", "agent", "plan", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -239,7 +239,7 @@ class TestUSORCH002MainFirstPlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "Main-first test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "Main-first test", "--branch", branch]
         )
 
         assert code == 0
@@ -261,7 +261,7 @@ class TestUSORCH002MainFirstPlanning:
 
         # Don't pre-create worktree - let plan new create it
         stdout, stderr, code = cli_runner(
-            ["plan", "new", objective, "--branch", branch]
+            ["agent", "plan", "new", objective, "--branch", branch]
         )
 
         # cmd_init creates worktree automatically if missing
@@ -287,7 +287,7 @@ class TestUSORCH002MainFirstPlanning:
 
         # Start with no worktree
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", objective, "--branch", branch]
+            ["-j", "agent", "plan", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -328,7 +328,7 @@ class TestUSORCH005OrchestrationMMD:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "Orchestration test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "Orchestration test", "--branch", branch]
         )
 
         assert code == 0
@@ -347,7 +347,7 @@ class TestUSORCH005OrchestrationMMD:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "MMD phase test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "MMD phase test", "--branch", branch]
         )
 
         assert code == 0
@@ -371,7 +371,7 @@ class TestUSORCH005OrchestrationMMD:
 
         # Run plan new (which should auto-validate)
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "Validation test", "--branch", branch]
+            ["agent", "plan", "new", "Validation test", "--branch", branch]
         )
 
         assert code == 0
@@ -388,7 +388,7 @@ class TestUSORCH005OrchestrationMMD:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", "JSON orch test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "JSON orch test", "--branch", branch]
         )
 
         assert code == 0
@@ -427,7 +427,7 @@ class TestUSCLI010PlanWithWorktree:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", objective, "--branch", branch,
+            ["-j", "agent", "plan", "new", objective, "--branch", branch,
              "--description", custom_desc]
         )
 
@@ -448,7 +448,7 @@ class TestUSCLI010PlanWithWorktree:
 
         # Don't provide --branch, let it auto-generate
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", objective]
+            ["-j", "agent", "plan", "new", objective]
         )
 
         assert code == 0
@@ -481,7 +481,7 @@ class TestUSCLI010PlanWithWorktree:
         )
 
         stdout, stderr, code = cli_runner(
-            ["plan", "new", "Base branch test", "--branch", branch, "--base", "staging"]
+            ["agent", "plan", "new", "Base branch test", "--branch", branch, "--base", "staging"]
         )
 
         # Should succeed (worktree created from staging)
@@ -502,7 +502,7 @@ class TestFullWorkflowIntegration:
         branch = "api-endpoint"
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "new", objective, "--branch", branch]
+            ["-j", "agent", "plan", "new", objective, "--branch", branch]
         )
 
         assert code == 0, "Plan creation should succeed"
@@ -535,7 +535,7 @@ class TestFullWorkflowIntegration:
     def test_error_recovery_missing_objective(self, cli_runner, temp_repo):
         """Verify clear error when objective is missing."""
         stdout, stderr, code = cli_runner(
-            ["plan", "new"]
+            ["agent", "plan", "new"]
         )
 
         assert code != 0, "Should fail without objective"
@@ -551,13 +551,13 @@ class TestFullWorkflowIntegration:
 
         # Create first plan
         stdout1, stderr1, code1 = cli_runner(
-            ["plan", "new", objective, "--branch", branch]
+            ["agent", "plan", "new", objective, "--branch", branch]
         )
         assert code1 == 0
 
         # Try to create duplicate
         stdout2, stderr2, code2 = cli_runner(
-            ["plan", "new", objective, "--branch", branch]
+            ["agent", "plan", "new", objective, "--branch", branch]
         )
 
         # Should fail or warn about duplicate

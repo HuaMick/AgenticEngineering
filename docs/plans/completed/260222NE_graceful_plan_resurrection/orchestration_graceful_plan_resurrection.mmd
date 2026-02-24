@@ -1,0 +1,229 @@
+%% =============================================================================
+%% GOAL: Fix plan resurrection so that manually recreating a plan folder in live/ (after it was
+archived to completed/) is handled gracefully. The system should detect the stale TinyDB
+path and prefer the live/ version, preventing the orchestration death loop.
+
+%% =============================================================================
+%% PROFILE: Orchestration-graceful-plan-resurrection
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260222NE_graceful_plan_resurrection/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Initial Research and Planning
+%%   P2: Fix find_plan_folder to prefer live/
+%%   P3: Add TinyDB auto-sync on stale path detection
+%%   P4: Testing
+%%   P1: Environment Setup
+%%   P2: Component Testing
+%%   P3: Test Audit
+%%   P4: UAT Validation
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> test-builder, P1 -> build-python, P2 -> test-builder, P3 -> test-builder, P4 -> test-builder
+%% STATUS: P1=pending, P2=pending, P3=pending, P4=pending, P1=pending, P2=pending, P3=pending, P4=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: INITIAL RESEARCH AND PLANNING
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: IM_001
+
+    subgraph P1_SG ["Initial Research and Planning"]
+        Phase1[Enter Initial Research and Planning] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[IM_001: Research existing implementation]
+        Task_P1_1 --> Phase1Complete[Initial Research and Planning Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: FIX FIND_PLAN_FOLDER TO PREFER LIVE/
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: BU_001, BU_002, BU_003
+
+    subgraph P2_SG ["Fix find_plan_folder to prefer live/"]
+        Phase2[Enter Fix find_plan_folder to prefer live/] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[BU_001: Add live-preference logic to find_plan_folder()]
+        Task_P2_1 --> Task_P2_2[BU_002: Add live-preference logic to PlanService.get_plan()]
+        Task_P2_2 --> Task_P2_3[BU_003: Fix PlanService.list_plans() to detect resurrected plans]
+        Task_P2_3 --> Phase2Complete[Fix find_plan_folder to prefer live/ Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: ADD TINYDB AUTO-SYNC ON STALE PATH DETECTION
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: BU_004, BU_005
+
+    subgraph P3_SG ["Add TinyDB auto-sync on stale path detection"]
+        Phase3[Enter Add TinyDB auto-sync on stale path detection] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[BU_004: Add _auto_resync_plan_folder() helper to PlanRepository]
+        Task_P3_1 --> Task_P3_2[BU_005: Fix cmd_unarchive to handle live/ already existing]
+        Task_P3_2 --> Phase3Complete[Add TinyDB auto-sync on stale path detection Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing4_SG ["Testing (Test-Fix-Loop)"]
+        Phase4[Enter Testing] --> SpawnTestBuilder4[Spawn test-builder Agent]
+        SpawnTestBuilder4 --> RunTests4[Run Tests]
+        RunTests4 --> TestsPassed4{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed4 -- "No: Fix in Iteration" --> SpawnBuilderFix4[Spawn builder Agent for Fixes]
+        SpawnBuilderFix4 --> ApplyFixes4[Apply Implementation Fixes]
+        ApplyFixes4 --> RunTests4
+
+        %% Success path
+        TestsPassed4 -- "Yes: All Pass" --> Phase4Complete[Testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed4 -- "No: Escalate" --> CheckIterations4{Max Iterations Reached?}
+    CheckIterations4 -- "No" --> SpawnTestBuilder4
+    CheckIterations4 -- "Yes" --> EscalateTests4((Ask User: Test Failures Persist))
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: ENVIRONMENT SETUP
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: P1-T1
+
+    subgraph P1_SG ["Environment Setup"]
+        Phase5[Enter Environment Setup] --> SpawnAgent5[Spawn build-python Agent]
+        SpawnAgent5 --> Task_P1_1[P1-T1: Install latest AgenticGuidance and AgenticCLI]
+        Task_P1_1 --> Phase5Complete[Environment Setup Complete]
+    end
+
+    Phase5Complete --> Phase6
+
+    %% ========================================
+    %% PHASE 6: COMPONENT TESTING
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing6_SG ["Component Testing (Test-Fix-Loop)"]
+        Phase6[Enter Component Testing] --> SpawnTestBuilder6[Spawn test-builder Agent]
+        SpawnTestBuilder6 --> RunTests6[Run Tests]
+        RunTests6 --> TestsPassed6{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed6 -- "No: Fix in Iteration" --> SpawnBuilderFix6[Spawn builder Agent for Fixes]
+        SpawnBuilderFix6 --> ApplyFixes6[Apply Implementation Fixes]
+        ApplyFixes6 --> RunTests6
+
+        %% Success path
+        TestsPassed6 -- "Yes: All Pass" --> Phase6Complete[Component Testing Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed6 -- "No: Escalate" --> CheckIterations6{Max Iterations Reached?}
+    CheckIterations6 -- "No" --> SpawnTestBuilder6
+    CheckIterations6 -- "Yes" --> EscalateTests6((Ask User: Test Failures Persist))
+
+    Phase6Complete --> Phase7
+
+    %% ========================================
+    %% PHASE 7: TEST AUDIT
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing7_SG ["Test Audit (Test-Fix-Loop)"]
+        Phase7[Enter Test Audit] --> SpawnTestBuilder7[Spawn test-builder Agent]
+        SpawnTestBuilder7 --> RunTests7[Run Tests]
+        RunTests7 --> TestsPassed7{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed7 -- "No: Fix in Iteration" --> SpawnBuilderFix7[Spawn builder Agent for Fixes]
+        SpawnBuilderFix7 --> ApplyFixes7[Apply Implementation Fixes]
+        ApplyFixes7 --> RunTests7
+
+        %% Success path
+        TestsPassed7 -- "Yes: All Pass" --> Phase7Complete[Test Audit Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed7 -- "No: Escalate" --> CheckIterations7{Max Iterations Reached?}
+    CheckIterations7 -- "No" --> SpawnTestBuilder7
+    CheckIterations7 -- "Yes" --> EscalateTests7((Ask User: Test Failures Persist))
+
+    Phase7Complete --> Phase8
+
+    %% ========================================
+    %% PHASE 8: UAT VALIDATION
+    %% ========================================
+    %% AGENT_ROUTING: test-builder agent with test-fix loop
+    %% LOOP_DEFINITION: test-fix-loop
+    %% MAX_ITERATIONS: 5
+
+    subgraph Testing8_SG ["UAT Validation (Test-Fix-Loop)"]
+        Phase8[Enter UAT Validation] --> SpawnTestBuilder8[Spawn test-builder Agent]
+        SpawnTestBuilder8 --> RunTests8[Run Tests]
+        RunTests8 --> TestsPassed8{Tests Passed?}
+
+        %% Test-Fix Loop: retry path
+        TestsPassed8 -- "No: Fix in Iteration" --> SpawnBuilderFix8[Spawn builder Agent for Fixes]
+        SpawnBuilderFix8 --> ApplyFixes8[Apply Implementation Fixes]
+        ApplyFixes8 --> RunTests8
+
+        %% Success path
+        TestsPassed8 -- "Yes: All Pass" --> Phase8Complete[UAT Validation Complete]
+    end
+
+    %% Escalation path for persistent test failures
+    TestsPassed8 -- "No: Escalate" --> CheckIterations8{Max Iterations Reached?}
+    CheckIterations8 -- "No" --> SpawnTestBuilder8
+    CheckIterations8 -- "Yes" --> EscalateTests8((Ask User: Test Failures Persist))
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase8Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser,EscalateTests4,EscalateTests6,EscalateTests7,EscalateTests8 userpoint

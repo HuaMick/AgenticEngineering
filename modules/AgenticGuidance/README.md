@@ -258,10 +258,10 @@ This ensures all active plans are visible from a single location while code deve
 
 ```bash
 # 1. Get role context (process, inputs, guidelines)
-agentic context bootstrap --role <agent-role> -j
+agentic agent context bootstrap --role <agent-role> -j
 
 # 2. Get current task from plan
-agentic plan task current -j
+agentic agent plan task current -j
 ```
 
 ### Key Principles

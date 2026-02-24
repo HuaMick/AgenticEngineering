@@ -1,0 +1,125 @@
+name: redesign_question_notification_tmux_tui - test
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: pending
+priority: high
+objective: 'Validate the tmux TUI redesign with unit tests for new components and
+  regression
+
+  tests for the unchanged question CLI commands. Ensure no ntfy imports remain
+
+  anywhere in the question system after cleanup.
+
+  '
+phases:
+- id: T01
+  name: Unit tests for QuestionTUI
+  status: pending
+  tasks:
+  - id: T01_T01
+    name: Write tests for QuestionTUI._build_questions_table()
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_question_tui.py
+    guidance: "Create test_question_tui.py in the AgenticCLI tests directory.\n\n\
+      Tests to cover:\n1. test_build_table_empty_plans: tmp_path has no live plans\
+      \ dir ->\n   table has one row with \"No pending questions\" message\n2. test_build_table_no_pending_questions:\
+      \ live plan dir exists but no\n   questions/pending/*.yml files -> \"No pending\
+      \ questions\" row\n3. test_build_table_one_question: one pending question YAML\
+      \ exists ->\n   table has one data row with correct plan, id, severity, question\
+      \ text\n4. test_build_table_multi_plan: two plans each with one pending question\
+      \ ->\n   table has two rows\n5. test_build_table_severity_ordering: critical\
+      \ question appears before low ->\n   rows ordered by severity (critical, high,\
+      \ medium, low)\n\nUse pytest tmp_path for creating fake plan folder structures.\n\
+      Mock agenticguidance imports if needed (use monkeypatch or try/except skip).\n\
+      Use Rich's Table introspection to verify row count and content.\n"
+    success_criteria:
+    - test_question_tui.py exists with at least 5 test functions
+    - 'All tests pass: python3 -m pytest modules/AgenticCLI/tests/test_question_tui.py
+      -v'
+    - Tests do not import ntfy or watchdog
+  - id: T01_T02
+    name: Write tests for notify_question_window()
+    status: completed
+    priority: medium
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_tmux_notify.py
+    guidance: "Create or extend test_tmux_notify.py.\n\nTests to cover:\n1. test_notify_question_window_not_in_tmux:\
+      \ TMUX env var not set ->\n   returns False, no subprocess call\n2. test_notify_question_window_in_tmux_success:\
+      \ TMUX env var set,\n   subprocess.run succeeds -> returns True\n3. test_notify_question_window_in_tmux_failure:\
+      \ subprocess.run raises\n   CalledProcessError -> returns False (graceful degradation)\n\
+      4. test_deprecated_functions_removed: importing tmux_notify should NOT\n   expose\
+      \ notify_questions_in_tmux or clear_notification_pane\n\nUse monkeypatch to\
+      \ set os.environ[\"TMUX\"] and mock subprocess.run.\n"
+    success_criteria:
+    - 'All tests pass: python3 -m pytest modules/AgenticCLI/tests/test_tmux_notify.py
+      -v'
+    - test_deprecated_functions_removed passes (functions do not exist)
+- id: T02
+  name: Regression tests for question CLI commands
+  status: pending
+  tasks:
+  - id: T02_T01
+    name: Verify existing question command tests still pass
+    status: completed
+    priority: high
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/
+    target_files: []
+    guidance: "Run the existing question-related tests and verify they all pass:\n\
+      \n  python3 -m pytest modules/AgenticCLI/tests/ -v -k \"question\" 2>&1\n\n\
+      If any tests fail due to missing ntfy imports, fix the tests by removing\nthose\
+      \ imports (they should test the new behavior, not ntfy).\n\nIf tests mock ntfy.send_ntfy,\
+      \ update mocks to mock notify_question_window\ninstead.\n\nThis is a read-and-fix\
+      \ task - inspect the test files, identify any ntfy\nreferences, and update them.\n"
+    success_criteria:
+    - All question-related tests pass with exit code 0
+    - No test file imports from agenticcli.utils.ntfy
+    - No test file imports from agenticcli.services.ntfy_question_agent
+- id: T03
+  name: 'Smoke test: no ntfy references remain'
+  status: pending
+  tasks:
+  - id: T03_T01
+    name: Codebase scan for remaining ntfy references
+    status: completed
+    priority: high
+    agent: build-python
+    inputs: []
+    target_files: []
+    guidance: "Run the following commands and verify each returns no matches:\n\n\
+      \  grep -r \"from agenticcli.utils.ntfy\" /home/code/AgenticEngineering/modules/\n\
+      \  grep -r \"from agenticcli.services.ntfy_question_agent\" /home/code/AgenticEngineering/modules/\n\
+      \  grep -r \"import send_ntfy\" /home/code/AgenticEngineering/modules/\n  grep\
+      \ -r \"NtfyReplyPoller\" /home/code/AgenticEngineering/modules/\n  grep -r \"\
+      NtfyQuestionAgent\" /home/code/AgenticEngineering/modules/\n  grep -r \"ntfy_state.yml\"\
+      \ /home/code/AgenticEngineering/modules/\n\nIf any matches are found, fix them\
+      \ before marking this task complete.\n"
+    success_criteria:
+    - Zero matches for all grep commands above
+    - No ntfy files exist under modules/AgenticCLI/src/agenticcli/
+test_strategy:
+- type: unit
+  scope: QuestionTUI class (table building, answer flow)
+  location: modules/AgenticCLI/tests/test_question_tui.py
+  command: python3 -m pytest modules/AgenticCLI/tests/test_question_tui.py -v
+- type: unit
+  scope: notify_question_window() and tmux_notify helpers
+  location: modules/AgenticCLI/tests/test_tmux_notify.py
+  command: python3 -m pytest modules/AgenticCLI/tests/test_tmux_notify.py -v
+- type: regression
+  scope: All existing question CLI command tests
+  location: modules/AgenticCLI/tests/
+  command: python3 -m pytest modules/AgenticCLI/tests/ -v -k 'question' 2>&1
+- type: smoke
+  scope: No ntfy references in codebase
+  location: modules/
+  command: grep -r 'ntfy' modules/AgenticCLI/src/ && echo FAIL || echo PASS

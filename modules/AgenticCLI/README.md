@@ -25,65 +25,74 @@ agentic -d <command>        # Debug mode
 
 Initialize, scaffold, and manage planning folders for tracking implementation tasks.
 
+**User-facing commands** (under `agentic plan`):
+
 ```bash
-# Initialize worktree + plan folder (Main-First Planning)
-agentic plan init <branch> [--description <desc>] [--base <base-branch>]
-
-# Example: Create worktree and plan folder for feature branch
-agentic plan init feature-auth --description "user_authentication"
-# Creates: /path/to/repo-feature-auth (worktree)
-# Creates: docs/plans/live/260119AE_user_authentication/ (plan folder)
-
-# Scaffold plan folder only (without worktree)
-agentic plan scaffold <name> [--worktree <path>]
-
 # Show plan status
 agentic plan status [<path>]
 
 # List all plans
 agentic plan list
 
-# Validate plan folder structure
-agentic plan validate <path>
-
-# Task management
-agentic plan task list [--plan <path>] [--status <filter>] [--verbose]
-agentic plan task current [--plan <path>]
-agentic plan task start <task-id> [--plan <path>]
-agentic plan task complete <task-id> [--plan <path>]
-agentic plan task status <task-id> [--plan <path>]
-agentic plan task add <description> [--plan <path>] [--phase <id>] [--id <id>] [--priority <level>]
-agentic plan task update <task-id> --status <status> [--plan <path>] [--note <text>]
-agentic plan task prefill --preset <name> [--plan <path>] [--dry-run]
-
-# Move completed tasks
-agentic plan move task <task-id> [--plan <path>] [--dry-run] [--force]
-agentic plan move tasks [--plan <path>] [--dry-run] [--force]
-agentic plan move folder [--plan <path>] [--dry-run] [--force]
-
-# Archive plan folder
-agentic plan archive <path>
-
-# Unarchive plan folder (move from completed back to live)
-agentic plan unarchive --plan <name> [--force]
-
-# Phase management
-agentic plan phase add --id <id> --name <name> [--description <desc>] [--plan <path>]
-agentic plan phase list [--plan <path>]
-agentic plan phase update <phase-id> [--status <status>] [--name <name>] [--plan <path>]
-
-# Orchestration (MMD workflow diagrams)
-agentic plan orchestration generate [--plan <path>] [--output <file>] [--force]
-agentic plan orchestration validate [--plan <path>] [--strict]
-
-# User stories management
-agentic plan stories list [--plan <path>]
-agentic plan stories test [--plan <path>] [--output <file>] [--format yaml|json]
+# Create a new plan (interactive)
+agentic plan new
 ```
 
-#### Main-First Planning with `plan init`
+**Agent-facing commands** (under `agentic agent plan`):
 
-The `plan init` command enforces the Main-First Planning workflow:
+```bash
+# Initialize worktree + plan folder (Main-First Planning)
+agentic agent plan init <branch> [--description <desc>] [--base <base-branch>]
+
+# Example: Create worktree and plan folder for feature branch
+agentic agent plan init feature-auth --description "user_authentication"
+# Creates: /path/to/repo-feature-auth (worktree)
+# Creates: docs/plans/live/260119AE_user_authentication/ (plan folder)
+
+# Scaffold plan folder only (without worktree)
+agentic agent plan scaffold <name> [--worktree <path>]
+
+# Validate plan folder structure
+agentic agent plan validate <path>
+
+# Task management
+agentic agent plan task list [--plan <path>] [--status <filter>] [--verbose]
+agentic agent plan task current [--plan <path>]
+agentic agent plan task start <task-id> [--plan <path>]
+agentic agent plan task complete <task-id> [--plan <path>]
+agentic agent plan task status <task-id> [--plan <path>]
+agentic agent plan task add <description> [--plan <path>] [--phase <id>] [--id <id>] [--priority <level>]
+agentic agent plan task update <task-id> --status <status> [--plan <path>] [--note <text>]
+agentic agent plan task prefill --preset <name> [--plan <path>] [--dry-run]
+
+# Move completed tasks
+agentic agent plan move task <task-id> [--plan <path>] [--dry-run] [--force]
+agentic agent plan move tasks [--plan <path>] [--dry-run] [--force]
+agentic agent plan move folder [--plan <path>] [--dry-run] [--force]
+
+# Archive plan folder
+agentic agent plan archive <path>
+
+# Unarchive plan folder (move from completed back to live)
+agentic agent plan unarchive --plan <name> [--force]
+
+# Phase management
+agentic agent plan phase add --id <id> --name <name> [--description <desc>] [--plan <path>]
+agentic agent plan phase list [--plan <path>]
+agentic agent plan phase update <phase-id> [--status <status>] [--name <name>] [--plan <path>]
+
+# Orchestration (MMD workflow diagrams)
+agentic agent plan orchestration generate [--plan <path>] [--output <file>] [--force]
+agentic agent plan orchestration validate [--plan <path>] [--strict]
+
+# User stories management
+agentic agent plan stories list [--plan <path>]
+agentic agent plan stories test [--plan <path>] [--output <file>] [--format yaml|json]
+```
+
+#### Main-First Planning with `agent plan init`
+
+The `agentic agent plan init` command enforces the Main-First Planning workflow:
 
 1. **Creates worktree** (if not exists) at `../repo-<branch>`
 2. **Generates plan folder name** using `YYMMDDXX_description` convention
@@ -97,73 +106,73 @@ Manage individual tasks within a plan's phases:
 
 ```bash
 # List all tasks in the current plan folder
-agentic plan task list
-agentic plan task list --status pending        # Filter by status
-agentic plan task list --verbose               # Show full task details
+agentic agent plan task list
+agentic agent plan task list --status pending        # Filter by status
+agentic agent plan task list --verbose               # Show full task details
 
 # Get the current task to work on (first in_progress, or first pending)
-agentic plan task current
-agentic plan task current --plan docs/plans/live/260128AB_feature
+agentic agent plan task current
+agentic agent plan task current --plan docs/plans/live/260128AB_feature
 
 # Mark a task as in_progress (requires orchestration_*.mmd to exist)
-agentic plan task start build_01_001
-agentic plan task start build_01_001 --plan docs/plans/live/260128AB_feature
+agentic agent plan task start build_01_001
+agentic agent plan task start build_01_001 --plan docs/plans/live/260128AB_feature
 
 # Mark a task as completed
-agentic plan task complete build_01_001
+agentic agent plan task complete build_01_001
 
 # Show detailed status for a specific task
-agentic plan task status build_01_001
-agentic plan task status build_01_001 --plan docs/plans/live/260128AB_feature
+agentic agent plan task status build_01_001
+agentic agent plan task status build_01_001 --plan docs/plans/live/260128AB_feature
 
 # Add a new task to the plan
-agentic plan task add "Implement user login endpoint"
-agentic plan task add "Add unit tests" --phase P2 --priority high
-agentic plan task add "Fix bug" --id hotfix_001 --phase P1
+agentic agent plan task add "Implement user login endpoint"
+agentic agent plan task add "Add unit tests" --phase P2 --priority high
+agentic agent plan task add "Fix bug" --id hotfix_001 --phase P1
 
 # Update task status with optional note
-agentic plan task update build_01_001 --status completed
-agentic plan task update build_01_001 --status blocked --note "Waiting for API spec"
+agentic agent plan task update build_01_001 --status completed
+agentic agent plan task update build_01_001 --status blocked --note "Waiting for API spec"
 
 # Prefill tasks from a preset template
-agentic plan task prefill --preset planner-build
-agentic plan task prefill --preset builder --dry-run  # Preview without changes
+agentic agent plan task prefill --preset planner-build
+agentic agent plan task prefill --preset builder --dry-run  # Preview without changes
 ```
 
-**Options for `plan task list`:**
+**Options for `agent plan task list`:**
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 - `--status`, `-s`: Filter by status (pending, in_progress, completed, or all)
 - `--verbose`, `-v`: Show full task details including guidance and success criteria
 
-**Options for `plan task current`:**
+**Options for `agent plan task current`:**
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 
 Returns the first `in_progress` task, or the first `pending` task if none are in progress. This is the primary "what should I do next?" query for agents.
 
-**Options for `plan task start`:**
+**Options for `agent plan task start`:**
 - `task_id` (required): Task ID to mark as in_progress
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 
 Note: Requires an `orchestration_*.mmd` file to exist in the plan folder. Plans must be orchestrated before task execution begins.
 
-**Options for `plan task complete`:**
+**Options for `agent plan task complete`:**
 - `task_id` (required): Task ID to mark as completed
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 
-**Options for `plan task status`:**
+**Options for `agent plan task status`:**
 - `task_id` (required): Task ID to display details for
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 
 Displays comprehensive task information including description, status, phase, inputs, target files, guidance, and success criteria.
 
-**Options for `plan task add`:**
+**Options for `agent plan task add`:**
 - `description` (required): Description of the new task
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 - `--phase`: Phase ID to add the task to (default: last phase)
 - `--id`: Custom task ID (default: auto-generated from phase ID)
 - `--priority`: Task priority - low, medium, high (default: medium)
 
-**Options for `plan task update`:**
+**Options for `agent plan task update`:**
 - `task_id` (required): Task ID to update
 - `--status`, `-s` (required): New status (pending, in_progress, completed, blocked)
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
@@ -171,7 +180,7 @@ Displays comprehensive task information including description, status, phase, in
 
 Status transitions are validated. When marking a task as `completed`, a timestamp is automatically recorded.
 
-**Options for `plan task prefill`:**
+**Options for `agent plan task prefill`:**
 - `--preset` (required): Name of the preset template to load (e.g., planner-build, builder)
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 - `--dry-run`: Show tasks that would be added without making changes
@@ -182,23 +191,23 @@ Manage phases within a plan's `plan_build.yml` file:
 
 ```bash
 # Add a new phase to the plan
-agentic plan phase add --id P1 --name "Core Implementation" --description "Build the main features"
+agentic agent plan phase add --id P1 --name "Core Implementation" --description "Build the main features"
 
 # List all phases with their status and task counts
-agentic plan phase list --plan docs/plans/live/260128AB_feature
+agentic agent plan phase list --plan docs/plans/live/260128AB_feature
 
 # Update a phase's status or name
-agentic plan phase update P1 --status in_progress
-agentic plan phase update P1 --name "Updated Phase Name" --status completed
+agentic agent plan phase update P1 --status in_progress
+agentic agent plan phase update P1 --name "Updated Phase Name" --status completed
 ```
 
-**Options for `plan phase add`:**
+**Options for `agent plan phase add`:**
 - `--id` (required): Phase identifier (e.g., P1, build_01)
 - `--name` (required): Human-readable phase name
 - `--description`: Optional description of the phase scope
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 
-**Options for `plan phase update`:**
+**Options for `agent plan phase update`:**
 - `phase_id`: The ID of the phase to update
 - `--status`, `-s`: New status (pending, in_progress, completed, blocked)
 - `--name`, `-n`: New name for the phase
@@ -210,24 +219,24 @@ Generate and validate Mermaid flowchart diagrams that define the execution order
 
 ```bash
 # Generate orchestration MMD from plan YAML files
-agentic plan orchestration generate --plan docs/plans/live/260128AB_feature
+agentic agent plan orchestration generate --plan docs/plans/live/260128AB_feature
 
 # Generate with custom output filename
-agentic plan orchestration generate --output orchestration_custom.mmd --force
+agentic agent plan orchestration generate --output orchestration_custom.mmd --force
 
 # Validate that MMD matches plan YAML structure
-agentic plan orchestration validate --plan docs/plans/live/260128AB_feature
+agentic agent plan orchestration validate --plan docs/plans/live/260128AB_feature
 
 # Strict validation: treat warnings as errors
-agentic plan orchestration validate --strict
+agentic agent plan orchestration validate --strict
 ```
 
-**Options for `plan orchestration generate`:**
+**Options for `agent plan orchestration generate`:**
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 - `--output`, `-o`: Output filename (default: `orchestration_<plan_name>.mmd`)
 - `--force`, `-f`: Overwrite existing MMD file if present
 
-**Options for `plan orchestration validate`:**
+**Options for `agent plan orchestration validate`:**
 - `--plan`, `-p`: Path to plan folder
 - `--strict`: Treat warnings as errors (exit code 1 on warnings)
 
@@ -243,20 +252,20 @@ List and test user stories defined in plan YAML files:
 
 ```bash
 # List all user stories in a plan
-agentic plan stories list --plan docs/plans/live/260128AB_feature
+agentic agent plan stories list --plan docs/plans/live/260128AB_feature
 
 # Generate blind test scenarios from user stories
-agentic plan stories test --plan docs/plans/live/260128AB_feature
+agentic agent plan stories test --plan docs/plans/live/260128AB_feature
 
 # Output test cases to a file
-agentic plan stories test --output tests/story_tests.yml --format yaml
-agentic plan stories test --output tests/story_tests.json --format json
+agentic agent plan stories test --output tests/story_tests.yml --format yaml
+agentic agent plan stories test --output tests/story_tests.json --format json
 ```
 
-**Options for `plan stories list`:**
+**Options for `agent plan stories list`:**
 - `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
 
-**Options for `plan stories test`:**
+**Options for `agent plan stories test`:**
 - `--plan`, `-p`: Path to plan folder
 - `--output`, `-o`: Output file path (default: stdout)
 - `--format`, `-f`: Output format - `yaml` (default) or `json`
@@ -340,30 +349,32 @@ uv pip install -e .
 
 Manage questions that arise during agent workflows. Questions are stored in a plan's `questions/` directory with pending and answered status tracking.
 
+All question commands are under `agentic agent question`:
+
 ```bash
 # List questions
-agentic question list [--plan <path>] [--status pending|answered|deferred|all]
-agentic question list --status pending              # List pending questions (default)
-agentic question list --status answered             # List answered questions
-agentic question list --status all                  # List all questions
+agentic agent question list [--plan <path>] [--status pending|answered|deferred|all]
+agentic agent question list --status pending              # List pending questions (default)
+agentic agent question list --status answered             # List answered questions
+agentic agent question list --status all                  # List all questions
 
 # Show question details
-agentic question show <question_id> [--plan <path>]
-agentic question show Q-20260203-143022-a1b2
+agentic agent question show <question_id> [--plan <path>]
+agentic agent question show Q-20260203-143022-a1b2
 
 # Create a new question
-agentic question ask <text> [--plan <path>] [--severity blocking|high|medium|low] [--context <text>]
-agentic question ask "What testing framework should we use?" --severity high
-agentic question ask "Should we add this feature?" --severity medium --context "Feature request from user"
+agentic agent question ask <text> [--plan <path>] [--severity blocking|high|medium|low] [--context <text>]
+agentic agent question ask "What testing framework should we use?" --severity high
+agentic agent question ask "Should we add this feature?" --severity medium --context "Feature request from user"
 
 # Answer a question
-agentic question answer <question_id> [--plan <path>] [--text <answer>] [--confidence high|medium|low]
-agentic question answer Q-20260203-143022-a1b2 --text "Use pytest for testing" --confidence high
-agentic question answer Q-20260203-143022-a1b2   # Prompt for answer text
+agentic agent question answer <question_id> [--plan <path>] [--text <answer>] [--confidence high|medium|low]
+agentic agent question answer Q-20260203-143022-a1b2 --text "Use pytest for testing" --confidence high
+agentic agent question answer Q-20260203-143022-a1b2   # Prompt for answer text
 
 # Defer a question
-agentic question defer <question_id> [--plan <path>]
-agentic question defer Q-20260203-143022-a1b2
+agentic agent question defer <question_id> [--plan <path>]
+agentic agent question defer Q-20260203-143022-a1b2
 ```
 
 **Question ID Format:**
@@ -396,8 +407,8 @@ plan_folder/
 **JSON Output:**
 All commands support `--json` flag for structured output:
 ```bash
-agentic --json question list --status pending
-agentic --json question show Q-20260203-143022-a1b2
+agentic --json agent question list --status pending
+agentic --json agent question show Q-20260203-143022-a1b2
 ```
 
 **Tmux Integration:**
@@ -429,28 +440,28 @@ CLI Context Injection (CCI) commands for agents to fetch exactly what they need 
 
 ```bash
 # Primary entrypoint - aggregates task, role guidance, and essential inputs
-agentic context bootstrap [--role <role-id>]
-agentic ctx bootstrap --role build-python
+agentic agent context bootstrap [--role <role-id>]
+agentic agent ctx bootstrap --role build-python
 
 # Get role-specific process.yml and manifest.yml content
-agentic context role <role-id> [--format yaml|json]
-agentic ctx role planner-build
-agentic ctx role build-python --format json
+agentic agent context role <role-id> [--format yaml|json]
+agentic agent ctx role planner-build
+agentic agent ctx role build-python --format json
 
 # Get active task from Main-First plan (crawls docs/plans/live/)
-agentic context task [--all]
-agentic ctx task
-agentic ctx task --all
+agentic agent context task [--all]
+agentic agent ctx task
+agentic agent ctx task --all
 
 # Get input files for a role with path resolution
-agentic context inputs --role <role-id> [--resolve]
-agentic ctx inputs --role build-python
-agentic ctx inputs --role planner-build --resolve
+agentic agent context inputs --role <role-id> [--resolve]
+agentic agent ctx inputs --role build-python
+agentic agent ctx inputs --role planner-build --resolve
 
 # Generate thin-client agent file from bootstrap template
-agentic context generate-agent <role-id> [--output <file>]
-agentic ctx generate-agent build-python
-agentic ctx generate-agent planner-build --output agent.md
+agentic agent context generate-agent <role-id> [--output <file>]
+agentic agent ctx generate-agent build-python
+agentic agent ctx generate-agent planner-build --output agent.md
 ```
 
 #### Subcommand Details
@@ -464,13 +475,13 @@ Returns a combined context bundle containing:
 
 ```bash
 # Auto-detect role from context
-agentic context bootstrap
+agentic agent context bootstrap
 
 # Specify role explicitly
-agentic ctx bootstrap --role build-python
+agentic agent ctx bootstrap --role build-python
 
 # Preview first 50 lines of bootstrap output
-agentic ctx bootstrap | head -50
+agentic agent ctx bootstrap | head -50
 ```
 
 **role** - Returns process.yml and manifest.yml content for a role
@@ -479,10 +490,10 @@ Retrieves the process guidance and manifest definition from the AgenticGuidance 
 
 ```bash
 # Get role guidance as YAML (default)
-agentic ctx role planner-build
+agentic agent ctx role planner-build
 
 # Get role guidance as JSON
-agentic ctx role build-python --format json
+agentic agent ctx role build-python --format json
 ```
 
 **task** - Crawls docs/plans/live/ to find active task
@@ -491,10 +502,10 @@ Searches plan YAML files for the first in_progress task, or the first pending ta
 
 ```bash
 # Get current/next task to work on
-agentic ctx task
+agentic agent ctx task
 
 # Show all tasks in the plan
-agentic ctx task --all
+agentic agent ctx task --all
 ```
 
 **inputs** - Returns input files for a role with path resolution
@@ -503,10 +514,10 @@ Retrieves the inputs.yml file for the specified role and resolves all file paths
 
 ```bash
 # Get inputs for a role
-agentic ctx inputs --role build-python
+agentic agent ctx inputs --role build-python
 
 # Get inputs with layer expansion
-agentic ctx inputs --role planner-build --resolve
+agentic agent ctx inputs --role planner-build --resolve
 ```
 
 **generate-agent** - Generate thin-client agent file from bootstrap template
@@ -515,10 +526,10 @@ Creates a minimal agent markdown file that uses the CCI bootstrap protocol to se
 
 ```bash
 # Output to stdout
-agentic ctx generate-agent build-python
+agentic agent ctx generate-agent build-python
 
 # Save to file
-agentic ctx generate-agent planner-build --output agent.md
+agentic agent ctx generate-agent planner-build --output agent.md
 ```
 
 ### entrypoint (ep) - Workflow Entrypoints
@@ -527,23 +538,23 @@ Discover and execute workflow entrypoints that define starting points for orches
 
 ```bash
 # List all available entrypoints
-agentic entrypoint list
-agentic ep list
+agentic agent entrypoint list
+agentic agent ep list
 
 # Show the full contents of an entrypoint file
-agentic entrypoint show plan_build
-agentic ep show _orchestrate
+agentic agent entrypoint show plan_build
+agentic agent ep show _orchestrate
 
 # Execute entrypoint with variable substitution
-agentic entrypoint execute plan_build
-agentic ep execute orchestrate --context "Additional context here"
+agentic agent entrypoint execute plan_build
+agentic agent ep execute orchestrate --context "Additional context here"
 
 # Execute with custom variables
-agentic ep execute plan_build --vars TASK_ID=build_01 --vars BRANCH=feature-auth
+agentic agent ep execute plan_build --vars TASK_ID=build_01 --vars BRANCH=feature-auth
 
 # Compile complete context bundle (includes orchestration, inputs, and references)
-agentic ep execute plan_build --compile
-agentic ep execute orchestrate --compile --context "My context"
+agentic agent ep execute plan_build --compile
+agentic agent ep execute orchestrate --compile --context "My context"
 ```
 
 #### Subcommand Details
@@ -556,10 +567,10 @@ Searches for entrypoint files in two locations (in priority order):
 
 ```bash
 # List all entrypoints with their descriptions
-agentic ep list
+agentic agent ep list
 
 # JSON output for scripting
-agentic -j ep list
+agentic -j agent ep list
 ```
 
 **show** - Show the full contents of an entrypoint file
@@ -568,11 +579,11 @@ Retrieves and displays the raw content of an entrypoint file by name. The unders
 
 ```bash
 # Show entrypoint content (underscore optional)
-agentic ep show plan_build
-agentic ep show _plan_build
+agentic agent ep show plan_build
+agentic agent ep show _plan_build
 
 # JSON output includes path and type
-agentic -j ep show orchestrate
+agentic -j agent ep show orchestrate
 ```
 
 **execute** - Execute entrypoint with variable substitution
@@ -581,17 +592,17 @@ Reads the entrypoint file, applies variable substitution using `{{VAR}}` syntax,
 
 ```bash
 # Basic execution with variable substitution
-agentic ep execute plan_build
+agentic agent ep execute plan_build
 
 # Add custom variables (KEY=VALUE format)
-agentic ep execute plan_build --vars TASK_ID=build_01
-agentic ep execute orchestrate --vars BRANCH=main --vars PHASE=P1
+agentic agent ep execute plan_build --vars TASK_ID=build_01
+agentic agent ep execute orchestrate --vars BRANCH=main --vars PHASE=P1
 
 # Prepend context text to output
-agentic ep execute orchestrate --context "Working on feature authentication"
+agentic agent ep execute orchestrate --context "Working on feature authentication"
 
 # Compile complete context bundle
-agentic ep execute plan_build --compile
+agentic agent ep execute plan_build --compile
 ```
 
 **Options for `entrypoint execute`:**
@@ -928,14 +939,14 @@ agentic tpl generate build -o plan.yml
 agentic template generate build --objective "Implement user authentication" --phases "P1:Setup,P2:Build,P3:Test" --success-criteria "Tests pass,Coverage > 80%"
 
 # Find user stories
-agentic stories find [--project <name>] [--changes <files>]
-agentic st find -p my-project
+agentic agent stories find [--project <name>] [--changes <files>]
+agentic agent st find -p my-project
 
 # Manage agent manifests
-agentic manifest show <path>
-agentic manifest list [<path>]
-agentic manifest validate <path>
-agentic mf show ./agents/my-agent
+agentic agent manifest show <path>
+agentic agent manifest list [<path>]
+agentic agent manifest validate <path>
+agentic agent mf show ./agents/my-agent
 
 # State management
 agentic state list [--active]
@@ -997,7 +1008,7 @@ agentic template generate build \
 | Category | Scope | Commands |
 |----------|-------|----------|
 | **Global** | Any directory | setup, health, config, prefs, update, rebuild, state, env, session, loop |
-| **Project** | Requires .git or .agenticcli.yml | worktree, plan, context, entrypoint, langsmith, inputs, template, stories, manifest |
+| **Project** | Requires .git or .agenticcli.yml | worktree, plan, agent (context, entrypoint, stories, manifest, question), langsmith, inputs, template |
 
 Project commands require being in a git repository or having a `.agenticcli.yml` file in the directory tree.
 
@@ -1011,7 +1022,7 @@ agentic plan status
 agentic -j plan status
 
 # Debug logging to console
-agentic -d plan init my-branch
+agentic -d agent plan init my-branch
 ```
 
 ## Directory Structure
@@ -1116,7 +1127,7 @@ CLI Implementation       Offload to CLI, agent invokes tool
 1. Initially, agents interpreted naming conventions from documentation
 2. LangSmith traces showed naming drift and verification loops
 3. Convention was documented: `YYMMDDXX_description`
-4. `agentic plan init` now enforces naming programmatically
+4. `agentic agent plan init` now enforces naming programmatically
 5. Agents call CLI - no interpretation, no verification needed
 
 ### Boundary Definition

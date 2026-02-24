@@ -4,7 +4,7 @@ Validates:
 - Agent group infrastructure and subcommands
 - Hidden commands not visible in user-facing help
 - User-facing commands visible in help
-- Backward compatibility (old paths still work as hidden aliases)
+- Deprecation stubs (old paths print an error and exit 1)
 """
 
 
@@ -160,12 +160,12 @@ class TestAgentGroupInfrastructure:
 class TestHiddenVerification:
     """Verify hidden groups do NOT appear in user-facing help output."""
 
-    def test_main_help_does_not_show_agent(self, cli_runner):
-        """agentic --help does NOT contain 'agent' as a top-level command."""
+    def test_main_help_shows_agent(self, cli_runner):
+        """agentic --help contains 'agent' as a visible top-level group."""
         result = cli_runner(["--help"])
         assert result.returncode == 0
         cmd_names = _extract_cmd_names(result.stdout)
-        assert "agent" not in cmd_names
+        assert "agent" in cmd_names
 
     def test_main_help_does_not_show_context(self, cli_runner):
         """agentic --help does NOT contain 'context' as a top-level group."""
@@ -223,6 +223,13 @@ class TestHiddenVerification:
         cmd_names = _extract_cmd_names(result.stdout)
         assert "ask" not in cmd_names
 
+    def test_plan_help_does_not_show_new(self, cli_runner):
+        """agentic plan --help does NOT show 'new' since it is deprecated."""
+        result = cli_runner(["plan", "--help"])
+        assert result.returncode == 0
+        cmd_names = _extract_cmd_names(result.stdout)
+        assert "new" not in cmd_names
+
 
 # =========================================================================
 # 3. User-facing commands visible
@@ -243,13 +250,6 @@ class TestUserFacingCommandsVisible:
         assert "question" in cmd_names
         assert "langsmith" in cmd_names
         assert "devops" in cmd_names
-
-    def test_plan_help_shows_new(self, cli_runner):
-        """agentic plan --help contains 'new'."""
-        result = cli_runner(["plan", "--help"])
-        assert result.returncode == 0
-        cmd_names = _extract_cmd_names(result.stdout)
-        assert "new" in cmd_names
 
     def test_plan_help_shows_list(self, cli_runner):
         """agentic plan --help contains 'list'."""
@@ -272,132 +272,197 @@ class TestUserFacingCommandsVisible:
         cmd_names = _extract_cmd_names(result.stdout)
         assert "cancel" in cmd_names
 
-    def test_question_help_shows_list(self, cli_runner):
-        """agentic question --help contains 'list'."""
-        result = cli_runner(["question", "--help"])
+    def test_plan_question_help_shows_list(self, cli_runner):
+        """agentic plan question --help contains 'list'."""
+        result = cli_runner(["plan", "question", "--help"])
         assert result.returncode == 0
         cmd_names = _extract_cmd_names(result.stdout)
         assert "list" in cmd_names
 
-    def test_question_help_shows_show(self, cli_runner):
-        """agentic question --help contains 'show'."""
-        result = cli_runner(["question", "--help"])
+    def test_plan_question_help_shows_show(self, cli_runner):
+        """agentic plan question --help contains 'show'."""
+        result = cli_runner(["plan", "question", "--help"])
         assert result.returncode == 0
         cmd_names = _extract_cmd_names(result.stdout)
         assert "show" in cmd_names
 
-    def test_question_help_shows_answer(self, cli_runner):
-        """agentic question --help contains 'answer'."""
-        result = cli_runner(["question", "--help"])
+    def test_plan_question_help_shows_answer(self, cli_runner):
+        """agentic plan question --help contains 'answer'."""
+        result = cli_runner(["plan", "question", "--help"])
         assert result.returncode == 0
         cmd_names = _extract_cmd_names(result.stdout)
         assert "answer" in cmd_names
 
-    def test_question_help_shows_dashboard(self, cli_runner):
-        """agentic question --help contains 'dashboard'."""
-        result = cli_runner(["question", "--help"])
+    def test_plan_question_help_shows_dashboard(self, cli_runner):
+        """agentic plan question --help contains 'dashboard'."""
+        result = cli_runner(["plan", "question", "--help"])
         assert result.returncode == 0
         cmd_names = _extract_cmd_names(result.stdout)
         assert "dashboard" in cmd_names
 
 
 # =========================================================================
-# 4. Backward compatibility
+# 4. Deprecation stubs
 # =========================================================================
 
-class TestBackwardCompatibility:
-    """Verify old command paths still work as hidden aliases."""
+class TestDeprecationStubs:
+    """Verify old command paths print an error message and exit 1."""
 
     def test_plan_task_list_help(self, cli_runner):
-        """agentic plan task list --help returns 0 (old path still works)."""
-        result = cli_runner(["plan", "task", "list", "--help"])
-        assert result.returncode == 0
-        assert "list" in result.stdout.lower()
+        """agentic plan task list exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "task", "list"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent plan task" in normalized
 
     def test_plan_task_start_help(self, cli_runner):
-        """agentic plan task start --help returns 0."""
-        result = cli_runner(["plan", "task", "start", "--help"])
-        assert result.returncode == 0
+        """agentic plan task start exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "task", "start"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent plan task" in normalized
 
     def test_plan_task_complete_help(self, cli_runner):
-        """agentic plan task complete --help returns 0."""
-        result = cli_runner(["plan", "task", "complete", "--help"])
-        assert result.returncode == 0
+        """agentic plan task complete exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "task", "complete"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent plan task" in normalized
 
     def test_plan_archive_help(self, cli_runner):
-        """agentic plan archive --help returns 0."""
-        result = cli_runner(["plan", "archive", "--help"])
-        assert result.returncode == 0
+        """agentic plan archive exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "archive"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent plan archive" in normalized
 
     def test_plan_validate_help(self, cli_runner):
-        """agentic plan validate --help returns 0."""
-        result = cli_runner(["plan", "validate", "--help"])
-        assert result.returncode == 0
+        """agentic plan validate exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "validate"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent plan validate" in normalized
 
     def test_plan_scaffold_help(self, cli_runner):
-        """agentic plan scaffold --help returns 0."""
-        result = cli_runner(["plan", "scaffold", "--help"])
-        assert result.returncode == 0
+        """agentic plan scaffold exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "scaffold"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent plan scaffold" in normalized
 
     def test_plan_phase_help(self, cli_runner):
-        """agentic plan phase --help returns 0."""
-        result = cli_runner(["plan", "phase", "--help"])
-        assert result.returncode == 0
+        """agentic plan phase exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "phase"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent plan phase" in normalized
 
     def test_context_bootstrap_help(self, cli_runner):
-        """agentic context bootstrap --help returns 0."""
-        result = cli_runner(["context", "bootstrap", "--help"])
-        assert result.returncode == 0
+        """agentic context bootstrap exits 1 with a 'has moved' message."""
+        result = cli_runner(["context", "bootstrap"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent context" in normalized
 
     def test_entrypoint_list_help(self, cli_runner):
-        """agentic entrypoint list --help returns 0."""
-        result = cli_runner(["entrypoint", "list", "--help"])
-        assert result.returncode == 0
+        """agentic entrypoint list exits 1 with a 'has moved' message."""
+        result = cli_runner(["entrypoint", "list"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent entrypoint" in normalized
 
     def test_manifest_list_help(self, cli_runner):
-        """agentic manifest list --help returns 0."""
-        result = cli_runner(["manifest", "list", "--help"])
-        assert result.returncode == 0
+        """agentic manifest list exits 1 with a 'has moved' message."""
+        result = cli_runner(["manifest", "list"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent manifest" in normalized
 
     def test_stories_find_help(self, cli_runner):
-        """agentic stories find --help returns 0."""
-        result = cli_runner(["stories", "find", "--help"])
-        assert result.returncode == 0
+        """agentic stories find exits 1 with a 'has moved' message."""
+        result = cli_runner(["stories", "find"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent stories" in normalized
 
     def test_question_ask_help(self, cli_runner):
-        """agentic question ask --help returns 0."""
-        result = cli_runner(["question", "ask", "--help"])
-        assert result.returncode == 0
+        """agentic question ask exits 1 with a 'has moved' message."""
+        result = cli_runner(["question", "ask"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
+        assert "agentic agent question ask" in normalized
 
     def test_question_defer_help(self, cli_runner):
-        """agentic question defer --help returns 0."""
-        result = cli_runner(["question", "defer", "--help"])
-        assert result.returncode == 0
+        """agentic question defer exits 1 with a 'has moved' message."""
+        result = cli_runner(["question", "defer"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
 
     def test_plan_orchestration_help(self, cli_runner):
-        """agentic plan orchestration --help returns 0."""
-        result = cli_runner(["plan", "orchestration", "--help"])
-        assert result.returncode == 0
+        """agentic plan orchestration exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "orchestration"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
 
     def test_plan_stories_help(self, cli_runner):
-        """agentic plan stories --help returns 0."""
-        result = cli_runner(["plan", "stories", "--help"])
-        assert result.returncode == 0
+        """agentic plan stories exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "stories"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
 
     def test_plan_unarchive_help(self, cli_runner):
-        """agentic plan unarchive --help returns 0."""
-        result = cli_runner(["plan", "unarchive", "--help"])
-        assert result.returncode == 0
+        """agentic plan unarchive exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "unarchive"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
 
     def test_plan_init_help(self, cli_runner):
-        """agentic plan init --help returns 0."""
-        result = cli_runner(["plan", "init", "--help"])
-        assert result.returncode == 0
+        """agentic plan init exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "init"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
 
     def test_plan_bootstrap_help(self, cli_runner):
-        """agentic plan bootstrap --help returns 0."""
-        result = cli_runner(["plan", "bootstrap", "--help"])
-        assert result.returncode == 0
+        """agentic plan bootstrap exits 1 with a 'has moved' message."""
+        result = cli_runner(["plan", "bootstrap"])
+        output = (result.stdout or "") + (result.stderr or "")
+        normalized = " ".join(output.split())
+        assert result.returncode == 1
+        assert "has moved" in normalized
 
 
 # =========================================================================

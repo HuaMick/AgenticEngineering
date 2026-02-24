@@ -215,7 +215,7 @@ class TestUserStoriesWorkflow:
         5. Verify generated test structure
         """
         # Step 1: Scaffold a plan folder
-        stdout, stderr, code = cli_in_repo("plan", "scaffold", "stories-test")
+        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "stories-test")
         assert code == 0, f"Plan scaffold failed: {stderr}"
         assert "Created planning folder" in stdout
 
@@ -232,7 +232,7 @@ class TestUserStoriesWorkflow:
 
         # Step 3: Run stories list
         stdout, stderr, code = cli_in_repo(
-            "plan", "stories", "list",
+            "agent", "plan", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list failed: {stderr}"
@@ -245,7 +245,7 @@ class TestUserStoriesWorkflow:
 
         # Step 4: Run stories test to generate test YAML (to stdout)
         stdout, stderr, code = cli_in_repo(
-            "plan", "stories", "test",
+            "agent", "plan", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories test failed: {stderr}"
@@ -286,7 +286,7 @@ class TestUserStoriesWorkflow:
 
         # Run stories list with JSON output
         stdout, stderr, code = cli_in_repo(
-            "--json", "plan", "stories", "list",
+            "--json", "agent", "plan", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list JSON failed: {stderr}"
@@ -317,7 +317,7 @@ class TestUserStoriesWorkflow:
         # Test YAML file output
         yaml_output = plan_path / "generated_tests.yml"
         stdout, stderr, code = cli_in_repo(
-            "plan", "stories", "test",
+            "agent", "plan", "stories", "test",
             "--plan", str(plan_path),
             "--output", str(yaml_output)
         )
@@ -335,7 +335,7 @@ class TestUserStoriesWorkflow:
         # Test JSON file output
         json_output = plan_path / "generated_tests.json"
         stdout, stderr, code = cli_in_repo(
-            "plan", "stories", "test",
+            "agent", "plan", "stories", "test",
             "--plan", str(plan_path),
             "--output", str(json_output),
             "--format", "json"
@@ -402,7 +402,7 @@ class TestUserStoriesWorkflow:
 
         # Generate test cases
         stdout, stderr, code = cli_in_repo(
-            "plan", "stories", "test",
+            "agent", "plan", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories test failed: {stderr}"
@@ -454,7 +454,7 @@ class TestUserStoriesWorkflow:
 
         # Run stories list
         stdout, stderr, code = cli_in_repo(
-            "plan", "stories", "list",
+            "agent", "plan", "stories", "list",
             "--plan", str(plan_path)
         )
         # Should succeed but show no stories
@@ -486,7 +486,7 @@ class TestUserStoriesWorkflow:
 
         # Run stories test - should fail with no stories
         stdout, stderr, code = cli_in_repo(
-            "plan", "stories", "test",
+            "agent", "plan", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code != 0, "Expected failure when no stories to generate tests from"
@@ -606,7 +606,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories list should handle special characters
         stdout, stderr, code = edge_cli(
-            "plan", "stories", "list",
+            "agent", "plan", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list failed: {stderr}"
@@ -615,7 +615,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories test should handle special characters
         stdout, stderr, code = edge_cli(
-            "plan", "stories", "test",
+            "agent", "plan", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories test failed: {stderr}"
@@ -670,7 +670,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories list should aggregate from both files
         stdout, stderr, code = edge_cli(
-            "plan", "stories", "list",
+            "agent", "plan", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list failed: {stderr}"
@@ -680,7 +680,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories test should generate tests for all stories
         stdout, stderr, code = edge_cli(
-            "plan", "stories", "test",
+            "agent", "plan", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -721,7 +721,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories should be found when nested
         stdout, stderr, code = edge_cli(
-            "plan", "stories", "list",
+            "agent", "plan", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list failed: {stderr}"
@@ -760,7 +760,7 @@ class TestUserStoriesEdgeCases:
 
         # Generate test cases
         stdout, stderr, code = edge_cli(
-            "plan", "stories", "test",
+            "agent", "plan", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -862,7 +862,7 @@ class TestUserStoriesIntegrationWithOtherCommands:
         Verifies that user stories integrate into the full plan workflow.
         """
         # Step 1: Scaffold
-        stdout, stderr, code = integration_cli("plan", "scaffold", "full-workflow")
+        stdout, stderr, code = integration_cli("agent", "plan", "scaffold", "full-workflow")
         assert code == 0
 
         plan_path = integration_repo / "docs" / "plans" / "live" / "full-workflow"
@@ -898,7 +898,7 @@ class TestUserStoriesIntegrationWithOtherCommands:
 
         # Step 3: Verify stories list works
         stdout, stderr, code = integration_cli(
-            "plan", "stories", "list",
+            "agent", "plan", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -906,7 +906,7 @@ class TestUserStoriesIntegrationWithOtherCommands:
 
         # Step 4: Generate tests
         stdout, stderr, code = integration_cli(
-            "plan", "stories", "test",
+            "agent", "plan", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -914,14 +914,14 @@ class TestUserStoriesIntegrationWithOtherCommands:
 
         # Step 5: Generate orchestration
         stdout, stderr, code = integration_cli(
-            "plan", "orchestration", "generate",
+            "agent", "plan", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
 
         # Step 6: Validate plan (should pass with orchestration)
         stdout, stderr, code = integration_cli(
-            "plan", "orchestration", "validate",
+            "agent", "plan", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0

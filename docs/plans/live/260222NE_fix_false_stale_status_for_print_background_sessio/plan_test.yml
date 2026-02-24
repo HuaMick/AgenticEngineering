@@ -1,0 +1,410 @@
+_template_status: active
+
+name: "Test: Fix false STALE status for print_mode background sessions"
+worktree_path: /home/code/AgenticEngineering
+branch: fix-stale-background-sessions
+status: active
+priority: high
+
+context: |
+  Test plan for validating the print_mode health check changes in session.py.
+  The build plan adds a print_mode flag to session data, skips tmux checks for
+  print_mode sessions, adds a child-process heartbeat signal, raises the stale
+  threshold to 30 min for print_mode, and gates auto-diagnostic spawning.
+
+  All changes are in modules/AgenticCLI/src/agenticcli/commands/session.py.
+  Tests target modules/AgenticCLI/tests/test_session_commands.py.
+
+  Testing strategy: Local-only (pure Python logic, no Docker/Cloud Build needed).
+  No CLI entry points modified, so real-CLI smoke tests are not required.
+  No pyproject.toml changes, so US-INSTALL-* stories are not applicable.
+
+inputs:
+  - location: "docs/plans/live/260222NE_fix_false_stale_status_for_print_background_sessio/plan_build.yml"
+    description: "Build plan defining all implementation changes to validate"
+  - location: "modules/AgenticCLI/src/agenticcli/commands/session.py"
+    description: "Source file containing all health check changes"
+  - location: "modules/AgenticCLI/tests/test_session_commands.py"
+    description: "Existing test file to extend with print_mode tests"
+
+impacted_artifacts:
+  - artifact_type: service
+    artifact_identifier: "_check_session_health()"
+    impact_type: behavior_change
+    description: "Validated: tmux skip, child-process signal, stale threshold changes"
+  - artifact_type: service
+    artifact_identifier: "_check_child_processes()"
+    impact_type: new
+    description: "Validated: new helper for child process detection"
+  - artifact_type: service
+    artifact_identifier: "cmd_health()"
+    impact_type: behavior_change
+    description: "Validated: auto-diagnostic gating for print_mode sessions"
+
+loop_structures:
+  - id: "loop_test_fix"
+    type: "test-fix-loop"
+    applies_to_phase: "Component and Integration Testing"
+    trigger: "After build phases complete"
+    description: |
+      Run unit tests for print_mode health check changes. Fix failures
+      iteratively until all tests pass.
+    exit_criteria:
+      success: "All 7 print_mode tests pass AND no existing tests regress"
+      max_iterations: 5
+      escalation: "Escalate to user with test results and remaining failures"
+    participants:
+      - agent: "test-runner"
+        role: "Executes pytest for print_mode tests"
+      - agent: "build-python"
+        role: "Fixes test failures in session.py or test file"
+
+  - id: "loop_audit"
+    type: "audit-test-fix-loop"
+    applies_to_phase: "Test Audit"
+    trigger: "After test-fix-loop succeeds"
+    description: |
+      MANDATORY audit to detect reward hacking in tests. Verify that tests
+      are not mocking core behavior (e.g., mocking _check_session_health itself),
+      are testing real code paths, and have meaningful assertions.
+    exit_criteria:
+      success: "Audit passes AND all tests still pass after corrections"
+      max_iterations: 3
+      escalation: "BLOCK - audit failures must be resolved before completion"
+    participants:
+      - agent: "test-audit"
+        role: "Reviews test quality and detects reward hacking"
+      - agent: "test-builder"
+        role: "Fixes audit-identified test issues"
+    mandatory: true
+
+  - id: "loop_uat"
+    type: "user-story-validation-loop"
+    applies_to_phase: "UAT Validation"
+    trigger: "After audit loop succeeds"
+    description: |
+      Validate that the build plan's success criteria are met by running
+      targeted verification checks against the implementation.
+    exit_criteria:
+      success: "All success criteria from build plan validated"
+      max_iterations: 3
+      escalation: "Escalate to user with failing criteria"
+    participants:
+      - agent: "test-user-simulator"
+        role: "Validates success criteria end-to-end"
+
+phases:
+  # ----------------------------------------
+  # PHASE 1: Environment Setup
+  # ----------------------------------------
+  - name: "Environment Setup"
+    id: "env_setup"
+    execution: sequential
+    description: "Install latest code to ensure tests run against current implementation"
+    tasks:
+      - id: "env_001"
+        name: "Install latest AgenticCLI"
+        status: pending
+        description: |
+          Install the latest AgenticCLI code in editable mode:
+            uv pip install -e modules/AgenticCLI
+          Verify installation:
+            uv pip show agenticcli
+            agentic --version
+        target_files: []
+        success_criteria:
+          - "uv pip install -e modules/AgenticCLI succeeds"
+          - "agentic --version reports current version"
+
+      - id: "env_002"
+        name: "Verify build changes are present"
+        status: pending
+        description: |
+          Verify the build plan changes exist in session.py:
+          1. Grep for "print_mode" in session.py (confirms P1 changes)
+          2. Grep for "_check_child_processes" in session.py (confirms P3 changes)
+          3. Grep for "stale_threshold = 30" in session.py (confirms P4 changes)
+          If any are missing, STOP and report which build phases are incomplete.
+        target_files: []
+        success_criteria:
+          - "print_mode field exists in session_data dict"
+          - "_check_child_processes function defined"
+          - "Conditional stale threshold (30 for print_mode, 10 otherwise) present"
+
+  # ----------------------------------------
+  # PHASE 2: Component and Integration Testing (test-fix-loop)
+  # ----------------------------------------
+  - name: "Component and Integration Testing"
+    id: "test_component"
+    execution: sequential
+    description: |
+      Run the unit tests created in build phase P6 to validate all new behavior.
+      Uses test-fix-loop: run tests, fix failures, re-run until all pass.
+    loop: "test-fix-loop"
+    tasks:
+      - id: "test_001"
+        name: "Run print_mode unit tests"
+        status: pending
+        description: |
+          Execute the print_mode-specific tests from test_session_commands.py:
+            python3 -m pytest modules/AgenticCLI/tests/test_session_commands.py -v \
+              -k "print_mode or stale_threshold or auto_diagnostic"
+
+          Expected tests (7 total from build P6_T1):
+          1. test_print_mode_skips_tmux_check
+          2. test_non_print_mode_still_checks_tmux
+          3. test_print_mode_has_child_processes_signal
+          4. test_print_mode_stale_threshold_is_30_minutes
+          5. test_non_print_mode_stale_threshold_is_10_minutes
+          6. test_auto_diagnostic_skipped_when_children_active
+          7. test_auto_diagnostic_fires_when_no_children
+        target_files:
+          - modules/AgenticCLI/tests/test_session_commands.py
+        success_criteria:
+          - "All 7 print_mode tests pass"
+          - "No test uses mocking that bypasses the code under test"
+
+      - id: "test_002"
+        name: "Run full session test suite for regression"
+        status: pending
+        description: |
+          Run the entire session test file to verify no regressions:
+            python3 -m pytest modules/AgenticCLI/tests/test_session_commands.py -v
+
+          All existing tests must continue to pass. If any fail, investigate
+          whether the build changes caused the regression.
+        target_files:
+          - modules/AgenticCLI/tests/test_session_commands.py
+        success_criteria:
+          - "All existing tests pass (zero regressions)"
+          - "Test count is at least 7 more than before build changes"
+
+      - id: "test_003"
+        name: "Verify _check_child_processes isolation"
+        status: pending
+        description: |
+          Verify that _check_child_processes() is independently testable:
+          1. Test with a real PID (os.getpid()) - should return True or False
+          2. Test with PID 999999999 (unlikely to exist) - should return False
+          3. Test error handling by mocking subprocess.run to raise TimeoutExpired
+
+          This validates the helper works correctly in isolation before it's
+          used by _check_session_health() and cmd_health().
+        target_files:
+          - modules/AgenticCLI/tests/test_session_commands.py
+        success_criteria:
+          - "_check_child_processes returns bool for valid PIDs"
+          - "_check_child_processes returns None on failure"
+
+  # ----------------------------------------
+  # PHASE 3: Cleanup
+  # ----------------------------------------
+  - name: "Cleanup"
+    id: "cleanup"
+    execution: sequential
+    description: "Remove any test artifacts and verify clean state"
+    tasks:
+      - id: "clean_001"
+        name: "Remove test artifacts"
+        status: pending
+        description: |
+          Clean up any temporary files created during testing:
+          - Remove __pycache__ dirs in test directories
+          - Remove .pytest_cache if present
+          - Verify no temp session files leaked outside tmp_path fixtures
+        target_files: []
+        success_criteria:
+          - "No leftover test artifacts in the working tree"
+
+  # ----------------------------------------
+  # PHASE 4: Test Audit (audit-test-fix-loop - MANDATORY)
+  # ----------------------------------------
+  - name: "Test Audit"
+    id: "test_audit"
+    execution: sequential
+    description: |
+      MANDATORY audit phase to detect reward hacking and validate test quality.
+      Reviews all new tests for shortcuts, excessive mocking, and false positives.
+    loop: "audit-test-fix-loop"
+    tasks:
+      - id: "audit_001"
+        name: "Audit print_mode test quality"
+        status: pending
+        description: |
+          Review all 7 new tests in test_session_commands.py for:
+
+          REWARD HACKING CHECKS:
+          - Tests must NOT mock _check_session_health() itself
+          - Tests must NOT mock the session dict to always return expected values
+          - Tests must assert specific signal names/values, not just "healthy=True"
+          - Stale threshold tests must use realistic time values, not zero
+
+          MOCKING QUALITY:
+          - Only mock external calls: subprocess.run (for ps command), tmux checks
+          - Session data should be constructed realistically (all required fields)
+          - Mock _check_tmux_session only to verify it's called/not called
+          - Do NOT mock _check_child_processes when testing health check integration
+
+          ASSERTION QUALITY:
+          - Each test must have at least 2 meaningful assertions
+          - Tests should verify signal names in the signals list
+          - Stale tests should verify the exact threshold boundary
+          - Diagnostic gating tests should verify spawn/no-spawn explicitly
+
+          If issues found, report them for test-builder to fix.
+        target_files:
+          - modules/AgenticCLI/tests/test_session_commands.py
+        success_criteria:
+          - "No reward hacking patterns detected"
+          - "All tests use realistic session data"
+          - "Mocking is limited to external boundaries (subprocess, tmux)"
+          - "Each test has meaningful, specific assertions"
+
+  # ----------------------------------------
+  # PHASE 5: UAT Validation (MANDATORY - PRIMARY SUCCESS CRITERIA)
+  # ----------------------------------------
+  - name: "UAT Validation"
+    id: "uat"
+    execution: sequential
+    description: |
+      Validate the build plan's success criteria are met. Since no CLI entry
+      points were modified, UAT validates internal behavior through targeted
+      verification rather than real CLI execution.
+
+      Related story: US-CLI-031 (List and Monitor Sessions) - health monitoring
+      aspect is indirectly validated.
+    loop: "user-story-validation-loop"
+    tasks:
+      - id: "uat_001"
+        name: "Validate: print_mode sessions skip tmux check"
+        status: pending
+        description: |
+          Build Success Criterion:
+            "--print background sessions are NOT checked for tmux session existence."
+
+          Verification Steps:
+          1. Create a session dict with print_mode=True, background=True, status="running"
+          2. Call _check_session_health() with mocked externals
+          3. Verify no "tmux_session" signal appears in the result
+          4. Create a session with print_mode=False, background=True
+          5. Verify "tmux_session" signal DOES appear
+
+          Evidence Required:
+          - Test output showing print_mode session has no tmux signal
+          - Test output showing non-print session has tmux signal
+        target_files: []
+        success_criteria:
+          - "print_mode=True sessions produce no tmux_session signal"
+          - "print_mode=False sessions still produce tmux_session signal"
+        verification_method: "test-user-simulator"
+        story_id: "US-CLI-031"
+
+      - id: "uat_002"
+        name: "Validate: child-process heartbeat signal exists"
+        status: pending
+        description: |
+          Build Success Criterion:
+            "A new 'process_children' or 'cpu_active' signal is added for --print
+             background sessions to provide a heartbeat when tmux is unavailable."
+
+          Verification Steps:
+          1. Create a print_mode session with a real PID (os.getpid())
+          2. Call _check_session_health()
+          3. Verify "child_processes" signal present in signals list
+          4. Verify signal has "ok" and "detail" fields
+          5. Verify signal is NOT present for non-print sessions
+
+          Evidence Required:
+          - Signal dict with name="child_processes", ok=True/False, detail present
+        target_files: []
+        success_criteria:
+          - "child_processes signal exists for print_mode sessions"
+          - "Signal includes ok boolean and detail string"
+          - "Signal absent for non-print sessions"
+        verification_method: "test-user-simulator"
+
+      - id: "uat_003"
+        name: "Validate: stale threshold is 30 minutes for print_mode"
+        status: pending
+        description: |
+          Build Success Criterion:
+            "The staleness threshold for --print sessions is configurable and
+             defaults to a higher value (e.g., 30 minutes)."
+
+          Verification Steps:
+          1. Create print_mode session with log mtime 15 minutes ago
+          2. Call _check_session_health() - verify NOT stale (15 < 30)
+          3. Create print_mode session with log mtime 35 minutes ago
+          4. Call _check_session_health() - verify IS stale (35 > 30)
+          5. Create non-print session with log mtime 15 minutes ago
+          6. Verify IS stale (15 > 10) for non-print session
+
+          Evidence Required:
+          - Test output showing 15-min print_mode session is NOT stale
+          - Test output showing 35-min print_mode session IS stale
+          - Test output showing 15-min non-print session IS stale
+        target_files: []
+        success_criteria:
+          - "print_mode sessions use 30-minute stale threshold"
+          - "Non-print sessions still use 10-minute stale threshold"
+          - "Boundary values are correct"
+        verification_method: "test-user-simulator"
+
+      - id: "uat_004"
+        name: "Validate: auto-diagnostic gated by active children"
+        status: pending
+        description: |
+          Build Success Criterion:
+            "Auto-diagnostic spawning is gated so it does NOT fire for sessions
+             that have an alive PID and active child processes."
+
+          Verification Steps:
+          1. Create print_mode session marked stale with active child processes
+          2. Call cmd_health() - verify _spawn_diagnostic_planner NOT called
+          3. Create print_mode session marked stale with NO child processes
+          4. Call cmd_health() - verify _spawn_diagnostic_planner IS called
+          5. Create non-print stale session - verify normal diagnostic behavior
+
+          Evidence Required:
+          - Mock call log showing diagnostic NOT spawned with active children
+          - Mock call log showing diagnostic IS spawned without children
+        target_files: []
+        success_criteria:
+          - "Diagnostic not spawned when print_mode session has active children"
+          - "Diagnostic spawned when print_mode session has no children"
+          - "Non-print sessions unaffected by child process check"
+        verification_method: "test-user-simulator"
+
+      - id: "uat_005"
+        name: "Validate: existing behavior unchanged for non-print sessions"
+        status: pending
+        description: |
+          Build Success Criterion:
+            "Existing health check behavior for non-print sessions is unchanged."
+            "All existing tests pass (no regressions)."
+
+          Verification Steps:
+          1. Run full test suite: python3 -m pytest modules/AgenticCLI/tests/test_session_commands.py -v
+          2. Verify all pre-existing tests pass
+          3. Verify no changes to non-print session health check flow
+          4. Confirm tmux check, 10-min threshold, and diagnostic spawn
+             still work for non-print background sessions
+
+          Evidence Required:
+          - Full pytest output showing all tests pass
+          - Count of tests unchanged from before build (plus 7 new)
+        target_files: []
+        success_criteria:
+          - "All pre-existing tests pass without modification"
+          - "Non-print session behavior verified unchanged"
+        verification_method: "test-user-simulator"
+
+success_criteria:
+  - "All 7 new print_mode tests pass"
+  - "No regressions in existing session tests"
+  - "Audit finds no reward hacking in new tests"
+  - "All 5 UAT criteria from build plan validated"
+  - "print_mode sessions correctly skip tmux checks"
+  - "Child-process heartbeat signal works for print_mode sessions"
+  - "30-minute stale threshold applied for print_mode sessions"
+  - "Auto-diagnostic gated by active child processes"

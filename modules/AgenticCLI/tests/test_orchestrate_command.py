@@ -1,4 +1,4 @@
-"""Tests for the orchestrate command with --planning-loop flag."""
+"""Tests for the orchestrate command with positional action argument."""
 
 import json
 import os
@@ -11,20 +11,19 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# cmd_orchestrate --planning-loop tests
+# cmd_orchestrate planning action tests
 # ---------------------------------------------------------------------------
 
 
-class TestOrchestratePlanningLoop:
-    """Test orchestrate command with --planning-loop flag."""
+class TestOrchestratePlanningAction:
+    """Test orchestrate command with planning action."""
 
-    def test_planning_loop_flag_triggers_runner(self, tmp_path, monkeypatch):
-        """--planning-loop flag triggers OrchestrationRunner instead of interactive session."""
+    def test_planning_action_triggers_runner(self, tmp_path, monkeypatch):
+        """action='planning' triggers PlanningRunner instead of error."""
         from agenticcli.commands.orchestrate import cmd_orchestrate
 
-        # Mock OrchestrationRunner and OrchestrationWorkflow at the import location
-        with patch("agenticcli.workflows.orchestration.OrchestrationRunner") as MockRunner, \
-             patch("agenticcli.workflows.orchestration.OrchestrationWorkflow") as MockWorkflow:
+        with patch("agenticcli.workflows.orchestration.PlanningRunner") as MockRunner, \
+             patch("agenticcli.workflows.planner_loop.PlannerLoopWorkflow") as MockWorkflow:
             mock_runner = MagicMock()
             mock_runner.run.return_value = True
             mock_runner.state = {
@@ -39,7 +38,7 @@ class TestOrchestratePlanningLoop:
             MockWorkflow.return_value = mock_workflow
 
             args = SimpleNamespace(
-                planning_loop=True,
+                action="planning",
                 background=False,
                 max_iterations=10,
                 completion_promise=None,
@@ -59,34 +58,47 @@ class TestOrchestratePlanningLoop:
                 completion_promise=None,
             )
 
-    def test_no_flag_launches_interactive(self, monkeypatch):
-        """Without --planning-loop flag, launches interactive Claude session."""
+    def test_unknown_action_exits_with_error(self, monkeypatch):
+        """Unknown action exits with code 1."""
         from agenticcli.commands.orchestrate import cmd_orchestrate
 
-        # Mock os.execvp to prevent actually launching Claude
-        mock_execvp = MagicMock()
-        monkeypatch.setattr(os, "execvp", mock_execvp)
-
         args = SimpleNamespace(
-            planning_loop=False,
-            mode="planning",
-            prompt_file=None,
-            role=None,
+            action="bogus",
+            background=False,
+            max_iterations=10,
+            completion_promise=None,
+            project=None,
             plan=None,
-            model=None,
-            no_tmux=True,
-            dashboard_refresh=5,
-            question_refresh=10,
+            directory=None,
+            dangerously_skip_permissions=False,
+            json=False,
         )
 
-        cmd_orchestrate(args)
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_orchestrate(args)
 
-        # Verify execvp was called with claude command
-        mock_execvp.assert_called_once()
-        call_args = mock_execvp.call_args[0]
-        assert call_args[0] == "claude"
-        assert "claude" in call_args[1]
-        assert "--dangerously-skip-permissions" in call_args[1]
+        assert exc_info.value.code == 1
+
+    def test_none_action_exits_with_error(self, monkeypatch):
+        """No action provided exits with code 1."""
+        from agenticcli.commands.orchestrate import cmd_orchestrate
+
+        args = SimpleNamespace(
+            action=None,
+            background=False,
+            max_iterations=10,
+            completion_promise=None,
+            project=None,
+            plan=None,
+            directory=None,
+            dangerously_skip_permissions=False,
+            json=False,
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            cmd_orchestrate(args)
+
+        assert exc_info.value.code == 1
 
     def test_background_mode_spawns_subprocess(self, tmp_path, monkeypatch):
         """--background flag spawns subprocess instead of running foreground."""
@@ -100,7 +112,7 @@ class TestOrchestratePlanningLoop:
         monkeypatch.setattr("builtins.open", MagicMock())
 
         args = SimpleNamespace(
-            planning_loop=True,
+            action="planning",
             background=True,
             max_iterations=5,
             completion_promise="All done",
@@ -117,7 +129,8 @@ class TestOrchestratePlanningLoop:
         mock_popen.assert_called_once()
         cmd_args = mock_popen.call_args[0][0]
         assert "orchestrate" in cmd_args
-        assert "--planning-loop" in cmd_args
+        # New format uses positional "planning" not --planning-loop
+        assert "planning" in cmd_args
         assert "--max-iterations" in cmd_args
         assert "5" in cmd_args
         assert "--plan" in cmd_args
@@ -130,14 +143,14 @@ class TestOrchestratePlanningLoop:
         state_dir = tmp_path / ".agentic" / "orchestration_loops"
         state_dir.mkdir(parents=True)
 
-        # Mock _get_orchestration_loops_dir to use tmp_path
+        # Mock _store.get_dir to use tmp_path
         monkeypatch.setattr(
             "agenticcli.commands.orchestrate._store.get_dir",
             lambda override=None: state_dir
         )
 
-        with patch("agenticcli.workflows.orchestration.OrchestrationRunner") as MockRunner, \
-             patch("agenticcli.workflows.orchestration.OrchestrationWorkflow") as MockWorkflow:
+        with patch("agenticcli.workflows.orchestration.PlanningRunner") as MockRunner, \
+             patch("agenticcli.workflows.planner_loop.PlannerLoopWorkflow") as MockWorkflow:
             mock_runner = MagicMock()
             mock_runner.run.return_value = True
             mock_runner.state = {
@@ -152,7 +165,7 @@ class TestOrchestratePlanningLoop:
             MockWorkflow.return_value = mock_workflow
 
             args = SimpleNamespace(
-                planning_loop=True,
+                action="planning",
                 background=False,
                 max_iterations=10,
                 completion_promise=None,
@@ -178,7 +191,7 @@ class TestOrchestratePlanningLoop:
                 assert state["plans_processed"] == ["plan_a", "plan_b"]
 
     def test_json_output_format(self, tmp_path, monkeypatch):
-        """--json flag produces JSON output."""
+        """JSON output is produced when is_json_output returns True."""
         from agenticcli.commands.orchestrate import cmd_orchestrate
 
         # Mock console functions at their import location
@@ -193,8 +206,8 @@ class TestOrchestratePlanningLoop:
             lambda override=None: state_dir
         )
 
-        with patch("agenticcli.workflows.orchestration.OrchestrationRunner") as MockRunner, \
-             patch("agenticcli.workflows.orchestration.OrchestrationWorkflow") as MockWorkflow:
+        with patch("agenticcli.workflows.orchestration.PlanningRunner") as MockRunner, \
+             patch("agenticcli.workflows.planner_loop.PlannerLoopWorkflow") as MockWorkflow:
             mock_runner = MagicMock()
             mock_runner.run.return_value = True
             mock_runner.state = {
@@ -209,7 +222,7 @@ class TestOrchestratePlanningLoop:
             MockWorkflow.return_value = mock_workflow
 
             args = SimpleNamespace(
-                planning_loop=True,
+                action="planning",
                 background=False,
                 max_iterations=10,
                 completion_promise=None,
@@ -239,8 +252,8 @@ class TestOrchestratePlanningLoop:
             lambda override=None: state_dir
         )
 
-        with patch("agenticcli.workflows.orchestration.OrchestrationRunner") as MockRunner, \
-             patch("agenticcli.workflows.orchestration.OrchestrationWorkflow") as MockWorkflow:
+        with patch("agenticcli.workflows.orchestration.PlanningRunner") as MockRunner, \
+             patch("agenticcli.workflows.planner_loop.PlannerLoopWorkflow") as MockWorkflow:
             mock_runner = MagicMock()
             mock_runner.run.side_effect = RuntimeError("Test error")
             MockRunner.return_value = mock_runner
@@ -249,7 +262,7 @@ class TestOrchestratePlanningLoop:
             MockWorkflow.return_value = mock_workflow
 
             args = SimpleNamespace(
-                planning_loop=True,
+                action="planning",
                 background=False,
                 max_iterations=10,
                 completion_promise=None,
@@ -275,11 +288,11 @@ class TestOrchestratePlanningLoop:
                 assert "Test error" in state["errors"][0]
 
     def test_plan_folder_parameter_passed(self, tmp_path, monkeypatch):
-        """--plan parameter is correctly passed to OrchestrationRunner."""
+        """--plan parameter is correctly passed to PlanningRunner."""
         from agenticcli.commands.orchestrate import cmd_orchestrate
 
-        with patch("agenticcli.workflows.orchestration.OrchestrationRunner") as MockRunner, \
-             patch("agenticcli.workflows.orchestration.OrchestrationWorkflow") as MockWorkflow:
+        with patch("agenticcli.workflows.orchestration.PlanningRunner") as MockRunner, \
+             patch("agenticcli.workflows.planner_loop.PlannerLoopWorkflow") as MockWorkflow:
             mock_runner = MagicMock()
             mock_runner.run.return_value = True
             mock_runner.state = {
@@ -294,7 +307,7 @@ class TestOrchestratePlanningLoop:
             MockWorkflow.return_value = mock_workflow
 
             args = SimpleNamespace(
-                planning_loop=True,
+                action="planning",
                 background=False,
                 max_iterations=10,
                 completion_promise=None,
@@ -318,8 +331,8 @@ class TestOrchestratePlanningLoop:
         """--completion-promise parameter is correctly passed to runner.run()."""
         from agenticcli.commands.orchestrate import cmd_orchestrate
 
-        with patch("agenticcli.workflows.orchestration.OrchestrationRunner") as MockRunner, \
-             patch("agenticcli.workflows.orchestration.OrchestrationWorkflow") as MockWorkflow:
+        with patch("agenticcli.workflows.orchestration.PlanningRunner") as MockRunner, \
+             patch("agenticcli.workflows.planner_loop.PlannerLoopWorkflow") as MockWorkflow:
             mock_runner = MagicMock()
             mock_runner.run.return_value = True
             mock_runner.state = {
@@ -334,7 +347,7 @@ class TestOrchestratePlanningLoop:
             MockWorkflow.return_value = mock_workflow
 
             args = SimpleNamespace(
-                planning_loop=True,
+                action="planning",
                 background=False,
                 max_iterations=15,
                 completion_promise="All plans completed",
@@ -352,194 +365,3 @@ class TestOrchestratePlanningLoop:
                 max_iterations=15,
                 completion_promise="All plans completed",
             )
-
-
-# ---------------------------------------------------------------------------
-# Tmux Layout Integration Tests
-# ---------------------------------------------------------------------------
-
-
-class TestOrchestrateWithTmuxLayout:
-    """Test orchestrate command tmux layout integration."""
-
-    def test_attempts_tmux_layout_creation_by_default(self, monkeypatch):
-        """Without --no-tmux flag, orchestrate attempts to create tmux layout."""
-        from agenticcli.commands.orchestrate import cmd_orchestrate
-
-        mock_layout = MagicMock()
-        mock_layout.created_new_session = True
-        mock_layout.session_name = "test-session"
-
-        mock_create_layout = MagicMock(return_value=mock_layout)
-        mock_attach = MagicMock()
-        mock_tmux_available = MagicMock(return_value=True)
-
-        # Mock tmux layout functions
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.create_orchestration_layout", mock_create_layout)
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.attach_to_session", mock_attach)
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.tmux_available", mock_tmux_available)
-        monkeypatch.setattr("agenticcli.utils.tmux.is_in_tmux", lambda: False)
-
-        args = SimpleNamespace(
-            planning_loop=False,
-            mode="planning",
-            prompt_file=None,
-            role=None,
-            plan=None,
-            model=None,
-            no_tmux=False,
-            dashboard_refresh=5,
-            question_refresh=10,
-        )
-
-        cmd_orchestrate(args)
-
-        # Verify create_orchestration_layout was called with correct arguments
-        mock_create_layout.assert_called_once()
-        call_kwargs = mock_create_layout.call_args[1]
-        assert "claude_cmd_str" in call_kwargs
-        assert "claude" in call_kwargs["claude_cmd_str"]
-        assert call_kwargs["dashboard_refresh"] == 5
-        assert call_kwargs["question_refresh"] == 10
-
-        # Verify attach was called for new session
-        mock_attach.assert_called_once_with("test-session")
-
-    def test_execvp_for_inplace_layout(self, monkeypatch):
-        """For in-place layout (already in tmux), execvp to Claude in main pane."""
-        from agenticcli.commands.orchestrate import cmd_orchestrate
-
-        mock_layout = MagicMock()
-        mock_layout.created_new_session = False
-        mock_layout.session_name = "existing-session"
-
-        mock_create_layout = MagicMock(return_value=mock_layout)
-        mock_tmux_available = MagicMock(return_value=True)
-        mock_execvp = MagicMock()
-
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.create_orchestration_layout", mock_create_layout)
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.tmux_available", mock_tmux_available)
-        monkeypatch.setattr("agenticcli.utils.tmux.is_in_tmux", lambda: True)
-        monkeypatch.setattr(os, "execvp", mock_execvp)
-
-        args = SimpleNamespace(
-            planning_loop=False,
-            mode="planning",
-            prompt_file=None,
-            role=None,
-            plan=None,
-            model=None,
-            no_tmux=False,
-            dashboard_refresh=5,
-            question_refresh=10,
-        )
-
-        cmd_orchestrate(args)
-
-        # Verify create_orchestration_layout was called
-        mock_create_layout.assert_called_once()
-
-        # Verify execvp was called (since created_new_session = False)
-        mock_execvp.assert_called_once()
-        assert mock_execvp.call_args[0][0] == "claude"
-
-    def test_fallback_when_tmux_layout_fails(self, monkeypatch):
-        """Falls back to plain Claude session when tmux layout creation fails."""
-        from agenticcli.commands.orchestrate import cmd_orchestrate
-
-        mock_create_layout = MagicMock(side_effect=RuntimeError("tmux split-window failed"))
-        mock_tmux_available = MagicMock(return_value=True)
-        mock_execvp = MagicMock()
-
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.create_orchestration_layout", mock_create_layout)
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.tmux_available", mock_tmux_available)
-        monkeypatch.setattr("agenticcli.utils.tmux.is_in_tmux", lambda: False)
-        monkeypatch.setattr(os, "execvp", mock_execvp)
-
-        args = SimpleNamespace(
-            planning_loop=False,
-            mode="planning",
-            prompt_file=None,
-            role=None,
-            plan=None,
-            model=None,
-            no_tmux=False,
-            dashboard_refresh=5,
-            question_refresh=10,
-        )
-
-        cmd_orchestrate(args)
-
-        # Verify create_orchestration_layout was attempted
-        mock_create_layout.assert_called_once()
-
-        # Verify fallback to plain execvp
-        mock_execvp.assert_called_once()
-        assert mock_execvp.call_args[0][0] == "claude"
-
-    def test_no_tmux_flag_bypasses_layout_creation(self, monkeypatch):
-        """--no-tmux flag bypasses tmux layout creation entirely."""
-        from agenticcli.commands.orchestrate import cmd_orchestrate
-
-        mock_create_layout = MagicMock()
-        mock_execvp = MagicMock()
-
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.create_orchestration_layout", mock_create_layout)
-        monkeypatch.setattr(os, "execvp", mock_execvp)
-
-        args = SimpleNamespace(
-            planning_loop=False,
-            mode="planning",
-            prompt_file=None,
-            role=None,
-            plan=None,
-            model=None,
-            no_tmux=True,
-            dashboard_refresh=5,
-            question_refresh=10,
-        )
-
-        cmd_orchestrate(args)
-
-        # Verify create_orchestration_layout was NOT called
-        mock_create_layout.assert_not_called()
-
-        # Verify direct execvp to claude
-        mock_execvp.assert_called_once()
-        assert mock_execvp.call_args[0][0] == "claude"
-
-    def test_dashboard_refresh_parameters_passed_through(self, monkeypatch):
-        """Dashboard refresh parameters are correctly passed to tmux layout."""
-        from agenticcli.commands.orchestrate import cmd_orchestrate
-
-        mock_layout = MagicMock()
-        mock_layout.created_new_session = True
-        mock_layout.session_name = "test-session"
-
-        mock_create_layout = MagicMock(return_value=mock_layout)
-        mock_attach = MagicMock()
-        mock_tmux_available = MagicMock(return_value=True)
-
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.create_orchestration_layout", mock_create_layout)
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.attach_to_session", mock_attach)
-        monkeypatch.setattr("agenticcli.utils.tmux_layout.tmux_available", mock_tmux_available)
-        monkeypatch.setattr("agenticcli.utils.tmux.is_in_tmux", lambda: False)
-
-        args = SimpleNamespace(
-            planning_loop=False,
-            mode="planning",
-            prompt_file=None,
-            role=None,
-            plan=None,
-            model=None,
-            no_tmux=False,
-            dashboard_refresh=20,
-            question_refresh=40,
-        )
-
-        cmd_orchestrate(args)
-
-        # Verify custom refresh intervals were passed
-        call_kwargs = mock_create_layout.call_args[1]
-        assert call_kwargs["dashboard_refresh"] == 20
-        assert call_kwargs["question_refresh"] == 40

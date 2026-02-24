@@ -1,14 +1,13 @@
-"""Orchestration workflow for automated plan execution.
+"""Orchestration workflow for plan management.
 
-Extends PlannerLoopWorkflow to add execution phase: parses MMD routing metadata,
-spawns appropriate agents per phase, tracks execution status, and archives plans.
+Extends PlannerLoopWorkflow with MMD loading and routing metadata parsing.
+Provides PlanningRunner for planning-only lifecycle and ExecutionRunner for
+deterministic phase-by-phase execution.
 """
 
 import json
 import logging
 import re
-import subprocess
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -17,10 +16,40 @@ from agenticcli.workflows.planner_loop import PlannerLoopWorkflow, PlannerLoopRu
 logger = logging.getLogger(__name__)
 
 
+def _parse_json_like_block(content: str, key: str) -> Optional[dict]:
+    """Parse a JSON-like block from MMD YAML front matter.
+
+    Handles multiline blocks like:
+        AGENT_ROUTING: {
+          "Build": "build-python",
+          "Test": "test-runner"
+        }
+
+    Args:
+        content: Full MMD content.
+        key: Header key to look for (e.g. "AGENT_ROUTING", "STATUS").
+
+    Returns:
+        Parsed dict, or None if not found or unparseable.
+    """
+    # Match "KEY: {" followed by content up to closing "}"
+    pattern = rf'{key}:\s*\{{([^}}]*)\}}'
+    match = re.search(pattern, content, re.DOTALL)
+    if not match:
+        return None
+    try:
+        return json.loads("{" + match.group(1) + "}")
+    except json.JSONDecodeError:
+        return None
+
+
 def parse_mmd_routing(mmd_content: str) -> dict:
     """Parse MMD header to extract routing metadata.
 
-    Extracts structured metadata from MMD file header comments (both %% and # styles).
+    Supports two formats:
+    1. Comment-based (old): ``%% STATUS: Build=pending, Test=pending``
+    2. YAML front matter with JSON-like blocks (new):
+       ``STATUS: { "Build": "pending", "Test": "pending" }``
 
     Args:
         mmd_content: Raw MMD file content.
@@ -42,68 +71,93 @@ def parse_mmd_routing(mmd_content: str) -> dict:
     if not mmd_content:
         return result
 
-    # Parse AGENT_ROUTING line (header level)
-    # Format: "phase_1 -> build-python, phase_2 -> test-builder"
-    routing_match = re.search(r"(?:%%|#)\s*AGENT_ROUTING:\s*(.+)", mmd_content)
-    if routing_match:
-        routing_str = routing_match.group(1).strip()
-        # Split by comma, then parse each "phase -> agent"
-        for mapping in routing_str.split(","):
-            mapping = mapping.strip()
-            if "->" in mapping:
-                phase, agent = mapping.split("->", 1)
-                result["agent_routing"][phase.strip()] = agent.strip()
+    # --- AGENT_ROUTING ---
+    # Try JSON-like block first (new format)
+    json_routing = _parse_json_like_block(mmd_content, "AGENT_ROUTING")
+    if json_routing:
+        result["agent_routing"] = json_routing
+    else:
+        # Fall back to comment-based format
+        # Format: "phase_1 -> build-python, phase_2 -> test-builder"
+        # or: "phase_1=build-python, phase_2=test-builder"
+        routing_match = re.search(r"(?:%%|#)\s*AGENT_ROUTING:\s*(.+)", mmd_content)
+        if routing_match:
+            routing_str = routing_match.group(1).strip()
+            for mapping in routing_str.split(","):
+                mapping = mapping.strip()
+                if "->" in mapping:
+                    phase, agent = mapping.split("->", 1)
+                    result["agent_routing"][phase.strip()] = agent.strip()
+                elif "=" in mapping:
+                    phase, agent = mapping.split("=", 1)
+                    result["agent_routing"][phase.strip()] = agent.strip()
 
-    # Parse STATUS line
-    # Format: "phase_1=pending, phase_2=pending"
-    status_match = re.search(r"(?:%%|#)\s*STATUS:\s*(.+)", mmd_content)
-    if status_match:
-        status_str = status_match.group(1).strip()
-        for mapping in status_str.split(","):
-            mapping = mapping.strip()
-            if "=" in mapping:
-                phase, status = mapping.split("=", 1)
-                result["status"][phase.strip()] = status.strip()
+    # --- STATUS ---
+    json_status = _parse_json_like_block(mmd_content, "STATUS")
+    if json_status:
+        result["status"] = json_status
+    else:
+        # Format: "phase_1=pending, phase_2=pending"
+        status_match = re.search(r"(?:%%|#)\s*STATUS:\s*(.+)", mmd_content)
+        if status_match:
+            status_str = status_match.group(1).strip()
+            for mapping in status_str.split(","):
+                mapping = mapping.strip()
+                if "=" in mapping:
+                    phase, status = mapping.split("=", 1)
+                    result["status"][phase.strip()] = status.strip()
 
-    # Parse FEEDBACK_TRIGGERS line
-    # Format: "TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate"
-    triggers_match = re.search(r"(?:%%|#)\s*FEEDBACK_TRIGGERS:\s*(.+)", mmd_content)
-    if triggers_match:
-        triggers_str = triggers_match.group(1).strip()
-        for mapping in triggers_str.split(","):
-            mapping = mapping.strip()
-            if "->" in mapping:
-                trigger, action = mapping.split("->", 1)
-                result["feedback_triggers"][trigger.strip()] = action.strip()
+    # --- FEEDBACK_TRIGGERS / FEEDBACK_TRIGGER ---
+    json_triggers = _parse_json_like_block(mmd_content, "FEEDBACK_TRIGGER(?:S)?")
+    if json_triggers:
+        result["feedback_triggers"] = json_triggers
+    else:
+        triggers_match = re.search(r"(?:%%|#)\s*FEEDBACK_TRIGGER(?:S)?:\s*(.+)", mmd_content)
+        if triggers_match:
+            triggers_str = triggers_match.group(1).strip()
+            for mapping in triggers_str.split(","):
+                mapping = mapping.strip()
+                if "->" in mapping:
+                    trigger, action = mapping.split("->", 1)
+                    result["feedback_triggers"][trigger.strip()] = action.strip()
+                elif "=" in mapping:
+                    trigger, action = mapping.split("=", 1)
+                    result["feedback_triggers"][trigger.strip()] = action.strip()
 
-    # Parse PHASES lines from header
-    # Format: "%%   1. phase_1 - Build components"
-    phase_pattern = r"(?:%%|#)\s+\d+\.\s+(\S+)\s*-\s*(.+)"
-    for match in re.finditer(phase_pattern, mmd_content):
-        phase_id = match.group(1).strip()
-        description = match.group(2).strip()
-        result["phases"].append({
-            "id": phase_id,
-            "description": description,
-        })
+    # --- PHASES ---
+    # Try JSON-like array first: PHASES: [Build, Teach, Test, UAT]
+    phases_match = re.search(r"PHASES:\s*\[([^\]]+)\]", mmd_content)
+    if phases_match:
+        phases_str = phases_match.group(1)
+        for phase_name in phases_str.split(","):
+            phase_name = phase_name.strip().strip('"').strip("'")
+            if phase_name:
+                result["phases"].append({"id": phase_name, "description": phase_name})
+    else:
+        # Format: "%%   1. phase_1 - Build components"
+        phase_pattern = r"(?:%%|#)\s+\d+\.\s+(\S+)\s*-\s*(.+)"
+        for match in re.finditer(phase_pattern, mmd_content):
+            phase_id = match.group(1).strip()
+            description = match.group(2).strip()
+            result["phases"].append({
+                "id": phase_id,
+                "description": description,
+            })
 
     # Parse per-phase AGENT_ROUTING comments (inside subgraphs)
     # Format: "%% AGENT_ROUTING: build-python agent"
     per_phase_pattern = r"(?:%%|#)\s*AGENT_ROUTING:\s*(\S+)\s+agent"
     for match in re.finditer(per_phase_pattern, mmd_content):
         agent_type = match.group(1).strip()
-        # This is a fallback if header-level routing didn't capture it
-        # We don't have phase context here, so this is informational only
         logger.debug("Found per-phase AGENT_ROUTING: %s", agent_type)
 
     return result
 
 
 class OrchestrationWorkflow(PlannerLoopWorkflow):
-    """Orchestration workflow extending PlannerLoopWorkflow with execution methods.
+    """Orchestration workflow extending PlannerLoopWorkflow with MMD utilities.
 
-    Adds methods for loading MMD files, parsing routing metadata, spawning
-    execution agents, and archiving completed plans.
+    Adds methods for loading MMD files and parsing routing metadata.
     """
 
     def load_mmd(self, plan_folder: str) -> Optional[str]:
@@ -147,87 +201,111 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
         """
         return parse_mmd_routing(mmd_content)
 
-    def spawn_execution_agent(
-        self, plan_folder: str, phase_id: str, agent_type: str
-    ) -> Optional[str]:
-        """Spawn agent for a specific phase execution.
-
-        Args:
-            plan_folder: Plan folder name.
-            phase_id: Phase identifier.
-            agent_type: Agent type to spawn (e.g., build-python, test-runner).
-
-        Returns:
-            Session ID if spawned successfully, None otherwise.
-        """
-        cmd = [
-            "agentic", "session", "spawn",
-            "--role", agent_type,
-            "--plan", plan_folder,
-            "-b",
-            "--dangerously-skip-permissions",
-            "--json",
-        ]
-
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=60,
-            cwd=self.working_dir,
-        )
-        if result.returncode != 0:
-            logger.error(
-                "Failed to spawn %s for %s phase %s: %s",
-                agent_type, plan_folder, phase_id, result.stderr
-            )
-            return None
-
-        try:
-            data = json.loads(result.stdout)
-            session_id = data.get("session_id")
-            logger.info(
-                "Spawned %s for %s phase %s: session %s",
-                agent_type, plan_folder, phase_id, session_id
-            )
-            return session_id
-        except (json.JSONDecodeError, KeyError):
-            logger.error(
-                "Could not parse spawn output for %s phase %s",
-                plan_folder, phase_id
-            )
-            return None
-
-    def archive_plan(self, plan_folder: str) -> bool:
-        """Archive plan after successful execution.
+    def get_mmd_path(self, plan_folder: str) -> Optional[Path]:
+        """Get the path to the orchestration MMD file for a plan.
 
         Args:
             plan_folder: Plan folder name.
 
         Returns:
-            True if archived successfully, False otherwise.
+            Path to MMD file or None if not found.
         """
-        cmd = ["agentic", "plan", "archive", plan_folder]
+        plan_dir = self.plans_dir / plan_folder
+        if not plan_dir.exists():
+            return None
+        mmds = list(plan_dir.glob("orchestration_*.mmd"))
+        return mmds[0] if mmds else None
 
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=60,
-            cwd=self.working_dir,
-        )
-        if result.returncode != 0:
-            logger.error("Failed to archive %s: %s", plan_folder, result.stderr)
+    def update_mmd_status(self, plan_folder: str, phase_id: str, new_status: str) -> bool:
+        """Update the STATUS of a single phase in the MMD file on disk.
+
+        Handles both JSON-like and comment-based STATUS formats.
+
+        Args:
+            plan_folder: Plan folder name.
+            phase_id: Phase identifier to update.
+            new_status: New status value (pending, in_progress, completed, failed).
+
+        Returns:
+            True if update succeeded.
+        """
+        mmd_path = self.get_mmd_path(plan_folder)
+        if not mmd_path:
+            logger.error("No MMD file found for %s", plan_folder)
             return False
 
-        logger.info("Archived plan %s", plan_folder)
-        return True
+        try:
+            content = mmd_path.read_text()
+        except Exception as e:
+            logger.error("Failed to read MMD %s: %s", mmd_path, e)
+            return False
+
+        updated = False
+
+        # Try JSON-like format: "Phase": "old_status" -> "Phase": "new_status"
+        json_pattern = rf'("{re.escape(phase_id)}":\s*")([^"]*?)(")'
+        json_match = re.search(json_pattern, content)
+        if json_match:
+            content = re.sub(json_pattern, rf'\g<1>{new_status}\3', content)
+            updated = True
+        else:
+            # Try comment-based format: Phase=old_status
+            comment_pattern = rf'({re.escape(phase_id)}=)\w+'
+            if re.search(comment_pattern, content):
+                content = re.sub(comment_pattern, rf'\g<1>{new_status}', content)
+                updated = True
+
+        if not updated:
+            logger.error("Phase %s not found in MMD STATUS for %s", phase_id, plan_folder)
+            return False
+
+        try:
+            mmd_path.write_text(content)
+            logger.info("Updated MMD status: %s.%s = %s", plan_folder, phase_id, new_status)
+            return True
+        except Exception as e:
+            logger.error("Failed to write MMD %s: %s", mmd_path, e)
+            return False
+
+    def discover_plans_needing_execution(self) -> list[str]:
+        """Find live plans that have an orchestration MMD with pending phases.
+
+        Returns:
+            List of plan folder names needing execution.
+        """
+        if not self.plans_dir.exists():
+            logger.warning("Plans directory does not exist: %s", self.plans_dir)
+            return []
+
+        needs_execution = []
+        for plan_dir in sorted(self.plans_dir.iterdir()):
+            if not plan_dir.is_dir():
+                continue
+            mmds = list(plan_dir.glob("orchestration_*.mmd"))
+            if not mmds:
+                continue
+            # Check if any phase is still pending
+            try:
+                content = mmds[0].read_text()
+            except Exception:
+                continue
+            routing = parse_mmd_routing(content)
+            if any(s == "pending" for s in routing["status"].values()):
+                needs_execution.append(plan_dir.name)
+
+        logger.info("Found %d plans needing execution: %s", len(needs_execution), needs_execution)
+        return needs_execution
 
 
-class OrchestrationRunner:
-    """Orchestration runner with two-phase lifecycle (plan-then-execute).
+class PlanningRunner:
+    """Planning-only runner with no execution phase.
 
-    Runs the full orchestration workflow:
-    1. Planning phase: discover plans, spawn planners, review, generate MMD
-    2. Execution phase: parse MMD routing, execute phases sequentially
-    3. Archive: move completed plans to archive
+    Discovers plans needing orchestration (or targets a single plan) and
+    runs the PlannerLoopRunner for each, which handles the full planning
+    workflow: explore, story generation, planning, review, MMD generation
+    and validation.
 
-    Supports single-plan mode (--plan flag) and discovery mode (all plans).
-    Includes phase-level retry for execution failures.
+    No execution phase, no archiving.
     """
 
     def __init__(
@@ -236,11 +314,11 @@ class OrchestrationRunner:
         project: Optional[str] = None,
         plan_folder: Optional[str] = None,
     ):
-        """Initialize orchestration runner.
+        """Initialize planning runner.
 
         Args:
             workflow: OrchestrationWorkflow instance (creates default if None).
-            project: Optional project filter for story discovery.
+            project: Optional project filter for plan discovery.
             plan_folder: Optional plan folder for single-plan mode.
         """
         self.workflow = workflow or OrchestrationWorkflow()
@@ -251,23 +329,18 @@ class OrchestrationRunner:
             "plans_processed": [],
             "plans_failed": [],
             "errors": [],
-            "current_plan": None,
-            "current_phase": None,
-            "execution_results": {},  # plan_folder -> {phase_id: status}
         }
 
     def run(
         self,
         max_iterations: int = 10,
         completion_promise: Optional[str] = None,
-        max_phase_retries: int = 2,
     ) -> bool:
-        """Run full orchestration: plan phase then execute phase.
+        """Run planning-only workflow for all discovered or specified plans.
 
         Args:
-            max_iterations: Max iterations for planning phase.
-            completion_promise: Completion text for planning phase.
-            max_phase_retries: Max retries per execution phase.
+            max_iterations: Max iterations for the planning loop per plan.
+            completion_promise: Completion text passed to PlannerLoopRunner.
 
         Returns:
             True if all plans processed successfully, False otherwise.
@@ -280,6 +353,12 @@ class OrchestrationRunner:
             self.state["errors"].append(str(e))
             return False
 
+        # Archive completed plans
+        for plan_dir in sorted(self.workflow.plans_dir.iterdir()):
+            if plan_dir.is_dir() and self.workflow.get_plan_status(plan_dir.name) == "completed":
+                logger.info("Archiving completed plan: %s", plan_dir.name)
+                self.workflow.archive_plan(plan_dir.name)
+
         # Determine plans to process
         if self.plan_folder:
             plans_to_process = [self.plan_folder]
@@ -291,244 +370,357 @@ class OrchestrationRunner:
 
         logger.info("Processing %d plans: %s", len(plans_to_process), plans_to_process)
 
-        # Process each plan
         all_success = True
         for plan in plans_to_process:
-            self.state["current_plan"] = plan
-            logger.info("Processing plan: %s", plan)
+            logger.info("Starting planning for plan: %s", plan)
 
-            # Phase 1: Planning
-            planning_success = self._run_planning_phase(
-                plan, max_iterations, completion_promise or ""
+            planner_runner = PlannerLoopRunner(
+                workflow=self.workflow,
+                project=self.project,
+                plan_folder=plan,
             )
-            if not planning_success:
-                logger.error("Planning phase failed for %s", plan)
-                self.state["plans_failed"].append(plan)
-                all_success = False
-                continue
 
-            # Phase 2: Execution
-            execution_success = self._run_execution_phase(plan, max_phase_retries)
-            if not execution_success:
-                logger.error("Execution phase failed for %s", plan)
-                self.state["plans_failed"].append(plan)
-                all_success = False
-                continue
+            try:
+                success = planner_runner.run(
+                    max_iterations=max_iterations,
+                    completion_promise=completion_promise,
+                )
+            except Exception as e:
+                logger.error("Planning runner raised exception for %s: %s", plan, e)
+                self.state["errors"].append(f"Exception for {plan}: {e}")
+                success = False
 
-            # Archive on success
-            if self.workflow.archive_plan(plan):
+            if success:
                 self.state["plans_processed"].append(plan)
-                logger.info("Successfully completed plan: %s", plan)
+                logger.info("Planning completed for plan: %s", plan)
             else:
-                logger.warning("Plan %s completed but archiving failed", plan)
                 self.state["plans_failed"].append(plan)
+                # Propagate child runner errors into our state
+                for err in planner_runner.state.get("errors", []):
+                    self.state["errors"].append(err)
+                logger.error("Planning failed for plan: %s", plan)
                 all_success = False
 
-        self.state["current_plan"] = None
+        self.state["iteration"] += 1
         return all_success
 
-    def _run_planning_phase(
-        self, plan_folder: str, max_iterations: int, completion_promise: str
-    ) -> bool:
-        """Phase 1: discover, plan, review, generate MMD.
 
-        Delegates to PlannerLoopRunner for the planning workflow.
+DEFAULT_EXECUTION_PROMISE = "Execution complete. All phases finished."
+
+
+class ExecutionRunner:
+    """Deterministic execution runner for orchestrated plans.
+
+    Reads the orchestration MMD, finds the next pending phase, spawns the
+    corresponding agent, waits for completion, updates the MMD status, and
+    iterates until all phases are complete or an error occurs.
+    """
+
+    def __init__(
+        self,
+        workflow: Optional[OrchestrationWorkflow] = None,
+        project: Optional[str] = None,
+        plan_folder: Optional[str] = None,
+        dangerously_skip_permissions: bool = False,
+    ):
+        """Initialize execution runner.
+
+        Args:
+            workflow: OrchestrationWorkflow instance (creates default if None).
+            project: Optional project filter for plan discovery.
+            plan_folder: Optional plan folder for single-plan mode.
+            dangerously_skip_permissions: Pass --dangerously-skip-permissions to spawned agents.
+        """
+        self.workflow = workflow or OrchestrationWorkflow()
+        self.project = project
+        self.plan_folder = plan_folder
+        self.dangerously_skip_permissions = dangerously_skip_permissions
+        self.state = {
+            "iteration": 0,
+            "plans_processed": [],
+            "plans_failed": [],
+            "phases_completed": [],
+            "phases_failed": [],
+            "errors": [],
+        }
+
+    def run(
+        self,
+        max_iterations: int = 10,
+        completion_promise: Optional[str] = None,
+    ) -> bool:
+        """Run execution for all discovered or specified plans.
+
+        Each iteration processes one phase of one plan. Continues until all
+        plans have all phases completed, or max_iterations is reached.
+
+        Args:
+            max_iterations: Max total phase executions across all plans.
+            completion_promise: Completion text to print when done.
+
+        Returns:
+            True if all plans executed successfully, False otherwise.
+        """
+        promise = completion_promise or DEFAULT_EXECUTION_PROMISE
+
+        # Health check
+        try:
+            self.workflow.run_health_check()
+        except RuntimeError as e:
+            logger.error("Health check failed: %s", e)
+            self.state["errors"].append(str(e))
+            return False
+
+        # Archive completed plans
+        for plan_dir in sorted(self.workflow.plans_dir.iterdir()):
+            if plan_dir.is_dir() and self.workflow.get_plan_status(plan_dir.name) == "completed":
+                logger.info("Archiving completed plan: %s", plan_dir.name)
+                self.workflow.archive_plan(plan_dir.name)
+
+        # Determine plans to process
+        if self.plan_folder:
+            plans_to_process = [self.plan_folder]
+        else:
+            plans_to_process = self.workflow.discover_plans_needing_execution()
+            if not plans_to_process:
+                logger.info("No plans needing execution. %s", promise)
+                print(promise)
+                return True
+
+        logger.info("Executing %d plans: %s", len(plans_to_process), plans_to_process)
+
+        all_success = True
+        for plan in plans_to_process:
+            logger.info("Starting execution for plan: %s", plan)
+            try:
+                success = self._execute_plan(plan, max_iterations)
+            except Exception as e:
+                logger.error("Execution raised exception for %s: %s", plan, e)
+                self.state["errors"].append(f"Exception for {plan}: {e}")
+                success = False
+
+            if success:
+                self.state["plans_processed"].append(plan)
+                logger.info("Execution completed for plan: %s", plan)
+            else:
+                self.state["plans_failed"].append(plan)
+                logger.error("Execution failed for plan: %s", plan)
+                all_success = False
+
+        if all_success:
+            print(promise)
+        return all_success
+
+    def _execute_plan(self, plan_folder: str, max_iterations: int) -> bool:
+        """Execute all pending phases of a single plan sequentially.
 
         Args:
             plan_folder: Plan folder name.
-            max_iterations: Max planning loop iterations.
-            completion_promise: Completion text.
+            max_iterations: Max phase executions for this plan.
 
         Returns:
-            True if planning succeeded, False otherwise.
+            True if all phases completed successfully.
         """
-        logger.info("Starting planning phase for %s", plan_folder)
+        for iteration in range(1, max_iterations + 1):
+            self.state["iteration"] = iteration
 
-        # Create PlannerLoopRunner for this plan
-        planner_runner = PlannerLoopRunner(
-            workflow=self.workflow,  # Reuse workflow instance
-            project=self.project,
-            plan_folder=plan_folder,
-        )
+            # Reload MMD each iteration to pick up status changes
+            mmd_content = self.workflow.load_mmd(plan_folder)
+            if not mmd_content:
+                self.state["errors"].append(f"No MMD found for {plan_folder}")
+                return False
 
-        # Run planning loop
-        try:
-            success = planner_runner.run(
-                max_iterations=max_iterations,
-                completion_promise=completion_promise,
-            )
-            if success:
-                logger.info("Planning phase completed for %s", plan_folder)
+            routing = self.workflow.parse_routing(mmd_content)
+            if not routing["status"]:
+                self.state["errors"].append(f"No STATUS in MMD for {plan_folder}")
+                return False
+
+            # Find next pending phase (respect PHASES order if available)
+            next_phase = self._find_next_pending_phase(routing)
+            if not next_phase:
+                logger.info("All phases complete for %s", plan_folder)
                 return True
-            else:
-                logger.error("Planning phase failed for %s", plan_folder)
+
+            phase_id = next_phase
+            agent_type = routing["agent_routing"].get(phase_id)
+            if not agent_type:
                 self.state["errors"].append(
-                    f"Planning failed for {plan_folder}"
+                    f"No agent routing for phase {phase_id} in {plan_folder}"
                 )
                 return False
-        except Exception as e:
-            logger.error("Planning phase exception for %s: %s", plan_folder, e)
-            self.state["errors"].append(
-                f"Planning exception for {plan_folder}: {e}"
-            )
-            return False
 
-    def _run_execution_phase(self, plan_folder: str, max_phase_retries: int) -> bool:
-        """Phase 2: parse MMD routing, execute each phase sequentially.
-
-        Args:
-            plan_folder: Plan folder name.
-            max_phase_retries: Max retries per phase.
-
-        Returns:
-            True if all phases executed successfully, False otherwise.
-        """
-        logger.info("Starting execution phase for %s", plan_folder)
-
-        # Load MMD
-        mmd_content = self.workflow.load_mmd(plan_folder)
-        if not mmd_content:
-            logger.error("Could not load MMD for %s", plan_folder)
-            self.state["errors"].append(f"MMD load failed for {plan_folder}")
-            return False
-
-        # Parse routing
-        routing = self.workflow.parse_routing(mmd_content)
-        agent_routing = routing.get("agent_routing", {})
-        phases = routing.get("phases", [])
-
-        if not agent_routing:
-            logger.error("No agent routing found in MMD for %s", plan_folder)
-            self.state["errors"].append(
-                f"No agent routing in MMD for {plan_folder}"
-            )
-            return False
-
-        # Initialize execution results
-        self.state["execution_results"][plan_folder] = {}
-
-        # Execute each phase sequentially
-        for phase in phases:
-            phase_id = phase["id"]
-            agent_type = agent_routing.get(phase_id)
-
-            if not agent_type:
-                logger.warning(
-                    "No agent routing for phase %s in %s, skipping",
-                    phase_id, plan_folder
-                )
-                continue
-
-            self.state["current_phase"] = phase_id
             logger.info(
-                "Executing phase %s with %s for %s",
-                phase_id, agent_type, plan_folder
+                "Executing phase %s with agent %s for %s (iteration %d/%d)",
+                phase_id, agent_type, plan_folder, iteration, max_iterations,
             )
 
-            # Retry loop for phase execution
-            success = False
-            for retry in range(max_phase_retries + 1):
-                if retry > 0:
+            # Mark phase as in_progress
+            self.workflow.update_mmd_status(plan_folder, phase_id, "in_progress")
+
+            # Spawn agent and wait
+            success = self._run_phase(plan_folder, phase_id, agent_type, routing)
+
+            if success:
+                self.workflow.update_mmd_status(plan_folder, phase_id, "completed")
+                self.state["phases_completed"].append(f"{plan_folder}:{phase_id}")
+                logger.info("Phase %s completed for %s", phase_id, plan_folder)
+            else:
+                # Check feedback triggers for re-run rules
+                rerun_phase = self._check_feedback_triggers(
+                    routing, phase_id, plan_folder,
+                )
+                if rerun_phase:
                     logger.info(
-                        "Retrying phase %s (attempt %d/%d)",
-                        phase_id, retry + 1, max_phase_retries + 1
+                        "Feedback trigger: re-running phase %s for %s",
+                        rerun_phase, plan_folder,
                     )
+                    self.workflow.update_mmd_status(plan_folder, phase_id, "failed")
+                    self.workflow.update_mmd_status(plan_folder, rerun_phase, "pending")
+                    # Continue to next iteration which will pick up the re-run
+                    continue
 
-                phase_success = self._execute_phase(
-                    plan_folder, phase_id, agent_type
-                )
-                if phase_success:
-                    success = True
-                    break
-
-                logger.warning(
-                    "Phase %s failed (attempt %d/%d)",
-                    phase_id, retry + 1, max_phase_retries + 1
-                )
-
-            # Record result
-            self.state["execution_results"][plan_folder][phase_id] = (
-                "success" if success else "failed"
-            )
-
-            if not success:
-                logger.error(
-                    "Phase %s failed after %d retries for %s",
-                    phase_id, max_phase_retries, plan_folder
-                )
+                self.workflow.update_mmd_status(plan_folder, phase_id, "failed")
+                self.state["phases_failed"].append(f"{plan_folder}:{phase_id}")
                 self.state["errors"].append(
                     f"Phase {phase_id} failed for {plan_folder}"
                 )
                 return False
 
-        self.state["current_phase"] = None
-        logger.info("Execution phase completed for %s", plan_folder)
-        return True
+        logger.warning("Max iterations (%d) reached for %s", max_iterations, plan_folder)
+        return False
 
-    def _execute_phase(
-        self, plan_folder: str, phase_id: str, agent_type: str
+    def _find_next_pending_phase(self, routing: dict) -> Optional[str]:
+        """Find the next pending phase respecting PHASES order.
+
+        Args:
+            routing: Parsed routing metadata.
+
+        Returns:
+            Phase ID of next pending phase, or None if all complete.
+        """
+        # If PHASES order is available, use it
+        if routing["phases"]:
+            phase_order = [p["id"] for p in routing["phases"]]
+        else:
+            # Fall back to STATUS dict key order
+            phase_order = list(routing["status"].keys())
+
+        for phase_id in phase_order:
+            status = routing["status"].get(phase_id, "")
+            if status == "pending":
+                return phase_id
+
+        return None
+
+    def _run_phase(
+        self,
+        plan_folder: str,
+        phase_id: str,
+        agent_type: str,
+        routing: dict,
     ) -> bool:
-        """Execute a single phase: spawn agent, wait, check status.
+        """Spawn agent for a phase and wait for completion.
 
         Args:
             plan_folder: Plan folder name.
             phase_id: Phase identifier.
-            agent_type: Agent type to spawn.
+            agent_type: Agent role to spawn.
+            routing: Full routing metadata.
 
         Returns:
-            True if phase succeeded, False otherwise.
+            True if agent completed successfully.
         """
-        # Spawn agent
-        session_id = self.workflow.spawn_execution_agent(
-            plan_folder, phase_id, agent_type
+        import subprocess
+
+        cmd = [
+            "agentic", "-j", "session", "spawn",
+            "--role", agent_type,
+            "--plan", plan_folder,
+            "-b",
+        ]
+        if self.dangerously_skip_permissions:
+            cmd.append("--dangerously-skip-permissions")
+
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=60,
+            cwd=self.workflow.working_dir,
         )
-        if not session_id:
+        if result.returncode != 0:
             logger.error(
-                "Failed to spawn agent for phase %s in %s",
-                phase_id, plan_folder
+                "Failed to spawn %s for %s:%s: %s",
+                agent_type, plan_folder, phase_id, result.stderr,
+            )
+            self.state["errors"].append(
+                f"Spawn failed for {plan_folder}:{phase_id}: {result.stderr}"
             )
             return False
 
-        # Wait for session to complete (with timeout)
-        # For now, we'll use a simple polling approach
-        # TODO: Implement proper session status checking via CLI
-        max_wait = 600  # 10 minutes
-        poll_interval = 10  # seconds
-        elapsed = 0
+        try:
+            data = json.loads(result.stdout)
+            session_id = data.get("session_id")
+        except (json.JSONDecodeError, KeyError):
+            logger.error("Could not parse spawn output for %s:%s", plan_folder, phase_id)
+            return False
 
-        while elapsed < max_wait:
-            time.sleep(poll_interval)
-            elapsed += poll_interval
+        if not session_id:
+            logger.error("No session_id returned for %s:%s", plan_folder, phase_id)
+            return False
 
-            # Check session status
-            cmd = ["agentic", "session", "status", session_id, "--json"]
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30,
-                cwd=self.workflow.working_dir,
-            )
+        logger.info(
+            "Spawned %s for %s:%s -> session %s",
+            agent_type, plan_folder, phase_id, session_id,
+        )
 
-            if result.returncode == 0:
-                try:
-                    data = json.loads(result.stdout)
-                    status = data.get("status")
-                    if status == "completed":
-                        logger.info(
-                            "Phase %s completed successfully for %s",
-                            phase_id, plan_folder
-                        )
-                        return True
-                    elif status in ["failed", "error"]:
-                        logger.error(
-                            "Phase %s failed for %s",
-                            phase_id, plan_folder
-                        )
-                        return False
-                    # If status is "running", continue waiting
-                except (json.JSONDecodeError, KeyError):
-                    logger.warning("Could not parse session status")
+        # Wait for session to complete (10 min timeout per phase)
+        status = self.workflow.wait_for_session(session_id, timeout=600)
+        if status == "completed":
+            return True
 
         logger.error(
-            "Phase %s timed out after %d seconds for %s",
-            phase_id, max_wait, plan_folder
+            "Session %s for %s:%s ended with status: %s",
+            session_id[:8], plan_folder, phase_id, status,
         )
         return False
+
+    def _check_feedback_triggers(
+        self,
+        routing: dict,
+        failed_phase: str,
+        plan_folder: str,
+    ) -> Optional[str]:
+        """Check if a feedback trigger maps to a re-run phase.
+
+        Looks for triggers like TEST_FAILURE -> Test or UAT_FAILURE -> UAT.
+        The convention is {PHASE_NAME}_FAILURE -> target_phase.
+
+        Args:
+            routing: Parsed routing metadata.
+            failed_phase: Phase that failed.
+            plan_folder: Plan folder name (for logging).
+
+        Returns:
+            Phase ID to re-run, or None if no applicable trigger.
+        """
+        triggers = routing.get("feedback_triggers", {})
+        if not triggers:
+            return None
+
+        # Look for a trigger matching this phase failure
+        # Common patterns: TEST_FAILURE, UAT_FAILURE, BUILD_FAILURE
+        failure_key = f"{failed_phase.upper()}_FAILURE"
+        target = triggers.get(failure_key)
+        if target:
+            # Verify the target phase exists in routing
+            if target in routing["status"]:
+                logger.info(
+                    "Feedback trigger %s -> %s for %s",
+                    failure_key, target, plan_folder,
+                )
+                return target
+            else:
+                logger.warning(
+                    "Feedback trigger target %s not found in STATUS for %s",
+                    target, plan_folder,
+                )
+
+        return None

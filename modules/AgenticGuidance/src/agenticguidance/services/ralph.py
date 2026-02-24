@@ -23,6 +23,7 @@ Priority Order:
 """
 
 import json
+import logging
 import subprocess
 import time
 import uuid
@@ -31,6 +32,8 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -46,6 +49,7 @@ class PlanInfo:
     pending_tasks: int = 0
     completed_tasks: int = 0
     current_task: Optional[str] = None
+    blocking_questions: int = 0
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -59,6 +63,7 @@ class PlanInfo:
             "pending_tasks": self.pending_tasks,
             "completed_tasks": self.completed_tasks,
             "current_task": self.current_task,
+            "blocking_questions": self.blocking_questions,
         }
 
 
@@ -209,6 +214,34 @@ class RalphLoopService:
         """
         return len(list(plan_path.glob("orchestration_*.mmd"))) > 0
 
+    def _has_blocking_questions(self, plan_path: Path) -> tuple[bool, int]:
+        """Check whether a plan has pending blocking questions.
+
+        Args:
+            plan_path: Path to plan folder.
+
+        Returns:
+            Tuple of (has_blocking, count). Returns (False, 0) if the
+            questions directory doesn't exist, there are no blocking
+            questions, or the QuestionQueue service is unavailable.
+        """
+        try:
+            from agenticguidance.services.question import QuestionQueue
+        except ImportError:
+            logger.warning("QuestionQueue service unavailable — skipping blocking question check")
+            return (False, 0)
+
+        try:
+            queue = QuestionQueue(plan_path)
+            blocking = queue.list_pending_questions(severity_filter="blocking")
+            count = len(blocking)
+            return (count > 0, count)
+        except Exception:
+            logger.warning(
+                "Failed to check blocking questions for %s", plan_path.name, exc_info=True
+            )
+            return (False, 0)
+
     def _get_plan_status_from_cli(self, plan_name: str) -> dict:
         """Get plan status using agentic CLI.
 
@@ -221,7 +254,7 @@ class RalphLoopService:
         """
         try:
             result = subprocess.run(
-                ["agentic", "plan", "status", "--plan", plan_name, "-j"],
+                ["agentic", "--json", "plan", "status", "--plan", plan_name],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -489,7 +522,10 @@ class RalphLoopService:
         # Check if all tasks are completed
         total_tasks = pending_tasks + completed_tasks
 
-        # Empty or corrupted plans (no tasks) are treated as completed
+        # Empty plans: if no orchestration, they still need planning
+        if total_tasks == 0 and not has_orchestration:
+            return "needs_planning"
+
         if total_tasks == 0:
             return "completed"
 
@@ -568,6 +604,11 @@ class RalphLoopService:
                 # Override action to blocked if dependencies not met
                 action_required = "blocked"
 
+            # Check for blocking questions
+            has_blocking, blocking_count = self._has_blocking_questions(plan_dir)
+            if has_blocking and action_required not in ("completed",):
+                action_required = "blocked"
+
             plan_info = PlanInfo(
                 name=plan_dir.name,
                 path=plan_dir,
@@ -578,6 +619,7 @@ class RalphLoopService:
                 pending_tasks=pending_tasks,
                 completed_tasks=completed_tasks,
                 current_task=current_task,
+                blocking_questions=blocking_count,
             )
 
             plans.append(plan_info)
@@ -639,7 +681,17 @@ class RalphLoopService:
                     if not matched:
                         unmet_deps.append(dep)
 
-                reason = f"Waiting for: {', '.join(unmet_deps)}"
+                reasons = []
+                if unmet_deps:
+                    reasons.append(f"Waiting for: {', '.join(unmet_deps)}")
+                if plan.blocking_questions > 0:
+                    q = plan.blocking_questions
+                    if unmet_deps:
+                        reasons.append(f"also blocked by {q} question(s)")
+                    else:
+                        reasons.append(f"Blocked by {q} pending blocking question(s)")
+                reason = "; ".join(reasons) if reasons else "Blocked"
+
                 actions.append(
                     PlanAction(
                         action="blocked",
@@ -843,3 +895,54 @@ class RalphLoopService:
                 return False
 
         return True
+
+    def get_completion_status(self) -> dict:
+        """Get detailed completion status across all plans.
+
+        Returns:
+            Dictionary with keys:
+            - all_complete: bool - True if every plan is completed or blocked
+            - blocked_by_deps: int - count of plans blocked by unmet dependencies
+            - blocked_by_questions: int - count of plans blocked by questions
+            - in_progress: int - count of plans with execute/needs_planning
+            - completed: int - count of completed plans
+            - can_emit_promise: bool - True only when in_progress==0 and
+              blocked_by_questions==0 (dep-blocked is OK since those deps
+              might be in other repos or already archived)
+        """
+        plans = self.discover_plans()
+        completed_plans = self._get_completed_plans()
+
+        in_progress = 0
+        blocked_by_deps = 0
+        blocked_by_questions = 0
+        completed = 0
+
+        for plan in plans:
+            if plan.action_required in ("execute", "needs_planning"):
+                in_progress += 1
+            elif plan.action_required == "completed":
+                completed += 1
+            elif plan.action_required == "blocked":
+                # Determine blocking reason(s) — a plan can be both
+                has_unmet_deps = (
+                    plan.dependencies
+                    and not self._dependencies_met(
+                        plan.name, plan.dependencies, completed_plans
+                    )
+                )
+                if has_unmet_deps:
+                    blocked_by_deps += 1
+                if plan.blocking_questions > 0:
+                    blocked_by_questions += 1
+
+        all_complete = in_progress == 0 and blocked_by_deps == 0 and blocked_by_questions == 0
+
+        return {
+            "all_complete": all_complete,
+            "blocked_by_deps": blocked_by_deps,
+            "blocked_by_questions": blocked_by_questions,
+            "in_progress": in_progress,
+            "completed": completed,
+            "can_emit_promise": in_progress == 0 and blocked_by_questions == 0,
+        }

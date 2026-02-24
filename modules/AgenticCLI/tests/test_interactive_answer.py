@@ -291,6 +291,7 @@ class TestAnswerCommandInteractive:
 
             result = cli_runner(
                 [
+                    "plan",
                     "question",
                     "answer",
                     "Q-20260208-100000-a1b2",
@@ -318,6 +319,7 @@ class TestAnswerCommandInteractive:
 
                 result = cli_runner(
                     [
+                        "plan",
                         "question",
                         "answer",
                         "--interactive",
@@ -345,6 +347,7 @@ class TestAnswerCommandInteractive:
 
             result = cli_runner(
                 [
+                    "plan",
                     "question",
                     "answer",
                     "Q-20260208-100000-a1b2",
@@ -371,6 +374,7 @@ class TestAnswerCommandInteractive:
         """Test that non-interactive mode still works as before."""
         result = cli_runner(
             [
+                "plan",
                 "question",
                 "answer",
                 "Q-20260208-100000-a1b2",
@@ -400,6 +404,7 @@ class TestAnswerCommandInteractive:
 
             result = cli_runner(
                 [
+                    "plan",
                     "question",
                     "answer",
                     "Q-20260208-100000-a1b2",

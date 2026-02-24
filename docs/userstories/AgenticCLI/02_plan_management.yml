@@ -152,16 +152,17 @@ stories:
   - Status transitions are validated (cannot complete a pending task directly)
   - File operations are atomic (uses FileLock)
   - Multiple agents cannot start the same task simultaneously
+  - Completing the last task does NOT trigger auto-archive (plan stays in live/)
   related_commands:
-  - agentic plan task start <id>
-  - agentic plan task complete <id>
+  - agentic agent plan task start <id>
+  - agentic agent plan task complete <id>
   related_agents:
   - orchestration-executor
   - build-python
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  last_tested: '2026-02-23'
+  test_status: passed
+  test_notes: 'Validated by plan 260222RA: task start/complete work correctly, no auto-archive side effects'
+  tested_by_plan: 260222RA_remove_auto_archive_from_cli_task_completion
 - id: US-CLI-023
   title: Add Tasks to Plan
   category: task_management
@@ -196,12 +197,13 @@ stories:
   - The --note flag adds text to the task record
   - When marking completed, a timestamp is automatically recorded
   - Status transitions are validated
+  - Updating status to completed does NOT trigger auto-archive (plan stays in live/)
   related_commands:
-  - agentic plan task update <id> --status completed --note 'Tests passing'
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  - agentic agent plan task update <id> --status completed --note 'Tests passing'
+  last_tested: '2026-02-23'
+  test_status: passed
+  test_notes: 'Validated by plan 260222RA: task update works correctly, no auto-archive side effects'
+  tested_by_plan: 260222RA_remove_auto_archive_from_cli_task_completion
 - id: US-CLI-025
   title: Prefill Tasks from Preset
   category: task_management
@@ -271,21 +273,23 @@ stories:
   category: archiving
   priority: high
   as_a: developer finishing a feature
-  i_want: to archive completed plans from live/ to completed/
-  so_that: the live folder only contains active work
+  i_want: to explicitly archive completed plans from live/ to completed/
+  so_that: the live folder only contains active work and archiving is deliberate
   acceptance_criteria:
-  - agentic plan archive <path> moves the plan folder to docs/plans/completed/
-  - Auto-archiving triggers when all tasks in a plan are completed
+  - agentic plan move folder --plan <name> --force moves plan to docs/plans/completed/
+  - Task completion does NOT trigger auto-archive (plan stays in live/)
+  - Plan status JSON shows action_required "archive" when all tasks are completed
   - agentic plan unarchive --plan <name> moves a plan back to live/
   - The --force flag on unarchive skips confirmation
   - Archived plans retain all files and history
+  - The orchestration-loop is responsible for archiving via explicit move command
   related_commands:
-  - agentic plan archive <path>
+  - agentic plan move folder --plan <name> --force
   - agentic plan unarchive --plan <name>
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  last_tested: '2026-02-23'
+  test_status: passed
+  test_notes: 'Validated by plan 260222RA: auto-archive removed, explicit archive via plan move folder works correctly'
+  tested_by_plan: 260222RA_remove_auto_archive_from_cli_task_completion
 - id: US-CLI-018
   title: Move Completed Tasks
   category: archiving

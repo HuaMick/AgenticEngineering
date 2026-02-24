@@ -1,0 +1,138 @@
+name: "Build Phase - Agentic Session Orchestrate Executing"
+worktree_path: "/home/code/AgenticEngineering"
+branch: "main"
+status: "completed"
+type: "build"
+priority: "high"
+
+context: |
+  Implements `agentic session orchestrate executing` as a deterministic Python runner,
+  replacing the previous concept of an orchestration-executor meta-LLM agent.
+  The ExecutionRunner reads orchestration MMD files, resolves AGENT_ROUTING metadata,
+  spawns agents phase-by-phase, and updates STATUS in the MMD on completion/failure.
+
+  UPDATE 2026-02-22: All build tasks implemented. ExecutionRunner class, CLI command,
+  command handler with background/foreground modes, and documentation all in place.
+
+  UPDATE 2026-02-23: Plan reviewed by planner-build agent. All build tasks confirmed
+  complete against codebase. Missing test coverage noted for planner-test.
+
+related_plans:
+  orchestration: "orchestration_orchestrate_executing_command.mmd"
+
+affected_stories:
+  - "US-CLI-030"  # Spawn Claude Code Session (ExecutionRunner spawns agents)
+
+impacted_artifacts:
+  - artifact_type: cli_command
+    artifact_identifier: "agentic session orchestrate executing"
+    impact_type: new
+    description: "New CLI subcommand for deterministic phase-by-phase plan execution"
+    breaking_change: false
+
+  - artifact_type: service
+    artifact_identifier: "ExecutionRunner"
+    impact_type: new
+    description: "Deterministic execution runner in agenticcli.workflows.orchestration"
+    breaking_change: false
+
+  - artifact_type: service
+    artifact_identifier: "OrchestrationWorkflow.update_mmd_status"
+    impact_type: new
+    description: "Method to update STATUS of a single phase in MMD file on disk"
+    breaking_change: false
+
+  - artifact_type: service
+    artifact_identifier: "OrchestrationWorkflow.discover_plans_needing_execution"
+    impact_type: new
+    description: "Discovery method for plans with pending phases in orchestration MMDs"
+    breaking_change: false
+
+phases:
+  - name: "Implementation"
+    status: "completed"
+    execution: sequential
+    description: |
+      Implement ExecutionRunner, CLI command, command handler, and documentation.
+      All three layers: domain (ExecutionRunner), workflow (_run_executing_loop),
+      and entrypoint (orchestrate_app.command("executing")).
+
+    tasks:
+      - id: "build-001"
+        name: "Update orchestration_executor.md documentation"
+        status: "completed"
+        completed_date: "2026-02-22"
+        inputs:
+          - docs/prompts/orchestration_executor.md
+        target_files:
+          - "docs/prompts/orchestration_executor.md"
+        guidance: |
+          Update docs to reflect deterministic Python ExecutionRunner architecture.
+          Remove references to --mode executor. Document CLI options and MMD source of truth.
+        success_criteria:
+          - "Documentation describes deterministic ExecutionRunner, not meta-LLM agent"
+          - "All CLI options documented (--plan, --background, --max-iterations, etc.)"
+          - "MMD as source of truth for phase ordering, routing, status is explained"
+
+      - id: "build-002"
+        name: "Implement ExecutionRunner in workflows/orchestration.py"
+        status: "completed"
+        completed_date: "2026-02-22"
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
+          - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/workflows/orchestration.py"
+        guidance: |
+          Add ExecutionRunner class with:
+          - run() method with discovery mode and single-plan mode
+          - _execute_plan() for sequential phase execution
+          - _find_next_pending_phase() respecting PHASES order
+          - _run_phase() spawning agents via agentic session spawn
+          - _check_feedback_triggers() for failure recovery
+          Also add to OrchestrationWorkflow:
+          - update_mmd_status() for in-place MMD STATUS field mutation
+          - discover_plans_needing_execution() for plan discovery
+        success_criteria:
+          - "ExecutionRunner.run() processes plans with pending MMD phases"
+          - "Phases are executed sequentially in PHASES order"
+          - "MMD STATUS is updated to in_progress, then completed/failed per phase"
+          - "FEEDBACK_TRIGGERS cause phase re-runs on failure"
+          - "Health check runs before execution starts"
+
+      - id: "build-003"
+        name: "Expose executing command in CLI and command handler"
+        status: "completed"
+        completed_date: "2026-02-22"
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/cli.py
+          - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+        target_files:
+          - "modules/AgenticCLI/src/agenticcli/cli.py"
+          - "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
+        guidance: |
+          Register @orchestrate_app.command("executing") in cli.py with same flags
+          as planning (--plan, --background, --max-iterations, --completion-promise,
+          --project, --directory, --dangerously-skip-permissions).
+          Implement _run_executing_loop() in orchestrate.py with:
+          - Background mode via subprocess Popen
+          - Foreground mode via ExecutionRunner
+          - State persistence via StateStore
+          - JSON and rich console output
+        success_criteria:
+          - "`agentic session orchestrate executing --help` shows correct options"
+          - "Background mode spawns subprocess and returns session ID"
+          - "Foreground mode runs ExecutionRunner and persists state"
+          - "JSON output includes session_id, status, phases_completed, errors"
+
+success_criteria:
+  - "The orchestration_executor.md is updated to reflect the new deterministic architecture"
+  - "`agentic session orchestrate executing --help` correctly displays the Typer CLI arguments"
+  - "The ExecutionRunner can parse an MMD and spawn execution sessions based on parsed routing"
+  - "No regressions to `agentic session orchestrate planning` behavior"
+  - "Background and foreground execution modes both work with state persistence"
+
+notes: |
+  All build tasks are implemented. Test coverage for ExecutionRunner and the executing
+  command path is needed (planner-test responsibility). Existing tests cover PlanningRunner
+  and the planning command path but not the executing equivalents.

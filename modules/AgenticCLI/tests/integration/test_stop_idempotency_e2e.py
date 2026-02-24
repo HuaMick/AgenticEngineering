@@ -22,8 +22,8 @@ def sessions_dir(tmp_path):
 
 @pytest.fixture
 def loops_dir(tmp_path):
-    """Create a temporary loops directory."""
-    loops_dir = tmp_path / ".agentic" / "loops"
+    """Create a temporary sessions directory (unified store for loops)."""
+    loops_dir = tmp_path / ".agentic" / "sessions"
     loops_dir.mkdir(parents=True)
     return loops_dir
 
@@ -142,7 +142,8 @@ class TestLoopStopIdempotencyE2E:
         monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
 
         loop_data = {
-            "loop_id": "test-loop-12345678",
+            "session_id": "test-loop-12345678",
+            "type": "loop",
             "pid": 99999,
             "prompt": "Test loop",
             "prompt_source": "string",
@@ -178,7 +179,8 @@ class TestLoopStopIdempotencyE2E:
         monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
 
         loop_data = {
-            "loop_id": "json-loop-87654321",
+            "session_id": "json-loop-87654321",
+            "type": "loop",
             "pid": 99998,
             "prompt": "Test loop",
             "prompt_source": "string",

@@ -1,0 +1,133 @@
+name: Remove auto-archive from CLI task completion
+status: completed
+priority: high
+context: 'When a build agent marks the last task in a plan as completed, the CLI was
+
+  automatically archiving the plan folder from live/ to completed/. This
+
+  short-circuited the orchestration-loop, which has its own dedicated archive
+
+  pass that runs after discovery. Planners often identify that a plan tagged
+
+  as "complete" isn''t actually properly completed. Auto-archive removed the
+
+  opportunity for the planning loop to validate completion before archiving.
+
+  Two plans were found stuck in live/ because auto-archive failed silently,
+
+  and the loop assumed the CLI had already handled it.
+
+
+  Goal: Remove all auto-archive triggers from CLI task completion commands.
+
+  Only the orchestration-loop (via explicit `agentic plan move folder --force`)
+
+  should archive plans. The `action_required: "archive"` signal in
+
+  `plan status`/`plan list` output remains as the detection mechanism.
+
+  '
+success_criteria:
+- Auto-archive code removed from cmd_task_complete, cmd_update_task, cmd_new
+- --no-archive flag removed from all 6 CLI command registrations
+- is_plan_fully_completed() function preserved (used by plan status)
+- cmd_archive() and cmd_move() explicit archive commands preserved
+- action_required "archive" signal in plan status/list JSON preserved
+- All directly-related tests pass (auto-archive tests updated)
+- Pre-existing test failures documented for separate fix
+phases:
+- id: P1
+  name: Remove auto-archive code
+  status: completed
+  tasks:
+  - id: P1-T1
+    description: Remove auto-archive block and no_archive from cmd_task_complete
+    status: completed
+    completed_at: '2026-02-22'
+  - id: P1-T2
+    description: Remove auto-archive block and no_archive from cmd_update_task
+    status: completed
+    completed_at: '2026-02-22'
+  - id: P1-T3
+    description: Remove Step 5 auto-archive block from cmd_new, replace with status
+      message
+    status: completed
+    completed_at: '2026-02-22'
+- id: P2
+  name: Remove --no-archive CLI flags
+  status: completed
+  tasks:
+  - id: P2-T1
+    description: 'Remove no_archive parameter from 6 command registrations in cli.py:
+
+      plan_task_start, plan_task_complete, plan_task_update,
+
+      agent_plan_task_start, agent_plan_task_complete, agent_plan_task_update
+
+      '
+    status: completed
+    completed_at: '2026-02-22'
+- id: P3
+  name: Update tests
+  status: completed
+  tasks:
+  - id: P3-T1
+    description: 'Update test_auto_archive_trigger.py:
+
+      - Remove 5 tests verifying auto-archive behavior
+
+      - Remove TestAutoArchiveEdgeCases class (archive-specific edge cases)
+
+      - Add 2 new tests verifying folder stays in live/ after all tasks completed
+
+      - Update command routing from deprecated "plan task" to "agent plan task"
+
+      - Keep TestIsPlanFullyCompleted class intact
+
+      '
+    status: completed
+    completed_at: '2026-02-22'
+  - id: P3-T2
+    description: 'Update test_plan_question_gate.py:
+
+      - Remove TestAutoArchiveQuestionGate class (3 tests)
+
+      - Keep TestHasPendingQuestions and TestSpawnWarningOnPendingQuestions
+
+      '
+    status: completed
+    completed_at: '2026-02-22'
+- id: P4
+  name: Fix pre-existing test failures
+  status: completed
+  tasks:
+  - id: P4-T1
+    description: "Fix 244 pre-existing test failures across 20 test files.\nRoot cause:\
+      \ tests use deprecated command routes (e.g. \"plan task\",\n\"plan scaffold\"\
+      , \"plan orchestration\") which now redirect to\n\"agent plan task\", \"agent\
+      \ plan scaffold\", etc. with exit code 1.\n\nNOT caused by auto-archive removal.\
+      \ These failures predate this work.\n\nFailing test files (by category):\n\n\
+      DEPRECATED COMMAND ROUTING (most failures):\n  - test_plan.py (6 tests) - uses\
+      \ \"plan task\", \"plan scaffold\"\n  - test_plan_orchestration.py (28 tests)\
+      \ - uses \"plan orchestration\"\n  - test_plan_phase.py (27 tests) - uses deprecated\
+      \ plan subcommands\n  - test_plan_init.py (16 tests) - uses deprecated plan\
+      \ subcommands\n  - test_plan_nested_tasks.py (17 tests) - uses deprecated plan\
+      \ task\n  - test_plan_movement.py (1 test) - uses deprecated plan move\n  -\
+      \ test_cli_task.py (10 tests) - uses deprecated plan task\n  - test_task_list_commands.py\
+      \ (11 tests) - uses deprecated plan task\n  - test_context_commands.py (13 tests)\
+      \ - uses deprecated plan context\n  - test_stories.py (30 tests) - uses deprecated\
+      \ stories commands\n  - test_manifest.py (12 tests) - uses deprecated manifest\
+      \ commands\n  - test_worktree_registry.py (3 tests) - uses deprecated plan init\n\
+      \  - test_session_commands.py (2 tests) - uses deprecated session commands\n\
+      \  - integration/test_task_commands.py (20 tests) - uses deprecated plan task\n\
+      \  - integration/test_plan_creation_flow.py (9 tests) - uses deprecated plan\
+      \ commands\n  - integration/test_plan_path_arguments.py (12 tests) - uses deprecated\
+      \ plan commands\n  - integration/test_user_stories.py (11 tests) - uses deprecated\
+      \ stories commands\n  - integration/test_orchestration_sync.py (10 tests) -\
+      \ uses deprecated orchestration\n  - integration/test_workflow_sequences.py\
+      \ (5 tests) - uses deprecated plan commands\n  - integration/test_context_bootstrap_planner.py\
+      \ (1 test) - uses deprecated context\n\nFix approach: Update all test files\
+      \ to use \"agent plan task\" instead of\n\"plan task\", etc. This is a mechanical\
+      \ find-and-replace across test files.\n"
+    status: completed
+    completed_at: '2026-02-22T22:44:02.949002'

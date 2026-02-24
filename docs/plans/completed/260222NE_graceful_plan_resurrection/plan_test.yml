@@ -1,0 +1,416 @@
+_template_status: active
+
+name: graceful-plan-resurrection-test
+worktree_path: /home/code/AgenticEngineering
+branch: graceful-plan-resurrection
+status: active
+
+objective: |
+  Validate the graceful plan resurrection feature: when a plan is manually
+  resurrected (live/ folder recreated after archival), the system should detect
+  the stale TinyDB path, prefer the live/ version, and auto-correct TinyDB.
+
+  Test targets:
+  - find_plan_folder() live-preference (BU_001)
+  - PlanService.get_plan() live-preference (BU_002)
+  - PlanService.list_plans() filesystem merge (BU_003)
+  - PlanRepository.resync_plan_folder() (BU_004)
+  - cmd_unarchive() --force flag (BU_005)
+
+context: |
+  The build phase implemented graceful handling for prematurely completed plans
+  being manually resurrected in live/. Before this fix, TinyDB continued to
+  point at completed/, causing the orchestration loop to enter a death loop.
+
+  Tests were created during build (TE_001-TE_003) in test_plan_resurrection.py.
+  This test plan validates those tests, audits quality, and runs UAT.
+
+affected_stories:
+  - US-CLI-013  # List All Plans (list_plans must include resurrected plans)
+  - US-CLI-017  # Archive Completed Plans (unarchive --force behavior)
+  - US-GD-200   # TinyDB PlanRepository CRUD (resync_plan_folder)
+  - US-GD-206   # Backward Compatibility (stale path handling)
+
+inputs:
+  - location: modules/AgenticGuidance/tests/test_plan_resurrection.py
+    description: "Existing test file created during build phase (TE_001-TE_003)"
+
+  - location: modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    description: "PlanService with get_plan() and list_plans() live-preference logic"
+
+  - location: modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    description: "PlanRepository with resync_plan_folder() method"
+
+  - location: modules/AgenticCLI/src/agenticcli/commands/plan.py
+    description: "CLI plan commands with find_plan_folder() and cmd_unarchive() --force"
+
+impacted_artifacts:
+  - artifact_type: service
+    artifact_identifier: "PlanService.get_plan()"
+    impact_type: behavior_change
+    description: "Validated by resurrection preference tests"
+
+  - artifact_type: service
+    artifact_identifier: "PlanService.list_plans()"
+    impact_type: behavior_change
+    description: "Validated by filesystem merge tests"
+
+  - artifact_type: service
+    artifact_identifier: "PlanRepository.resync_plan_folder()"
+    impact_type: new
+    description: "Validated by resync unit tests"
+
+  - artifact_type: cli_command
+    artifact_identifier: "agentic plan unarchive --force"
+    impact_type: behavior_change
+    description: "Validated by unarchive --force UAT"
+
+loop_structures:
+  - id: "loop_component_test"
+    type: "test-fix-loop"
+    applies_to_phase: "Component Testing"
+    trigger: "After environment setup"
+    description: |
+      Run existing resurrection tests and fix any failures.
+    exit_criteria:
+      success: "All tests in test_plan_resurrection.py pass"
+      max_iterations: 5
+      escalation: "Escalate with test output and remaining failures"
+    participants:
+      - agent: "test-runner"
+        role: "Executes test_plan_resurrection.py"
+      - agent: "build-python"
+        role: "Fixes test failures"
+
+  - id: "loop_audit"
+    type: "audit-test-fix-loop"
+    applies_to_phase: "Test Audit"
+    trigger: "After component tests pass"
+    description: |
+      MANDATORY audit to detect reward hacking and verify test quality.
+      Reviews test_plan_resurrection.py for mocking correctness,
+      skip justifications, and false positives.
+    exit_criteria:
+      success: "Audit passes AND all tests still pass after corrections"
+      max_iterations: 3
+      escalation: "BLOCK - audit failures must be resolved"
+    participants:
+      - agent: "test-audit"
+        role: "Audits test quality"
+      - agent: "test-builder"
+        role: "Fixes audit-identified issues"
+    mandatory: true
+
+  - id: "loop_uat"
+    type: "user-story-validation-loop"
+    applies_to_phase: "UAT Validation"
+    trigger: "After audit passes"
+    description: |
+      Validate complete user journeys for plan resurrection scenarios.
+      Runs real CLI commands (no mocking) per real_cli_smoke_test_requirement.
+    exit_criteria:
+      success: "All UAT stories pass with real CLI verification"
+      max_iterations: 5
+      escalation: "Escalate with UAT failure evidence"
+    participants:
+      - agent: "test-user-simulator"
+        role: "Simulates user journeys against real CLI"
+      - agent: "build-python"
+        role: "Fixes issues found by UAT"
+
+phases:
+  # ----------------------------------------
+  # PHASE 1: Environment Setup
+  # ----------------------------------------
+  - name: "Environment Setup"
+    id: "P1"
+    execution: sequential
+    description: "Install latest code to ensure tests validate current implementation."
+    tasks:
+      - id: "P1-T1"
+        name: "Install latest AgenticGuidance and AgenticCLI"
+        description: |
+          Install the latest version of both packages to ensure tests run
+          against the current implementation, not a stale installed version.
+
+          Steps:
+          1. Run: uv pip install -e modules/AgenticGuidance
+          2. Run: uv pip install -e modules/AgenticCLI
+          3. Verify: uv pip show agenticguidance (version matches source)
+          4. Verify: agentic --version (CLI accessible)
+        status: pending
+        agent_type: test-runner
+        target_files: []
+        success_criteria:
+          - "uv pip install -e completes without errors for both packages"
+          - "agentic --version returns successfully"
+
+  # ----------------------------------------
+  # PHASE 2: Component Testing (test-fix-loop)
+  # ----------------------------------------
+  - name: "Component Testing"
+    id: "P2"
+    execution: sequential
+    description: |
+      Run existing unit and integration tests from test_plan_resurrection.py.
+      Uses test-fix-loop: if tests fail, fix and re-run up to 5 iterations.
+    loop:
+      type: "test-fix-loop"
+      maximum_iterations: 5
+      exit_conditions:
+        success:
+          condition: "PASS"
+          criteria: "All 12 tests in test_plan_resurrection.py pass"
+        max_iterations:
+          action: "escalate"
+          reason: "Test failures persist after 5 fix attempts"
+    tasks:
+      - id: "P2-T1"
+        name: "Run resurrection unit tests"
+        description: |
+          Execute all tests in test_plan_resurrection.py:
+          - TestFindPlanFolderLivePreference (3 tests): find_plan_folder live-preference
+          - TestPlanServiceResurrection (4 tests): get_plan/list_plans with resurrected plans
+          - TestDeathLoopSimulation (2 tests): archive-then-resurrect scenario
+          - TestResyncPlanFolder (3 tests): PlanRepository.resync_plan_folder()
+
+          Command: python3 -m pytest modules/AgenticGuidance/tests/test_plan_resurrection.py -v
+        status: pending
+        agent_type: test-runner
+        target_files:
+          - modules/AgenticGuidance/tests/test_plan_resurrection.py
+        success_criteria:
+          - "All 12 tests pass"
+          - "No skipped tests without documented justification"
+
+  # ----------------------------------------
+  # PHASE 3: Test Audit (audit-test-fix-loop, MANDATORY)
+  # ----------------------------------------
+  - name: "Test Audit"
+    id: "P3"
+    execution: sequential
+    description: |
+      MANDATORY audit to detect reward hacking and verify test quality.
+      Reviews test_plan_resurrection.py for proper assertions, mocking
+      correctness, and that tests actually validate the live-preference logic.
+    loop:
+      type: "audit-test-fix-loop"
+      maximum_iterations: 3
+      exit_conditions:
+        success:
+          condition: "PASS"
+          criteria: "Audit passes with no critical or high findings"
+        max_iterations:
+          action: "escalate"
+          reason: "Audit findings persist after 3 fix attempts"
+    tasks:
+      - id: "P3-T1"
+        name: "Audit test quality and detect reward hacking"
+        description: |
+          Review test_plan_resurrection.py for:
+          1. Assertions that actually validate live-preference behavior (not just mock calls)
+          2. Mocking correctness: only external dependencies mocked, not the SUT
+          3. No skipped tests without valid justification
+          4. Test isolation: each test can run independently
+          5. Edge cases covered: empty TinyDB, missing folders, concurrent access
+
+          Specific checks:
+          - find_plan_folder tests must verify the returned Path, not just mock calls
+          - PlanService tests must verify plan_folder field points to live/
+          - resync_plan_folder tests must verify TinyDB state after resync
+          - Death loop tests must prove the loop breaks (not just that a method was called)
+        status: pending
+        agent_type: test-audit
+        target_files:
+          - modules/AgenticGuidance/tests/test_plan_resurrection.py
+        success_criteria:
+          - "No reward hacking detected"
+          - "All assertions validate actual behavior"
+          - "Mocking is appropriate (only external dependencies)"
+          - "All skipped tests have valid justifications"
+
+  # ----------------------------------------
+  # PHASE 4: UAT Validation (MANDATORY - PRIMARY SUCCESS CRITERIA)
+  # ----------------------------------------
+  - name: "UAT Validation"
+    id: "P4"
+    execution: sequential
+    description: |
+      Validate complete user journeys for plan resurrection.
+      FENCE: CLI commands MUST execute the real installed binary, not mocks.
+      Uses user-story-validation-loop pattern.
+    loop:
+      type: "user-story-validation-loop"
+      maximum_iterations: 5
+      exit_conditions:
+        success:
+          condition: "PASS"
+          criteria: "All UAT stories pass with real CLI output evidence"
+        max_iterations:
+          action: "escalate"
+          reason: "UAT failures persist after 5 attempts"
+    tasks:
+      - id: "uat_US-CLI-013"
+        name: "Validate US-CLI-013: List All Plans shows resurrected plans"
+        description: |
+          User Story: US-CLI-013 - List All Plans
+
+          Journey:
+          1. Create a plan in live/ (agentic plan init or manual creation)
+          2. Archive it to completed/ (agentic plan archive)
+          3. Manually recreate the live/ folder (cp -r or git checkout)
+          4. Run: agentic -j agent plan list
+          5. Verify the resurrected plan appears in the live list
+
+          Acceptance Criteria:
+          - agentic plan list shows all plans in docs/plans/live/ and docs/plans/completed/
+          - Plans are organized by status (live vs completed)
+          - JSON output mode is supported for scripting
+          - Resurrected plan (live/ folder recreated after archive) appears in live list
+
+          Verification Steps:
+          1. Run agentic -j agent plan list and capture JSON output
+          2. Check that the resurrected plan appears with correct status
+          3. Verify no duplicate entries (plan should not appear in both live and completed)
+
+          Evidence Required:
+          - JSON output from agentic -j agent plan list showing resurrected plan
+          - Confirmation that plan appears exactly once in the correct category
+
+          FENCE: Must use real CLI binary, not mocked subprocess.
+        status: pending
+        story_id: "US-CLI-013"
+        agent_type: test-user-simulator
+        acceptance_criteria:
+          - "agentic plan list shows resurrected plan in live category"
+          - "JSON output includes the resurrected plan"
+          - "No duplicate entries for the same plan"
+        verification_method: "test-user-simulator"
+        target_files: []
+
+      - id: "uat_US-CLI-017"
+        name: "Validate US-CLI-017: Unarchive with --force handles existing live/"
+        description: |
+          User Story: US-CLI-017 - Archive Completed Plans (unarchive aspect)
+
+          Journey:
+          1. Create and archive a plan (set up completed/ version)
+          2. Manually recreate the live/ folder (simulating resurrection)
+          3. Run: agentic plan unarchive --plan <name> (without --force)
+          4. Verify helpful error message suggesting --force
+          5. Run: agentic plan unarchive --plan <name> --force
+          6. Verify completed/ copy is removed and TinyDB points to live/
+          7. Verify plan is accessible via normal plan commands
+
+          Acceptance Criteria:
+          - agentic plan unarchive --plan <name> without --force gives helpful error
+          - Error message suggests using --force
+          - agentic plan unarchive --plan <name> --force removes completed/ copy
+          - After --force, TinyDB correctly points to live/
+          - Plan is fully accessible after unarchive --force
+
+          Verification Steps:
+          1. Create test plan, archive it, recreate live/ folder
+          2. Run unarchive without --force, check error message
+          3. Run unarchive with --force, check success
+          4. Verify completed/ folder is removed
+          5. Run agentic plan list to confirm plan appears in live
+
+          Evidence Required:
+          - Error output showing --force suggestion
+          - Success output after --force
+          - ls output confirming completed/ folder removed
+          - Plan list output confirming live/ status
+
+          FENCE: Must use real CLI binary, not mocked subprocess.
+        status: pending
+        story_id: "US-CLI-017"
+        agent_type: test-user-simulator
+        acceptance_criteria:
+          - "unarchive without --force shows helpful error with --force hint"
+          - "unarchive --force removes completed/ copy"
+          - "After --force, plan is accessible in live/"
+        verification_method: "test-user-simulator"
+        target_files: []
+
+      - id: "uat_US-GD-200"
+        name: "Validate US-GD-200: PlanRepository resync_plan_folder works"
+        description: |
+          User Story: US-GD-200 - TinyDB Plan Repository CRUD
+
+          Journey:
+          1. Import a plan from completed/ into TinyDB
+          2. Recreate the plan folder in live/
+          3. Call resync_plan_folder(plan_name, live_path)
+          4. Verify TinyDB now points to live/
+          5. Verify tasks are re-imported from the live/ version
+
+          Acceptance Criteria:
+          - resync_plan_folder updates plan_folder in TinyDB
+          - Subsequent get_plan returns the corrected live/ path
+          - Tasks are re-imported from the new location
+          - Non-existent plan returns False
+          - Invalid path returns False
+
+          Verification Steps:
+          1. Run test_plan_resurrection.py::TestResyncPlanFolder tests
+          2. Verify all 3 resync tests pass
+          3. Check that TinyDB state is correct after resync
+
+          Evidence Required:
+          - pytest output showing all TestResyncPlanFolder tests pass
+          - Verification that resync_plan_folder returns True on success
+        status: pending
+        story_id: "US-GD-200"
+        agent_type: test-user-simulator
+        acceptance_criteria:
+          - "resync_plan_folder updates TinyDB plan_folder path"
+          - "get_plan returns corrected path after resync"
+          - "Tasks re-imported from new location"
+        verification_method: "test-user-simulator"
+        target_files: []
+
+      - id: "uat_US-GD-206"
+        name: "Validate US-GD-206: Backward compatibility with stale TinyDB paths"
+        description: |
+          User Story: US-GD-206 - Backward Compatibility During Migration
+
+          Journey:
+          1. Simulate stale TinyDB state (plan_folder points to completed/)
+          2. Recreate plan folder in live/
+          3. Call PlanService.get_plan(plan_name)
+          4. Verify it returns the live/ version (not completed/)
+          5. Call PlanService.list_plans(status="live")
+          6. Verify the resurrected plan appears in results
+
+          Acceptance Criteria:
+          - PlanService falls back to filesystem when TinyDB path is stale
+          - get_plan auto-corrects stale completed/ paths to live/
+          - list_plans merges filesystem-discovered plans with TinyDB results
+          - Auto-correction of TinyDB is non-fatal (best-effort)
+
+          Verification Steps:
+          1. Run test_plan_resurrection.py::TestPlanServiceResurrection tests
+          2. Run test_plan_resurrection.py::TestDeathLoopSimulation tests
+          3. Verify all tests pass demonstrating backward compatibility
+
+          Evidence Required:
+          - pytest output showing all PlanService resurrection tests pass
+          - pytest output showing death loop simulation passes
+        status: pending
+        story_id: "US-GD-206"
+        agent_type: test-user-simulator
+        acceptance_criteria:
+          - "get_plan returns live/ path when TinyDB points to completed/"
+          - "list_plans includes resurrected plans"
+          - "TinyDB auto-correction is non-fatal"
+        verification_method: "test-user-simulator"
+        target_files: []
+
+success_criteria:
+  - "All 12 tests in test_plan_resurrection.py pass"
+  - "Test audit finds no reward hacking or critical issues"
+  - "UAT: agentic plan list shows resurrected plans correctly"
+  - "UAT: agentic plan unarchive --force handles existing live/ gracefully"
+  - "UAT: PlanRepository.resync_plan_folder corrects stale TinyDB paths"
+  - "UAT: PlanService prefers live/ over completed/ when both exist"

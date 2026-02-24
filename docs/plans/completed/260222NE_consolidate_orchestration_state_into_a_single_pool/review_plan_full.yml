@@ -1,0 +1,272 @@
+# Plan Review: 260222NE_consolidate_orchestration_state_into_a_single_pool
+# Reviewer: planner-reviewer
+# Date: 2026-02-23
+# Scope: Full plan folder review (all plan files, MMD, previous review)
+# Previous Review: review_plan_test.yml (REJECT, 3 blocking issues)
+
+decision: REJECT
+feedback: |
+  This is a RE-REVIEW following a prior REJECT. The 3 blocking issues from
+  the previous review (review_plan_test.yml) remain unresolved. All plan tasks
+  are marked completed - execution proceeded despite the rejection. The
+  structural issues must still be remediated for plan integrity.
+
+  The plan_build.yml and plan_test.yml are well-structured and the
+  orchestration MMD is comprehensive. The functional work appears complete.
+  Only structural/documentation gaps remain.
+
+  REMEDIATION IS STRAIGHTFORWARD - estimated 3 actions to resolve all blocks:
+  1. Delete 2 stub files
+  2. Add affected_stories to plan_build.yml
+  3. Either add 3 UAT tasks OR trim affected_stories list
+
+checklist_results:
+  # ========================================
+  # INFRASTRUCTURE VERIFICATION
+  # ========================================
+  infrastructure_verification:
+    status: PASS
+    details: |
+      All agents referenced in the plan are implemented:
+      - test-runner: Implemented
+      - build-python: Implemented
+      - test-audit: Implemented
+      - test-builder: Implemented
+      - test-user-simulator: Implemented
+      - planner-cleaning: Implemented
+      No deploy-cicd, explore, cleaner, or placeholder agents referenced.
+
+  # ========================================
+  # PLAN STRUCTURE CHECKLIST
+  # ========================================
+  plan_structure:
+    status: FAIL
+    items:
+      - check: "Plan has unique name at root level"
+        result: PASS
+        notes: "plan_build.yml and plan_test.yml both have name at root"
+      - check: "Worktree path is absolute and correct"
+        result: PASS
+        notes: "plan_build.yml: /home/code/AgenticEngineering-cli-nesting, plan_test.yml: /home/code/AgenticEngineering"
+      - check: "Plan folder follows YYMMDDXX_description naming"
+        result: PASS
+      - check: "Plan files at folder root, NOT in subdirectories"
+        result: PASS
+      - check: "No stub templates in live folder"
+        result: FAIL
+        notes: |
+          BLOCKING (BLOCK-002, UNRESOLVED FROM PRIOR REVIEW):
+          - plan_audit_clean.yml: _template_status: stub, TODO placeholders, nested plan: key
+          - plan_teach.yml: _template_status: stub, TODO placeholders, nested plan: key
+          ACTION: Delete both files. Build is completed and test plan is comprehensive.
+
+  # ========================================
+  # INPUTS CHECKLIST
+  # ========================================
+  inputs:
+    status: PASS
+    notes: "Context references in plan_test.yml are file-level and resolve correctly"
+
+  # ========================================
+  # SUCCESS CRITERIA CHECKLIST
+  # ========================================
+  success_criteria:
+    status: PASS
+    items:
+      - "8 success criteria in plan_test.yml - all measurable and verifiable"
+      - "Includes user-focused validation (UAT stories)"
+      - "Technical criteria are observable (test pass/fail, command output)"
+
+  # ========================================
+  # TASK STRUCTURE CHECKLIST
+  # ========================================
+  task_structure:
+    status: PASS
+    notes: |
+      - plan_build.yml: 3 tasks, all completed, clear descriptions
+      - plan_test.yml: 15 tasks across 6 phases, all completed
+      - Target files specified where applicable
+      - Proper ordering (env -> test -> cleanup -> audit -> UAT -> docs)
+
+  # ========================================
+  # PATTERN ALIGNMENT CHECKLIST
+  # ========================================
+  pattern_alignment:
+    status: PASS
+    items:
+      - "Phase ordering follows standard test plan pattern"
+      - "Mandatory audit-test-fix loop included (mandatory: true)"
+      - "UAT phase present as primary success criteria"
+      - "Build plan follows consolidation pattern (remove -> merge -> verify)"
+
+  # ========================================
+  # LOOP STRUCTURE CHECKLIST
+  # ========================================
+  loop_structure:
+    status: PASS
+    items:
+      - "loop_structures section present with 3 loops"
+      - "Component Testing: test-fix-loop, max 5 iterations"
+      - "Test Audit: audit-test-fix-loop, max 3 iterations, mandatory: true"
+      - "UAT: user-story-validation-loop, max 5 iterations"
+      - "All loops have exit criteria and escalation paths"
+      - "Participants correctly assigned per loop type"
+
+  # ========================================
+  # STORY VALIDATION FENCE
+  # ========================================
+  story_validation:
+    status: FAIL
+    items:
+      - check: "affected_stories present in plan_test.yml"
+        result: PASS
+        notes: "6 stories listed: US-CLI-030, 031, 032, 034, 035, 036"
+      - check: "Story IDs are valid"
+        result: PASS
+        notes: "All 6 IDs verified in docs/userstories/AgenticCLI/03_session_and_loop.yml"
+      - check: "All affected stories have corresponding UAT tasks"
+        result: FAIL
+        notes: |
+          BLOCKING (BLOCK-001, UNRESOLVED FROM PRIOR REVIEW):
+          3 of 6 affected stories lack UAT tasks:
+          - US-CLI-030 (Spawn Claude Code Session) - NO UAT task
+          - US-CLI-032 (Stop Running Session) - NO UAT task
+          - US-CLI-035 (Stop Running Loop) - NO UAT task
+
+          Present UAT tasks cover:
+          - uat_US-CLI-031 -> US-CLI-031 (List and Monitor Sessions)
+          - uat_US-CLI-034 -> US-CLI-034 (Start Ralph Loop)
+          - uat_US-CLI-036 -> US-CLI-036 (Monitor Loop Progress)
+          - uat_dashboard_removed -> dashboard removal
+
+          RECOMMENDED REMEDIATION (prefer Option B given execution is complete):
+          Option A: Add UAT tasks for US-CLI-030, US-CLI-032, US-CLI-035
+          Option B: Remove US-CLI-030, US-CLI-032, US-CLI-035 from affected_stories
+            with justification. Rationale: the consolidation only changes WHERE
+            state is stored (unified sessions/ pool), not HOW spawn/stop commands
+            behave. Spawn and stop logic is unchanged; only list/history commands
+            gained new type-based filtering. If this rationale is adopted, also
+            remove from impacted_artifacts if applicable.
+      - check: "plan_build.yml has affected_stories or no_stories_rationale"
+        result: FAIL
+        notes: |
+          BLOCKING (BLOCK-003, UNRESOLVED FROM PRIOR REVIEW):
+          plan_build.yml has neither affected_stories nor no_stories_rationale.
+          Build plans are in blocked_plan_types and MUST have affected_stories.
+          ACTION: Add affected_stories matching the final set from plan_test.yml.
+
+  # ========================================
+  # FILE PLACEMENT FENCE
+  # ========================================
+  file_placement:
+    status: FAIL
+    notes: |
+      BLOCKING (BLOCK-002, UNRESOLVED FROM PRIOR REVIEW):
+      Stub template files remain in live/:
+      - plan_audit_clean.yml: _template_status: stub, nested plan: key, TODO content
+      - plan_teach.yml: _template_status: stub, nested plan: key, TODO content
+      ACTION: Delete both files from the plan folder.
+
+  # ========================================
+  # MMD PRESENCE FENCE
+  # ========================================
+  mmd_presence:
+    status: PASS
+    notes: |
+      orchestration_consolidate_orchestration_state_into_a_single_pool.mmd is present.
+      - GOAL header: present ("Execute plan tasks")
+      - AGENT_ROUTING: present (build-python, test-builder, planner-cleaning)
+      - PHASES: 7 phases listed (P1-P7)
+      - Proper flowchart with test-fix loops and escalation paths
+
+  # ========================================
+  # SELF-REVIEW VALIDATION FENCE
+  # ========================================
+  self_review_validation:
+    status: PASS
+    notes: |
+      - No duplicate definitions between plan files and shared assets
+      - All target_files references resolve to existing files
+      - No deprecated patterns detected
+      - No circular references
+
+  # ========================================
+  # OPEN QUESTIONS VALIDATION
+  # ========================================
+  open_questions_validation:
+    status: N/A
+    notes: "No open_questions section in plan - this is valid"
+
+  # ========================================
+  # CODEBASE VERIFICATION FENCE
+  # ========================================
+  codebase_verification:
+    status: PASS
+    notes: |
+      - All target_files referenced in tasks exist in the repository
+      - Build tasks are completed (RM_DB_001, CONS_001, VER_001)
+      - Test tasks are completed (all 15 tasks)
+      - NOTE: >50% tasks completed but plan is post-execution, not stale
+
+# ========================================
+# BLOCKING ISSUES SUMMARY (3 issues, unchanged from prior review)
+# ========================================
+blocking_issues:
+  - id: "BLOCK-001"
+    fence: "story_validation"
+    severity: HIGH
+    prior_review: true
+    description: |
+      3 of 6 affected stories (US-CLI-030, US-CLI-032, US-CLI-035) lack UAT tasks.
+      Per Story-First Planning fence: "Plans with affected_stories MUST have
+      corresponding UAT tasks."
+    remediation: |
+      RECOMMENDED: Remove US-CLI-030, US-CLI-032, US-CLI-035 from affected_stories
+      since the consolidation does not change spawn/stop behavior, only storage
+      location. The 3 remaining stories (US-CLI-031, US-CLI-034, US-CLI-036) plus
+      dashboard removal adequately cover the actual behavioral changes.
+
+  - id: "BLOCK-002"
+    fence: "file_placement"
+    severity: MEDIUM
+    prior_review: true
+    description: |
+      plan_audit_clean.yml and plan_teach.yml are unpopulated stub templates
+      with _template_status: stub and TODO placeholders.
+    remediation: |
+      Delete both files. The build is complete and the test plan is comprehensive.
+      If audit/teach phases are needed later, they can be re-created.
+
+  - id: "BLOCK-003"
+    fence: "story_validation"
+    severity: MEDIUM
+    prior_review: true
+    description: |
+      plan_build.yml lacks affected_stories field. Build plans are in
+      blocked_plan_types and MUST have affected_stories (no escape hatch).
+    remediation: |
+      Add affected_stories to plan_build.yml matching the final corrected list
+      from plan_test.yml (after BLOCK-001 remediation).
+
+# ========================================
+# POSITIVE OBSERVATIONS
+# ========================================
+positive_observations:
+  - "plan_test.yml is comprehensive with 15 well-defined tasks across 6 phases, all completed"
+  - "plan_build.yml tasks are clear and well-scoped, all 3 completed"
+  - "Loop structures properly defined with mandatory audit loop (mandatory: true)"
+  - "UAT phase includes detailed user journeys with evidence requirements"
+  - "impacted_artifacts section clearly documents behavioral changes"
+  - "Orchestration MMD is thorough with proper routing and escalation paths"
+  - "All referenced agents are implemented and available"
+  - "All target test files exist in the repository"
+  - "Success criteria are specific and verifiable (8 items)"
+
+# ========================================
+# EXECUTION NOTE
+# ========================================
+execution_note: |
+  All plan tasks (build and test) are marked completed. Execution proceeded
+  despite the prior REJECT. The blocking issues are structural/documentation
+  gaps, not functional defects. Remediation is lightweight (delete 2 files,
+  add 1 field, trim 1 list) and can be done in a single pass.

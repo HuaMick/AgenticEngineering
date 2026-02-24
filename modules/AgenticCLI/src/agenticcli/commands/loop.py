@@ -13,8 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from agenticcli.utils.state_store import StateStore, is_process_running
+from agenticcli.utils.subprocess_utils import get_clean_env
 
-_store = StateStore("loops", id_key="loop_id")
+_store = StateStore("sessions", id_key="session_id")
 
 
 def _update_loop_status(loop_data: dict) -> dict:
@@ -33,6 +34,18 @@ def _update_loop_status(loop_data: dict) -> dict:
             loop_data["ended_at"] = datetime.now().isoformat()
             _store.save(loop_data)
     return loop_data
+
+
+def _loop_id(loop_data: dict) -> str:
+    """Get loop identifier, supporting both old loop_id and new session_id keys.
+
+    Args:
+        loop_data: Loop data dict.
+
+    Returns:
+        Loop identifier string.
+    """
+    return loop_data.get("session_id") or loop_data.get("loop_id", "")
 
 
 def _resolve_prompt(args) -> tuple[str, str]:
@@ -137,7 +150,8 @@ def cmd_start(args, ctx=None):
 
     # Create loop record
     loop_data = {
-        "loop_id": loop_id,
+        "session_id": loop_id,
+        "type": "loop",
         "pid": None,
         "prompt": prompt,
         "prompt_source": prompt_source,
@@ -167,6 +181,7 @@ def cmd_start(args, ctx=None):
                 stdout=stdout_target,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
+                env=get_clean_env(),
             )
             loop_data["pid"] = process.pid
             loop_data["status"] = "running"
@@ -181,7 +196,8 @@ def cmd_start(args, ctx=None):
 
             if is_json_output():
                 print_json({
-                    "loop_id": loop_id,
+                    "session_id": loop_id,
+                    "type": "loop",
                     "pid": process.pid,
                     "status": "running",
                     "background": True,
@@ -211,6 +227,7 @@ def cmd_start(args, ctx=None):
                 cwd=working_dir,
                 capture_output=True,
                 text=True,
+                env=get_clean_env(),
             )
 
             # Update iteration status
@@ -229,7 +246,8 @@ def cmd_start(args, ctx=None):
 
             if is_json_output():
                 print_json({
-                    "loop_id": loop_id,
+                    "session_id": loop_id,
+                    "type": "loop",
                     "status": loop_data["status"],
                     "exit_code": result.returncode,
                     "iterations_completed": 1,
@@ -277,8 +295,8 @@ def cmd_stop(args, ctx=None):
         sys.exit(1)
 
     # Find loop by ID (support partial matching)
-    loops = _store.list_all()
-    matching = [lp for lp in loops if lp.get("loop_id", "").startswith(loop_id)]
+    loops = _store.list_all(filter_fn=lambda r: r.get("type") == "loop")
+    matching = [lp for lp in loops if _loop_id(lp).startswith(loop_id)]
 
     if not matching:
         print_error(f"Loop not found: {loop_id}")
@@ -289,6 +307,7 @@ def cmd_stop(args, ctx=None):
         sys.exit(1)
 
     loop = matching[0]
+    lid = _loop_id(loop)
     pid = loop.get("pid")
     status = loop.get("status")
 
@@ -296,13 +315,14 @@ def cmd_stop(args, ctx=None):
     if status in ["completed", "stopped", "failed"]:
         if is_json_output():
             print_json({
-                "loop_id": loop["loop_id"],
+                "session_id": lid,
+                "type": "loop",
                 "status": status,
                 "message": f"Loop is already in terminal state: {status}",
                 "success": True
             })
         else:
-            print_success(f"Loop {loop['loop_id'][:8]} is already in terminal state: {status}")
+            print_success(f"Loop {lid[:8]} is already in terminal state: {status}")
         return
 
     # Try to stop the process
@@ -327,13 +347,14 @@ def cmd_stop(args, ctx=None):
 
         if is_json_output():
             print_json({
-                "loop_id": loop["loop_id"],
+                "session_id": lid,
+                "type": "loop",
                 "pid": pid,
                 "status": "stopped",
                 "success": True,
             })
         else:
-            print_success(f"Loop {loop['loop_id'][:8]} stopped (PID: {pid})")
+            print_success(f"Loop {lid[:8]} stopped (PID: {pid})")
 
     except ProcessLookupError:
         # Process not found, mark as completed if it was running
@@ -342,13 +363,14 @@ def cmd_stop(args, ctx=None):
         _store.save(loop)
         if is_json_output():
             print_json({
-                "loop_id": loop["loop_id"],
+                "session_id": lid,
+                "type": "loop",
                 "status": "completed",
                 "message": "Process not found (may have already exited)",
                 "success": True
             })
         else:
-            print_success(f"Loop {loop['loop_id'][:8]} already exited (process not found)")
+            print_success(f"Loop {lid[:8]} already exited (process not found)")
         return
     except PermissionError:
         print_error(f"Permission denied to stop process {pid}")
@@ -370,8 +392,8 @@ def cmd_status(args, ctx=None):
         sys.exit(1)
 
     # Find loop by ID (support partial matching)
-    loops = _store.list_all()
-    matching = [lp for lp in loops if lp.get("loop_id", "").startswith(loop_id)]
+    loops = _store.list_all(filter_fn=lambda r: r.get("type") == "loop")
+    matching = [lp for lp in loops if _loop_id(lp).startswith(loop_id)]
 
     if not matching:
         print_error(f"Loop not found: {loop_id}")
@@ -382,12 +404,13 @@ def cmd_status(args, ctx=None):
         sys.exit(1)
 
     loop = _update_loop_status(matching[0])
+    lid = _loop_id(loop)
 
     if is_json_output():
         print_json(loop)
         return
 
-    print_header(f"Loop {loop['loop_id'][:8]}")
+    print_header(f"Loop {lid[:8]}")
 
     status_colors = {
         "running": "green",
@@ -399,7 +422,7 @@ def cmd_status(args, ctx=None):
     status = loop.get("status", "unknown")
     status_color = status_colors.get(status, "white")
 
-    console.print(f"[cyan]Loop ID:[/cyan] {loop.get('loop_id')}")
+    console.print(f"[cyan]Loop ID:[/cyan] {lid}")
     console.print(f"[cyan]PID:[/cyan] {loop.get('pid', 'N/A')}")
     console.print(f"[cyan]Status:[/cyan] [{status_color}]{status}[/{status_color}]")
     console.print(f"[cyan]Background:[/cyan] {loop.get('background', False)}")
@@ -464,7 +487,7 @@ def cmd_history(args, ctx=None):
     """
     from agenticcli.console import console, is_json_output, print_header, print_json
 
-    loops = _store.list_all()
+    loops = _store.list_all(filter_fn=lambda r: r.get("type") == "loop")
 
     # Update status for running loops
     for loop in loops:
@@ -517,7 +540,7 @@ def cmd_history(args, ctx=None):
     }
 
     for loop in sorted(loops, key=lambda lp: lp.get("started_at", ""), reverse=True)[:limit]:
-        loop_id = loop.get("loop_id", "")[:8]
+        loop_id = _loop_id(loop)[:8]
         pid = str(loop.get("pid", "N/A"))
         status = loop.get("status", "unknown")
         status_color = status_colors.get(status, "white")

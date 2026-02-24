@@ -1,4 +1,4 @@
-"""Tests for the planner loop workflow and CLI commands."""
+"""Tests for the planner loop workflow."""
 
 import json
 import os
@@ -11,7 +11,7 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# PlannerLoopWorkflow tests (P6-T1)
+# PlannerLoopWorkflow tests
 # ---------------------------------------------------------------------------
 
 
@@ -274,7 +274,7 @@ class TestValidateMmd:
 
 
 # ---------------------------------------------------------------------------
-# PlannerLoopRunner tests (P6-T2)
+# PlannerLoopRunner tests
 # ---------------------------------------------------------------------------
 
 
@@ -291,6 +291,10 @@ class TestPlannerLoopRunner:
         monkeypatch.setattr(workflow, "compile_bootstrap_context", overrides.get("bootstrap", lambda role="orchestration-planning": {}))
         monkeypatch.setattr(workflow, "discover_plans_needing_orchestration",
                             overrides.get("discover", lambda: []))
+        monkeypatch.setattr(workflow, "spawn_explore_agent",
+                            overrides.get("spawn_explore", lambda pf: "explore-session-123"))
+        monkeypatch.setattr(workflow, "spawn_story_agent",
+                            overrides.get("spawn_story", lambda pf: "story-session-123"))
         monkeypatch.setattr(workflow, "discover_stories",
                             overrides.get("stories", lambda pf, project=None: []))
         monkeypatch.setattr(workflow, "determine_plan_type",
@@ -317,7 +321,7 @@ class TestPlannerLoopRunner:
         assert "Planning complete" in capsys.readouterr().out
 
     def test_processes_single_plan(self, monkeypatch, capsys):
-        """Runner processes a single plan through full workflow."""
+        """Runner processes a single plan through full workflow including explore and story steps."""
         call_log = []
 
         def tracking_discover():
@@ -326,9 +330,13 @@ class TestPlannerLoopRunner:
                 return ["test_plan"]
             return []
 
-        def tracking_stories(pf, project=None):
-            call_log.append(("stories", pf))
-            return []
+        def tracking_spawn_explore(pf):
+            call_log.append(("spawn_explore", pf))
+            return "explore-session-abc"
+
+        def tracking_spawn_story(pf):
+            call_log.append(("spawn_story", pf))
+            return "story-session-abc"
 
         def tracking_plan_type(pf):
             call_log.append(("plan_type", pf))
@@ -357,7 +365,8 @@ class TestPlannerLoopRunner:
         runner = self._make_runner(
             monkeypatch,
             discover=tracking_discover,
-            stories=tracking_stories,
+            spawn_explore=tracking_spawn_explore,
+            spawn_story=tracking_spawn_story,
             plan_type=tracking_plan_type,
             spawn_planner=tracking_spawn,
             wait_session=tracking_wait,
@@ -368,16 +377,61 @@ class TestPlannerLoopRunner:
         result = runner.run(max_iterations=5)
 
         assert result is True
-        # Verify call sequence
+        # Verify call sequence includes explore and story steps
         step_names = [c[0] for c in call_log]
         assert "discover" in step_names
-        assert "stories" in step_names
+        assert "spawn_explore" in step_names
+        assert "spawn_story" in step_names
         assert "plan_type" in step_names
         assert "spawn" in step_names
         assert "wait" in step_names
         assert "review" in step_names
         assert "generate" in step_names
         assert "validate" in step_names
+
+        # Verify ordering: explore must come before story, story before plan_type
+        idx_explore = next(i for i, c in enumerate(call_log) if c[0] == "spawn_explore")
+        idx_story = next(i for i, c in enumerate(call_log) if c[0] == "spawn_story")
+        idx_plan_type = next(i for i, c in enumerate(call_log) if c[0] == "plan_type")
+        assert idx_explore < idx_story < idx_plan_type
+
+    def test_explore_agent_failure_skips_plan(self, monkeypatch):
+        """Plan is skipped when explore agent fails to spawn."""
+        call_count = {"discover": 0}
+
+        def discover():
+            call_count["discover"] += 1
+            if call_count["discover"] <= 1:
+                return ["bad_explore_plan"]
+            return []
+
+        runner = self._make_runner(
+            monkeypatch,
+            discover=discover,
+            spawn_explore=lambda pf: None,  # Explore spawn fails
+        )
+        result = runner.run(max_iterations=5)
+
+        assert "bad_explore_plan" in runner.state["plans_skipped"]
+
+    def test_story_agent_failure_skips_plan(self, monkeypatch):
+        """Plan is skipped when story agent fails to spawn."""
+        call_count = {"discover": 0}
+
+        def discover():
+            call_count["discover"] += 1
+            if call_count["discover"] <= 1:
+                return ["bad_story_plan"]
+            return []
+
+        runner = self._make_runner(
+            monkeypatch,
+            discover=discover,
+            spawn_story=lambda pf: None,  # Story spawn fails
+        )
+        result = runner.run(max_iterations=5)
+
+        assert "bad_story_plan" in runner.state["plans_skipped"]
 
     def test_review_loop_max_rejections(self, monkeypatch):
         """Plan is skipped after max review rejections."""
@@ -438,258 +492,3 @@ class TestPlannerLoopRunner:
         result = runner.run(max_iterations=5)
 
         assert "no_type_plan" in runner.state["plans_skipped"]
-
-
-# ---------------------------------------------------------------------------
-# CLI planner command tests (P6-T3)
-# ---------------------------------------------------------------------------
-
-
-class TestPlannerCommandStart:
-    """Test cmd_start planner command."""
-
-    def test_foreground_start(self, monkeypatch, tmp_path):
-        """Foreground start invokes PlannerLoopRunner.run()."""
-        from agenticcli.commands import planner
-
-        # Mock console functions
-        monkeypatch.setattr("agenticcli.console._output_json", False, raising=False)
-
-        run_called = {"called": False, "kwargs": {}}
-
-        class MockRunner:
-            def __init__(self, **kw):
-                self.state = {"plans_processed": [], "errors": [], "iteration": 1}
-
-            def run(self, **kwargs):
-                run_called["called"] = True
-                run_called["kwargs"] = kwargs
-                return True
-
-        class MockWorkflow:
-            def __init__(self, **kw):
-                pass
-
-        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
-        monkeypatch.setattr("agenticcli.workflows.planner_loop.PlannerLoopRunner", MockRunner)
-        monkeypatch.setattr("agenticcli.workflows.planner_loop.PlannerLoopWorkflow", MockWorkflow)
-
-        args = SimpleNamespace(
-            command="planner", planner_command="start",
-            json=False, debug=False,
-            max_iterations=5, background=False,
-            completion_promise=None, project=None,
-            directory=str(tmp_path),
-            dangerously_skip_permissions=False,
-        )
-
-        planner.cmd_start(args)
-
-        assert run_called["called"] is True
-        assert run_called["kwargs"]["max_iterations"] == 5
-
-    def test_background_start(self, monkeypatch, tmp_path):
-        """Background start forks a subprocess."""
-        from agenticcli.commands import planner
-
-        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
-
-        popen_calls = []
-
-        class MockPopen:
-            def __init__(self, *a, **kw):
-                popen_calls.append((a, kw))
-                self.pid = 12345
-
-        monkeypatch.setattr(subprocess, "Popen", MockPopen)
-
-        args = SimpleNamespace(
-            command="planner", planner_command="start",
-            json=False, debug=False,
-            max_iterations=10, background=True,
-            completion_promise=None, project=None,
-            directory=str(tmp_path),
-            dangerously_skip_permissions=False,
-        )
-
-        planner.cmd_start(args)
-
-        assert len(popen_calls) == 1
-        # Verify state was saved
-        state_files = list(tmp_path.glob("pl-*.json"))
-        assert len(state_files) == 1
-        state = json.loads(state_files[0].read_text())
-        assert state["pid"] == 12345
-        assert state["status"] == "running"
-
-
-class TestPlannerCommandStop:
-    """Test cmd_stop planner command."""
-
-    def test_stop_running_loop(self, monkeypatch, tmp_path):
-        """Stopping a running loop sends SIGTERM."""
-        from agenticcli.commands import planner
-
-        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
-
-        # Create a running state file
-        state = {
-            "id": "pl-test123",
-            "status": "running",
-            "pid": 99999,
-            "started_at": "2026-02-11T00:00:00",
-        }
-        (tmp_path / "pl-test123.json").write_text(json.dumps(state))
-
-        kill_calls = []
-
-        def mock_kill(pid, sig):
-            kill_calls.append((pid, sig))
-
-        monkeypatch.setattr(os, "kill", mock_kill)
-
-        args = SimpleNamespace(
-            command="planner", planner_command="stop",
-            json=False, debug=False,
-            planner_id="pl-test123", force=False,
-        )
-
-        planner.cmd_stop(args)
-
-        assert len(kill_calls) == 1
-        assert kill_calls[0][0] == 99999
-
-    def test_stop_already_completed(self, monkeypatch, tmp_path):
-        """Stopping an already completed loop returns success."""
-        from agenticcli.commands import planner
-
-        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
-
-        state = {
-            "id": "pl-done456",
-            "status": "completed",
-            "pid": 11111,
-            "started_at": "2026-02-11T00:00:00",
-        }
-        (tmp_path / "pl-done456.json").write_text(json.dumps(state))
-
-        args = SimpleNamespace(
-            command="planner", planner_command="stop",
-            json=False, debug=False,
-            planner_id="pl-done456", force=False,
-        )
-
-        # Should not raise
-        planner.cmd_stop(args)
-
-
-class TestPlannerCommandStatus:
-    """Test cmd_status planner command."""
-
-    def test_status_list_all(self, monkeypatch, tmp_path):
-        """Status with no ID lists all loops."""
-        from agenticcli.commands import planner
-
-        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
-
-        state = {
-            "id": "pl-list789",
-            "status": "completed",
-            "pid": 22222,
-            "started_at": "2026-02-11T00:00:00",
-            "max_iterations": 10,
-            "current_iteration": 3,
-            "plans_processed": ["plan_a"],
-            "errors": [],
-        }
-        (tmp_path / "pl-list789.json").write_text(json.dumps(state))
-
-        args = SimpleNamespace(
-            command="planner", planner_command="status",
-            json=True, debug=False,
-            planner_id=None,
-        )
-
-        planner.cmd_status(args)
-
-    def test_status_specific_loop(self, monkeypatch, tmp_path):
-        """Status with ID shows specific loop details."""
-        from agenticcli.commands import planner
-
-        monkeypatch.setattr("agenticcli.commands.planner._store.get_dir", lambda override=None: tmp_path)
-
-        state = {
-            "id": "pl-specific",
-            "status": "running",
-            "pid": 33333,
-            "started_at": "2026-02-11T00:00:00",
-            "completed_at": None,
-            "max_iterations": 10,
-            "current_iteration": 2,
-            "plans_processed": [],
-            "plans_pending": [],
-            "current_plan": "active_plan",
-            "errors": [],
-            "directory": "/tmp/test",
-        }
-        (tmp_path / "pl-specific.json").write_text(json.dumps(state))
-
-        # Mock process check (not running)
-        monkeypatch.setattr("agenticcli.commands.planner.is_process_running", lambda pid: False)
-
-        args = SimpleNamespace(
-            command="planner", planner_command="status",
-            json=True, debug=False,
-            planner_id="pl-specific",
-        )
-
-        planner.cmd_status(args)
-
-
-# ---------------------------------------------------------------------------
-# State persistence tests
-# ---------------------------------------------------------------------------
-
-
-class TestStatePersistence:
-    """Test state save/load/list functions."""
-
-    def test_save_and_load(self, tmp_path):
-        """State can be saved and loaded."""
-        from agenticcli.commands.planner import _store
-
-        state = {"id": "pl-test", "status": "running", "pid": 123}
-        _store.save(state, state_dir=tmp_path)
-
-        loaded = _store.load("pl-test", state_dir=tmp_path)
-        assert loaded is not None
-        assert loaded["id"] == "pl-test"
-        assert loaded["status"] == "running"
-        assert loaded["pid"] == 123
-
-    def test_load_nonexistent(self, tmp_path):
-        """Loading nonexistent state returns None."""
-        from agenticcli.commands.planner import _store
-
-        assert _store.load("pl-nope", state_dir=tmp_path) is None
-
-    def test_list_states(self, tmp_path):
-        """List returns all states."""
-        from agenticcli.commands.planner import _store
-
-        _store.save({"id": "pl-a", "status": "running"}, state_dir=tmp_path)
-        _store.save({"id": "pl-b", "status": "completed"}, state_dir=tmp_path)
-
-        all_states = _store.list_all(state_dir=tmp_path)
-        assert len(all_states) == 2
-
-    def test_list_active_only(self, tmp_path):
-        """List with filter_fn filters completed loops."""
-        from agenticcli.commands.planner import _store
-
-        _store.save({"id": "pl-run", "status": "running"}, state_dir=tmp_path)
-        _store.save({"id": "pl-done", "status": "completed"}, state_dir=tmp_path)
-
-        active = _store.list_all(state_dir=tmp_path, filter_fn=lambda s: s.get("status") != "completed")
-        assert len(active) == 1
-        assert active[0]["id"] == "pl-run"

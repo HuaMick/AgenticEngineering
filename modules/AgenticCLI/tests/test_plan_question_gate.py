@@ -1,14 +1,15 @@
-"""Tests for plan question gate: has_pending_questions, auto-archive blocking, spawn warning.
+"""Tests for plan question gate: has_pending_questions, spawn warning.
 
 Covers:
   P6-T1: has_pending_questions utility
-  P6-T2: auto-archive blocked by pending questions
   P6-T3: session spawn warning on pending questions
+
+Note: Auto-archive gating tests (P6-T2) have been removed because
+auto-archive was removed from CLI task completion commands.
 """
 
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -57,171 +58,6 @@ class TestHasPendingQuestions:
         (answered_dir / "q001.yml").write_text("question: What color?\nanswer: Blue")
 
         assert has_pending_questions(tmp_path) is False
-
-
-# =============================================================================
-# P6-T2: auto-archive blocked by pending questions
-# =============================================================================
-
-
-class TestAutoArchiveQuestionGate:
-    """Tests for auto-archive gating when pending questions exist."""
-
-    def _make_plan_dir(self, tmp_path):
-        """Create a minimal plan directory with a plan_build.yml."""
-        plan_dir = tmp_path / "260210QP_test_plan"
-        plan_dir.mkdir()
-        (plan_dir / "plan_build.yml").write_text(
-            "phases:\n"
-            "- id: P1\n"
-            "  tasks:\n"
-            "  - id: P1-T1\n"
-            "    status: completed\n"
-        )
-        return plan_dir
-
-    def test_auto_archive_blocked_when_pending_questions(self, tmp_path, monkeypatch):
-        """Auto-archive is skipped when pending questions exist."""
-        from agenticcli.commands import plan as plan_mod
-
-        plan_dir = self._make_plan_dir(tmp_path)
-
-        # Add a pending question
-        pending_dir = plan_dir / "questions" / "pending"
-        pending_dir.mkdir(parents=True)
-        (pending_dir / "q001.yml").write_text("question: What color?")
-
-        # Patch find_plan_folder to return our test dir
-        monkeypatch.setattr(plan_mod, "find_plan_folder", lambda p: plan_dir)
-        # Patch is_plan_fully_completed to return True (all tasks done)
-        monkeypatch.setattr(plan_mod, "is_plan_fully_completed", lambda p: True)
-
-        # Track whether PlanMovementWorkflow was instantiated (it should NOT be)
-        workflow_mock = MagicMock()
-        with patch("agenticcli.commands.plan.PlanMovementWorkflow", workflow_mock, create=True):
-            pass  # won't be imported if gate works
-
-        warnings = []
-        monkeypatch.setattr(
-            "agenticcli.console.print_warning",
-            lambda msg: warnings.append(msg),
-        )
-
-        args = SimpleNamespace(
-            task_id="P1-T1",
-            plan="260210QP_test_plan",
-            no_archive=False,
-        )
-
-        # Patch _update_task_status to avoid file parsing
-        monkeypatch.setattr(plan_mod, "_update_task_status", lambda *a, **kw: None)
-
-        plan_mod.cmd_task_complete(args)
-
-        # Verify warning was printed about pending questions
-        assert any("unanswered questions" in w for w in warnings), f"Expected warning, got: {warnings}"
-
-    def test_auto_archive_proceeds_when_no_questions(self, tmp_path, monkeypatch):
-        """Auto-archive proceeds when no questions directory exists."""
-        from agenticcli.commands import plan as plan_mod
-
-        plan_dir = self._make_plan_dir(tmp_path)
-
-        monkeypatch.setattr(plan_mod, "find_plan_folder", lambda p: plan_dir)
-        monkeypatch.setattr(plan_mod, "is_plan_fully_completed", lambda p: True)
-        monkeypatch.setattr(plan_mod, "_update_task_status", lambda *a, **kw: None)
-
-        # Mock PlanMovementWorkflow
-        mock_result = MagicMock()
-        mock_result.result = "success"
-        mock_result.message = "Archived"
-
-        mock_workflow_instance = MagicMock()
-        mock_workflow_instance.archive_plan_folder.return_value = mock_result
-
-        mock_workflow_cls = MagicMock(return_value=mock_workflow_instance)
-        mock_move_result = MagicMock()
-
-        with patch.dict(
-            "sys.modules",
-            {
-                "agenticguidance": MagicMock(),
-                "agenticguidance.services": MagicMock(
-                    PlanMovementWorkflow=mock_workflow_cls,
-                    MoveResult=mock_move_result,
-                ),
-            },
-        ):
-            # Suppress print output
-            monkeypatch.setattr("builtins.print", lambda *a, **kw: None)
-            monkeypatch.setattr("agenticcli.console.print_info", lambda msg: None)
-            monkeypatch.setattr("agenticcli.console.print_success", lambda msg: None)
-            monkeypatch.setattr("agenticcli.console.print_warning", lambda msg: None)
-
-            # Patch _try_worktree_cleanup_after_archive to no-op
-            monkeypatch.setattr(plan_mod, "_try_worktree_cleanup_after_archive", lambda p: None)
-
-            args = SimpleNamespace(
-                task_id="P1-T1",
-                plan="260210QP_test_plan",
-                no_archive=False,
-            )
-
-            plan_mod.cmd_task_complete(args)
-
-        # Archive should have been called
-        mock_workflow_instance.archive_plan_folder.assert_called_once()
-
-    def test_auto_archive_proceeds_when_all_answered(self, tmp_path, monkeypatch):
-        """Auto-archive proceeds when all questions are answered (none pending)."""
-        from agenticcli.commands import plan as plan_mod
-
-        plan_dir = self._make_plan_dir(tmp_path)
-
-        # Add answered questions only (no pending)
-        answered_dir = plan_dir / "questions" / "answered"
-        answered_dir.mkdir(parents=True)
-        (answered_dir / "q001.yml").write_text("question: What color?\nanswer: Blue")
-
-        monkeypatch.setattr(plan_mod, "find_plan_folder", lambda p: plan_dir)
-        monkeypatch.setattr(plan_mod, "is_plan_fully_completed", lambda p: True)
-        monkeypatch.setattr(plan_mod, "_update_task_status", lambda *a, **kw: None)
-
-        mock_result = MagicMock()
-        mock_result.result = "success"
-        mock_result.message = "Archived"
-
-        mock_workflow_instance = MagicMock()
-        mock_workflow_instance.archive_plan_folder.return_value = mock_result
-
-        mock_workflow_cls = MagicMock(return_value=mock_workflow_instance)
-        mock_move_result = MagicMock()
-
-        with patch.dict(
-            "sys.modules",
-            {
-                "agenticguidance": MagicMock(),
-                "agenticguidance.services": MagicMock(
-                    PlanMovementWorkflow=mock_workflow_cls,
-                    MoveResult=mock_move_result,
-                ),
-            },
-        ):
-            monkeypatch.setattr("builtins.print", lambda *a, **kw: None)
-            monkeypatch.setattr("agenticcli.console.print_info", lambda msg: None)
-            monkeypatch.setattr("agenticcli.console.print_success", lambda msg: None)
-            monkeypatch.setattr("agenticcli.console.print_warning", lambda msg: None)
-            monkeypatch.setattr(plan_mod, "_try_worktree_cleanup_after_archive", lambda p: None)
-
-            args = SimpleNamespace(
-                task_id="P1-T1",
-                plan="260210QP_test_plan",
-                no_archive=False,
-            )
-
-            plan_mod.cmd_task_complete(args)
-
-        mock_workflow_instance.archive_plan_folder.assert_called_once()
 
 
 # =============================================================================

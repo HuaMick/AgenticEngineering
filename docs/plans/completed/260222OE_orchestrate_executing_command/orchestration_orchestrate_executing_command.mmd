@@ -1,0 +1,115 @@
+flowchart LR
+    %% ========================================
+    %% HEADER METADATA
+    %% ========================================
+    %% GOAL: Implement deterministic ExecutionRunner for agentic session orchestrate executing command.
+    %% PROFILE: Build
+    %% PLAN_FOLDER: docs/plans/live/260222OE_orchestrate_executing_command/
+    %% INPUT_PATH: docs/plans/live/260222OE_orchestrate_executing_command/plan_build.yml
+    %% OUTPUT_PATH: orchestration_orchestrate_executing_command.mmd
+    %% PHASES: [Build, Test, Audit]
+    %% AGENT_ROUTING: {"Build": "build-python", "Test": "test-runner", "Audit": "test-final-output"}
+    %% FEEDBACK_TRIGGER: TEST_FAILURE -> Build
+    %% FEEDBACK_TRIGGER: AUDIT_FAILURE -> Test
+    %% STATUS: {"Build": "completed", "Test": "pending", "Audit": "pending"}
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without resolution, stop and Ask User
+
+    %% ========================================
+    %% START NODE
+    %% ========================================
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    subgraph InputValidation_SG ["Input Validation Subgraph"]
+        LoadInputs --> ReviewInputs[Review All Listed Inputs]
+        ReviewInputs --> CheckInputs{All Inputs Found?}
+        CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+        SearchInputs --> FoundInputs{Found?}
+        FoundInputs -- "Yes: Update paths" --> ReviewInputs
+        FoundInputs -- "No: Stop" --> AskUser((Ask User for Clarification))
+        CheckInputs -- "Yes: Verified" --> Phase1
+    end
+
+    %% ========================================
+    %% PHASE 1: BUILD (Implementation)
+    %% ========================================
+    %% Agent: build-python
+    %% Status: COMPLETED
+    subgraph Phase1_SG ["Phase 1: Build Implementation"]
+        Phase1[Build Implementation] --> SpawnBuilder[Spawn build-python Agent]
+        SpawnBuilder --> BuildTests[Run Unit Tests]
+        BuildTests --> BuildPassed{Build Tests Passed?}
+        BuildPassed -- "No: Fix" --> SpawnBuilder
+        BuildPassed -- "Yes: Ready" --> Phase2
+    end
+
+    %% ========================================
+    %% PHASE 2: TEST (Validation)
+    %% ========================================
+    %% Agent: test-runner
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+    subgraph Phase2_SG ["Phase 2: Test Validation"]
+        Phase2[Test Validation] --> SpawnTester[Spawn test-runner Agent]
+        SpawnTester --> IntegrationTests[Run Integration Tests]
+        IntegrationTests --> TestsPassed{Tests Passed?}
+        TestsPassed -- "No: Fix in Iteration" --> SpawnTester
+    end
+
+    %% Test failure escalation - feedback loop
+    TestsPassed -- "No: Escalate" --> CategorizeTestFailure[Categorize Test Failure]
+    CategorizeTestFailure --> PackageTestContext[Package TEST_FAILURE Context]
+    PackageTestContext -.->|Re-plan with TEST_FAILURE| Phase1
+
+    %% Success path continues
+    TestsPassed -- "Yes: Passed" --> Phase3
+
+    %% ========================================
+    %% PHASE 3: AUDIT (Final Quality)
+    %% ========================================
+    %% Agent: test-final-output
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.audit-test-fix-loop
+    %% MAX_ITERATIONS: 3 (per audit-test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, stop and Ask User with audit findings
+    subgraph Phase3_SG ["Phase 3: Final Audit"]
+        Phase3[Final Audit] --> SpawnAuditor[Spawn test-final-output Agent]
+        SpawnAuditor --> AuditCheck[Audit Quality and Completeness]
+        AuditCheck --> AuditPassed{Audit Passed?}
+        AuditPassed -- "No: Issues Found" --> AuditRemediation[Identify Remediation]
+        AuditRemediation --> SpawnAuditor
+    end
+
+    %% Audit failure escalation
+    AuditPassed -- "No: Escalate" --> PackageAuditContext[Package AUDIT_FAILURE Context]
+    PackageAuditContext -.->|Re-plan with AUDIT_FAILURE| Phase2
+
+    %% ========================================
+    %% SUCCESS PATH
+    %% ========================================
+    AuditPassed -- "Yes: Verified" --> MoveCompletedTasks[Move Completed Tasks]
+    MoveCompletedTasks --> ArchivePlan[Archive Plan to Completed]
+    ArchivePlan --> End((End))
+
+    %% ========================================
+    %% ESCALATION PATH
+    %% ========================================
+    BuildPassed -- "No: Escalate" --> AskUser
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef completed fill:#90EE90,stroke:#228B22
+    classDef inprogress fill:#FFFF99,stroke:#DAA520
+    classDef failed fill:#FFB6C1,stroke:#DC143C
+    classDef pending fill:#E8E8E8,stroke:#808080
+
+    class Phase1 completed
+    class Phase2,Phase3 pending
+
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 14,17 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

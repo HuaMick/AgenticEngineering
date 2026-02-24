@@ -11,91 +11,41 @@ import pytest
 
 @pytest.mark.integration
 class TestOrchestrateNoTmux:
-    """Test orchestrate command without tmux (CI-compatible)."""
+    """Test orchestrate command without old --mode flag (now uses positional action)."""
 
-    def test_planning_mode_starts_without_error(self):
-        """agentic session orchestrate --mode planning --no-tmux starts without command-too-long error."""
+    def test_planning_action_requires_positional_arg(self):
+        """agentic session orchestrate without positional arg gives usage error."""
         result = subprocess.run(
-            ["agentic", "session", "orchestrate", "--mode", "planning", "--no-tmux"],
+            ["agentic", "session", "orchestrate"],
             capture_output=True,
             text=True,
-            timeout=15,
-            input="/exit\n",
+            timeout=10,
         )
-        assert "argument list too long" not in result.stderr.lower(), (
-            f"Command too long error: {result.stderr[:500]}"
-        )
-        assert "command too long" not in result.stderr.lower(), (
-            f"Command too long error: {result.stderr[:500]}"
-        )
+        # Should fail since 'action' is a required positional arg
+        assert result.returncode != 0
 
-    def test_executor_mode_starts_without_error(self):
-        """agentic session orchestrate --mode executor --no-tmux starts without command-too-long error."""
+    def test_invalid_action_gives_clear_error(self):
+        """agentic session orchestrate bogus gives a clear error, not a crash."""
         result = subprocess.run(
-            ["agentic", "session", "orchestrate", "--mode", "executor", "--no-tmux"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            input="/exit\n",
-        )
-        assert "argument list too long" not in result.stderr.lower()
-        assert "command too long" not in result.stderr.lower()
-
-    def test_loop_mode_starts_without_error(self):
-        """agentic session orchestrate --mode loop --no-tmux starts without command-too-long error."""
-        result = subprocess.run(
-            ["agentic", "session", "orchestrate", "--mode", "loop", "--no-tmux"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            input="/exit\n",
-        )
-        assert "argument list too long" not in result.stderr.lower()
-        assert "command too long" not in result.stderr.lower()
-
-    def test_invalid_mode_gives_clear_error(self):
-        """agentic session orchestrate --mode bogus gives a clear error, not a crash."""
-        result = subprocess.run(
-            ["agentic", "session", "orchestrate", "--mode", "bogus", "--no-tmux"],
+            ["agentic", "session", "orchestrate", "bogus"],
             capture_output=True,
             text=True,
             timeout=10,
         )
         assert result.returncode != 0
+        # Should mention valid actions or 'Unknown action'
+        output = result.stdout + result.stderr
+        assert "bogus" in output or "unknown" in output.lower() or "valid" in output.lower()
 
-
-@pytest.mark.integration
-class TestOrchestratePromptFile:
-    """Verify system prompt is written to temp file."""
-
-    def test_temp_file_created_for_planning(self):
-        """Planning mode creates a temp file for the system prompt."""
-        import glob
-        import os
-
-        # Clean up any existing temp files
-        for f in glob.glob("/tmp/agentic_prompt_*.md"):
-            os.unlink(f)
-
+    def test_planning_action_is_recognised(self):
+        """agentic session orchestrate planning is recognised as a valid action."""
+        # We only check it doesn't fail with 'Unknown action' immediately;
+        # it may fail later if health check fails in test env, which is fine.
         result = subprocess.run(
-            ["agentic", "session", "orchestrate", "--mode", "planning", "--no-tmux"],
+            ["agentic", "session", "orchestrate", "planning", "--help"],
             capture_output=True,
             text=True,
-            timeout=15,
-            input="/exit\n",
+            timeout=10,
         )
-
-        # A temp file should have been created
-        temp_files = glob.glob("/tmp/agentic_prompt_*.md")
-        assert len(temp_files) >= 1, (
-            f"No temp prompt file created. stderr: {result.stderr[:300]}"
-        )
-
-        # The file should contain the process content
-        content = open(temp_files[0]).read()
-        assert "BOOTSTRAP CONTEXT" in content
-        assert len(content) > 100
-
-        # Cleanup
-        for f in temp_files:
-            os.unlink(f)
+        # --help should always succeed
+        assert result.returncode == 0

@@ -1,0 +1,146 @@
+_template_status: active
+
+name: "Test Plan - Task Nesting Validation"
+worktree: "/home/code/AgenticEngineering"
+branch: ""
+status: pending
+
+objective: |
+  Validate that PlanService.validate_plan_structure() correctly detects
+  task nesting violations (root-level tasks, phases without tasks) and
+  that existing valid plans continue to pass validation.
+
+phases:
+  - name: "Unit Tests - Nesting Validation"
+    id: "test_unit"
+    status: pending
+    tasks:
+      - id: "TU_001"
+        name: "Test root-level tasks detection"
+        status: pending
+        description: |
+          Create test in test_services_plan_service.py that verifies:
+          1. Plan with root-level `tasks:` key returns validation error
+          2. Error message contains "root level" and "nested under phases"
+          3. Plan with both `phases:` and root-level `tasks:` returns error
+
+          Test fixture - malformed plan YAML:
+            name: "bad-plan"
+            status: active
+            tasks:
+              - id: "T1"
+                name: "orphan task"
+                status: pending
+        target_files:
+          - "modules/AgenticGuidance/tests/test_services_plan_service.py"
+        success_criteria:
+          - "Test creates tmp plan file with root-level tasks and validates it fails"
+          - "Error message is actionable (mentions phases[].tasks[])"
+
+      - id: "TU_002"
+        name: "Test phase without tasks detection"
+        status: pending
+        description: |
+          Create test that verifies:
+          1. Plan with a phase that has no `tasks:` key returns warning
+          2. Warning message includes the phase name
+          3. Plan with multiple phases where some have tasks and some don't
+
+          Test fixture:
+            name: "partial-plan"
+            status: active
+            phases:
+              - name: "Phase with tasks"
+                tasks:
+                  - id: "T1"
+                    name: "a task"
+                    status: pending
+              - name: "Empty phase"
+        target_files:
+          - "modules/AgenticGuidance/tests/test_services_plan_service.py"
+        success_criteria:
+          - "Warning returned for phase without tasks"
+          - "Phase with tasks does not trigger warning"
+
+      - id: "TU_003"
+        name: "Test blocking condition (root tasks + no phases)"
+        status: pending
+        description: |
+          Create test that verifies:
+          1. Plan with root-level `tasks:` AND no `phases:` key returns error
+          2. ValidationResult.valid is False
+          3. Error is clearly labeled as blocking
+
+          Test fixture:
+            name: "flat-plan"
+            status: active
+            tasks:
+              - id: "T1"
+                name: "orphan"
+                status: pending
+        target_files:
+          - "modules/AgenticGuidance/tests/test_services_plan_service.py"
+        success_criteria:
+          - "Blocking error returned"
+          - "valid=False in ValidationResult"
+
+      - id: "TU_004"
+        name: "Test valid plans still pass (regression)"
+        status: pending
+        description: |
+          Create test that verifies properly structured plans still pass:
+          1. Plan with phases[].tasks[] nesting passes (valid=True)
+          2. Plan with multiple phases each containing tasks passes
+          3. Stub templates (_template_status: stub) are skipped
+
+          Test fixture:
+            name: "good-plan"
+            status: active
+            phases:
+              - name: "Phase 1"
+                tasks:
+                  - id: "T1"
+                    name: "proper task"
+                    status: pending
+        target_files:
+          - "modules/AgenticGuidance/tests/test_services_plan_service.py"
+        success_criteria:
+          - "Valid plans return valid=True with no errors"
+          - "Stub templates skipped without error"
+
+  - name: "Integration Tests - Audit Report"
+    id: "test_int"
+    status: pending
+    tasks:
+      - id: "TI_001"
+        name: "Test validate_plan_structure against real plan folders"
+        status: pending
+        description: |
+          Run validate_plan_structure() against a sample of existing live plans
+          to verify no false positives are produced. Create tmp copies of known
+          good plans and verify they pass.
+        target_files:
+          - "modules/AgenticGuidance/tests/test_services_plan_service_integration.py"
+        success_criteria:
+          - "Known good plans pass validation"
+          - "No false positives from existing plan structure"
+
+test_strategy:
+  - type: "unit"
+    scope: "PlanService.validate_plan_structure() nesting checks"
+    location: "modules/AgenticGuidance/tests/test_services_plan_service.py"
+    targets:
+      - "Root-level tasks detection"
+      - "Phase without tasks warning"
+      - "Blocking condition detection"
+      - "Regression - valid plans pass"
+
+  - type: "integration"
+    scope: "Validate against real plan folder structures"
+    location: "modules/AgenticGuidance/tests/test_services_plan_service_integration.py"
+    targets:
+      - "No false positives on existing plans"
+
+related_stories:
+  - US-GD-057
+  - US-GD-056

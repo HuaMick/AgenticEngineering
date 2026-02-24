@@ -54,7 +54,7 @@ tasks:
     def test_prefill_creates_tasks(self, cli_runner, plan_with_presets):
         """Test prefill command creates task file."""
         result = cli_runner([
-            "plan", "task", "prefill",
+            "agent", "plan", "task", "prefill",
             "--preset", "test-preset",
             "--plan", str(plan_with_presets)
         ])
@@ -72,7 +72,7 @@ tasks:
         initial_files = list((plan_with_presets / "live").glob("*.yml"))
 
         result = cli_runner([
-            "plan", "task", "prefill",
+            "agent", "plan", "task", "prefill",
             "--preset", "test-preset",
             "--plan", str(plan_with_presets),
             "--dry-run"
@@ -88,7 +88,7 @@ tasks:
     def test_prefill_missing_preset(self, cli_runner, plan_with_presets):
         """Test prefill with nonexistent preset shows error."""
         result = cli_runner([
-            "plan", "task", "prefill",
+            "agent", "plan", "task", "prefill",
             "--preset", "nonexistent-preset",
             "--plan", str(plan_with_presets)
         ])
@@ -100,7 +100,7 @@ tasks:
         """Test prefill with --json flag."""
         result = cli_runner([
             "-j",  # JSON flag
-            "plan", "task", "prefill",
+            "agent", "plan", "task", "prefill",
             "--preset", "test-preset",
             "--plan", str(plan_with_presets),
             "--dry-run"
@@ -155,7 +155,7 @@ class TestTaskListCommand:
     def test_list_shows_all_tasks(self, cli_runner, plan_with_tasks):
         """Test list shows all tasks by default."""
         result = cli_runner([
-            "plan", "task", "list",
+            "agent", "plan", "task", "list",
             "--plan", str(plan_with_tasks)
         ])
 
@@ -167,7 +167,7 @@ class TestTaskListCommand:
     def test_list_filter_pending(self, cli_runner, plan_with_tasks):
         """Test list with --status pending filter."""
         result = cli_runner([
-            "plan", "task", "list",
+            "agent", "plan", "task", "list",
             "--plan", str(plan_with_tasks),
             "--status", "pending"
         ])
@@ -179,7 +179,7 @@ class TestTaskListCommand:
     def test_list_filter_completed(self, cli_runner, plan_with_tasks):
         """Test list with --status completed filter."""
         result = cli_runner([
-            "plan", "task", "list",
+            "agent", "plan", "task", "list",
             "--plan", str(plan_with_tasks),
             "--status", "completed"
         ])
@@ -190,7 +190,7 @@ class TestTaskListCommand:
     def test_list_filter_in_progress(self, cli_runner, plan_with_tasks):
         """Test list with --status in_progress filter."""
         result = cli_runner([
-            "plan", "task", "list",
+            "agent", "plan", "task", "list",
             "--plan", str(plan_with_tasks),
             "--status", "in_progress"
         ])
@@ -201,7 +201,7 @@ class TestTaskListCommand:
     def test_list_verbose(self, cli_runner, plan_with_tasks):
         """Test list with --verbose shows more details."""
         result = cli_runner([
-            "plan", "task", "list",
+            "agent", "plan", "task", "list",
             "--plan", str(plan_with_tasks),
             "--verbose"
         ])
@@ -213,7 +213,7 @@ class TestTaskListCommand:
         """Test list with JSON output."""
         result = cli_runner([
             "-j",
-            "plan", "task", "list",
+            "agent", "plan", "task", "list",
             "--plan", str(plan_with_tasks)
         ])
 
@@ -269,7 +269,7 @@ class TestTaskStatusCommand:
     def test_status_shows_task_details(self, cli_runner, plan_with_detailed_task):
         """Test status command shows full task details."""
         result = cli_runner([
-            "plan", "task", "status", "build_01_001",
+            "agent", "plan", "task", "status", "build_01_001",
             "--plan", str(plan_with_detailed_task)
         ])
 
@@ -281,7 +281,7 @@ class TestTaskStatusCommand:
     def test_status_shows_inputs(self, cli_runner, plan_with_detailed_task):
         """Test status shows input files."""
         result = cli_runner([
-            "plan", "task", "status", "build_01_001",
+            "agent", "plan", "task", "status", "build_01_001",
             "--plan", str(plan_with_detailed_task)
         ])
 
@@ -291,7 +291,7 @@ class TestTaskStatusCommand:
     def test_status_not_found(self, cli_runner, plan_with_detailed_task):
         """Test status with nonexistent task ID."""
         result = cli_runner([
-            "plan", "task", "status", "nonexistent_999",
+            "agent", "plan", "task", "status", "nonexistent_999",
             "--plan", str(plan_with_detailed_task)
         ])
 
@@ -302,7 +302,7 @@ class TestTaskStatusCommand:
         """Test status with JSON output."""
         result = cli_runner([
             "-j",
-            "plan", "task", "status", "build_01_001",
+            "agent", "plan", "task", "status", "build_01_001",
             "--plan", str(plan_with_detailed_task)
         ])
 
@@ -343,7 +343,7 @@ class TestTaskAddCommand:
     def test_add_creates_task(self, cli_runner, empty_plan):
         """Test add command creates new task."""
         result = cli_runner([
-            "plan", "task", "add", "New task description",
+            "agent", "plan", "task", "add", "New task description",
             "--plan", str(empty_plan)
         ])
 
@@ -360,7 +360,7 @@ class TestTaskAddCommand:
     def test_add_with_priority(self, cli_runner, empty_plan):
         """Test add command with priority option."""
         result = cli_runner([
-            "plan", "task", "add", "High priority task",
+            "agent", "plan", "task", "add", "High priority task",
             "--plan", str(empty_plan),
             "--priority", "high"
         ])
@@ -376,7 +376,7 @@ class TestTaskAddCommand:
     def test_add_with_custom_id(self, cli_runner, empty_plan):
         """Test add command with custom task ID."""
         result = cli_runner([
-            "plan", "task", "add", "Custom ID task",
+            "agent", "plan", "task", "add", "Custom ID task",
             "--plan", str(empty_plan),
             "--id", "custom_999"
         ])
@@ -392,7 +392,7 @@ class TestTaskAddCommand:
     def test_add_auto_generates_id(self, cli_runner, empty_plan):
         """Test add command auto-generates task ID."""
         result = cli_runner([
-            "plan", "task", "add", "Auto ID task",
+            "agent", "plan", "task", "add", "Auto ID task",
             "--plan", str(empty_plan)
         ])
 
@@ -409,7 +409,7 @@ class TestTaskAddCommand:
         """Test add command with JSON output."""
         result = cli_runner([
             "-j",
-            "plan", "task", "add", "JSON output task",
+            "agent", "plan", "task", "add", "JSON output task",
             "--plan", str(empty_plan)
         ])
 
@@ -422,14 +422,14 @@ class TestTaskAddCommand:
         """Test adding multiple tasks sequentially."""
         # Add first task
         result1 = cli_runner([
-            "plan", "task", "add", "First task",
+            "agent", "plan", "task", "add", "First task",
             "--plan", str(empty_plan)
         ])
         assert result1.returncode == 0
 
         # Add second task
         result2 = cli_runner([
-            "plan", "task", "add", "Second task",
+            "agent", "plan", "task", "add", "Second task",
             "--plan", str(empty_plan)
         ])
         assert result2.returncode == 0

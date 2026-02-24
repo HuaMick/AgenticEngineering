@@ -39,7 +39,6 @@ class TestSubcommandHelp:
         stdout, stderr, code = cli_runner(["plan", "--help"])
         assert "plan" in stdout.lower()
         # User-facing commands should be visible
-        assert "new" in stdout
         assert "status" in stdout
         assert "list" in stdout
         assert "cancel" in stdout
@@ -103,22 +102,22 @@ class TestCommandAliases:
         assert "preferences" in result_alias.stdout
 
     def test_stories_alias_st(self, cli_runner):
-        """Test 'st' alias works for stories."""
-        result_full = cli_runner(["stories", "--help"])
-        result_alias = cli_runner(["st", "--help"])
-        assert result_full.returncode == 0
-        assert result_alias.returncode == 0
-        # Both should show stories help
-        assert "find" in result_alias.stdout
+        """Test 'stories' and 'st' commands now show deprecation messages."""
+        for cmd in ["stories", "st"]:
+            result = cli_runner([cmd])
+            output = (result.stdout or "") + (result.stderr or "")
+            normalized = " ".join(output.split())
+            assert result.returncode == 1
+            assert "agentic agent stories" in normalized
 
     def test_manifest_alias_mf(self, cli_runner):
-        """Test 'mf' alias works for manifest."""
-        result_full = cli_runner(["manifest", "--help"])
-        result_alias = cli_runner(["mf", "--help"])
-        assert result_full.returncode == 0
-        assert result_alias.returncode == 0
-        # Both should show manifest help
-        assert "show" in result_alias.stdout
+        """Test 'manifest' and 'mf' commands now show deprecation messages."""
+        for cmd in ["manifest", "mf"]:
+            result = cli_runner([cmd])
+            output = (result.stdout or "") + (result.stderr or "")
+            normalized = " ".join(output.split())
+            assert result.returncode == 1
+            assert "agentic agent manifest" in normalized
 
 
 class TestFlagShortcuts:

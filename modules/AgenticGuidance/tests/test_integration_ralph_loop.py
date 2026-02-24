@@ -699,8 +699,8 @@ class TestErrorRecovery:
         assert plans[0].pending_tasks == 0
         assert plans[0].completed_tasks == 0
 
-        # check_all_complete should handle gracefully
-        assert service.check_all_complete() is True
+        # check_all_complete returns False: zero tasks + no MMD = needs_planning
+        assert service.check_all_complete() is False
 
     def test_state_persistence_across_crashes(self, tmp_path):
         """State survives service recreation (simulated crash)."""
@@ -881,3 +881,162 @@ class TestComplexDependencyScenarios:
 
         # All complete
         assert service.check_all_complete() is True
+
+
+class TestQuestionBlockedFlow:
+    """Test question-blocked plan handling in the Ralph loop."""
+
+    @staticmethod
+    def _add_question(plan_dir: Path, question_id: str, severity: str = "blocking") -> None:
+        """Write a pending question YAML file into a plan's question queue.
+
+        Args:
+            plan_dir: Path to plan folder.
+            question_id: Unique ID for the question (e.g. "Q-001").
+            severity: Severity level ("blocking", "high", "medium", "low").
+        """
+        pending_dir = plan_dir / "questions" / "pending"
+        pending_dir.mkdir(parents=True, exist_ok=True)
+
+        question_data = {
+            "id": question_id,
+            "text": f"Test question {question_id}",
+            "context": "integration test",
+            "severity": severity,
+            "asked_by": "test",
+            "created_at": 1700000000.0,
+            "status": "pending",
+            "answer": None,
+            "answered_at": None,
+            "answered_by": None,
+        }
+        (pending_dir / f"{question_id}.yml").write_text(yaml.dump(question_data))
+
+    def test_ralph_loop_skips_question_blocked_plan(self, tmp_path):
+        """get_next_action returns the executable plan, not the question-blocked one.
+
+        Setup:
+        - PlanReady: has orchestration, pending tasks, NO blocking questions
+        - PlanBlocked: has orchestration, pending tasks, HAS blocking questions
+
+        Verify:
+        - get_next_action() returns PlanReady (skips PlanBlocked)
+        """
+        create_mock_plan(
+            tmp_path,
+            "PlanReady",
+            has_mmd=True,
+            tasks=[{"id": "R1", "name": "Task R1", "status": "pending"}],
+        )
+        create_mock_plan(
+            tmp_path,
+            "PlanBlocked",
+            has_mmd=True,
+            tasks=[{"id": "B1", "name": "Task B1", "status": "pending"}],
+        )
+
+        # Add a blocking question to PlanBlocked
+        self._add_question(tmp_path / "PlanBlocked", "Q-001", severity="blocking")
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        action = service.get_next_action()
+
+        assert action is not None
+        assert action.action == "execute"
+        assert action.plan_name == "PlanReady"
+
+        # The blocked plan should NOT appear in executable actions
+        queue = service.get_priority_queue()
+        executable = [a for a in queue if a.action != "blocked"]
+        assert all(a.plan_name != "PlanBlocked" for a in executable)
+
+    def test_ralph_status_includes_question_summary(self, tmp_path):
+        """discover_plans reports accurate blocking_questions counts.
+
+        Setup:
+        - PlanA: 2 blocking questions
+        - PlanB: 1 blocking + 1 medium (only blocking counted)
+        - PlanC: 1 medium question (not blocking — count should be 0)
+        - PlanD: no questions at all
+        """
+        create_mock_plan(
+            tmp_path, "PlanA", has_mmd=True,
+            tasks=[{"id": "A1", "name": "Task A1", "status": "pending"}],
+        )
+        create_mock_plan(
+            tmp_path, "PlanB", has_mmd=True,
+            tasks=[{"id": "B1", "name": "Task B1", "status": "pending"}],
+        )
+        create_mock_plan(
+            tmp_path, "PlanC", has_mmd=True,
+            tasks=[{"id": "C1", "name": "Task C1", "status": "pending"}],
+        )
+        create_mock_plan(
+            tmp_path, "PlanD", has_mmd=True,
+            tasks=[{"id": "D1", "name": "Task D1", "status": "pending"}],
+        )
+
+        # PlanA: 2 blocking questions
+        self._add_question(tmp_path / "PlanA", "Q-A1", severity="blocking")
+        self._add_question(tmp_path / "PlanA", "Q-A2", severity="blocking")
+
+        # PlanB: 1 blocking + 1 medium
+        self._add_question(tmp_path / "PlanB", "Q-B1", severity="blocking")
+        self._add_question(tmp_path / "PlanB", "Q-B2", severity="medium")
+
+        # PlanC: 1 medium only (non-blocking)
+        self._add_question(tmp_path / "PlanC", "Q-C1", severity="medium")
+
+        # PlanD: no questions
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        plans = service.discover_plans()
+        plans_by_name = {p.name: p for p in plans}
+
+        # PlanA: 2 blocking questions
+        assert plans_by_name["PlanA"].blocking_questions == 2
+        assert plans_by_name["PlanA"].action_required == "blocked"
+
+        # PlanB: 1 blocking question (medium doesn't count)
+        assert plans_by_name["PlanB"].blocking_questions == 1
+        assert plans_by_name["PlanB"].action_required == "blocked"
+
+        # PlanC: 0 blocking questions — should be executable
+        assert plans_by_name["PlanC"].blocking_questions == 0
+        assert plans_by_name["PlanC"].action_required == "execute"
+
+        # PlanD: 0 blocking questions — should be executable
+        assert plans_by_name["PlanD"].blocking_questions == 0
+        assert plans_by_name["PlanD"].action_required == "execute"
+
+    def test_priority_queue_question_blocked_reason(self, tmp_path):
+        """Blocked action's reason mentions questions when plan is question-blocked.
+
+        Setup:
+        - PlanQ: has orchestration, pending tasks, 3 blocking questions
+          (no dependency-based blocking, purely question-blocked)
+
+        Verify:
+        - The blocked entry's reason mentions "question" and shows the count
+        """
+        create_mock_plan(
+            tmp_path,
+            "PlanQ",
+            has_mmd=True,
+            tasks=[{"id": "Q1", "name": "Task Q1", "status": "pending"}],
+        )
+        self._add_question(tmp_path / "PlanQ", "Q-001", severity="blocking")
+        self._add_question(tmp_path / "PlanQ", "Q-002", severity="blocking")
+        self._add_question(tmp_path / "PlanQ", "Q-003", severity="blocking")
+
+        service = RalphLoopService(plans_dir=tmp_path)
+        queue = service.get_priority_queue()
+
+        blocked_actions = [a for a in queue if a.action == "blocked"]
+        assert len(blocked_actions) == 1
+
+        blocked = blocked_actions[0]
+        assert blocked.plan_name == "PlanQ"
+        # Reason should mention questions and the count
+        assert "question" in blocked.reason.lower()
+        assert "3" in blocked.reason

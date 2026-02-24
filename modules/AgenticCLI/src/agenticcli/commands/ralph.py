@@ -25,6 +25,7 @@ from rich.table import Table
 
 # Import from AgenticGuidance
 from agenticguidance.services.ralph import PlanAction, RalphLoopService
+from agenticguidance.services.question import QuestionQueue
 
 app = typer.Typer(
     name="ralph",
@@ -180,10 +181,13 @@ def start(
         claude_cmd = 'claude --dangerously-skip-permissions -p "Run: agentic session ralph next -j and execute the returned action"'
 
     # Spawn tmux session
+    from agenticcli.utils.subprocess_utils import get_clean_env
+
     result = subprocess.run(
         ["tmux", "new-session", "-d", "-s", session_name, claude_cmd],
         capture_output=True,
-        text=True
+        text=True,
+        env=get_clean_env(),
     )
 
     if result.returncode != 0:
@@ -305,6 +309,23 @@ def status(
     blocked_count = sum(1 for a in queue if a.action == "blocked")
     complete_count = sum(1 for p in plans if p.action_required == "completed")
 
+    # Aggregate pending questions across all plans
+    question_counts = {"blocking": 0, "high": 0, "medium": 0, "low": 0}
+    questions_available = True
+    try:
+        for plan_info in plans:
+            qq = QuestionQueue(plan_info.path)
+            for q in qq.list_pending_questions():
+                if q.severity in question_counts:
+                    question_counts[q.severity] += 1
+    except Exception:
+        questions_available = False
+
+    total_pending_questions = sum(question_counts.values())
+
+    # Get rich completion status
+    completion = service.get_completion_status()
+
     if json_output:
         output = {
             "loop": {
@@ -322,7 +343,11 @@ def status(
                 "blocked": blocked_count,
                 "completed": complete_count,
             },
-            "all_complete": service.check_all_complete(),
+            "questions": {
+                **question_counts,
+                "total_pending": total_pending_questions,
+            } if questions_available else None,
+            "completion": completion,
         }
         print(json.dumps(output))
     else:
@@ -363,8 +388,24 @@ def status(
         console.print(f"[cyan]Completed:[/cyan] {complete_count}")
         console.print(f"[dim]Total:[/dim] {len(plans)}")
 
-        if service.check_all_complete():
+        console.print("\n[bold cyan]Pending Questions[/bold cyan]")
+        console.print("─" * 40)
+        if not questions_available:
+            console.print("[dim]Questions: unavailable[/dim]")
+        else:
+            console.print(f"[red]Blocking:[/red] {question_counts['blocking']}")
+            console.print(f"[yellow]High:[/yellow] {question_counts['high']}")
+            console.print(f"[cyan]Medium:[/cyan] {question_counts['medium']}")
+            console.print(f"[dim]Low:[/dim] {question_counts['low']}")
+            console.print(f"[dim]Total pending:[/dim] {total_pending_questions}")
+
+        if completion["all_complete"]:
             console.print("\n[bold green]All plans complete![/bold green]")
+        elif completion["can_emit_promise"]:
+            console.print(
+                "\n[bold green]Can emit completion promise[/bold green]"
+                f" [dim]({completion['blocked_by_deps']} dep-blocked plans OK)[/dim]"
+            )
 
 
 @app.command("next")
@@ -389,26 +430,46 @@ def next_action(
         json_output: Output structured data as JSON instead of formatted text
     """
     service = RalphLoopService()
+    completion = service.get_completion_status()
 
     # Check if all plans are complete
-    if service.check_all_complete():
+    if completion["can_emit_promise"]:
+        reason = "All plans finished"
+        if completion["blocked_by_deps"] > 0:
+            reason += f" ({completion['blocked_by_deps']} dep-blocked plans OK)"
         output = {
             "action": "complete",
             "plan": None,
             "task": None,
-            "reason": "All plans finished"
+            "reason": reason,
+            "completion": completion,
         }
     else:
         action = service.get_next_action()
         if action is None:
+            # No executable actions — build detailed reason
+            reasons = []
+            if completion["blocked_by_deps"] > 0:
+                reasons.append(f"{completion['blocked_by_deps']} plan(s) blocked by dependencies")
+            if completion["blocked_by_questions"] > 0:
+                reasons.append(f"{completion['blocked_by_questions']} plan(s) blocked by questions")
+            reason = "No actionable plans - " + ", ".join(reasons) if reasons else "No actionable plans - all remaining plans are blocked"
             output = {
                 "action": "blocked",
                 "plan": None,
                 "task": None,
-                "reason": "No actionable plans - all remaining plans are blocked"
+                "reason": reason,
+                "completion": completion,
             }
         else:
             output = action.to_dict()
+            output["completion"] = completion
+
+    # Add hint when blocked by questions
+    if output.get("action") == "blocked" and completion["blocked_by_questions"] > 0:
+        plan_name = output.get("plan") or ""
+        plan_flag = f" --plan {plan_name}" if plan_name else ""
+        output["hint"] = f"Run: agentic question list{plan_flag} to see questions"
 
     if json_output:
         print(json.dumps(output))
@@ -427,6 +488,8 @@ def next_action(
         if output.get("task"):
             console.print(f"[cyan]Task:[/cyan] {output['task']}")
         console.print(f"[dim]Reason:[/dim] {output['reason']}")
+        if output.get("hint"):
+            console.print(f"[yellow]Hint:[/yellow] {output['hint']}")
 
 
 @app.command()

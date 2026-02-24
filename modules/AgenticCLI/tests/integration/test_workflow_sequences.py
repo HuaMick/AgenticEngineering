@@ -98,7 +98,7 @@ class TestPlanWorkflowSequence:
 
     def test_plan_scaffold_status_workflow(self, cli_in_repo, integration_repo):
         """Test: scaffold plan -> check status -> validate."""
-        stdout, stderr, code = cli_in_repo("plan", "scaffold", "test-feature")
+        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "test-feature")
         assert code == 0
         assert "Created planning folder" in stdout
 
@@ -110,12 +110,12 @@ class TestPlanWorkflowSequence:
         stdout, stderr, code = cli_in_repo("plan", "status")
         assert code == 0
 
-        stdout, stderr, code = cli_in_repo("plan", "validate")
+        stdout, stderr, code = cli_in_repo("agent", "plan", "validate")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
     def test_plan_with_json_output(self, cli_in_repo, integration_repo):
         """Test plan commands with JSON output mode."""
-        cli_in_repo("plan", "scaffold", "json-test")
+        cli_in_repo("agent", "plan", "scaffold", "json-test")
 
         plan_path = integration_repo / "docs" / "plans" / "live" / "json-test"
         plan_content = {
@@ -146,10 +146,10 @@ class TestPlanWorkflowSequence:
 
     def test_plan_scaffold_already_exists(self, cli_in_repo, integration_repo):
         """Test scaffolding a plan that already exists."""
-        stdout, stderr, code = cli_in_repo("plan", "scaffold", "duplicate-test")
+        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "duplicate-test")
         assert code == 0
 
-        stdout, stderr, code = cli_in_repo("plan", "scaffold", "duplicate-test")
+        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "duplicate-test")
         assert code == 1
         assert "already exists" in stdout or "already exists" in stderr
 
@@ -391,7 +391,7 @@ class TestErrorRecoverySequence:
         stdout, stderr, code = cli_runner("devops", "worktree", "create")
         assert code == 2
 
-        stdout, stderr, code = cli_runner("plan", "scaffold")
+        stdout, stderr, code = cli_runner("agent", "plan", "scaffold")
         assert code == 2
 
     def test_invalid_plan_path_handled(self, cli_runner, temp_dir):
@@ -672,7 +672,7 @@ class TestCrossCommandIntegration:
         assert code == 0
 
         # Step 4: Scaffold a plan
-        stdout, stderr, code = full_cli("plan", "scaffold", "feature-integration")
+        stdout, stderr, code = full_cli("agent", "plan", "scaffold", "feature-integration")
         assert code == 0
 
         # Step 5: Check plan status
@@ -680,7 +680,7 @@ class TestCrossCommandIntegration:
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
         # Step 6: Validate plan
-        stdout, stderr, code = full_cli("plan", "validate")
+        stdout, stderr, code = full_cli("agent", "plan", "validate")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
     def test_json_mode_consistency(self, full_cli):

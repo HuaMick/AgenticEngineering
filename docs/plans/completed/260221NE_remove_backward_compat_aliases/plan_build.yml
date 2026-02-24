@@ -1,719 +1,629 @@
-name: "Remove backward-compatible aliases"
-status: "active"
+name: Remove backward-compatible aliases
+status: completed
 worktree: /home/code/AgenticEngineering
 plan_folder: docs/plans/live/260221NE_remove_backward_compat_aliases
+objective: 'Remove ALL backward-compatible hidden aliases from the CLI and replace
+  with helpful error messages that direct users to the correct commands. Simultaneously
+  update all agent process files and guidance assets that reference the old command
+  paths to use the new ''agentic agent ...'' prefix paths. This is a two-track change:
+  (1) break the old aliases in CLI so they emit clear guidance messages and exit 1,
+  (2) update all agent instruction files so spawned agents use correct paths from
+  day one.
 
-objective: >
-  Remove ALL backward-compatible hidden aliases from the CLI and replace with helpful
-  error messages that direct users to the correct commands. Simultaneously update all
-  agent process files and guidance assets that reference the old command paths to use
-  the new 'agentic agent ...' prefix paths. This is a two-track change: (1) break the
-  old aliases in CLI so they emit clear guidance messages and exit 1, (2) update all
-  agent instruction files so spawned agents use correct paths from day one.
-
-scope_notes: >
-  31 hidden aliases to remove. 25+ agent process.yml files to update. CLI changes
-  split by alias category (top-level groups, plan_app commands, plan_app sub-groups,
-  question_app commands). Asset and template files also need updating. The 'agentic cfg'
-  and 'agentic ls' shorthand aliases are user-facing convenience aliases — keep them as-is.
-  'agentic configure prefs/pref' and 'agentic devops wt' are also kept per user decision
-  (low-risk, non-agent paths). Focus is on aliases that agents are likely to call.
-
+  '
+scope_notes: "31 hidden aliases to remove. 25+ agent process.yml files to update.\
+  \ CLI changes split by alias category (top-level groups, plan_app commands, plan_app\
+  \ sub-groups, question_app commands). Asset and template files also need updating.\
+  \ The 'agentic cfg' and 'agentic ls' shorthand aliases are user-facing convenience\
+  \ aliases \u2014 keep them as-is. 'agentic configure prefs/pref' and 'agentic devops\
+  \ wt' are also kept per user decision (low-risk, non-agent paths). Focus is on aliases\
+  \ that agents are likely to call.\n"
 aliases_kept:
-  - "agentic cfg -> agentic configure (user shorthand, keep)"
-  - "agentic ls -> agentic langsmith (user shorthand, keep)"
-  - "agentic configure prefs/pref -> agentic configure preferences (user shorthand, keep)"
-  - "agentic devops wt -> agentic devops worktree (user shorthand, keep)"
-
+- agentic cfg -> agentic configure (user shorthand, keep)
+- agentic ls -> agentic langsmith (user shorthand, keep)
+- agentic configure prefs/pref -> agentic configure preferences (user shorthand, keep)
+- agentic devops wt -> agentic devops worktree (user shorthand, keep)
 aliases_to_remove:
   top_level_groups:
-    - "agentic stories -> use agentic agent stories"
-    - "agentic st -> use agentic agent stories"
-    - "agentic manifest -> use agentic agent manifest"
-    - "agentic mf -> use agentic agent manifest"
-    - "agentic entrypoint -> use agentic agent entrypoint"
-    - "agentic ep -> use agentic agent entrypoint"
-    - "agentic context -> use agentic agent context"
-    - "agentic ctx -> use agentic agent context"
+  - agentic stories -> use agentic agent stories
+  - agentic st -> use agentic agent stories
+  - agentic manifest -> use agentic agent manifest
+  - agentic mf -> use agentic agent manifest
+  - agentic entrypoint -> use agentic agent entrypoint
+  - agentic ep -> use agentic agent entrypoint
+  - agentic context -> use agentic agent context
+  - agentic ctx -> use agentic agent context
   plan_app_commands:
-    - "agentic plan new -> use agentic agent plan new"
-    - "agentic plan init -> use agentic agent plan init"
-    - "agentic plan bootstrap -> use agentic agent plan bootstrap"
-    - "agentic plan scaffold -> use agentic agent plan scaffold"
-    - "agentic plan validate -> use agentic agent plan validate"
-    - "agentic plan archive -> use agentic agent plan archive"
-    - "agentic plan unarchive -> use agentic agent plan unarchive"
+  - agentic plan new -> use agentic agent plan new
+  - agentic plan init -> use agentic agent plan init
+  - agentic plan bootstrap -> use agentic agent plan bootstrap
+  - agentic plan scaffold -> use agentic agent plan scaffold
+  - agentic plan validate -> use agentic agent plan validate
+  - agentic plan archive -> use agentic agent plan archive
+  - agentic plan unarchive -> use agentic agent plan unarchive
   plan_app_subgroups:
-    - "agentic plan task * -> use agentic agent plan task *"
-    - "agentic plan phase * -> use agentic agent plan phase *"
-    - "agentic plan move * -> use agentic agent plan move *"
-    - "agentic plan orchestration * -> use agentic agent plan orchestration *"
-    - "agentic plan stories * -> use agentic agent plan stories *"
+  - agentic plan task * -> use agentic agent plan task *
+  - agentic plan phase * -> use agentic agent plan phase *
+  - agentic plan move * -> use agentic agent plan move *
+  - agentic plan orchestration * -> use agentic agent plan orchestration *
+  - agentic plan stories * -> use agentic agent plan stories *
   question_app_commands:
-    - "agentic question ask -> use agentic agent question ask"
-    - "agentic question defer -> use agentic agent question defer"
-    - "agentic question watch -> use agentic agent question watch"
-    - "agentic question watch-daemon -> use agentic agent question watch-daemon"
-    - "agentic question watch-stop -> use agentic agent question watch-stop"
-
+  - agentic question ask -> use agentic agent question ask
+  - agentic question defer -> use agentic agent question defer
+  - agentic question watch -> use agentic agent question watch
+  - agentic question watch-daemon -> use agentic agent question watch-daemon
+  - agentic question watch-stop -> use agentic agent question watch-stop
 phases:
-  - id: P1
-    name: "Update Agent Process Files"
-    description: >
-      Update all agent process.yml files and supporting assets (inputs.yml, templates,
-      cli-commands.yml) to use the new 'agentic agent ...' paths BEFORE the aliases are
-      removed. This ensures spawned agents will not break when aliases are removed in P2.
-    parallel: true
+- id: P1
+  name: Update Agent Process Files
+  status: completed
+  description: 'Update all agent process.yml files and supporting assets (inputs.yml,
+    templates, cli-commands.yml) to use the new ''agentic agent ...'' paths BEFORE
+    the aliases are removed. This ensures spawned agents will not break when aliases
+    are removed in P2.
 
-  - id: P2
-    name: "Replace CLI Aliases with Deprecation Stubs"
-    description: >
-      Replace all hidden backward-compat aliases in cli.py with deprecation stubs that
-      print a clear error message and exit 1. Implement per category. The stubs must
-      appear at the same command path so Typer still routes them, but the callback
-      prints the new path and refuses to proceed.
-    parallel: false
-    depends_on: [P1]
-
-  - id: P3
-    name: "Update Tests"
-    description: >
-      Replace the TestBackwardCompatibility and TestCommandAliases tests that expect old
-      aliases to work. New tests must verify that the old paths emit deprecation error
-      messages (exit code 1) and that the error output contains the new 'agentic agent ...'
-      path. Also update tests in test_cli.py that assert 'wt', 'mf', 'st' aliases work.
-    parallel: false
-    depends_on: [P2]
-
-tasks:
-  # =========================================================================
-  # PHASE 1: Update agent process files
-  # =========================================================================
-
+    '
+  parallel: true
+  tasks:
   - id: P1-T1
     phase: P1
-    name: "Update build agent process files"
-    description: >
-      Update process.yml files for build-python and build-flutter agents. Replace:
-        agentic context bootstrap --role <role> -j
-        agentic plan task current -j
-        agentic plan task update <id> --status ...
-        agentic plan task list
-      With:
-        agentic agent context bootstrap --role <role> -j
-        agentic agent plan task current -j
-        agentic agent plan task update <id> --status ...
-        agentic agent plan task list
-      Do a systematic find-and-replace for each file. Use sed-style replacement for each
-      old prefix pattern:
-        "agentic context " -> "agentic agent context "
-        "agentic plan task " -> "agentic agent plan task "
-        "agentic stories " -> "agentic agent stories "
-        "agentic entrypoint " -> "agentic agent entrypoint "
-        "agentic manifest " -> "agentic agent manifest "
-        "agentic question " -> "agentic agent question " (only for ask/defer/watch variants)
+    status: completed
+    name: Update build agent process files
+    description: "Update process.yml files for build-python and build-flutter agents.\
+      \ Replace:\n  agentic context bootstrap --role <role> -j\n  agentic plan task\
+      \ current -j\n  agentic plan task update <id> --status ...\n  agentic plan task\
+      \ list\nWith:\n  agentic agent context bootstrap --role <role> -j\n  agentic\
+      \ agent plan task current -j\n  agentic agent plan task update <id> --status\
+      \ ...\n  agentic agent plan task list\nDo a systematic find-and-replace for\
+      \ each file. Use sed-style replacement for each old prefix pattern:\n  \"agentic\
+      \ context \" -> \"agentic agent context \"\n  \"agentic plan task \" -> \"agentic\
+      \ agent plan task \"\n  \"agentic stories \" -> \"agentic agent stories \"\n\
+      \  \"agentic entrypoint \" -> \"agentic agent entrypoint \"\n  \"agentic manifest\
+      \ \" -> \"agentic agent manifest \"\n  \"agentic question \" -> \"agentic agent\
+      \ question \" (only for ask/defer/watch variants)\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/build/build-python/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/build/build-flutter/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/build/build-python/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/build/build-flutter/process.yml
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/build/build-python/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/build/build-flutter/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/build/build-python/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/build/build-flutter/process.yml
     success_criteria:
-      - No occurrences of 'agentic context bootstrap' (without 'agent') in either file
-      - No occurrences of 'agentic plan task' (without 'agent') in either file
-      - All substitutions correctly use 'agentic agent context' and 'agentic agent plan task'
-      - YAML remains valid (not malformed)
-
+    - No occurrences of 'agentic context bootstrap' (without 'agent') in either file
+    - No occurrences of 'agentic plan task' (without 'agent') in either file
+    - All substitutions correctly use 'agentic agent context' and 'agentic agent plan
+      task'
+    - YAML remains valid (not malformed)
   - id: P1-T2
     phase: P1
-    name: "Update test agent process files"
-    description: >
-      Update process.yml (and where applicable inputs.yml) files for all test agents:
-        test-runner, test-audit, test-builder, test-cleaner, test-final-output,
-        test-guidance-simulator, test-service, test-user-simulator
-      Apply same systematic replacements as P1-T1. Additionally for test-audit, update
-      the 'agentic stories find' reference. For test-user-simulator, update both
-      process.yml (agentic stories update) and inputs.yml (agentic stories update reference).
+    status: completed
+    name: Update test agent process files
+    description: "Update process.yml (and where applicable inputs.yml) files for all\
+      \ test agents:\n  test-runner, test-audit, test-builder, test-cleaner, test-final-output,\n\
+      \  test-guidance-simulator, test-service, test-user-simulator\nApply same systematic\
+      \ replacements as P1-T1. Additionally for test-audit, update the 'agentic stories\
+      \ find' reference. For test-user-simulator, update both process.yml (agentic\
+      \ stories update) and inputs.yml (agentic stories update reference).\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-runner/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-audit/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-builder/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-cleaner/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-final-output/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-service/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-runner/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-audit/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-builder/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-cleaner/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-final-output/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-service/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-runner/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-audit/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-builder/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-cleaner/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-final-output/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-service/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-runner/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-audit/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-builder/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-cleaner/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-final-output/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-service/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
     success_criteria:
-      - No occurrences of bare 'agentic context', 'agentic plan task', or 'agentic stories'
-        (without 'agent') in any of the 9 files
-      - test-user-simulator inputs.yml updated correctly
-      - YAML remains valid in all files
-
+    - No occurrences of bare 'agentic context', 'agentic plan task', or 'agentic stories'
+      (without 'agent') in any of the 9 files
+    - test-user-simulator inputs.yml updated correctly
+    - YAML remains valid in all files
   - id: P1-T3
     phase: P1
-    name: "Update planner agent process files"
-    description: >
-      Update process.yml files for all planner agents:
-        planner-audit, planner-build, planner-cleaning, planner-guidance,
-        planner-guidance-testing, planner-orchestration, planner-reviewer, planner-test
-      Apply systematic replacements. planner-build has references to 'agentic stories find'
-      in two different narrative sections — update both. planner-test has a 'agentic stories show'
-      reference. planner-orchestration has a narrative mention of 'agentic context bootstrap commands'.
+    status: completed
+    name: Update planner agent process files
+    description: "Update process.yml files for all planner agents:\n  planner-audit,\
+      \ planner-build, planner-cleaning, planner-guidance,\n  planner-guidance-testing,\
+      \ planner-orchestration, planner-reviewer, planner-test\nApply systematic replacements.\
+      \ planner-build has references to 'agentic stories find' in two different narrative\
+      \ sections \u2014 update both. planner-test has a 'agentic stories show' reference.\
+      \ planner-orchestration has a narrative mention of 'agentic context bootstrap\
+      \ commands'.\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-audit/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-build/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-audit/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-test/process.yml
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-audit/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-build/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-audit/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-test/process.yml
     success_criteria:
-      - No occurrences of bare 'agentic context', 'agentic plan task', or 'agentic stories'
-        (without 'agent') in any of the 8 files
-      - YAML remains valid in all files
-
+    - No occurrences of bare 'agentic context', 'agentic plan task', or 'agentic stories'
+      (without 'agent') in any of the 8 files
+    - YAML remains valid in all files
   - id: P1-T4
     phase: P1
-    name: "Update deploy and orchestration agent process files"
-    description: >
-      Update process.yml and inputs.yml files for deploy and orchestration agents:
-        deploy-cicd, deploy-worktree,
-        orchestration-executor, orchestration-loop, orchestration-friction (if applicable)
-      orchestration-executor has references to:
-        - 'agentic context bootstrap' (line 49 of process.yml)
-        - 'agentic entrypoint execute' (line 96)
-        - 'agentic entrypoint list' (line 99)
-        - 'agentic question watch-daemon' (line 625)
-        - 'agentic question watch-stop' (line 627)
-        - inputs.yml lines 63-64: agentic context bootstrap, agentic plan task current
-        - inputs.yml line 214: agentic plan task start/complete
-      orchestration-planning has 'agentic stories find' in inputs.yml (line 88)
-      and process.mmd (lines 126, 136). Also update process.mmd.
+    status: completed
+    name: Update deploy and orchestration agent process files
+    description: "Update process.yml and inputs.yml files for deploy and orchestration\
+      \ agents:\n  deploy-cicd, deploy-worktree,\n  orchestration-executor, orchestration-loop,\
+      \ orchestration-friction (if applicable)\norchestration-executor has references\
+      \ to:\n  - 'agentic context bootstrap' (line 49 of process.yml)\n  - 'agentic\
+      \ entrypoint execute' (line 96)\n  - 'agentic entrypoint list' (line 99)\n \
+      \ - 'agentic question watch-daemon' (line 625)\n  - 'agentic question watch-stop'\
+      \ (line 627)\n  - inputs.yml lines 63-64: agentic context bootstrap, agentic\
+      \ plan task current\n  - inputs.yml line 214: agentic plan task start/complete\n\
+      orchestration-planning has 'agentic stories find' in inputs.yml (line 88) and\
+      \ process.mmd (lines 126, 136). Also update process.mmd.\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-loop/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-loop/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-loop/process.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-loop/process.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
     success_criteria:
-      - "orchestration-executor process.yml: all old paths updated to 'agentic agent ...'"
-      - "orchestration-executor inputs.yml: all old paths updated"
-      - "orchestration-planning inputs.yml: 'agentic stories find' updated to 'agentic agent stories find'"
-      - "orchestration-planning process.mmd: mermaid diagram references updated"
-      - "deploy agent files: both use 'agentic agent context bootstrap' and 'agentic agent plan task current'"
-      - All YAML and MMD files remain syntactically valid
-
+    - 'orchestration-executor process.yml: all old paths updated to ''agentic agent
+      ...'''
+    - 'orchestration-executor inputs.yml: all old paths updated'
+    - 'orchestration-planning inputs.yml: ''agentic stories find'' updated to ''agentic
+      agent stories find'''
+    - 'orchestration-planning process.mmd: mermaid diagram references updated'
+    - 'deploy agent files: both use ''agentic agent context bootstrap'' and ''agentic
+      agent plan task current'''
+    - All YAML and MMD files remain syntactically valid
   - id: P1-T5
     phase: P1
-    name: "Update guidance assets and templates"
-    description: >
-      Update shared guidance assets that specify CLI commands for agents:
-        - bootstrap-agent-template.md: References 'agentic context bootstrap', 'agentic plan task'
-          throughout. This template is rendered into agent instructions — critical to update.
-        - cli-commands.yml: The definitions file at
-          modules/AgenticGuidance/assets/definitions/cli-commands.yml contains canonical
-          command references. Update the 'context' section (lines 214-257) and 'entrypoint'
-          section (lines 414-437) to show 'agentic agent context' and 'agentic agent entrypoint'.
-          Keep old paths as 'deprecated_path' or 'note' fields for documentation.
-        - AgenticGuidance/README.md: Lines 261, 264 reference old paths.
-        - AgenticCLI/README.md: Many references to old paths. Update or add deprecation notes.
-
-      IMPORTANT: In cli-commands.yml, preserve the command structure but change the
-      'command:' field values to use new paths. Add a note field: "NOTE: Old path
-      'agentic context bootstrap ...' has been removed. Use 'agentic agent context bootstrap ...'".
+    status: completed
+    name: Update guidance assets and templates
+    description: "Update shared guidance assets that specify CLI commands for agents:\n\
+      \  - bootstrap-agent-template.md: References 'agentic context bootstrap', 'agentic\
+      \ plan task'\n    throughout. This template is rendered into agent instructions\
+      \ \u2014 critical to update.\n  - cli-commands.yml: The definitions file at\n\
+      \    modules/AgenticGuidance/assets/definitions/cli-commands.yml contains canonical\n\
+      \    command references. Update the 'context' section (lines 214-257) and 'entrypoint'\n\
+      \    section (lines 414-437) to show 'agentic agent context' and 'agentic agent\
+      \ entrypoint'.\n    Keep old paths as 'deprecated_path' or 'note' fields for\
+      \ documentation.\n  - AgenticGuidance/README.md: Lines 261, 264 reference old\
+      \ paths.\n  - AgenticCLI/README.md: Many references to old paths. Update or\
+      \ add deprecation notes.\n\nIMPORTANT: In cli-commands.yml, preserve the command\
+      \ structure but change the 'command:' field values to use new paths. Add a note\
+      \ field: \"NOTE: Old path 'agentic context bootstrap ...' has been removed.\
+      \ Use 'agentic agent context bootstrap ...'\".\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/definitions/cli-commands.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/README.md
-      - /home/code/AgenticEngineering/modules/AgenticCLI/README.md
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/README.md
+    - /home/code/AgenticEngineering/modules/AgenticCLI/README.md
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/definitions/cli-commands.yml
-      - /home/code/AgenticEngineering/modules/AgenticGuidance/README.md
-      - /home/code/AgenticEngineering/modules/AgenticCLI/README.md
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    - /home/code/AgenticEngineering/modules/AgenticGuidance/README.md
+    - /home/code/AgenticEngineering/modules/AgenticCLI/README.md
     success_criteria:
-      - "bootstrap-agent-template.md: All 'agentic context' references become 'agentic agent context', all 'agentic plan task' references become 'agentic agent plan task'"
-      - "cli-commands.yml: context.bootstrap.command field uses 'agentic agent context bootstrap'"
-      - "cli-commands.yml: entrypoint commands use 'agentic agent entrypoint'"
-      - "AgenticGuidance/README.md: lines updated to new paths"
-      - "AgenticCLI/README.md: agent-facing command references updated to new paths"
-      - All markdown and YAML remain valid
+    - 'bootstrap-agent-template.md: All ''agentic context'' references become ''agentic
+      agent context'', all ''agentic plan task'' references become ''agentic agent
+      plan task'''
+    - 'cli-commands.yml: context.bootstrap.command field uses ''agentic agent context
+      bootstrap'''
+    - 'cli-commands.yml: entrypoint commands use ''agentic agent entrypoint'''
+    - 'AgenticGuidance/README.md: lines updated to new paths'
+    - 'AgenticCLI/README.md: agent-facing command references updated to new paths'
+    - All markdown and YAML remain valid
+- id: P2
+  name: Replace CLI Aliases with Deprecation Stubs
+  description: 'Replace all hidden backward-compat aliases in cli.py with deprecation
+    stubs that print a clear error message and exit 1. Implement per category. The
+    stubs must appear at the same command path so Typer still routes them, but the
+    callback prints the new path and refuses to proceed.
 
-  # =========================================================================
-  # PHASE 2: Replace CLI aliases with deprecation stubs
-  # =========================================================================
-
+    '
+  parallel: false
+  depends_on:
+  - P1
+  tasks:
   - id: P2-T1
     phase: P2
-    name: "Replace top-level group aliases with deprecation commands"
-    description: >
-      In cli.py, replace the 8 hidden top-level group add_typer calls with deprecation
-      commands. The current code:
-        app.add_typer(stories_app, name="stories", hidden=True)
-        app.add_typer(stories_app, name="st", hidden=True)
-        app.add_typer(manifest_app, name="manifest", hidden=True)
-        app.add_typer(manifest_app, name="mf", hidden=True)
-        app.add_typer(entrypoint_app, name="entrypoint", hidden=True)
-        app.add_typer(entrypoint_app, name="ep", hidden=True)
-        app.add_typer(context_app, name="context", hidden=True)
-        app.add_typer(context_app, name="ctx", hidden=True)
-
-      Replace each with a @app.command(..., hidden=True) stub. Because Typer does not
-      support catch-all arguments natively, use a context-aware approach:
-        - Add `ctx: typer.Context` parameter to the callback
-        - Use `allow_extra_args=True` and `allow_interspersed_args=False` on the
-          Typer command decorator so it doesn't reject extra subcommand arguments
-        - Print the error message and exit 1
-
-      Implementation pattern for each:
-        @app.command("stories", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
-        def _deprecated_stories(ctx: typer.Context):
-            \"\"\"Deprecated: use 'agentic agent stories'.\"\"\"
-            from agenticcli.console import print_error
-            print_error("Command 'agentic stories' has moved. Use 'agentic agent stories' instead.")
-            raise typer.Exit(1)
-
-      Apply this pattern for: stories, st, manifest, mf, entrypoint, ep, context, ctx.
-
-      Note: The stories_app, manifest_app, entrypoint_app, and context_app Typer objects
-      can still exist (they are used as the canonical implementations under 'agentic agent ...'
-      via the agent_app group). Only remove the app.add_typer calls that register them at
-      the top level.
-
-      Lines to modify in cli.py:
-        - Line 370: app.add_typer(stories_app, name="stories", hidden=True)
-        - Line 371: app.add_typer(stories_app, name="st", hidden=True)
-        - Line 479: app.add_typer(manifest_app, name="manifest", hidden=True)
-        - Line 480: app.add_typer(manifest_app, name="mf", hidden=True)
-        - Line 1151: app.add_typer(entrypoint_app, name="entrypoint", hidden=True)
-        - Line 1152: app.add_typer(entrypoint_app, name="ep", hidden=True)
-        - Line 1195: app.add_typer(context_app, name="context", hidden=True)
-        - Line 1196: app.add_typer(context_app, name="ctx", hidden=True)
-
-      Add deprecation command stubs immediately below each section header, replacing
-      the removed add_typer calls. Keep the section comments to help future readers
-      understand where the canonical implementations live.
+    name: Replace top-level group aliases with deprecation commands
+    description: "In cli.py, replace the 8 hidden top-level group add_typer calls\
+      \ with deprecation commands. The current code:\n  app.add_typer(stories_app,\
+      \ name=\"stories\", hidden=True)\n  app.add_typer(stories_app, name=\"st\",\
+      \ hidden=True)\n  app.add_typer(manifest_app, name=\"manifest\", hidden=True)\n\
+      \  app.add_typer(manifest_app, name=\"mf\", hidden=True)\n  app.add_typer(entrypoint_app,\
+      \ name=\"entrypoint\", hidden=True)\n  app.add_typer(entrypoint_app, name=\"\
+      ep\", hidden=True)\n  app.add_typer(context_app, name=\"context\", hidden=True)\n\
+      \  app.add_typer(context_app, name=\"ctx\", hidden=True)\n\nReplace each with\
+      \ a @app.command(..., hidden=True) stub. Because Typer does not support catch-all\
+      \ arguments natively, use a context-aware approach:\n  - Add `ctx: typer.Context`\
+      \ parameter to the callback\n  - Use `allow_extra_args=True` and `allow_interspersed_args=False`\
+      \ on the\n    Typer command decorator so it doesn't reject extra subcommand\
+      \ arguments\n  - Print the error message and exit 1\n\nImplementation pattern\
+      \ for each:\n  @app.command(\"stories\", hidden=True, context_settings={\"allow_extra_args\"\
+      : True, \"allow_interspersed_args\": False})\n  def _deprecated_stories(ctx:\
+      \ typer.Context):\n      \\\"\\\"\\\"Deprecated: use 'agentic agent stories'.\\\
+      \"\\\"\\\"\n      from agenticcli.console import print_error\n      print_error(\"\
+      Command 'agentic stories' has moved. Use 'agentic agent stories' instead.\"\
+      )\n      raise typer.Exit(1)\n\nApply this pattern for: stories, st, manifest,\
+      \ mf, entrypoint, ep, context, ctx.\nNote: The stories_app, manifest_app, entrypoint_app,\
+      \ and context_app Typer objects can still exist (they are used as the canonical\
+      \ implementations under 'agentic agent ...' via the agent_app group). Only remove\
+      \ the app.add_typer calls that register them at the top level.\nLines to modify\
+      \ in cli.py:\n  - Line 370: app.add_typer(stories_app, name=\"stories\", hidden=True)\n\
+      \  - Line 371: app.add_typer(stories_app, name=\"st\", hidden=True)\n  - Line\
+      \ 479: app.add_typer(manifest_app, name=\"manifest\", hidden=True)\n  - Line\
+      \ 480: app.add_typer(manifest_app, name=\"mf\", hidden=True)\n  - Line 1151:\
+      \ app.add_typer(entrypoint_app, name=\"entrypoint\", hidden=True)\n  - Line\
+      \ 1152: app.add_typer(entrypoint_app, name=\"ep\", hidden=True)\n  - Line 1195:\
+      \ app.add_typer(context_app, name=\"context\", hidden=True)\n  - Line 1196:\
+      \ app.add_typer(context_app, name=\"ctx\", hidden=True)\n\nAdd deprecation command\
+      \ stubs immediately below each section header, replacing the removed add_typer\
+      \ calls. Keep the section comments to help future readers understand where the\
+      \ canonical implementations live.\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     success_criteria:
-      - agentic stories exits with code 1 and output contains "has moved" and "agentic agent stories"
-      - agentic st exits with code 1 with guidance to agentic agent stories
-      - agentic manifest exits with code 1 with guidance to agentic agent manifest
-      - agentic mf exits with code 1 with guidance to agentic agent manifest
-      - agentic entrypoint exits with code 1 with guidance to agentic agent entrypoint
-      - agentic ep exits with code 1 with guidance to agentic agent entrypoint
-      - agentic context exits with code 1 with guidance to agentic agent context
-      - agentic ctx exits with code 1 with guidance to agentic agent context
-      - agentic agent stories --help still exits 0 (functional path unaffected)
-      - agentic agent context --help still exits 0 (functional path unaffected)
-      - agentic --help does not show any of the 8 deprecated commands in visible output
-
+    - agentic stories exits with code 1 and output contains "has moved" and "agentic
+      agent stories"
+    - agentic st exits with code 1 with guidance to agentic agent stories
+    - agentic manifest exits with code 1 with guidance to agentic agent manifest
+    - agentic mf exits with code 1 with guidance to agentic agent manifest
+    - agentic entrypoint exits with code 1 with guidance to agentic agent entrypoint
+    - agentic ep exits with code 1 with guidance to agentic agent entrypoint
+    - agentic context exits with code 1 with guidance to agentic agent context
+    - agentic ctx exits with code 1 with guidance to agentic agent context
+    - agentic agent stories --help still exits 0 (functional path unaffected)
+    - agentic agent context --help still exits 0 (functional path unaffected)
+    - agentic --help does not show any of the 8 deprecated commands in visible output
   - id: P2-T2
     phase: P2
-    name: "Replace hidden plan_app commands with deprecation stubs"
-    description: >
-      Replace the 7 hidden commands on plan_app with deprecation stubs. Current code:
-        @plan_app.command("new", hidden=True)
-        @plan_app.command("init", hidden=True)
-        @plan_app.command("bootstrap", hidden=True)
-        @plan_app.command("scaffold", hidden=True)
-        @plan_app.command("validate", hidden=True)
-        @plan_app.command("archive", hidden=True)
-        @plan_app.command("unarchive", hidden=True)
-
-      Each of these functions has specific parameters. Replace the entire function body
-      with a deprecation print + exit 1. Since the command already exists in the registry
-      (hidden), we just need to change what the function does. Use context_settings to
-      allow extra args so that 'agentic plan archive --help' still triggers the stub
-      rather than a Typer argument error.
-
-      Replace pattern — example for plan_archive:
-        @plan_app.command("archive", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
-        def plan_archive(ctx: typer.Context):
-            \"\"\"Deprecated: use 'agentic agent plan archive'.\"\"\"
-            from agenticcli.console import print_error
-            print_error("Command 'agentic plan archive' has moved. Use 'agentic agent plan archive' instead.")
-            raise typer.Exit(1)
-
-      Do this for all 7 commands. Remove their parameter lists entirely (parameters
-      are no longer needed since we never dispatch).
-
-      Lines in cli.py:
-        - Lines ~1279-1301: plan_new
-        - Lines ~1305-1317: plan_init
-        - Lines ~1321-1332: plan_bootstrap
-        - Lines ~1336-1360: plan_scaffold
-        - Lines ~1361-1388: plan_validate
-        - Lines ~1389-1403: plan_archive
-        - Lines ~1404-1414: plan_unarchive
-
-      IMPORTANT: The existing 'plan new' user-facing command (NOT hidden) at the top of
-      plan_app is different from the hidden 'plan new' alias. Verify the plan_app structure
-      before editing — there may be a visible 'plan new' user-facing command that must be
-      preserved. Only remove the hidden=True variant.
+    name: Replace hidden plan_app commands with deprecation stubs
+    description: "Replace the 7 hidden commands on plan_app with deprecation stubs.\
+      \ Current code:\n  @plan_app.command(\"new\", hidden=True)\n  @plan_app.command(\"\
+      init\", hidden=True)\n  @plan_app.command(\"bootstrap\", hidden=True)\n  @plan_app.command(\"\
+      scaffold\", hidden=True)\n  @plan_app.command(\"validate\", hidden=True)\n \
+      \ @plan_app.command(\"archive\", hidden=True)\n  @plan_app.command(\"unarchive\"\
+      , hidden=True)\n\nEach of these functions has specific parameters. Replace the\
+      \ entire function body with a deprecation print + exit 1. Since the command\
+      \ already exists in the registry (hidden), we just need to change what the function\
+      \ does. Use context_settings to allow extra args so that 'agentic plan archive\
+      \ --help' still triggers the stub rather than a Typer argument error.\nReplace\
+      \ pattern \u2014 example for plan_archive:\n  @plan_app.command(\"archive\"\
+      , hidden=True, context_settings={\"allow_extra_args\": True, \"allow_interspersed_args\"\
+      : False})\n  def plan_archive(ctx: typer.Context):\n      \\\"\\\"\\\"Deprecated:\
+      \ use 'agentic agent plan archive'.\\\"\\\"\\\"\n      from agenticcli.console\
+      \ import print_error\n      print_error(\"Command 'agentic plan archive' has\
+      \ moved. Use 'agentic agent plan archive' instead.\")\n      raise typer.Exit(1)\n\
+      \nDo this for all 7 commands. Remove their parameter lists entirely (parameters\
+      \ are no longer needed since we never dispatch).\nLines in cli.py:\n  - Lines\
+      \ ~1279-1301: plan_new\n  - Lines ~1305-1317: plan_init\n  - Lines ~1321-1332:\
+      \ plan_bootstrap\n  - Lines ~1336-1360: plan_scaffold\n  - Lines ~1361-1388:\
+      \ plan_validate\n  - Lines ~1389-1403: plan_archive\n  - Lines ~1404-1414: plan_unarchive\n\
+      \nIMPORTANT: The existing 'plan new' user-facing command (NOT hidden) at the\
+      \ top of plan_app is different from the hidden 'plan new' alias. Verify the\
+      \ plan_app structure before editing \u2014 there may be a visible 'plan new'\
+      \ user-facing command that must be preserved. Only remove the hidden=True variant.\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     success_criteria:
-      - agentic plan archive exits 1 with message containing "agentic agent plan archive"
-      - agentic plan validate exits 1 with message containing "agentic agent plan validate"
-      - agentic plan scaffold exits 1 with message containing "agentic agent plan scaffold"
-      - agentic plan init exits 1 with message containing "agentic agent plan init"
-      - agentic plan bootstrap exits 1 with message containing "agentic agent plan bootstrap"
-      - agentic plan unarchive exits 1 with message containing "agentic agent plan unarchive"
-      - agentic agent plan archive --help still exits 0
-      - agentic plan --help does not list archive, validate, scaffold, init, bootstrap, unarchive as visible commands
-
+    - agentic plan archive exits 1 with message containing "agentic agent plan archive"
+    - agentic plan validate exits 1 with message containing "agentic agent plan validate"
+    - agentic plan scaffold exits 1 with message containing "agentic agent plan scaffold"
+    - agentic plan init exits 1 with message containing "agentic agent plan init"
+    - agentic plan bootstrap exits 1 with message containing "agentic agent plan bootstrap"
+    - agentic plan unarchive exits 1 with message containing "agentic agent plan unarchive"
+    - agentic agent plan archive --help still exits 0
+    - agentic plan --help does not list archive, validate, scaffold, init, bootstrap,
+      unarchive as visible commands
   - id: P2-T3
     phase: P2
-    name: "Replace hidden plan_app sub-group aliases with deprecation stubs"
-    description: >
-      Replace the 5 hidden sub-group registrations on plan_app with deprecation commands.
-      Current code:
-        plan_app.add_typer(plan_task_app, name="task", hidden=True)        # line 1419
-        plan_app.add_typer(plan_move_app, name="move", hidden=True)        # line 1551
-        plan_app.add_typer(plan_orch_app, name="orchestration", hidden=True) # line 1599
-        plan_app.add_typer(plan_phase_app, name="phase", hidden=True)      # line 1631
-        plan_app.add_typer(plan_stories_app, name="stories", hidden=True)  # line 1678
-
-      These are harder because they're sub-apps not commands. The approach:
-        1. Remove the plan_app.add_typer call
-        2. Add a @plan_app.command("task", hidden=True, context_settings=...) stub
-           that accepts any extra args and prints the deprecation message
-
-      Example:
-        @plan_app.command("task", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
-        def _plan_task_deprecated(ctx: typer.Context):
-            \"\"\"Deprecated: use 'agentic agent plan task'.\"\"\"
-            from agenticcli.console import print_error
-            print_error("Command 'agentic plan task' has moved. Use 'agentic agent plan task' instead.")
-            raise typer.Exit(1)
-
-      Apply for: task, move, orchestration, phase, stories.
-
-      Note: The plan_task_app, plan_move_app, plan_orch_app, plan_phase_app, and
-      plan_stories_app Typer objects must still exist as they are wired into agent_plan_app
-      under 'agentic agent plan ...'. Only remove the plan_app.add_typer calls.
-
-      KEY CONFLICT WARNING: After making plan_task_app no longer registered under plan_app,
-      verify that plan_task_app is still registered under agent_plan_app as 'task'.
-      Grep the cli.py for agent_plan_app.add_typer to confirm. Do NOT remove any
-      agent_plan_app wiring.
+    name: Replace hidden plan_app sub-group aliases with deprecation stubs
+    description: "Replace the 5 hidden sub-group registrations on plan_app with deprecation\
+      \ commands. Current code:\n  plan_app.add_typer(plan_task_app, name=\"task\"\
+      , hidden=True)        # line 1419\n  plan_app.add_typer(plan_move_app, name=\"\
+      move\", hidden=True)        # line 1551\n  plan_app.add_typer(plan_orch_app,\
+      \ name=\"orchestration\", hidden=True) # line 1599\n  plan_app.add_typer(plan_phase_app,\
+      \ name=\"phase\", hidden=True)      # line 1631\n  plan_app.add_typer(plan_stories_app,\
+      \ name=\"stories\", hidden=True)  # line 1678\n\nThese are harder because they're\
+      \ sub-apps not commands. The approach:\n  1. Remove the plan_app.add_typer call\n\
+      \  2. Add a @plan_app.command(\"task\", hidden=True, context_settings=...) stub\n\
+      \     that accepts any extra args and prints the deprecation message\n\nExample:\n\
+      \  @plan_app.command(\"task\", hidden=True, context_settings={\"allow_extra_args\"\
+      : True, \"allow_interspersed_args\": False})\n  def _plan_task_deprecated(ctx:\
+      \ typer.Context):\n      \\\"\\\"\\\"Deprecated: use 'agentic agent plan task'.\\\
+      \"\\\"\\\"\n      from agenticcli.console import print_error\n      print_error(\"\
+      Command 'agentic plan task' has moved. Use 'agentic agent plan task' instead.\"\
+      )\n      raise typer.Exit(1)\n\nApply for: task, move, orchestration, phase,\
+      \ stories.\nNote: The plan_task_app, plan_move_app, plan_orch_app, plan_phase_app,\
+      \ and plan_stories_app Typer objects must still exist as they are wired into\
+      \ agent_plan_app under 'agentic agent plan ...'. Only remove the plan_app.add_typer\
+      \ calls.\nKEY CONFLICT WARNING: After making plan_task_app no longer registered\
+      \ under plan_app, verify that plan_task_app is still registered under agent_plan_app\
+      \ as 'task'. Grep the cli.py for agent_plan_app.add_typer to confirm. Do NOT\
+      \ remove any agent_plan_app wiring.\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     success_criteria:
-      - agentic plan task list exits 1 with message containing "agentic agent plan task"
-      - agentic plan phase add exits 1 with message containing "agentic agent plan phase"
-      - agentic plan move folder exits 1 with message containing "agentic agent plan move"
-      - agentic plan orchestration exits 1 with message containing "agentic agent plan orchestration"
-      - agentic plan stories exits 1 with message containing "agentic agent plan stories"
-      - agentic agent plan task list --help still exits 0 (canonical path unaffected)
-      - agentic agent plan phase --help still exits 0
-      - agentic plan --help does not list task, phase, move, orchestration, or stories as visible sub-commands
-
+    - agentic plan task list exits 1 with message containing "agentic agent plan task"
+    - agentic plan phase add exits 1 with message containing "agentic agent plan phase"
+    - agentic plan move folder exits 1 with message containing "agentic agent plan
+      move"
+    - agentic plan orchestration exits 1 with message containing "agentic agent plan
+      orchestration"
+    - agentic plan stories exits 1 with message containing "agentic agent plan stories"
+    - agentic agent plan task list --help still exits 0 (canonical path unaffected)
+    - agentic agent plan phase --help still exits 0
+    - agentic plan --help does not list task, phase, move, orchestration, or stories
+      as visible sub-commands
   - id: P2-T4
     phase: P2
-    name: "Replace hidden question_app commands with deprecation stubs"
-    description: >
-      Replace the 5 hidden commands on question_app with deprecation stubs. Current code:
-        @question_app.command("ask", hidden=True)        # line 1072
-        @question_app.command("defer", hidden=True)      # line 1088
-        @question_app.command("watch", hidden=True)      # line 1101
-        @question_app.command("watch-daemon", hidden=True) # line 1113
-        @question_app.command("watch-stop", hidden=True) # line 1125
-
-      Replace pattern:
-        @question_app.command("ask", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
-        def question_ask(ctx: typer.Context):
-            \"\"\"Deprecated: use 'agentic agent question ask'.\"\"\"
-            from agenticcli.console import print_error
-            print_error("Command 'agentic question ask' has moved. Use 'agentic agent question ask' instead.")
-            raise typer.Exit(1)
-
-      Apply for: ask, defer, watch, watch-daemon, watch-stop.
-
-      Note: The canonical implementations of these commands live in agent_question_app
-      under 'agentic agent question'. Those must not be touched.
-
-      Lines to modify in cli.py:
-        - Lines ~1072-1085: question_ask
-        - Lines ~1088-1098: question_defer
-        - Lines ~1101-1110: question_watch
-        - Lines ~1113-1122: question_watch_daemon
-        - Lines ~1125-1131: question_watch_stop
+    name: Replace hidden question_app commands with deprecation stubs
+    description: "Replace the 5 hidden commands on question_app with deprecation stubs.\
+      \ Current code:\n  @question_app.command(\"ask\", hidden=True)        # line\
+      \ 1072\n  @question_app.command(\"defer\", hidden=True)      # line 1088\n \
+      \ @question_app.command(\"watch\", hidden=True)      # line 1101\n  @question_app.command(\"\
+      watch-daemon\", hidden=True) # line 1113\n  @question_app.command(\"watch-stop\"\
+      , hidden=True) # line 1125\n\nReplace pattern:\n  @question_app.command(\"ask\"\
+      , hidden=True, context_settings={\"allow_extra_args\": True, \"allow_interspersed_args\"\
+      : False})\n  def question_ask(ctx: typer.Context):\n      \\\"\\\"\\\"Deprecated:\
+      \ use 'agentic agent question ask'.\\\"\\\"\\\"\n      from agenticcli.console\
+      \ import print_error\n      print_error(\"Command 'agentic question ask' has\
+      \ moved. Use 'agentic agent question ask' instead.\")\n      raise typer.Exit(1)\n\
+      \nApply for: ask, defer, watch, watch-daemon, watch-stop.\nNote: The canonical\
+      \ implementations of these commands live in agent_question_app under 'agentic\
+      \ agent question'. Those must not be touched.\nLines to modify in cli.py:\n\
+      \  - Lines ~1072-1085: question_ask\n  - Lines ~1088-1098: question_defer\n\
+      \  - Lines ~1101-1110: question_watch\n  - Lines ~1113-1122: question_watch_daemon\n\
+      \  - Lines ~1125-1131: question_watch_stop\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     success_criteria:
-      - agentic question ask exits 1 with message containing "agentic agent question ask"
-      - agentic question defer exits 1 with message containing "agentic agent question defer"
-      - agentic question watch exits 1 with message containing "agentic agent question watch"
-      - agentic question watch-daemon exits 1 with guidance message
-      - agentic question watch-stop exits 1 with guidance message
-      - agentic agent question ask --help still exits 0
-      - agentic question --help does not show ask, defer, watch, watch-daemon, watch-stop as visible commands
+    - agentic question ask exits 1 with message containing "agentic agent question
+      ask"
+    - agentic question defer exits 1 with message containing "agentic agent question
+      defer"
+    - agentic question watch exits 1 with message containing "agentic agent question
+      watch"
+    - agentic question watch-daemon exits 1 with guidance message
+    - agentic question watch-stop exits 1 with guidance message
+    - agentic agent question ask --help still exits 0
+    - agentic question --help does not show ask, defer, watch, watch-daemon, watch-stop
+      as visible commands
+- id: P3
+  name: Update Tests
+  description: 'Replace the TestBackwardCompatibility and TestCommandAliases tests
+    that expect old aliases to work. New tests must verify that the old paths emit
+    deprecation error messages (exit code 1) and that the error output contains the
+    new ''agentic agent ...'' path. Also update tests in test_cli.py that assert ''wt'',
+    ''mf'', ''st'' aliases work.
 
-  # =========================================================================
-  # PHASE 3: Update tests
-  # =========================================================================
-
+    '
+  parallel: false
+  depends_on:
+  - P2
+  tasks:
   - id: P3-T1
     phase: P3
-    name: "Update test_cli_restructure.py backward compatibility tests"
-    description: >
-      The TestBackwardCompatibility class in test_cli_restructure.py currently asserts
-      that old paths return exit code 0 and show help. These must be inverted to assert:
-        1. The command exits with code 1
-        2. The output contains a 'has moved' or 'Use ...' message
-        3. The output contains the new 'agentic agent ...' path
-
-      Tests to update in TestBackwardCompatibility:
-        - test_plan_task_list_help: currently asserts returncode==0. Change to assert
-          returncode==1 and output contains 'agentic agent plan task'
-        - test_plan_task_start_help: same pattern
-        - test_plan_task_complete_help: same pattern
-        - test_plan_archive_help: assert exit 1, message has 'agentic agent plan archive'
-        - test_plan_validate_help: assert exit 1, message has 'agentic agent plan validate'
-        - test_plan_scaffold_help: assert exit 1, message has 'agentic agent plan scaffold'
-        - test_plan_phase_help: assert exit 1, message has 'agentic agent plan phase'
-        - test_context_bootstrap_help: assert exit 1, message has 'agentic agent context'
-        - test_entrypoint_list_help: assert exit 1, message has 'agentic agent entrypoint'
-        - test_manifest_list_help: assert exit 1, message has 'agentic agent manifest'
-        - test_stories_find_help: assert exit 1, message has 'agentic agent stories'
-        - test_question_ask_help: assert exit 1, message has 'agentic agent question ask'
-
-      Rename the class from TestBackwardCompatibility to TestDeprecationStubs to reflect
-      the new intent. Update all docstrings accordingly.
-
-      Also update test class docstring at module level to remove "Backward compatibility
-      (old paths still work as hidden aliases)" and replace with "Deprecated paths emit
-      error messages and exit 1".
+    name: Update test_cli_restructure.py backward compatibility tests
+    description: "The TestBackwardCompatibility class in test_cli_restructure.py currently\
+      \ asserts that old paths return exit code 0 and show help. These must be inverted\
+      \ to assert:\n  1. The command exits with code 1\n  2. The output contains a\
+      \ 'has moved' or 'Use ...' message\n  3. The output contains the new 'agentic\
+      \ agent ...' path\n\nTests to update in TestBackwardCompatibility:\n  - test_plan_task_list_help:\
+      \ currently asserts returncode==0. Change to assert\n    returncode==1 and output\
+      \ contains 'agentic agent plan task'\n  - test_plan_task_start_help: same pattern\n\
+      \  - test_plan_task_complete_help: same pattern\n  - test_plan_archive_help:\
+      \ assert exit 1, message has 'agentic agent plan archive'\n  - test_plan_validate_help:\
+      \ assert exit 1, message has 'agentic agent plan validate'\n  - test_plan_scaffold_help:\
+      \ assert exit 1, message has 'agentic agent plan scaffold'\n  - test_plan_phase_help:\
+      \ assert exit 1, message has 'agentic agent plan phase'\n  - test_context_bootstrap_help:\
+      \ assert exit 1, message has 'agentic agent context'\n  - test_entrypoint_list_help:\
+      \ assert exit 1, message has 'agentic agent entrypoint'\n  - test_manifest_list_help:\
+      \ assert exit 1, message has 'agentic agent manifest'\n  - test_stories_find_help:\
+      \ assert exit 1, message has 'agentic agent stories'\n  - test_question_ask_help:\
+      \ assert exit 1, message has 'agentic agent question ask'\n\nRename the class\
+      \ from TestBackwardCompatibility to TestDeprecationStubs to reflect the new\
+      \ intent. Update all docstrings accordingly.\nAlso update test class docstring\
+      \ at module level to remove \"Backward compatibility (old paths still work as\
+      \ hidden aliases)\" and replace with \"Deprecated paths emit error messages\
+      \ and exit 1\".\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py
     success_criteria:
-      - TestDeprecationStubs class exists (renamed from TestBackwardCompatibility)
-      - All 12 test methods assert returncode == 1
-      - All 12 test methods assert the output contains 'has moved' or 'Use' guidance
-      - All 12 test methods assert the output contains the new 'agentic agent ...' path
-      - Module-level docstring updated to not mention "backward compatibility"
-      - Tests pass when run against updated cli.py
-
+    - TestDeprecationStubs class exists (renamed from TestBackwardCompatibility)
+    - All 12 test methods assert returncode == 1
+    - All 12 test methods assert the output contains 'has moved' or 'Use' guidance
+    - All 12 test methods assert the output contains the new 'agentic agent ...' path
+    - Module-level docstring updated to not mention "backward compatibility"
+    - Tests pass when run against updated cli.py
   - id: P3-T2
     phase: P3
-    name: "Update test_cli.py alias tests"
-    description: >
-      The TestCommandAliases class in test_cli.py currently tests that 'stories', 'st',
-      'manifest', 'mf' aliases work (return 0 and show help). Since these are now
-      deprecation stubs, these tests must be updated.
-
-      Tests to update:
-        - test_worktree_alias_wt: Keep as-is (wt alias is kept)
-        - test_configure_alias_cfg: Keep as-is (cfg alias is kept)
-        - test_stories_alias_st: Change to assert both 'stories' and 'st' exit 1 with
-          deprecation message pointing to 'agentic agent stories'
-        - test_manifest_alias_mf: Change to assert both 'manifest' and 'mf' exit 1 with
-          deprecation message pointing to 'agentic agent manifest'
-
-      The test method names can stay the same but update the assertion logic:
-        def test_stories_alias_st(self, cli_runner):
-            \"\"\"Test 'stories' and 'st' commands now show deprecation messages.\"\"\"
-            result_full = cli_runner(["stories", "--help"])
-            result_alias = cli_runner(["st", "--help"])
-            # Both should exit 1 with deprecation message
-            assert result_full.returncode == 1
-            assert "agentic agent stories" in result_full.stdout
-            assert result_alias.returncode == 1
-            assert "agentic agent stories" in result_alias.stdout
-
-      Apply same pattern for manifest/mf test.
+    name: Update test_cli.py alias tests
+    description: "The TestCommandAliases class in test_cli.py currently tests that\
+      \ 'stories', 'st', 'manifest', 'mf' aliases work (return 0 and show help). Since\
+      \ these are now deprecation stubs, these tests must be updated.\nTests to update:\n\
+      \  - test_worktree_alias_wt: Keep as-is (wt alias is kept)\n  - test_configure_alias_cfg:\
+      \ Keep as-is (cfg alias is kept)\n  - test_stories_alias_st: Change to assert\
+      \ both 'stories' and 'st' exit 1 with\n    deprecation message pointing to 'agentic\
+      \ agent stories'\n  - test_manifest_alias_mf: Change to assert both 'manifest'\
+      \ and 'mf' exit 1 with\n    deprecation message pointing to 'agentic agent manifest'\n\
+      \nThe test method names can stay the same but update the assertion logic:\n\
+      \  def test_stories_alias_st(self, cli_runner):\n      \\\"\\\"\\\"Test 'stories'\
+      \ and 'st' commands now show deprecation messages.\\\"\\\"\\\"\n      result_full\
+      \ = cli_runner([\"stories\", \"--help\"])\n      result_alias = cli_runner([\"\
+      st\", \"--help\"])\n      # Both should exit 1 with deprecation message\n  \
+      \    assert result_full.returncode == 1\n      assert \"agentic agent stories\"\
+      \ in result_full.stdout\n      assert result_alias.returncode == 1\n      assert\
+      \ \"agentic agent stories\" in result_alias.stdout\n\nApply same pattern for\
+      \ manifest/mf test.\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
     success_criteria:
-      - test_worktree_alias_wt: unchanged, passes (wt alias kept)
-      - test_configure_alias_cfg: unchanged, passes (cfg alias kept)
-      - test_stories_alias_st: updated, asserts exit 1 and deprecation message
-      - test_manifest_alias_mf: updated, asserts exit 1 and deprecation message
-      - All updated tests pass when run against updated cli.py
-
+    - test_worktree_alias_wt: unchanged, passes (wt alias kept)
+    - test_configure_alias_cfg: unchanged, passes (cfg alias kept)
+    - test_stories_alias_st: updated, asserts exit 1 and deprecation message
+    - test_manifest_alias_mf: updated, asserts exit 1 and deprecation message
+    - All updated tests pass when run against updated cli.py
   - id: P3-T3
     phase: P3
-    name: "Run full test suite and fix any failures"
-    description: >
-      Run the complete test suite for AgenticCLI to catch any remaining issues.
-      Command: cd /home/code/AgenticEngineering && python3 -m pytest modules/AgenticCLI/tests/ -v 2>&1
-
-      Expected test files to run:
-        - modules/AgenticCLI/tests/test_cli.py
-        - modules/AgenticCLI/tests/test_cli_restructure.py
-        - Any other test files in that directory
-
-      For each failure, diagnose whether it is:
-        a) A test expecting old behavior (needs test update)
-        b) A CLI implementation bug (needs cli.py fix)
-        c) An import or structural issue
-
-      Fix all failures before marking this task complete. Use up to 5 iterations
-      of fix-run-fix.
-
-      IMPORTANT: After fixes, verify the agent functional paths still work:
-        agentic agent context bootstrap --help  (exit 0)
-        agentic agent plan task list --help     (exit 0)
-        agentic agent stories find --help       (exit 0)
-        agentic agent entrypoint list --help    (exit 0)
-        agentic agent question ask --help       (exit 0)
+    name: Run full test suite and fix any failures
+    description: "Run the complete test suite for AgenticCLI to catch any remaining\
+      \ issues. Command: cd /home/code/AgenticEngineering && python3 -m pytest modules/AgenticCLI/tests/\
+      \ -v 2>&1\nExpected test files to run:\n  - modules/AgenticCLI/tests/test_cli.py\n\
+      \  - modules/AgenticCLI/tests/test_cli_restructure.py\n  - Any other test files\
+      \ in that directory\n\nFor each failure, diagnose whether it is:\n  a) A test\
+      \ expecting old behavior (needs test update)\n  b) A CLI implementation bug\
+      \ (needs cli.py fix)\n  c) An import or structural issue\n\nFix all failures\
+      \ before marking this task complete. Use up to 5 iterations of fix-run-fix.\n\
+      IMPORTANT: After fixes, verify the agent functional paths still work:\n  agentic\
+      \ agent context bootstrap --help  (exit 0)\n  agentic agent plan task list --help\
+      \     (exit 0)\n  agentic agent stories find --help       (exit 0)\n  agentic\
+      \ agent entrypoint list --help    (exit 0)\n  agentic agent question ask --help\
+      \       (exit 0)\n"
     inputs:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
-      - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
-      - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
-      - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
-      - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py
     success_criteria:
-      - All tests in modules/AgenticCLI/tests/ pass (0 failures)
-      - agentic agent context bootstrap --help exits 0
-      - agentic agent plan task list --help exits 0
-      - agentic agent stories find --help exits 0
-      - agentic context bootstrap exits 1 with helpful message
-      - agentic plan task list exits 1 with helpful message
-      - agentic stories find exits 1 with helpful message
-
+    - All tests in modules/AgenticCLI/tests/ pass (0 failures)
+    - agentic agent context bootstrap --help exits 0
+    - agentic agent plan task list --help exits 0
+    - agentic agent stories find --help exits 0
+    - agentic context bootstrap exits 1 with helpful message
+    - agentic plan task list exits 1 with helpful message
+    - agentic stories find exits 1 with helpful message
 loops:
-  - type: test-fix-loop
-    phase: P3
-    task: P3-T3
-    max_iterations: 5
-    trigger: test_failure
-    description: >
-      If pytest run in P3-T3 produces failures, iterate: diagnose, fix, re-run.
-      Stop when all tests pass or max iterations reached.
+- type: test-fix-loop
+  phase: P3
+  task: P3-T3
+  max_iterations: 5
+  trigger: test_failure
+  description: 'If pytest run in P3-T3 produces failures, iterate: diagnose, fix,
+    re-run. Stop when all tests pass or max iterations reached.
 
+    '
 implementation_notes:
-  typer_context_settings: >
-    When registering deprecation stubs, use context_settings to allow extra args so
-    Typer doesn't error on subcommand arguments before reaching the callback:
-      @app.command("context", hidden=True,
-                   context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
-      def _deprecated_context(ctx: typer.Context):
-          ...
-    This ensures 'agentic context bootstrap' routes to the stub rather than Typer
-    throwing "No such command 'bootstrap'".
-
-  error_message_format: >
-    Use a consistent format for all deprecation messages:
-      "Command 'agentic <old>' has moved. Use 'agentic agent <new>' instead."
-    Print to stderr via print_error() from agenticcli.console.
-    Always raise typer.Exit(1) after printing.
-
+  typer_context_settings: "When registering deprecation stubs, use context_settings\
+    \ to allow extra args so Typer doesn't error on subcommand arguments before reaching\
+    \ the callback:\n  @app.command(\"context\", hidden=True,\n               context_settings={\"\
+    allow_extra_args\": True, \"allow_interspersed_args\": False})\n  def _deprecated_context(ctx:\
+    \ typer.Context):\n      ...\nThis ensures 'agentic context bootstrap' routes\
+    \ to the stub rather than Typer throwing \"No such command 'bootstrap'\".\n"
+  error_message_format: "Use a consistent format for all deprecation messages:\n \
+    \ \"Command 'agentic <old>' has moved. Use 'agentic agent <new>' instead.\"\n\
+    Print to stderr via print_error() from agenticcli.console. Always raise typer.Exit(1)\
+    \ after printing.\n"
   alias_registry_summary:
     keep:
-      - "agentic cfg -> agentic configure (line 164)"
-      - "agentic ls -> agentic langsmith (line 913)"
-      - "agentic configure prefs -> agentic configure preferences (line 172)"
-      - "agentic configure pref -> agentic configure preferences (line 173)"
-      - "agentic devops wt -> agentic devops worktree (line 514)"
+    - agentic cfg -> agentic configure (line 164)
+    - agentic ls -> agentic langsmith (line 913)
+    - agentic configure prefs -> agentic configure preferences (line 172)
+    - agentic configure pref -> agentic configure preferences (line 173)
+    - agentic devops wt -> agentic devops worktree (line 514)
     remove_as_deprecation_stubs:
-      - "agentic stories (line 370)"
-      - "agentic st (line 371)"
-      - "agentic manifest (line 479)"
-      - "agentic mf (line 480)"
-      - "agentic entrypoint (line 1151)"
-      - "agentic ep (line 1152)"
-      - "agentic context (line 1195)"
-      - "agentic ctx (line 1196)"
-      - "agentic plan new (line 1279)"
-      - "agentic plan init (line 1305)"
-      - "agentic plan bootstrap (line 1321)"
-      - "agentic plan scaffold (line 1336)"
-      - "agentic plan validate (line 1361)"
-      - "agentic plan archive (line 1389)"
-      - "agentic plan unarchive (line 1404)"
-      - "agentic plan task (line 1419)"
-      - "agentic plan move (line 1551)"
-      - "agentic plan orchestration (line 1599)"
-      - "agentic plan phase (line 1631)"
-      - "agentic plan stories (line 1678)"
-      - "agentic question ask (line 1072)"
-      - "agentic question defer (line 1088)"
-      - "agentic question watch (line 1101)"
-      - "agentic question watch-daemon (line 1113)"
-      - "agentic question watch-stop (line 1125)"
-
+    - agentic stories (line 370)
+    - agentic st (line 371)
+    - agentic manifest (line 479)
+    - agentic mf (line 480)
+    - agentic entrypoint (line 1151)
+    - agentic ep (line 1152)
+    - agentic context (line 1195)
+    - agentic ctx (line 1196)
+    - agentic plan new (line 1279)
+    - agentic plan init (line 1305)
+    - agentic plan bootstrap (line 1321)
+    - agentic plan scaffold (line 1336)
+    - agentic plan validate (line 1361)
+    - agentic plan archive (line 1389)
+    - agentic plan unarchive (line 1404)
+    - agentic plan task (line 1419)
+    - agentic plan move (line 1551)
+    - agentic plan orchestration (line 1599)
+    - agentic plan phase (line 1631)
+    - agentic plan stories (line 1678)
+    - agentic question ask (line 1072)
+    - agentic question defer (line 1088)
+    - agentic question watch (line 1101)
+    - agentic question watch-daemon (line 1113)
+    - agentic question watch-stop (line 1125)
   agent_files_to_update:
     build:
-      - modules/AgenticGuidance/agents/build/build-python/process.yml
-      - modules/AgenticGuidance/agents/build/build-flutter/process.yml
+    - modules/AgenticGuidance/agents/build/build-python/process.yml
+    - modules/AgenticGuidance/agents/build/build-flutter/process.yml
     test:
-      - modules/AgenticGuidance/agents/test/test-runner/process.yml
-      - modules/AgenticGuidance/agents/test/test-audit/process.yml
-      - modules/AgenticGuidance/agents/test/test-builder/process.yml
-      - modules/AgenticGuidance/agents/test/test-cleaner/process.yml
-      - modules/AgenticGuidance/agents/test/test-final-output/process.yml
-      - modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml
-      - modules/AgenticGuidance/agents/test/test-service/process.yml
-      - modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
-      - modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
+    - modules/AgenticGuidance/agents/test/test-runner/process.yml
+    - modules/AgenticGuidance/agents/test/test-audit/process.yml
+    - modules/AgenticGuidance/agents/test/test-builder/process.yml
+    - modules/AgenticGuidance/agents/test/test-cleaner/process.yml
+    - modules/AgenticGuidance/agents/test/test-final-output/process.yml
+    - modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml
+    - modules/AgenticGuidance/agents/test/test-service/process.yml
+    - modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+    - modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
     planner:
-      - modules/AgenticGuidance/agents/planner/planner-audit/process.yml
-      - modules/AgenticGuidance/agents/planner/planner-build/process.yml
-      - modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
-      - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
-      - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
-      - modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml
-      - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
-      - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-audit/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
     deploy:
-      - modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
-      - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
     orchestration:
-      - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
-      - modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
-      - modules/AgenticGuidance/agents/orchestration/orchestration-loop/process.yml
-      - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
-      - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-loop/process.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
     assets:
-      - modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
-      - modules/AgenticGuidance/assets/definitions/cli-commands.yml
-      - modules/AgenticGuidance/README.md
-      - modules/AgenticCLI/README.md
+    - modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    - modules/AgenticGuidance/README.md
+    - modules/AgenticCLI/README.md

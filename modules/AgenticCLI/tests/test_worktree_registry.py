@@ -260,7 +260,7 @@ class TestPlanInitObjective:
         )
 
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "test objective", "--objective", "Build a better widget"]
+            ["agent", "plan", "init", branch, "--description", "test objective", "--objective", "Build a better widget"]
         )
 
         assert code == 0
@@ -289,7 +289,7 @@ class TestPlanInitObjective:
         )
 
         stdout, stderr, code = cli_runner(
-            ["plan", "init", branch, "--description", "no objective"]
+            ["agent", "plan", "init", branch, "--description", "no objective"]
         )
 
         assert code == 0
@@ -321,7 +321,7 @@ class TestPlanInitObjective:
         )
 
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "init", branch, "--description", "json obj", "--objective", "Test objective"]
+            ["-j", "agent", "plan", "init", branch, "--description", "json obj", "--objective", "Test objective"]
         )
 
         assert code == 0

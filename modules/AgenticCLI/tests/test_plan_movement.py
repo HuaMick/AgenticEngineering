@@ -252,7 +252,7 @@ class TestMoveCommands:
         # Create empty feature file directly in plan folder
         (plan_dir / "feature.yml").write_text("feature: {phases: []}\n")
 
-        stdout, stderr, code = cli_runner(["plan", "move", "task", "99.99", "--force"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "move", "task", "99.99", "--force"])
         assert code == 1
         assert "not found" in stderr.lower()
 
@@ -262,7 +262,7 @@ class TestMoveCommands:
         plan_dir = temp_repo / "docs" / "plans" / "live" / "test_plan"
         plan_dir.mkdir(parents=True)
 
-        stdout, stderr, code = cli_runner(["plan", "move"])
+        stdout, stderr, code = cli_runner(["agent", "plan", "move"])
         # Should show usage (Typer returns exit code 2 for missing required subcommand)
         assert code in (1, 2)
 

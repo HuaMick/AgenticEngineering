@@ -107,7 +107,7 @@ def test_example(cli_runner):
 
 ```python
 def test_example_result(cli_runner):
-    result = cli_runner(["plan", "task", "list"])
+    result = cli_runner(["agent", "plan", "task", "list"])
     assert result.returncode == 0
     assert "task" in result.stdout.lower()
 ```

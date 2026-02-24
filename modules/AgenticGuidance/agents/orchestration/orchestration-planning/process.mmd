@@ -2,8 +2,8 @@
 %% CCI BOOTSTRAP (CLI Context Injection) - EXECUTE FIRST
 %% =============================================================================
 %% Before following this flowchart, run:
-%%   agentic context bootstrap --role orchestration-planning -j
-%%   agentic plan task current -j
+%%   agentic agent context bootstrap --role orchestration-planning -j
+%%   agentic agent plan task current -j
 %%
 %% This provides structured context more efficiently than file exploration.
 %%
@@ -29,8 +29,8 @@
 %%
 %% CLI TASK MANAGEMENT MANDATE:
 %%   - NEVER use Edit tool to change task status in plan YAML files
-%%   - ALWAYS use `agentic plan task start/complete <task_id>` for status updates
-%%   - ALWAYS use `agentic plan move folder --plan <plan_folder>` for archiving
+%%   - ALWAYS use `agentic agent plan task start/complete <task_id>` for status updates
+%%   - ALWAYS use `agentic agent plan move folder --plan <plan_folder>` for archiving
 %% =============================================================================
 
 flowchart LR
@@ -85,7 +85,7 @@ flowchart LR
     CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
 
     %% Proceed when context is verified
-    CheckInputs -- "Yes: Verified" --> InitPlanFolder[Run CLI: agentic plan init branch --description desc]
+    CheckInputs -- "Yes: Verified" --> InitPlanFolder[Run CLI: agentic agent plan init branch --description desc]
 
     %% ========================================
     %% WORKTREE & PLAN FOLDER SETUP
@@ -94,7 +94,7 @@ flowchart LR
     %% This ensures all plans are visible from a single location before execution.
     %% Execution happens in feature worktrees AFTER plan approval.
     %%
-    %% CLI OFFLOAD: Use 'agentic plan init' for combined worktree + plan folder creation.
+    %% CLI OFFLOAD: Use 'agentic agent plan init' for combined worktree + plan folder creation.
     %% This single CLI command (run in MAIN worktree):
     %% - Creates worktree if needed (or reuses existing)
     %% - Enforces YYMMDDXX_description naming convention programmatically
@@ -108,7 +108,7 @@ flowchart LR
     CheckInitResult -- "No: Exit 1" --> AskUser((Worktree Creation Failed - Ask User))
     CheckInitResult -- "No: Exit 2" --> AskUser((Folder Already Exists - Ask User for New Description))
     CheckInitResult -- "No: Exit 3" --> AskUser((Invalid Input - Ask User))
-    CheckInitResult -- "Yes: Success" --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic plan validate]
+    CheckInitResult -- "Yes: Success" --> ValidatePlanFolder[Validate Plan Folder via CLI: agentic agent plan validate]
     ValidatePlanFolder --> WorktreeValid{Plan Folder Valid?}
     WorktreeValid -- "No: Failed validation" --> AskUser
 
@@ -123,7 +123,7 @@ flowchart LR
 
     subgraph StoryDiscovery_SG ["Story Discovery Subgraph"]
         %% STORY DISCOVERY vs STORY GENERATION:
-        %% - Discovery: Find story IDs via `agentic stories find` (what stories exist)
+        %% - Discovery: Find story IDs via `agentic agent stories find` (what stories exist)
         %% - Generation: Create story content files (what stories should exist if none found)
         %% - Validation: Verify story files have complete content (success_criteria, journey, testing)
         %% Both discovery AND content validation must pass before phase determination.
@@ -133,7 +133,7 @@ flowchart LR
         %% ESCAPE HATCH RULES: planning-standard.yml#escape_hatch_rules
         %%   allowed_plan_types: [infrastructure, guidance, internal_tooling]
         %%   blocked_plan_types: [build, test] — MUST have stories, no escape
-        StoryDiscovery --> RunStoryFind[Run: agentic stories find --project relevant_project]
+        StoryDiscovery --> RunStoryFind[Run: agentic agent stories find --project relevant_project]
         RunStoryFind --> StoriesFound{Stories Found?}
 
         %% Stories found - record and validate content exists
@@ -362,9 +362,9 @@ flowchart LR
     %% Before plan approval, check for pending questions requiring human input.
     %% Reference: modules/AgenticGuidance/assets/guidelines/question-workflow.yml
     %% CLI Commands (for human use):
-    %% - agentic question list --plan <plan_folder> --status pending
-    %% - agentic question show <question_id>
-    %% - agentic question answer <question_id> --text "answer"
+    %% - agentic agent question list --plan <plan_folder> --status pending
+    %% - agentic agent question show <question_id>
+    %% - agentic agent question answer <question_id> --text "answer"
     %% Severity-based gating:
     %% - blocking: Cannot proceed without answer (halt execution)
     %% - high: Significant impact, recommend answer before execution
@@ -374,7 +374,7 @@ flowchart LR
     subgraph HumanApproval_SG ["Human Approval Gate Subgraph"]
         %% First check: Are there open questions requiring user input?
         %% Check plan folder's questions/pending/ directory for unanswered questions
-        %% Reference CLI: agentic question list --plan <plan_folder> --status pending
+        %% Reference CLI: agentic agent question list --plan <plan_folder> --status pending
         HumanApproval --> CheckOpenQuestions{Open Questions?}
 
         %% If questions exist, check severity to determine gating behavior

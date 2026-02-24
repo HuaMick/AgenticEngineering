@@ -177,7 +177,7 @@ class TestContextBootstrapCommand:
     def test_context_bootstrap_command_exists(self):
         """Test that context bootstrap command is available."""
         result = subprocess.run(
-            ["agentic", "context", "--help"],
+            ["agentic", "agent", "context", "--help"],
             capture_output=True,
             text=True,
         )
@@ -189,7 +189,7 @@ class TestContextBootstrapCommand:
     def test_context_bootstrap_help(self):
         """Test that context bootstrap shows help."""
         result = subprocess.run(
-            ["agentic", "context", "bootstrap", "--help"],
+            ["agentic", "agent", "context", "bootstrap", "--help"],
             capture_output=True,
             text=True,
         )

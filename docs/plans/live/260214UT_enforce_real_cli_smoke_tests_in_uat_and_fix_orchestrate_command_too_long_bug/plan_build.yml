@@ -1,128 +1,107 @@
-name: "Build Phase - Add Tmux Layout Verification and Dry-Run Support"
-status: "pending"
-type: "build"
-
+name: Build Phase - Add Tmux Layout Verification and Dry-Run Support
+status: pending
+type: build
 phases:
-  - name: "Add dry-run mode and fix in-place layout"
-    status: "pending"
-    description: |
-      The command-too-long bug is ALREADY FIXED (orchestrate.py already writes to
-      temp file and uses $(cat ...)). This build phase addresses the remaining gaps:
-
-      1. Add --dry-run flag to `agentic orchestrate` that creates the tmux layout,
-         verifies pane count/structure, prints the layout info, then exits. This
-         enables automated testing of the tmux GUI path without needing a human.
-
-      2. Fix _create_inplace_layout which still uses -p percentage flags for splits.
-         The new-session path was fixed to use -l absolute values, but the inplace
-         path was not. This is a latent bug that will bite when running orchestrate
-         from inside an existing tmux session.
-
-tasks:
-  - id: "build-001"
-    name: "Add --dry-run flag to cmd_orchestrate"
-    description: |
-      Add a --dry-run flag to the orchestrate command that:
-      1. Creates the tmux layout (session + 3 panes) exactly as normal
-      2. Does NOT send the Claude command to the main pane
-      3. Does NOT start dashboard processes
-      4. Prints the OrchestrationLayout dataclass as JSON to stdout
-      5. Verifies the pane count is exactly 3
-      6. Kills the test session and exits cleanly
-
-      This enables the test phase to verify the REAL tmux layout without needing
-      to interact with Claude or dashboard processes.
-
-      Implementation approach:
-      NOTE: The CLI was restructured. cli.py is now a Typer-based file at
-      modules/AgenticCLI/src/agenticcli/cli.py (not commands/cli.py).
-      The orchestrate subcommand is session_orchestrate() at line 707 in cli.py.
-
-      - Add dry_run parameter to session_orchestrate() in cli.py:
-          dry_run: Annotated[bool, typer.Option("--dry-run", help="Create layout, verify, print JSON, exit")] = False,
-        Then pass dry_run=dry_run to cmd_orchestrate() _ns() call at line 727.
-
-      - In cmd_orchestrate (orchestrate.py), after layout creation, if dry_run:
-        - Query panes: tmux list-panes -t <session> -F "#{pane_id} #{pane_title}"
-        - Print layout info as JSON (session_name, pane IDs, pane count)
-        - Kill session: tmux kill-session -t <session>
-        - sys.exit(0) if pane count == 3, else sys.exit(1)
-
-      - In tmux_layout.py, add a `skip_commands` parameter to
-        _create_new_session_layout that skips sending send-keys for the Claude
-        command and dashboard commands. This keeps the layout creation pure.
-
-      Target files:
-        - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
-        - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
-        - modules/AgenticCLI/src/agenticcli/cli.py (add --dry-run arg, line 707)
-    status: "pending"
+- name: Add dry-run mode and fix in-place layout
+  status: pending
+  description: "The command-too-long bug is ALREADY FIXED (orchestrate.py already\
+    \ writes to\ntemp file and uses $(cat ...)). This build phase addresses the remaining\
+    \ gaps:\n\n1. Add --dry-run flag to `agentic orchestrate` that creates the tmux\
+    \ layout,\n   verifies pane count/structure, prints the layout info, then exits.\
+    \ This\n   enables automated testing of the tmux GUI path without needing a human.\n\
+    \n2. Fix _create_inplace_layout which still uses -p percentage flags for splits.\n\
+    \   The new-session path was fixed to use -l absolute values, but the inplace\n\
+    \   path was not. This is a latent bug that will bite when running orchestrate\n\
+    \   from inside an existing tmux session.\n"
+  tasks:
+  - id: build-001
+    name: Add --dry-run flag to cmd_orchestrate
+    description: "Add a --dry-run flag to the orchestrate command that:\n1. Creates\
+      \ the tmux layout (session + 3 panes) exactly as normal\n2. Does NOT send the\
+      \ Claude command to the main pane\n3. Does NOT start dashboard processes\n4.\
+      \ Prints the OrchestrationLayout dataclass as JSON to stdout\n5. Verifies the\
+      \ pane count is exactly 3\n6. Kills the test session and exits cleanly\n\nThis\
+      \ enables the test phase to verify the REAL tmux layout without needing\nto\
+      \ interact with Claude or dashboard processes.\n\nImplementation approach:\n\
+      NOTE: The CLI was restructured. cli.py is now a Typer-based file at\nmodules/AgenticCLI/src/agenticcli/cli.py\
+      \ (not commands/cli.py).\nThe orchestrate subcommand is session_orchestrate()\
+      \ at line 707 in cli.py.\n\n- Add dry_run parameter to session_orchestrate()\
+      \ in cli.py:\n    dry_run: Annotated[bool, typer.Option(\"--dry-run\", help=\"\
+      Create layout, verify, print JSON, exit\")] = False,\n  Then pass dry_run=dry_run\
+      \ to cmd_orchestrate() _ns() call at line 727.\n\n- In cmd_orchestrate (orchestrate.py),\
+      \ after layout creation, if dry_run:\n  - Query panes: tmux list-panes -t <session>\
+      \ -F \"#{pane_id} #{pane_title}\"\n  - Print layout info as JSON (session_name,\
+      \ pane IDs, pane count)\n  - Kill session: tmux kill-session -t <session>\n\
+      \  - sys.exit(0) if pane count == 3, else sys.exit(1)\n\n- In tmux_layout.py,\
+      \ add a `skip_commands` parameter to\n  _create_new_session_layout that skips\
+      \ sending send-keys for the Claude\n  command and dashboard commands. This keeps\
+      \ the layout creation pure.\n\nTarget files:\n  - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py\n\
+      \  - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py\n  - modules/AgenticCLI/src/agenticcli/cli.py\
+      \ (add --dry-run arg, line 707)\n"
+    status: pending
     target_files:
-      - path: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
-        change_type: "modify"
-        change_category: "code"
-      - path: "modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py"
-        change_type: "modify"
-        change_category: "code"
-      - path: "modules/AgenticCLI/src/agenticcli/cli.py"
-        change_type: "modify"
-        change_category: "code"
-        note: "Typer-based CLI - session_orchestrate() at line 707, NOT commands/cli.py"
-
-  - id: "build-002"
-    name: "Fix _create_inplace_layout to use absolute values instead of -p"
-    description: |
-      _create_inplace_layout (lines 230-337 in tmux_layout.py) still uses:
-        - `-p 30` for the vertical split (line 271, confirmed current)
-        - `-p 40` for the horizontal split (line 285, confirmed current)
-
-      The _create_new_session_layout was already fixed to use `-l 60` and `-l 20`
-      (absolute column/row counts) because `-p` percentage fails on detached
-      sessions in tmux 3.4/WSL2.
-
-      While inplace layout runs inside an existing session (so -p might work),
-      we should use the same approach for consistency and robustness:
-        - Replace `-p 30` with `-l 60` (60 columns for 30% of ~200 width)
-        - Replace `-p 40` with `-l 20` (20 rows for 40% of ~50 height)
-
-      Alternatively, since inplace may have variable terminal size, we should
-      query the current pane dimensions first:
-        tmux display-message -p "#{pane_width} #{pane_height}"
-      Then compute absolute column/row values from that.
-
-      Target file: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
-      Lines to modify: 268-292
-    status: "pending"
+    - path: modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+      change_type: modify
+      change_category: code
+    - path: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+      change_type: modify
+      change_category: code
+    - path: modules/AgenticCLI/src/agenticcli/cli.py
+      change_type: modify
+      change_category: code
+      note: Typer-based CLI - session_orchestrate() at line 707, NOT commands/cli.py
+  - id: build-002
+    name: Fix _create_inplace_layout to use absolute values instead of -p
+    description: "_create_inplace_layout (lines 230-337 in tmux_layout.py) still uses:\n\
+      \  - `-p 30` for the vertical split (line 271, confirmed current)\n  - `-p 40`\
+      \ for the horizontal split (line 285, confirmed current)\n\nThe _create_new_session_layout\
+      \ was already fixed to use `-l 60` and `-l 20`\n(absolute column/row counts)\
+      \ because `-p` percentage fails on detached\nsessions in tmux 3.4/WSL2.\n\n\
+      While inplace layout runs inside an existing session (so -p might work),\nwe\
+      \ should use the same approach for consistency and robustness:\n  - Replace\
+      \ `-p 30` with `-l 60` (60 columns for 30% of ~200 width)\n  - Replace `-p 40`\
+      \ with `-l 20` (20 rows for 40% of ~50 height)\n\nAlternatively, since inplace\
+      \ may have variable terminal size, we should\nquery the current pane dimensions\
+      \ first:\n  tmux display-message -p \"#{pane_width} #{pane_height}\"\nThen compute\
+      \ absolute column/row values from that.\n\nTarget file: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py\n\
+      Lines to modify: 268-292\n"
+    status: pending
     target_files:
-      - path: "modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py"
-        change_type: "modify"
-        change_category: "code"
-
+    - path: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+      change_type: modify
+      change_category: code
 success_criteria:
-  - "`agentic orchestrate --mode planning --dry-run` creates a real tmux session with 3 panes, prints layout JSON, then cleans up"
-  - "--dry-run does NOT launch Claude or dashboard processes"
-  - "--dry-run exits with code 0 when layout is correct, non-zero if pane count is wrong"
-  - "_create_inplace_layout uses absolute -l values (or dynamically computed) instead of -p percentages"
-  - "All existing unit tests still pass after changes"
-
+- '`agentic orchestrate --mode planning --dry-run` creates a real tmux session with
+  3 panes, prints layout JSON, then cleans up'
+- --dry-run does NOT launch Claude or dashboard processes
+- --dry-run exits with code 0 when layout is correct, non-zero if pane count is wrong
+- _create_inplace_layout uses absolute -l values (or dynamically computed) instead
+  of -p percentages
+- All existing unit tests still pass after changes
 impacted_files:
-  - path: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py"
-    change_type: "modify"
-    change_category: "code"
-    reason: "Add --dry-run flag for testable tmux layout verification"
-  - path: "modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py"
-    change_type: "modify"
-    change_category: "code"
-    reason: "Add skip_commands param and fix inplace layout -p flags"
-  - path: "modules/AgenticCLI/src/agenticcli/cli.py"
-    change_type: "modify"
-    change_category: "code"
-    reason: "Add --dry-run Typer option to session_orchestrate() at line 707 (Typer-based CLI, not commands/cli.py)"
+- path: modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+  change_type: modify
+  change_category: code
+  reason: Add --dry-run flag for testable tmux layout verification
+- path: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
+  change_type: modify
+  change_category: code
+  reason: Add skip_commands param and fix inplace layout -p flags
+- path: modules/AgenticCLI/src/agenticcli/cli.py
+  change_type: modify
+  change_category: code
+  reason: Add --dry-run Typer option to session_orchestrate() at line 707 (Typer-based
+    CLI, not commands/cli.py)
+notes: 'The original build plan was for the command-too-long fix, which is ALREADY
+  DONE.
 
-notes: |
-  The original build plan was for the command-too-long fix, which is ALREADY DONE.
   orchestrate.py already uses tempfile + $(cat ...) approach (lines 379-386).
 
+
   This new build phase addresses the REAL gap: there is no way to test the tmux
+
   layout path without a human sitting in front of the terminal. The --dry-run flag
+
   makes the tmux layout creation fully testable in an automated pipeline.
+
+  '

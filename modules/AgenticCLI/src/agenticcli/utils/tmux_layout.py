@@ -2,7 +2,7 @@
 
 Provides 3-pane layout for orchestration UI:
 - Main pane (70%): interactive Claude orchestrator (auto-executed)
-- Status pane (30% x 60%): live session dashboard
+- Status pane (30% x 60%): live session list (auto-refreshing)
 - Questions pane (30% x 40%): pending questions dashboard
 
 The layout creation requires tmux 2.3+ for pane titles and handles both:
@@ -10,7 +10,7 @@ The layout creation requires tmux 2.3+ for pane titles and handles both:
   and absolute column/row splits (-l) for WSL2/tmux 3.4 compatibility
 - In-place layout: splits current pane when already in tmux
 
-All dashboard and orchestrator commands are executed immediately upon layout creation.
+All pane commands (session list, question dashboard, orchestrator) are executed immediately upon layout creation.
 
 The claude_cmd_str parameter is a pre-formatted shell command string (not a list).
 This allows callers to use shell features like $(cat file) for large arguments
@@ -34,7 +34,7 @@ class OrchestrationLayout:
     Attributes:
         session_name: Name of the tmux session.
         main_pane_id: Pane ID for the main orchestrator (e.g., "%0").
-        status_pane_id: Pane ID for the session dashboard (e.g., "%1").
+        status_pane_id: Pane ID for the session list pane (e.g., "%1").
         questions_pane_id: Pane ID for the questions dashboard (e.g., "%2").
         created_new_session: True if a new session was created, False if reused existing.
     """
@@ -101,20 +101,23 @@ def _create_new_session_layout(
     claude_cmd_str: str,
     dashboard_refresh: int,
     question_refresh: int,
+    skip_commands: bool = False,
 ) -> OrchestrationLayout:
     """Create a new tmux session with 3-pane orchestration layout.
 
     Creates a new detached session with:
     - Main pane (70% width): runs the Claude command
-    - Right-top pane (30% x 60% height): session dashboard
+    - Right-top pane (30% x 60% height): auto-refreshing session list
     - Right-bottom pane (30% x 40% height): questions dashboard
 
     Args:
         session_name: Name for the new tmux session.
         claude_cmd_str: Pre-formatted shell command string for the main pane.
             Must be ready for tmux send-keys (caller handles quoting).
-        dashboard_refresh: Refresh interval in seconds for session dashboard.
+        dashboard_refresh: Refresh interval in seconds for session list.
         question_refresh: Refresh interval in seconds for questions dashboard.
+        skip_commands: If True, create the layout but don't send commands to panes.
+            Useful for testing layout creation without launching processes.
 
     Returns:
         OrchestrationLayout with pane IDs and session info.
@@ -187,27 +190,28 @@ def _create_new_session_layout(
             check=True,
         )
 
-        # Start the session dashboard in the status pane
-        dashboard_cmd = ["agentic", "session", "dashboard", "--refresh", str(dashboard_refresh)]
-        subprocess.run(
-            ["tmux", "send-keys", "-t", status_pane_id, _shell_escape_cmd(dashboard_cmd), "Enter"],
-            check=True,
-        )
+        if not skip_commands:
+            # Start the auto-refreshing session list in the status pane
+            session_list_cmd = ["watch", "-n", str(dashboard_refresh), "agentic", "session", "list"]
+            subprocess.run(
+                ["tmux", "send-keys", "-t", status_pane_id, _shell_escape_cmd(session_list_cmd), "Enter"],
+                check=True,
+            )
 
-        # Start the question dashboard in the questions pane
-        question_cmd = ["agentic", "question", "dashboard", "--refresh", str(question_refresh)]
-        subprocess.run(
-            ["tmux", "send-keys", "-t", questions_pane_id, _shell_escape_cmd(question_cmd), "Enter"],
-            check=True,
-        )
+            # Start the question dashboard in the questions pane
+            question_cmd = ["agentic", "plan", "question", "dashboard", "--refresh", str(question_refresh)]
+            subprocess.run(
+                ["tmux", "send-keys", "-t", questions_pane_id, _shell_escape_cmd(question_cmd), "Enter"],
+                check=True,
+            )
 
-        # Send the Claude command to the main pane and execute it immediately.
-        # claude_cmd_str is pre-formatted by the caller with proper quoting
-        # (e.g. double-quotes around $(cat file) for shell expansion).
-        subprocess.run(
-            ["tmux", "send-keys", "-t", main_pane_id, claude_cmd_str, "Enter"],
-            check=True,
-        )
+            # Send the Claude command to the main pane and execute it immediately.
+            # claude_cmd_str is pre-formatted by the caller with proper quoting
+            # (e.g. double-quotes around $(cat file) for shell expansion).
+            subprocess.run(
+                ["tmux", "send-keys", "-t", main_pane_id, claude_cmd_str, "Enter"],
+                check=True,
+            )
 
         # Select main pane for initial focus
         subprocess.run(
@@ -230,15 +234,16 @@ def _create_new_session_layout(
 def _create_inplace_layout(
     dashboard_refresh: int,
     question_refresh: int,
+    skip_commands: bool = False,
 ) -> OrchestrationLayout:
     """Create orchestration layout within the current tmux session.
 
-    Splits the current pane to create the 3-pane layout with dashboards.
+    Splits the current pane to create the 3-pane layout with session list and question dashboard.
     The caller is responsible for launching Claude in the main pane
     (typically via os.execvp after this function returns).
 
     Args:
-        dashboard_refresh: Refresh interval in seconds for session dashboard.
+        dashboard_refresh: Refresh interval in seconds for session list.
         question_refresh: Refresh interval in seconds for questions dashboard.
 
     Returns:
@@ -255,20 +260,29 @@ def _create_inplace_layout(
         raise RuntimeError("Could not determine current tmux session name")
 
     try:
-        # Get the current pane ID (this will become the main pane)
+        # Get the current pane ID and dimensions for absolute split calculations
         result = subprocess.run(
-            ["tmux", "display-message", "-p", "#{pane_id}"],
+            ["tmux", "display-message", "-p", "#{pane_id} #{pane_width} #{pane_height}"],
             capture_output=True,
             text=True,
             check=True,
         )
-        main_pane_id = result.stdout.strip()
+        parts = result.stdout.strip().split()
+        main_pane_id = parts[0]
+        pane_width = int(parts[1]) if len(parts) > 1 else 200
+        pane_height = int(parts[2]) if len(parts) > 2 else 50
 
-        # Split vertically: create right pane (30% width)
+        # Compute absolute split sizes from current dimensions
+        # 30% of width for the right column, 40% of height for questions pane
+        right_cols = max(30, pane_width * 30 // 100)
+        questions_rows = max(10, pane_height * 40 // 100)
+
+        # Split vertically: create right pane (~30% width, absolute columns)
+        # Note: -l absolute values instead of -p for WSL2/tmux 3.4 compatibility
         result = subprocess.run(
             [
                 "tmux", "split-window",
-                "-h", "-p", "30",
+                "-h", "-l", str(right_cols),
                 "-P", "-F", "#{pane_id}",
             ],
             capture_output=True,
@@ -277,12 +291,13 @@ def _create_inplace_layout(
         )
         status_pane_id = result.stdout.strip()
 
-        # Split the right pane horizontally: create bottom pane (40% height)
+        # Split the right pane horizontally: create bottom pane (~40% height, absolute rows)
+        # Note: -l absolute values instead of -p for WSL2/tmux 3.4 compatibility
         result = subprocess.run(
             [
                 "tmux", "split-window",
                 "-t", status_pane_id,
-                "-v", "-p", "40",
+                "-v", "-l", str(questions_rows),
                 "-P", "-F", "#{pane_id}",
             ],
             capture_output=True,
@@ -305,19 +320,20 @@ def _create_inplace_layout(
             check=True,
         )
 
-        # Start the session dashboard in the status pane
-        dashboard_cmd = ["agentic", "session", "dashboard", "--refresh", str(dashboard_refresh)]
-        subprocess.run(
-            ["tmux", "send-keys", "-t", status_pane_id, _shell_escape_cmd(dashboard_cmd), "Enter"],
-            check=True,
-        )
+        if not skip_commands:
+            # Start the auto-refreshing session list in the status pane
+            session_list_cmd = ["watch", "-n", str(dashboard_refresh), "agentic", "session", "list"]
+            subprocess.run(
+                ["tmux", "send-keys", "-t", status_pane_id, _shell_escape_cmd(session_list_cmd), "Enter"],
+                check=True,
+            )
 
-        # Start the question dashboard in the questions pane
-        question_cmd = ["agentic", "question", "dashboard", "--refresh", str(question_refresh)]
-        subprocess.run(
-            ["tmux", "send-keys", "-t", questions_pane_id, _shell_escape_cmd(question_cmd), "Enter"],
-            check=True,
-        )
+            # Start the question dashboard in the questions pane
+            question_cmd = ["agentic", "plan", "question", "dashboard", "--refresh", str(question_refresh)]
+            subprocess.run(
+                ["tmux", "send-keys", "-t", questions_pane_id, _shell_escape_cmd(question_cmd), "Enter"],
+                check=True,
+            )
 
         # Select main pane for initial focus
         subprocess.run(
@@ -341,6 +357,7 @@ def create_orchestration_layout(
     claude_cmd_str: str,
     dashboard_refresh: int = 5,
     question_refresh: int = 10,
+    skip_commands: bool = False,
 ) -> OrchestrationLayout:
     """Create a 3-pane orchestration layout in tmux.
 
@@ -355,8 +372,9 @@ def create_orchestration_layout(
         claude_cmd_str: Pre-formatted shell command string for the main pane.
             The caller is responsible for proper quoting (e.g. using double
             quotes around $(cat file) to allow shell expansion).
-        dashboard_refresh: Refresh interval in seconds for session dashboard (default: 5).
+        dashboard_refresh: Refresh interval in seconds for session list (default: 5).
         question_refresh: Refresh interval in seconds for questions dashboard (default: 10).
+        skip_commands: If True, create layout but don't send commands to panes.
 
     Returns:
         OrchestrationLayout with pane IDs and session info.
@@ -368,12 +386,12 @@ def create_orchestration_layout(
         raise RuntimeError("tmux is not available on this system")
 
     if is_in_tmux():
-        return _create_inplace_layout(dashboard_refresh, question_refresh)
+        return _create_inplace_layout(dashboard_refresh, question_refresh, skip_commands=skip_commands)
     else:
         # Clean up orphaned sessions before creating a new one
         cleanup_orchestration_sessions()
         session_name = f"agentic-orch-{os.getpid()}"
-        return _create_new_session_layout(session_name, claude_cmd_str, dashboard_refresh, question_refresh)
+        return _create_new_session_layout(session_name, claude_cmd_str, dashboard_refresh, question_refresh, skip_commands=skip_commands)
 
 
 def attach_to_session(session_name: str) -> None:

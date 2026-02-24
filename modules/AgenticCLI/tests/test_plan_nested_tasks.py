@@ -108,7 +108,7 @@ class TestUpdateTaskStatus:
     def test_finds_task_in_nested_structure(self, nested_task_plan, cli_runner):
         """Test that task start finds tasks in phases[].tasks[]."""
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "start", "TST-001", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "start", "TST-001", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "in_progress" in stdout.lower() or "started" in stdout.lower()
@@ -122,7 +122,7 @@ class TestUpdateTaskStatus:
     def test_finds_task_in_second_phase(self, nested_task_plan, cli_runner):
         """Test that tasks in non-first phases are found."""
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "start", "TST-003", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "start", "TST-003", "--plan", str(nested_task_plan)]
         )
         assert code == 0
 
@@ -135,9 +135,9 @@ class TestUpdateTaskStatus:
     def test_complete_updates_nested_task(self, nested_task_plan, cli_runner):
         """Test that task complete works with nested tasks."""
         # First start, then complete
-        cli_runner(["plan", "task", "start", "TST-002", "--plan", str(nested_task_plan)])
+        cli_runner(["agent", "plan", "task", "start", "TST-002", "--plan", str(nested_task_plan)])
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "complete", "TST-002", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "complete", "TST-002", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "completed" in stdout.lower()
@@ -154,6 +154,7 @@ class TestUpdateTaskStatus:
         """Test that both 'id' and 'task_id' field names are supported."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "task",
                 "start",
@@ -172,7 +173,7 @@ class TestUpdateTaskStatus:
     def test_error_when_task_not_found(self, nested_task_plan, cli_runner):
         """Test error message when task ID doesn't exist."""
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "start", "NONEXISTENT", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "start", "NONEXISTENT", "--plan", str(nested_task_plan)]
         )
         assert code != 0
         assert "not found" in stderr.lower()
@@ -184,7 +185,7 @@ class TestTaskList:
     def test_lists_all_nested_tasks(self, nested_task_plan, cli_runner):
         """Test that all nested tasks appear in list."""
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "list", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "list", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "TST-001" in stdout
@@ -194,7 +195,7 @@ class TestTaskList:
     def test_shows_phase_info(self, nested_task_plan, cli_runner):
         """Test that phase information is included."""
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "list", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "list", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "P1" in stdout or "P2" in stdout
@@ -203,12 +204,13 @@ class TestTaskList:
         """Test that status filter correctly filters nested tasks."""
         # Mark one task as completed
         cli_runner(
-            ["plan", "task", "complete", "TST-001", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "complete", "TST-001", "--plan", str(nested_task_plan)]
         )
 
         # Filter by completed
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "task",
                 "list",
@@ -230,7 +232,7 @@ class TestTaskStatus:
     def test_shows_nested_task_details(self, nested_task_plan, cli_runner):
         """Test that status shows details for nested task."""
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "status", "TST-001", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "status", "TST-001", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "TST-001" in stdout
@@ -239,7 +241,7 @@ class TestTaskStatus:
     def test_includes_phase_info(self, nested_task_plan, cli_runner):
         """Test that phase information is included in status output."""
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "status", "TST-001", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "status", "TST-001", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "Phase" in stdout or "P1" in stdout
@@ -247,7 +249,7 @@ class TestTaskStatus:
     def test_error_when_task_not_found(self, nested_task_plan, cli_runner):
         """Test error when querying non-existent task."""
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "status", "NONEXISTENT", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "status", "NONEXISTENT", "--plan", str(nested_task_plan)]
         )
         assert code != 0
         assert "not found" in stderr.lower()
@@ -259,7 +261,7 @@ class TestTaskCurrent:
     def test_finds_first_pending(self, nested_task_plan, cli_runner):
         """Test that current returns first pending nested task."""
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "current", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "current", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         # First pending should be TST-001
@@ -269,11 +271,11 @@ class TestTaskCurrent:
         """Test that in_progress task is returned before pending."""
         # Start the second task
         cli_runner(
-            ["plan", "task", "start", "TST-002", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "start", "TST-002", "--plan", str(nested_task_plan)]
         )
 
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "current", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "current", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         # in_progress task should be returned
@@ -289,7 +291,7 @@ class TestTaskCurrent:
             yaml.dump(data, f, default_flow_style=False)
 
         stdout, stderr, code = cli_runner(
-            ["plan", "task", "current", "--plan", str(nested_task_plan)]
+            ["agent", "plan", "task", "current", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         # Output should include guidance section
@@ -315,7 +317,7 @@ class TestEdgeCases:
                 yaml.dump(plan_content, f, default_flow_style=False)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "task", "list", "--plan", str(plan_dir)]
+                ["agent", "plan", "task", "list", "--plan", str(plan_dir)]
             )
             # Should not crash, just show no tasks
             assert code == 0 or "no tasks" in stdout.lower()
@@ -343,7 +345,7 @@ class TestEdgeCases:
                 yaml.dump(plan_content, f, default_flow_style=False)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "task", "list", "--plan", str(plan_dir)]
+                ["agent", "plan", "task", "list", "--plan", str(plan_dir)]
             )
             # Should not crash
             assert code == 0 or "no tasks" in stdout.lower()
@@ -380,7 +382,7 @@ class TestEdgeCases:
             (plan_dir / "orchestration_build.mmd").write_text("graph TD\n  A-->B\n")
 
             stdout, stderr, code = cli_runner(
-                ["plan", "task", "start", "TEST-TASK_001-v2", "--plan", str(plan_dir)]
+                ["agent", "plan", "task", "start", "TEST-TASK_001-v2", "--plan", str(plan_dir)]
             )
             assert code == 0
 

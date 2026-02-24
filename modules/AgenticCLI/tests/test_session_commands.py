@@ -35,9 +35,25 @@ def logs_dir(sessions_dir):
 def mock_sessions_dir(sessions_dir, monkeypatch):
     """Patch StateStore and _get_context_dir to use temp directories."""
     from agenticcli.commands import session
+    from agenticcli.utils.state_store import StateStore
 
-    # Patch the StateStore's get_dir to use temp directory
-    monkeypatch.setattr(session._store, "get_dir", lambda override=None: sessions_dir)
+    def _patched_get_dir(self, override=None):
+        if self._subdir == "sessions":
+            return sessions_dir
+        else:
+            d = sessions_dir.parent / self._subdir
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+
+    # Patch the StateStore class method to use temp directory for ALL stores
+    monkeypatch.setattr(StateStore, "get_dir", _patched_get_dir)
+
+    # Also remove any instance-level get_dir attribute that may have been left
+    # behind by a previous test's monkeypatch restore (monkeypatch sets the
+    # original bound method as an instance attribute, which shadows the class patch)
+    if "get_dir" in session._store.__dict__:
+        del session._store.__dict__["get_dir"]
+
     context_dir = sessions_dir / "context"
     context_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
@@ -388,7 +404,7 @@ class TestSessionListCommand:
         captured = capsys.readouterr()
         assert sample_session_data["session_id"][:8] in captured.out
         # Completed session should not appear in default view
-        assert "complete" not in captured.out.split("Claude Code Sessions")[1].split("Showing")[0].lower() or "completed" not in captured.out.split("ID")[1].split("Showing")[0]
+        assert "complete" not in captured.out.split("Sessions")[1].split("Showing")[0].lower() or "completed" not in captured.out.split("ID")[1].split("Showing")[0]
 
     def test_list_all_shows_everything(self, mock_sessions_dir, sample_session_data, capsys):
         """Test that --all shows all sessions including completed."""
@@ -872,10 +888,16 @@ class TestSpawnWithRoleAndPlan:
         session.cmd_spawn(args)
 
         # Verify Popen was called with the claude command
-        # (may also be called for git rev-parse during context compilation)
+        # (may also be called for git rev-parse during context compilation,
+        #  and for auto-started question watch-daemon)
         assert mock_popen.call_count >= 1
-        # Last call should be the claude spawn
-        cmd = mock_popen.call_args_list[-1][0][0]
+        # Find the claude spawn call among all Popen calls
+        claude_calls = [
+            call[0][0] for call in mock_popen.call_args_list
+            if call[0] and call[0][0] and call[0][0][0] == "claude"
+        ]
+        assert len(claude_calls) >= 1, "Expected at least one claude Popen call"
+        cmd = claude_calls[0]
         assert cmd[0] == "claude"
         assert "pre-compiled" in cmd[-1]
 
@@ -931,8 +953,15 @@ phases:
 
         session.cmd_spawn(args)
 
-        mock_popen.assert_called_once()
-        cmd = mock_popen.call_args[0][0]
+        # Popen may be called multiple times (claude spawn + question watch-daemon)
+        assert mock_popen.call_count >= 1
+        # Find the claude spawn call among all Popen calls
+        claude_calls = [
+            call[0][0] for call in mock_popen.call_args_list
+            if call[0] and call[0][0] and call[0][0][0] == "claude"
+        ]
+        assert len(claude_calls) >= 1, "Expected at least one claude Popen call"
+        cmd = claude_calls[0]
         assert "pre-compiled" in cmd[-1]
 
         # Verify the context file contains task details
@@ -2311,28 +2340,25 @@ class TestCaptureLangSmithTrace:
 
 
 class TestEnsureWatchDaemon:
-    """WD_004: Unit tests for _ensure_watch_daemon function."""
+    """WD_004: Unit tests for _ensure_watch_daemon function.
 
-    @staticmethod
-    def _inject_state_module(monkeypatch, mock_registry):
-        """Inject a fake agenticcli.services.state module into sys.modules."""
-        mock_registry_cls = MagicMock(return_value=mock_registry)
-        mock_state_module = MagicMock()
-        mock_state_module.ProcessStateRegistry = mock_registry_cls
-        monkeypatch.setitem(sys.modules, "agenticcli.services.state", mock_state_module)
+    Tests the PID-file based daemon management approach where each plan's
+    watcher daemon stores its PID in a pidfile under
+    ~/.config/agenticguidance/watchers/<plan_name>.pid.
+    """
 
-    def test_starts_when_ntfy_configured(self, tmp_path, monkeypatch):
-        """Test daemon starts when ntfy is configured and no existing watcher."""
+    def test_starts_when_no_pidfile(self, tmp_path, monkeypatch):
+        """Test daemon starts when no existing pidfile (no prior watcher)."""
         from agenticcli.commands import question
 
         plan_path = tmp_path / "260210WD_test_plan"
         plan_path.mkdir()
 
-        monkeypatch.setattr(question, "_get_ntfy_config", lambda: {"topic": "test", "server": "https://ntfy.sh"})
-
-        mock_registry = MagicMock()
-        mock_registry.get_state.return_value = None
-        self._inject_state_module(monkeypatch, mock_registry)
+        # Redirect pidfile to tmp_path to avoid writing to real config
+        piddir = tmp_path / "watchers"
+        piddir.mkdir()
+        monkeypatch.setattr(question, "_get_watcher_pidfile",
+                            lambda pp: piddir / f"{pp.name}.pid")
 
         mock_process = MagicMock()
         mock_process.pid = 54321
@@ -2347,10 +2373,13 @@ class TestEnsureWatchDaemon:
         cmd = mock_popen.call_args[0][0]
         assert "nohup" in cmd
         assert "python3" in cmd
-        mock_registry.register_process.assert_called_once()
+        # Pidfile should be created with the child PID
+        pidfile = piddir / f"{plan_path.name}.pid"
+        assert pidfile.exists()
+        assert pidfile.read_text().strip() == "54321"
 
-    def test_skips_when_ntfy_not_configured(self, tmp_path, monkeypatch):
-        """Test daemon is skipped when ntfy is not configured."""
+    def test_starts_without_ntfy(self, tmp_path, monkeypatch):
+        """Test daemon starts even when ntfy is not configured (ntfy gate removed)."""
         from agenticcli.commands import question
 
         plan_path = tmp_path / "260210WD_test_plan"
@@ -2358,28 +2387,38 @@ class TestEnsureWatchDaemon:
 
         monkeypatch.setattr(question, "_get_ntfy_config", lambda: None)
 
-        mock_popen = MagicMock()
+        piddir = tmp_path / "watchers"
+        piddir.mkdir()
+        monkeypatch.setattr(question, "_get_watcher_pidfile",
+                            lambda pp: piddir / f"{pp.name}.pid")
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_popen = MagicMock(return_value=mock_process)
         monkeypatch.setattr("subprocess.Popen", mock_popen)
 
         started, reason = question._ensure_watch_daemon(plan_path)
 
-        assert started is False
-        assert reason == "ntfy_not_configured"
-        mock_popen.assert_not_called()
+        assert started is True
+        assert reason == "started"
+        mock_popen.assert_called_once()
 
     def test_skips_when_already_running(self, tmp_path, monkeypatch):
-        """Test daemon is skipped when a watcher is already running."""
+        """Test daemon is skipped when pidfile references a live process."""
         from agenticcli.commands import question
 
         plan_path = tmp_path / "260210WD_test_plan"
         plan_path.mkdir()
 
-        monkeypatch.setattr(question, "_get_ntfy_config", lambda: {"topic": "test", "server": "https://ntfy.sh"})
+        piddir = tmp_path / "watchers"
+        piddir.mkdir()
+        monkeypatch.setattr(question, "_get_watcher_pidfile",
+                            lambda pp: piddir / f"{pp.name}.pid")
 
+        # Write pidfile with current (alive) PID
         alive_pid = os.getpid()
-        mock_registry = MagicMock()
-        mock_registry.get_state.return_value = {"status": "running", "pid": alive_pid}
-        self._inject_state_module(monkeypatch, mock_registry)
+        pidfile = piddir / f"{plan_path.name}.pid"
+        pidfile.write_text(str(alive_pid))
 
         mock_popen = MagicMock()
         monkeypatch.setattr("subprocess.Popen", mock_popen)
@@ -2391,18 +2430,21 @@ class TestEnsureWatchDaemon:
         mock_popen.assert_not_called()
 
     def test_cleans_stale_and_starts(self, tmp_path, monkeypatch):
-        """Test daemon cleans stale PID state and starts a new daemon."""
+        """Test daemon cleans stale pidfile and starts a new daemon."""
         from agenticcli.commands import question
 
         plan_path = tmp_path / "260210WD_test_plan"
         plan_path.mkdir()
 
-        monkeypatch.setattr(question, "_get_ntfy_config", lambda: {"topic": "test", "server": "https://ntfy.sh"})
+        piddir = tmp_path / "watchers"
+        piddir.mkdir()
+        monkeypatch.setattr(question, "_get_watcher_pidfile",
+                            lambda pp: piddir / f"{pp.name}.pid")
 
+        # Write pidfile with a dead PID
         dead_pid = 99999999
-        mock_registry = MagicMock()
-        mock_registry.get_state.return_value = {"status": "running", "pid": dead_pid}
-        self._inject_state_module(monkeypatch, mock_registry)
+        pidfile = piddir / f"{plan_path.name}.pid"
+        pidfile.write_text(str(dead_pid))
 
         mock_process = MagicMock()
         mock_process.pid = 11111
@@ -2413,9 +2455,9 @@ class TestEnsureWatchDaemon:
 
         assert started is True
         assert reason == "started"
-        mock_registry.mark_stopped.assert_called_once()
         mock_popen.assert_called_once()
-        mock_registry.register_process.assert_called_once()
+        # Pidfile should now contain the new PID
+        assert pidfile.read_text().strip() == "11111"
 
     def test_handles_errors_gracefully(self, tmp_path, monkeypatch):
         """Test daemon returns error tuple on exception without propagating."""
@@ -2424,11 +2466,10 @@ class TestEnsureWatchDaemon:
         plan_path = tmp_path / "260210WD_test_plan"
         plan_path.mkdir()
 
-        monkeypatch.setattr(question, "_get_ntfy_config", lambda: {"topic": "test", "server": "https://ntfy.sh"})
-
-        mock_registry = MagicMock()
-        mock_registry.get_state.return_value = None
-        self._inject_state_module(monkeypatch, mock_registry)
+        piddir = tmp_path / "watchers"
+        piddir.mkdir()
+        monkeypatch.setattr(question, "_get_watcher_pidfile",
+                            lambda pp: piddir / f"{pp.name}.pid")
 
         mock_popen = MagicMock(side_effect=OSError("spawn failed"))
         monkeypatch.setattr("subprocess.Popen", mock_popen)

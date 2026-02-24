@@ -1,0 +1,209 @@
+# Review: 260220MI_migrate_planservice_to_tinydb - plan_build.yml
+# Reviewer: planner-reviewer
+# Date: 2026-02-22
+# Context: Plan already completed and archived to completed/. Review is retrospective.
+#   Live/ contains a stale, truncated plan_build.yml.
+#   Authoritative version reviewed from completed/ (601 lines with all metadata).
+
+decision: REJECTED
+reason: >
+  Story validation fence failure (BLOCKING) and stale live plan file.
+  17 affected_stories listed but plan_test.yml remains a stub template with
+  zero UAT tasks. Additionally, the live plan_build.yml is a truncated copy
+  missing critical metadata sections present in the archived version.
+
+feedback:
+  summary: |
+    The build plan is technically excellent: clean 4-phase architecture with
+    12 well-defined tasks, proper depends_on chains, dual-write strategy,
+    and comprehensive success criteria. All 12 tasks have been implemented
+    and verified in the codebase. However, two blocking issues prevent approval:
+
+    1. STORY VALIDATION FENCE FAILURE: Plan lists 17 affected_stories
+       (US-GD-120 through US-GD-127, US-GD-132, US-GD-200 through US-GD-206)
+       but plan_test.yml is a stub template with no UAT tasks.
+       Per fence rule: "REJECT if stories listed but no UAT phase validates them."
+
+    2. STALE LIVE FILE: The live/ plan_build.yml is truncated (394 lines vs
+       601 in completed/), missing: affected_stories, impacted_artifacts,
+       open_questions, loop_structures, success_criteria (both task-level
+       and plan-level), depends_on fields, and inputs (top-level).
+       Tasks SV_001-CL_003 are marked pending in live/ but completed in
+       completed/ - the live copy was not synced before archival.
+
+  remediation_required:
+    - action: Create UAT test plan or populate plan_test.yml
+      description: >
+        Add UAT phase with tasks mapping to the 17 affected stories'
+        acceptance criteria. At minimum, validate US-GD-200 through US-GD-206
+        (the new TinyDB migration stories).
+    - action: Clean up stale live/ files
+      description: >
+        Remove the stale plan_build.yml from live/ since the plan has been
+        completed and archived. All authoritative data is in completed/.
+    - action: Delete unpopulated stub templates
+      description: >
+        plan_test.yml, plan_teach.yml, and plan_audit_clean.yml in completed/
+        are still stubs. Either populate them with retrospective content or
+        delete them to avoid confusion.
+
+checklist_results:
+  plan_structure:
+    result: PASS
+    notes:
+      - Root-level name, worktree_path, branch, status, priority fields present
+      - Folder naming follows YYMMDDXX_description convention
+      - Objective/context clearly describes TinyDB migration with research findings
+      - All plan files at folder root
+      - No plan_live_ prefix
+    observations:
+      - Completed version uses 'context' field; live version uses 'objective' (inconsistent)
+
+  inputs:
+    result: PASS
+    notes:
+      - 6 top-level inputs with location and description (in completed version)
+      - All referenced files verified to exist in repository
+    observations:
+      - Live version is missing the top-level inputs section entirely
+
+  success_criteria:
+    result: PASS
+    notes:
+      - 10 top-level success criteria, all verifiable
+      - Per-task success criteria with specific commands/checks
+      - User-focused criteria (story acceptance, CLI regression)
+      - Observable outcomes (import commands, test passes)
+
+  task_structure:
+    result: PASS
+    notes:
+      - All 12 tasks specify target_files
+      - Agent types correctly allocated (build-python for all implementation)
+      - CREATE before UPDATE ordering (DB_002 before SV_001)
+      - depends_on chains properly declared (in completed version)
+      - Each task has concrete success criteria
+
+  pattern_alignment:
+    result: PASS
+    notes:
+      - Domain (PlanRepository) -> Workflow (PlanService delegates) -> Entrypoint (CLI commands)
+      - Phase dependencies explicitly declared via depends_on
+      - loop_structures defined with test-fix-loop pattern
+
+  loop_structure:
+    result: PASS
+    notes:
+      - Two loop_structures defined (implementation and integration validation)
+      - test-fix-loop type matches implementation phases
+      - Exit criteria explicit (all unit/CLI tests pass)
+      - max_iterations 5 with escalation to human
+
+  context_quality:
+    result: PASS
+    notes:
+      - No inline definitions duplicating shared assets
+      - All file references resolve to existing targets
+      - No redundant content detected
+
+fence_results:
+  rlm_usage:
+    result: SKIPPED
+    reason: Plan does not reference RLM patterns
+
+  mmd_presence:
+    result: PASS
+    notes:
+      - orchestration_migrate_planservice_to_tinydb.mmd exists in completed/
+      - Contains GOAL header comment
+      - Contains AGENT_ROUTING metadata
+      - Contains 7 subgraph phases with proper flow (InputValidation, Foundation,
+        ServiceIntegration, DataMigration, CLIRefactor, Validation, Output)
+
+  file_placement:
+    result: FAIL
+    blocking: true
+    notes:
+      - Plan files (plan_*.yml) at folder root - OK
+      - No plan_live_ prefix - OK
+      - questions/ subfolder valid per question-workflow.yml
+    issues:
+      - Stale plan_build.yml remains in live/ after archival to completed/
+      - Stub templates (plan_test.yml, plan_teach.yml, plan_audit_clean.yml) were
+        never populated or deleted - still have _template_status=stub
+
+  codebase_verification:
+    result: PASS
+    notes:
+      - All target_files verified to exist in repository
+      - plan_repository.py created with PlanRepository class at line 28
+      - tinydb>=4.8.0 added to pyproject.toml
+      - PlanService updated with _repository, use_tinydb integration
+      - PlanRepository exported from services __init__.py
+      - All 12 tasks marked completed in archived version match codebase state
+    observations:
+      - Live version shows 10 tasks as pending that are actually completed (stale)
+
+  self_review_validation:
+    result: PASS
+    notes:
+      - No duplicate content between plan inputs and shared assets
+      - All file references resolve to existing files
+      - No deprecated patterns without migration notes
+
+  infrastructure_implementation:
+    result: PASS
+    notes:
+      - build-python IMPLEMENTED per README.md and agent-categories.yml
+      - test-runner IMPLEMENTED
+      - test-final-output IMPLEMENTED
+      - No references to unimplemented agents or infrastructure
+
+  story_validation:
+    result: FAIL
+    blocking: true
+    notes:
+      - Plan lists 17 affected_stories (US-GD-120 through US-GD-127, US-GD-132,
+        US-GD-200 through US-GD-206)
+      - This is a BUILD plan type - MUST have affected_stories (no escape hatch)
+      - plan_test.yml is a stub template (_template_status=stub)
+      - NO UAT tasks validate any of the 17 affected stories
+      - All 7 TinyDB migration stories (US-GD-200 through US-GD-206) have no test coverage
+      - "Per fence: REJECT if stories listed but no UAT phase validates them"
+    remediation:
+      - Create UAT phase in a test plan mapping to affected story acceptance criteria
+      - At minimum validate US-GD-200 through US-GD-206 acceptance criteria
+      - Update story test_status fields as UAT tasks complete
+
+  open_questions_validation:
+    result: PASS_WITH_OBSERVATION
+    notes:
+      - 2 open_questions, both status=answered
+      - Questions are specific, actionable, and appropriately severe (high)
+      - Answers provided with answered_by fields
+      - Questions properly scoped to architectural decisions (not autonomous choices)
+    observations:
+      - Both questions missing answered_at timestamp (required per checklist schema)
+      - Minor structural gap, non-blocking since questions are resolved
+
+strengths:
+  - Excellent 4-phase task decomposition (Foundation, Service Integration, Migration, CLI Refactor)
+  - Clear architecture decision documented (dual-write with TinyDB + YAML)
+  - Thorough research findings embedded in plan context
+  - Proper depends_on chains enforcing task ordering
+  - Comprehensive impacted_artifacts section covering services, CLI, and config
+  - Well-defined loop structures with escalation paths
+  - Open questions properly identified, scoped, and answered before execution
+  - All 12 implementation tasks successfully completed
+
+recommendations:
+  priority_1_blocking:
+    - Create follow-up test plan with UAT tasks for US-GD-200 through US-GD-206
+    - Remove stale plan_build.yml from live/ directory
+  priority_2_cleanup:
+    - Delete stub template files or populate with retrospective content
+    - Add answered_at timestamps to open_questions in future plans
+    - Ensure plan archival process syncs live/ copies before deletion
+  priority_3_process:
+    - Consider adding pre-archive validation that checks for stub templates
+    - Test plan should be populated BEFORE build plan execution starts (Story-First)

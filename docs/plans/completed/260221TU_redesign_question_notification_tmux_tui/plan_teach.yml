@@ -1,0 +1,64 @@
+name: redesign_question_notification_tmux_tui - teach
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: medium
+objective: 'Document the new tmux TUI architecture so future agents and contributors
+
+  understand the question notification system design, the TUI patterns used,
+
+  and the rationale for choosing Rich Live over Textual.
+
+  '
+phases:
+- id: G01
+  name: Architecture decision notes
+  status: pending
+  tasks:
+  - id: G01_T01
+    name: Document TUI technology choice rationale
+    status: completed
+    priority: medium
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    guidance: "Add a detailed module docstring to question_tui.py explaining:\n\n\
+      1. Why Rich Live was chosen over Textual:\n   - Textual requires a proper TTY\
+      \ with full terminal control sequences.\n     In some Termux + tmux combinations\
+      \ the PTY handling is limited,\n     causing Textual apps to render incorrectly\
+      \ or fail to accept input.\n   - Rich Live works over any terminal that supports\
+      \ ANSI codes, including\n     Termux on Android and SSH sessions.\n   - Rich\
+      \ is already a dependency; adding Textual would increase install size.\n\n2.\
+      \ The answer-input design (pause-Live, input(), resume-Live):\n   - Rich Live\
+      \ and stdin input cannot run concurrently in the same thread.\n   - Stopping/restarting\
+      \ Live around input() is the simplest approach that\n     works on all terminals\
+      \ including SSH/Termux.\n   - An alternative (background refresh thread + main\
+      \ thread input) is more\n     complex and has race conditions on some terminals.\n\
+      \n3. The tmux window design:\n   - Using a dedicated tmux window (not a split\
+      \ pane) gives maximum screen\n     space on the small Termux screen.\n   - The\
+      \ launcher creates the window the first time and switches focus to\n     it;\
+      \ on subsequent calls it simply switches focus (idempotent).\n\nThe docstring\
+      \ should be written in plain prose, not bullet lists, and kept\nunder 40 lines.\n"
+    success_criteria:
+    - question_tui.py module docstring explains Rich vs Textual choice
+    - Docstring explains the pause-Live input pattern
+    - Docstring explains the tmux window design decision
+    - Docstring is under 40 lines
+guidance_notes:
+  tui_pattern: "The canonical pattern for a Rich-Live TUI in this codebase:\n\n  with\
+    \ Live(build_layout(), console=console, refresh_per_second=1) as live:\n     \
+    \ while True:\n          # Pause for input\n          live.stop()\n          choice\
+    \ = input(\"Enter choice: \").strip()\n          live.start()\n\n          if\
+    \ choice == \"q\":\n              break\n          # handle choice...\n      \
+    \    live.update(build_layout())\n"
+  question_tui_location: "New files:\n  modules/AgenticCLI/src/agenticcli/tui/__init__.py\n\
+    \  modules/AgenticCLI/src/agenticcli/tui/question_tui.py\n\nEntry point:\n  agentic\
+    \ question dashboard\n  -> cmd_dashboard() in commands/question.py\n  -> QuestionTUI(repo_root,\
+    \ refresh).run()\n"
+  ntfy_removal_summary: "Files deleted:\n  agenticcli/utils/ntfy.py\n  agenticcli/services/ntfy_question_agent.py\n\
+    \nFunctions removed:\n  notify_questions_in_tmux() from tmux_notify.py\n  clear_notification_pane()\
+    \ from tmux_notify.py\n  NtfyReplyPoller class from question_watcher.py\n\nFunctions\
+    \ added:\n  notify_question_window(count) in tmux_notify.py\n  QuestionTUI class\
+    \ in tui/question_tui.py\n"

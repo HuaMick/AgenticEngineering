@@ -356,7 +356,7 @@ class TestOrchestrationGenerateMinimalPlan:
     def test_orchestration_generate_minimal_plan(self, minimal_plan, cli_runner):
         """Test generating MMD from a minimal plan with single phase."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
         assert "Generated" in stdout or "orchestration" in stdout.lower()
@@ -374,7 +374,7 @@ class TestOrchestrationGenerateMinimalPlan:
     def test_orchestration_generate_includes_goal(self, minimal_plan, cli_runner):
         """Test that generated MMD includes objective as GOAL."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
 
@@ -386,7 +386,7 @@ class TestOrchestrationGenerateMinimalPlan:
     def test_orchestration_generate_includes_agent_routing(self, minimal_plan, cli_runner):
         """Test that generated MMD includes AGENT_ROUTING header."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
 
@@ -402,7 +402,7 @@ class TestOrchestrationGenerateComplexPlan:
     def test_orchestration_generate_complex_plan(self, complex_plan, cli_runner):
         """Test generating MMD from a complex plan with multiple phases."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(complex_plan)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(complex_plan)]
         )
         assert code == 0
 
@@ -422,7 +422,7 @@ class TestOrchestrationGenerateComplexPlan:
     ):
         """Test that generated MMD lists all phases in PHASES header."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(complex_plan)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(complex_plan)]
         )
         assert code == 0
 
@@ -438,7 +438,7 @@ class TestOrchestrationGenerateComplexPlan:
     def test_orchestration_generate_test_phase_routing(self, complex_plan, cli_runner):
         """Test that test phases get test-builder agent routing."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(complex_plan)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(complex_plan)]
         )
         assert code == 0
 
@@ -451,7 +451,7 @@ class TestOrchestrationGenerateComplexPlan:
     def test_orchestration_generate_includes_status(self, complex_plan, cli_runner):
         """Test that generated MMD includes STATUS header with phase statuses."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(complex_plan)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(complex_plan)]
         )
         assert code == 0
 
@@ -474,7 +474,7 @@ class TestOrchestrationGenerateCreatesFile:
         assert len(mmd_files_before) == 0
 
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
 
@@ -485,7 +485,7 @@ class TestOrchestrationGenerateCreatesFile:
     def test_orchestration_generate_file_naming(self, minimal_plan, cli_runner):
         """Test that generated MMD file uses plan folder name for naming."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
 
@@ -497,6 +497,7 @@ class TestOrchestrationGenerateCreatesFile:
         """Test generating MMD with custom output filename."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "orchestration",
                 "generate",
@@ -521,7 +522,7 @@ class TestOrchestrationGenerateForceOverwrite:
     ):
         """Test that generate fails when MMD exists without --force."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "generate", "--plan", str(plan_with_existing_mmd)]
+            ["agent", "plan", "orchestration", "generate", "--plan", str(plan_with_existing_mmd)]
         )
         assert code != 0
         assert "already exists" in stderr or "already exists" in stdout
@@ -538,6 +539,7 @@ class TestOrchestrationGenerateForceOverwrite:
 
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "orchestration",
                 "generate",
@@ -561,6 +563,7 @@ class TestOrchestrationGenerateForceOverwrite:
         """Test that --force completely replaces the file content."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "orchestration",
                 "generate",
@@ -593,7 +596,7 @@ class TestOrchestrationValidateMatchingMmd:
     ):
         """Test validation passes when MMD matches YAML phases."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "validate", "--plan", str(plan_with_matching_mmd)]
+            ["agent", "plan", "orchestration", "validate", "--plan", str(plan_with_matching_mmd)]
         )
         assert code == 0
         assert "passed" in stdout.lower() or "valid" in stdout.lower()
@@ -603,7 +606,7 @@ class TestOrchestrationValidateMatchingMmd:
     ):
         """Test that validation reports which files were checked."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "validate", "--plan", str(plan_with_matching_mmd)]
+            ["agent", "plan", "orchestration", "validate", "--plan", str(plan_with_matching_mmd)]
         )
         assert code == 0
         assert "orchestration_matching_mmd.mmd" in stdout
@@ -618,6 +621,7 @@ class TestOrchestrationValidateMatchingMmd:
         stdout, stderr, code = cli_runner(
             [
                 "-j",
+                "agent",
                 "plan",
                 "orchestration",
                 "validate",
@@ -642,6 +646,7 @@ class TestOrchestrationValidateMissingPhase:
         """Test validation fails when MMD is missing a phase from YAML."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "orchestration",
                 "validate",
@@ -663,6 +668,7 @@ class TestOrchestrationValidateMissingPhase:
         stdout, stderr, code = cli_runner(
             [
                 "-j",
+                "agent",
                 "plan",
                 "orchestration",
                 "validate",
@@ -691,6 +697,7 @@ class TestOrchestrationValidateMissingTask:
         """Test validation warns when MMD is missing task IDs from YAML."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "orchestration",
                 "validate",
@@ -711,6 +718,7 @@ class TestOrchestrationValidateMissingTask:
         """Test validation fails in strict mode when tasks are missing."""
         stdout, stderr, code = cli_runner(
             [
+                "agent",
                 "plan",
                 "orchestration",
                 "validate",
@@ -731,6 +739,7 @@ class TestOrchestrationValidateMissingTask:
         stdout, stderr, code = cli_runner(
             [
                 "-j",
+                "agent",
                 "plan",
                 "orchestration",
                 "validate",
@@ -754,7 +763,7 @@ class TestOrchestrationValidateNoMmdFile:
     def test_orchestration_validate_no_mmd_file(self, plan_without_mmd, cli_runner):
         """Test validation fails gracefully when no MMD file exists."""
         stdout, stderr, code = cli_runner(
-            ["plan", "orchestration", "validate", "--plan", str(plan_without_mmd)]
+            ["agent", "plan", "orchestration", "validate", "--plan", str(plan_without_mmd)]
         )
         # Should fail with exit code 2 (file not found)
         assert code == 2
@@ -764,7 +773,7 @@ class TestOrchestrationValidateNoMmdFile:
     def test_orchestration_validate_no_mmd_json_output(self, plan_without_mmd, cli_runner):
         """Test no MMD error with JSON output."""
         stdout, stderr, code = cli_runner(
-            ["-j", "plan", "orchestration", "validate", "--plan", str(plan_without_mmd)]
+            ["-j", "agent", "plan", "orchestration", "validate", "--plan", str(plan_without_mmd)]
         )
         assert code == 2
 
@@ -785,7 +794,7 @@ class TestOrchestrationGenerateEdgeCases:
             # No plan files created
 
             stdout, stderr, code = cli_runner(
-                ["plan", "orchestration", "generate", "--plan", str(plan_dir)]
+                ["agent", "plan", "orchestration", "generate", "--plan", str(plan_dir)]
             )
             assert code != 0
             assert "No plan" in (stdout + stderr) or "not found" in (stdout + stderr).lower()
@@ -807,7 +816,7 @@ class TestOrchestrationGenerateEdgeCases:
                 yaml.dump(plan_content, f, default_flow_style=False)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "orchestration", "generate", "--plan", str(plan_dir)]
+                ["agent", "plan", "orchestration", "generate", "--plan", str(plan_dir)]
             )
             assert code != 0
             assert "No phases" in (stdout + stderr) or "phases" in (stdout + stderr).lower()
@@ -837,7 +846,7 @@ class TestOrchestrationGenerateEdgeCases:
                 yaml.dump(plan_content, f, default_flow_style=False)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "orchestration", "generate", "--plan", str(plan_dir)]
+                ["agent", "plan", "orchestration", "generate", "--plan", str(plan_dir)]
             )
             assert code == 0
 
@@ -865,7 +874,7 @@ flowchart LR
             # No plan files created
 
             stdout, stderr, code = cli_runner(
-                ["plan", "orchestration", "validate", "--plan", str(plan_dir)]
+                ["agent", "plan", "orchestration", "validate", "--plan", str(plan_dir)]
             )
             assert code == 2
             assert "No plan" in (stdout + stderr) or "not found" in (stdout + stderr).lower()
@@ -889,7 +898,7 @@ flowchart LR
             mmd_file.write_text(mmd_content)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "orchestration", "validate", "--plan", str(plan_dir)]
+                ["agent", "plan", "orchestration", "validate", "--plan", str(plan_dir)]
             )
             # Should handle gracefully (skip invalid file or warn)
             # May still succeed if no valid phases found, or fail
@@ -919,7 +928,7 @@ flowchart LR
             (plan_dir / "orchestration_second.mmd").write_text(mmd_content)
 
             stdout, stderr, code = cli_runner(
-                ["plan", "orchestration", "validate", "--plan", str(plan_dir)]
+                ["agent", "plan", "orchestration", "validate", "--plan", str(plan_dir)]
             )
             # Should succeed and potentially warn about multiple files
             assert code == 0
@@ -1191,7 +1200,7 @@ class TestLoopTypeValidation:
         (plan_dir / "orchestration_test.mmd").write_text("flowchart LR\n    Start((Start)) --> End((End))")
 
         stdout, stderr, code = cli_runner(
-            ["plan", "validate", str(plan_dir)]
+            ["agent", "plan", "validate", str(plan_dir)]
         )
         output = stdout + stderr
         assert "not defined in agent-loops.yml" not in output
@@ -1217,7 +1226,7 @@ class TestLoopTypeValidation:
         (plan_dir / "orchestration_test.mmd").write_text("flowchart LR\n    Start((Start)) --> End((End))")
 
         stdout, stderr, code = cli_runner(
-            ["plan", "validate", str(plan_dir)]
+            ["agent", "plan", "validate", str(plan_dir)]
         )
         output = stdout + stderr
         assert "nonexistent-loop-type" in output
@@ -1243,7 +1252,7 @@ class TestLoopTypeValidation:
         (plan_dir / "orchestration_test.mmd").write_text("flowchart LR\n    Start((Start)) --> End((End))")
 
         stdout, stderr, code = cli_runner(
-            ["plan", "validate", str(plan_dir)]
+            ["agent", "plan", "validate", str(plan_dir)]
         )
         output = stdout + stderr
         assert "not defined in agent-loops.yml" not in output

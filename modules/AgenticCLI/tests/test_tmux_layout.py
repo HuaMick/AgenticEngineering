@@ -123,7 +123,7 @@ class TestCreateNewSessionLayout:
 
             # Verify subprocess calls
             calls = mock_run.call_args_list
-            assert len(calls) >= 9  # new-session, 2x split-window, 3x select-pane, 2x send-keys (dashboards), 1x send-keys (claude), 1x select-pane
+            assert len(calls) >= 9  # new-session, 2x split-window, 3x select-pane, 2x send-keys (session list + question dashboard), 1x send-keys (claude), 1x select-pane
 
             # Verify new-session includes -x and -y dimensions (CRITICAL FIX)
             new_session_call = calls[0]
@@ -206,8 +206,8 @@ class TestCreateNewSessionLayout:
             assert "sessions" in all_cmds
             assert "questions" in all_cmds
 
-    def test_starts_dashboard_commands_with_enter(self, sample_claude_cmd_str, mock_subprocess_success):
-        """Starts dashboard commands with Enter key to execute them."""
+    def test_starts_pane_commands_with_enter(self, sample_claude_cmd_str, mock_subprocess_success):
+        """Starts pane commands with Enter key to execute them."""
         with patch("subprocess.run", side_effect=mock_subprocess_success) as mock_run:
             _create_new_session_layout(
                 session_name="test-session",
@@ -216,20 +216,38 @@ class TestCreateNewSessionLayout:
                 question_refresh=10,
             )
 
-            # Find send-keys calls for dashboards
+            # Find send-keys calls for pane commands (watch, agentic)
             calls = mock_run.call_args_list
-            dashboard_calls = [c for c in calls if "send-keys" in c[0][0] and ("dashboard" in " ".join(c[0][0]) or "agentic" in " ".join(c[0][0]))]
+            pane_cmd_calls = [c for c in calls if "send-keys" in c[0][0] and ("watch" in " ".join(c[0][0]) or "agentic" in " ".join(c[0][0]))]
 
-            # Should have at least 2 dashboard send-keys calls (session and question)
-            assert len(dashboard_calls) >= 2
+            # Should have at least 2 pane command calls (session list + question dashboard)
+            assert len(pane_cmd_calls) >= 2
 
             # Both should have "Enter" to execute the commands
-            for call in dashboard_calls:
+            for call in pane_cmd_calls:
                 cmd = call[0][0]
-                assert "Enter" in cmd, f"Dashboard command missing Enter: {cmd}"
+                assert "Enter" in cmd, f"Pane command missing Enter: {cmd}"
 
-    def test_passes_refresh_intervals_to_dashboards(self, sample_claude_cmd_str, mock_subprocess_success):
-        """Passes custom refresh intervals to dashboard commands."""
+    def test_uses_watch_for_session_list(self, sample_claude_cmd_str, mock_subprocess_success):
+        """Uses watch command for auto-refreshing session list."""
+        with patch("subprocess.run", side_effect=mock_subprocess_success) as mock_run:
+            _create_new_session_layout(
+                session_name="test-session",
+                claude_cmd_str=sample_claude_cmd_str,
+                dashboard_refresh=5,
+                question_refresh=10,
+            )
+
+            calls = mock_run.call_args_list
+            all_cmds_str = " ".join([" ".join(c[0][0]) for c in calls])
+
+            # Session list pane should use 'watch' with 'agentic session list'
+            assert "watch" in all_cmds_str
+            assert "session" in all_cmds_str
+            assert "list" in all_cmds_str
+
+    def test_passes_refresh_intervals_to_pane_commands(self, sample_claude_cmd_str, mock_subprocess_success):
+        """Passes custom refresh intervals to pane commands."""
         with patch("subprocess.run", side_effect=mock_subprocess_success) as mock_run:
             _create_new_session_layout(
                 session_name="test-session",
@@ -242,9 +260,9 @@ class TestCreateNewSessionLayout:
             all_cmds_str = " ".join([" ".join(c[0][0]) for c in calls])
 
             # Verify refresh intervals are passed
-            assert "--refresh" in all_cmds_str
-            assert "15" in all_cmds_str
-            assert "30" in all_cmds_str
+            assert "--refresh" in all_cmds_str  # question dashboard uses --refresh
+            assert "15" in all_cmds_str  # watch -n 15
+            assert "30" in all_cmds_str  # --refresh 30
 
     def test_raises_runtime_error_on_new_session_failure(self, sample_claude_cmd_str):
         """Raises RuntimeError when new-session command fails."""

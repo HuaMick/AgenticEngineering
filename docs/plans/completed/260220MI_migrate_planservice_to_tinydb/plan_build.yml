@@ -1,0 +1,401 @@
+name: migrate_planservice_to_tinydb
+worktree_path: /home/code/AgenticEngineering-plan-tinydb-migration
+branch: plan-tinydb-migration
+status: active
+priority: high
+objective: 'Migrate the AgenticCLI PlanService from static YAML files to an embedded
+  TinyDB local datastore.
+
+
+  RESEARCH FINDINGS (2026-02-20):
+
+  - PlanService is defined in modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  (lines 657-1209)
+
+  - PlanMovementWorkflow handles task archival (lines 119-554 in same file)
+
+  - TaskService is in modules/AgenticGuidance/src/agenticguidance/services/task.py
+
+  - CLI plan.py has 37 direct yaml.safe_load/dump calls - does NOT use PlanService
+  for most operations
+
+  - CLI only imports PlanMovementWorkflow and MoveResult from services (not PlanService)
+
+  - FileLock in state.py provides current concurrency control
+
+  - Plans stored in docs/plans/{live,completed,deferred}/YYMMDDXX_description/
+
+  - Multiple plan_*.yml files per folder (plan_build.yml, plan_test.yml, etc.)
+
+  - Existing user stories: US-GD-120 through US-GD-137 cover current PlanService
+
+  - New migration stories: US-GD-200 through US-GD-206 created for TinyDB migration
+
+
+  ARCHITECTURE DECISION:
+
+  - TinyDB as fast read/query layer stored at ~/.agentic/plans.db
+
+  - YAML files remain git-committed source of truth
+
+  - Dual-write strategy: writes go to both TinyDB and YAML
+
+  - Auto-rebuild TinyDB from YAML if database missing
+
+  - Repository pattern (PlanRepository) abstracts storage from service layer
+
+
+  NEXT: Phase 1 - Foundation & Dependencies
+
+  '
+created: ''
+phases:
+- name: Phase 1 - Foundation & Dependencies
+  execution: sequential
+  description: Add TinyDB dependency and create the PlanRepository foundation class
+  tasks:
+  - id: DB_001
+    name: Add TinyDB dependency to AgenticGuidance
+    description: 'Add tinydb>=4.8.0 to AgenticGuidance pyproject.toml dependencies.
+
+      Run pip install to verify the dependency resolves correctly.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/pyproject.toml
+    target_files:
+    - modules/AgenticGuidance/pyproject.toml
+    guidance: 'Add ''tinydb>=4.8.0'' to the dependencies list in pyproject.toml.
+
+      Current dependencies are pyyaml>=6.0 and jinja2>=3.0.
+
+      After editing, run: pip install -e modules/AgenticGuidance to verify.
+
+      '
+  - id: DB_002
+    name: Create PlanRepository class with TinyDB backend
+    description: 'Create the PlanRepository class that wraps TinyDB for plan data
+      storage.
+
+      This is the domain-layer abstraction that replaces direct YAML file access.
+
+      The repository manages:
+
+      - Database initialization at ~/.agentic/plans.db
+
+      - Tables: plans (metadata), tasks (individual tasks), phases (phase data)
+
+      - Indexes on plan_folder_name, status, task_id
+
+      - CRUD operations returning existing dataclass types
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/state.py
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    guidance: "Create a new file: modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py\n\
+      \nDESIGN REQUIREMENTS:\n1. Class PlanRepository with __init__(db_path: Optional[Path]\
+      \ = None)\n   - Default db_path: Path.home() / \".agentic\" / \"plans.db\"\n\
+      \   - Create parent directories if needed\n   - Initialize TinyDB with default\
+      \ JSON storage\n\n2. Tables:\n   - plans: One document per plan (plan_folder_name\
+      \ as key)\n     Fields: plan_folder_name, plan_folder (absolute path), name,\
+      \ worktree_path,\n     branch, status, priority, objective, created, context\n\
+      \   - tasks: One document per task\n     Fields: plan_folder_name, phase_name,\
+      \ task_id, name, description,\n     status, agent, inputs, target_files, guidance,\
+      \ completed_date\n   - phases: One document per phase\n     Fields: plan_folder_name,\
+      \ phase_name, execution, description\n\n3. Plan CRUD methods returning existing\
+      \ dataclasses:\n   - create_plan(plan_data: dict) -> PlanCreateResult\n   -\
+      \ get_plan(plan_id_or_name: str) -> Optional[PlanData]\n   - list_plans(status:\
+      \ Optional[str] = None) -> list[PlanMetadata]\n   - update_plan(plan_folder_name:\
+      \ str, updates: dict) -> PlanUpdateResult\n   - delete_plan(plan_folder_name:\
+      \ str) -> PlanDeleteResult\n\n4. Task CRUD methods:\n   - get_tasks(plan_folder_name:\
+      \ str, status_filter: Optional[str] = None) -> list[TaskData]\n   - get_task(plan_folder_name:\
+      \ str, task_id: str) -> Optional[TaskData]\n   - update_task_status(plan_folder_name:\
+      \ str, task_id: str, new_status: str) -> bool\n   - add_task(plan_folder_name:\
+      \ str, phase_name: str, task_data: dict) -> bool\n   - get_current_task(plan_folder_name:\
+      \ str) -> Optional[TaskData]\n\n5. Import/Export:\n   - import_from_yaml(plan_folder:\
+      \ Path) -> bool  # Import single plan from YAML files\n   - export_to_yaml(plan_folder_name:\
+      \ str, output_folder: Path) -> bool\n   - import_all_yaml(plans_base: Path)\
+      \ -> dict  # Import all plans, return stats\n   - sync_to_yaml(plan_folder_name:\
+      \ str) -> bool  # Write current DB state to YAML\n\n6. Use TinyDB's Query()\
+      \ for search operations\n7. Use from tinydb import TinyDB, Query, where\n\n\
+      IMPORTANT: Reuse existing dataclasses (PlanData, PlanMetadata, TaskData, etc.)\n\
+      from the plan.py module. Do NOT create new data models.\n\nREFERENCE: The InMemorySessionRepository\
+      \ pattern in\nmodules/legacy/MyAgents/projects/RemoteAgents/src/agent_remote/services/relay/infrastructure/in_memory_repository.py\n\
+      provides a good template for the repository pattern.\n"
+- name: Phase 2 - Service Layer Integration
+  execution: sequential
+  description: Update PlanService and TaskService to delegate to PlanRepository
+  tasks:
+  - id: SV_001
+    name: Update PlanService to use PlanRepository
+    description: 'Modify PlanService to delegate read/write operations to PlanRepository
+
+      while maintaining its existing public API. Implement dual-write strategy:
+
+      writes go to both TinyDB and YAML files.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    guidance: "MODIFY PlanService class (do NOT replace the file - only modify PlanService):\n\
+      \n1. Add PlanRepository as an optional dependency:\n   def __init__(self, repo_path=None,\
+      \ use_tinydb=True):\n       ...existing init...\n       self._repository = PlanRepository()\
+      \ if use_tinydb else None\n\n2. Update get_plan() to try TinyDB first, fall\
+      \ back to YAML:\n   - If self._repository: try repository.get_plan() first\n\
+      \   - If TinyDB returns None or raises, fall back to existing YAML logic\n \
+      \  - If YAML succeeds and TinyDB missed, auto-import to TinyDB\n\n3. Update\
+      \ list_plans() similarly with TinyDB-first strategy\n\n4. Update create_plan()\
+      \ with dual-write:\n   - Create YAML files as before (existing logic)\n   -\
+      \ Also write to TinyDB via repository.create_plan()\n\n5. Update update_plan_status()\
+      \ with dual-write:\n   - Update YAML files as before\n   - Also update TinyDB\
+      \ via repository.update_plan()\n\n6. DO NOT modify PlanMovementWorkflow or GitSafetyChecker\n\
+      7. DO NOT change the public API or return types\n8. Keep use_tinydb=True as\
+      \ default (easy to disable for testing)\n\nBACKWARD COMPATIBILITY: If TinyDB\
+      \ import fails (dependency not installed),\nset self._repository = None and\
+      \ fall back to pure YAML.\n"
+    completed_at: '2026-02-22T21:44:07.090185'
+  - id: SV_002
+    name: Update TaskService to use PlanRepository
+    description: 'Modify TaskService to delegate task operations to PlanRepository
+
+      while maintaining backward compatibility with YAML.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    guidance: 'MODIFY TaskService class:
+
+
+      1. Add PlanRepository as optional dependency similar to PlanService
+
+      2. Update task CRUD methods to use TinyDB-first, YAML-fallback strategy
+
+      3. Update status transition to dual-write
+
+      4. Maintain existing public API
+
+      5. Keep FileLock for YAML writes (TinyDB handles its own concurrency)
+
+      '
+    completed_at: '2026-02-22T21:44:45.870077'
+  - id: SV_003
+    name: Update services __init__.py exports
+    description: 'Export PlanRepository from the services package __init__.py.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    guidance: 'Add PlanRepository to the services __init__.py:
+
+      1. Add import: from .plan_repository import PlanRepository
+
+      2. Add to __all__ list under "# Plan services" section
+
+      '
+    completed_at: '2026-02-22T21:44:47.203440'
+- name: Phase 3 - Data Migration & Sync
+  execution: sequential
+  description: Create CLI commands for data migration and sync operations
+  tasks:
+  - id: MI_001
+    name: Implement auto-bootstrap from YAML
+    description: 'Implement auto-bootstrap logic in PlanRepository that detects an
+      empty database
+
+      and automatically imports all existing YAML plans on first access.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    guidance: "Add auto-bootstrap logic to PlanRepository:\n\n1. In __init__, after\
+      \ database creation, check if plans table is empty\n2. If empty and plans_base\
+      \ path exists, call import_all_yaml(plans_base)\n3. plans_base should be discoverable:\n\
+      \   - Accept as constructor parameter\n   - Or auto-detect via PlanService._find_repo_root()\
+      \ / \"docs\" / \"plans\"\n4. Import should be silent on success, log warnings\
+      \ on failures\n5. Make auto-bootstrap configurable (auto_bootstrap=True parameter)\n\
+      \nThe import_all_yaml method should:\n- Scan live/, completed/, deferred/ directories\n\
+      - For each plan folder, call import_from_yaml()\n- Track and return stats: {imported:\
+      \ N, skipped: N, failed: N}\n"
+    completed_at: '2026-02-22T21:44:48.312259'
+  - id: MI_002
+    name: Add CLI db sync command
+    description: 'Add ''agentic plan db sync'' CLI command for manual sync between
+      TinyDB and YAML.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: 'Add a new subcommand ''db'' under ''plan'' with ''sync'' subcommand:
+
+      - ''agentic plan db sync'' - Rebuild TinyDB from YAML files
+
+      - ''agentic plan db sync --export'' - Write TinyDB state to YAML
+
+      - ''agentic plan db status'' - Show TinyDB stats (plan count, DB size, last
+      sync)
+
+
+      Implementation:
+
+      1. Add ''db'' to the plan subcommand handler
+
+      2. Create cmd_db_sync() function
+
+      3. Use PlanRepository.import_all_yaml() for sync
+
+      4. Output results in JSON format when --json flag is set
+
+      '
+    completed_at: '2026-02-22T21:45:31.833481'
+- name: Phase 4 - CLI Layer Refactor
+  execution: sequential
+  description: 'Replace direct YAML reads/writes in plan.py CLI commands with PlanService/PlanRepository
+    calls.
+
+    This is the largest phase - 37+ yaml.safe_load/dump calls need replacement.
+
+    '
+  tasks:
+  - id: CL_001
+    name: Refactor plan list and status commands
+    description: 'Replace direct YAML reads in cmd_list() and cmd_status() with PlanService
+      calls.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Focus on these functions in plan.py:\n- cmd_list() (around line 2686):\
+      \ Replace directory scanning + yaml.safe_load\n  with PlanService.list_plans()\n\
+      - cmd_status() (around line 1283): Replace yaml.safe_load for plan/task status\n\
+      \  with PlanService.get_plan() and get_plan_tasks()\n\nAPPROACH:\n1. Import\
+      \ PlanService at function level (lazy import pattern already used)\n2. Create\
+      \ PlanService instance with repo_path detection\n3. Replace yaml reads with\
+      \ service calls\n4. Keep output formatting unchanged\n5. Maintain JSON output\
+      \ compatibility\n"
+    completed_at: '2026-02-22T21:49:38.374861'
+  - id: CL_002
+    name: Refactor task CRUD commands
+    description: 'Replace direct YAML reads/writes in task commands with PlanService/TaskService
+      calls.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: 'Focus on these functions:
+
+      - cmd_task_list() (line ~2128): Replace yaml reads with PlanService.get_plan_tasks()
+
+      - cmd_task_status() (line ~2223): Use PlanService
+
+      - cmd_task_current() (line ~3116): Use PlanService.get_plan_tasks() with status
+      logic
+
+      - cmd_task_start() (line ~1944): Use TaskService or PlanRepository for status
+      update
+
+      - cmd_task_complete() (line ~1978): Use TaskService for status update
+
+      - cmd_task_add() (line ~2320): Use PlanRepository.add_task()
+
+      - cmd_task_update() (line ~2957): Use PlanRepository for task updates
+
+      - _update_task_status() helper (line ~2018): Centralize via PlanRepository
+
+
+      This is the highest-risk refactor. Take care to:
+
+      1. Preserve all existing behavior (output format, error handling)
+
+      2. Test each command after refactoring
+
+      3. Keep the auto-archive logic in cmd_task_complete()
+
+      '
+    completed_at: '2026-02-22T21:49:39.362257'
+  - id: CL_003
+    name: Refactor remaining plan commands
+    description: 'Replace YAML reads/writes in remaining plan commands: validate,
+      phase, archive.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: 'Refactor remaining commands:
+
+      - cmd_validate() (line ~1721): Use PlanService.validate_plan_structure()
+
+      - cmd_phase_add() (line ~3248): Use PlanRepository for phase addition
+
+      - cmd_phase_list() (line ~3345): Use PlanService for phase listing
+
+      - cmd_archive() (line ~2426): Keep PlanMovementWorkflow but sync TinyDB
+
+      - cmd_unarchive() (line ~2463): Sync TinyDB after unarchive
+
+      - cmd_new(), cmd_init(), cmd_bootstrap(): Ensure new plans written to TinyDB
+
+      - find_plan_folder() helper (line ~429): Use PlanRepository for resolution
+
+
+      Also ensure TinyDB is updated when:
+
+      - Plans are archived (status change + folder move)
+
+      - Plans are unarchived
+
+      - New plans are created via any path
+
+      '
+    completed_at: '2026-02-22T21:49:40.362887'

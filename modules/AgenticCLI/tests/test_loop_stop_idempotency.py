@@ -14,15 +14,15 @@ import pytest
 
 @pytest.fixture
 def loops_dir(tmp_path):
-    """Create a temporary loops directory."""
-    loops_dir = tmp_path / ".agentic" / "loops"
+    """Create a temporary sessions directory (unified store)."""
+    loops_dir = tmp_path / ".agentic" / "sessions"
     loops_dir.mkdir(parents=True)
     return loops_dir
 
 
 @pytest.fixture
 def mock_loops_dir(loops_dir, monkeypatch):
-    """Patch _get_loops_dir to use temp directory."""
+    """Patch StateStore.get_dir to use temp directory."""
     from agenticcli.commands import loop
 
     monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
@@ -33,7 +33,8 @@ def mock_loops_dir(loops_dir, monkeypatch):
 def sample_loop_data():
     """Return sample loop data for testing."""
     return {
-        "loop_id": "12345678-1234-1234-1234-123456789abc",
+        "session_id": "12345678-1234-1234-1234-123456789abc",
+        "type": "loop",
         "pid": 12345,
         "prompt": "Test loop task",
         "prompt_source": "string",
@@ -72,7 +73,7 @@ class TestLoopStopIdempotency:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=False,
         )
 
@@ -93,7 +94,7 @@ class TestLoopStopIdempotency:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=False,
         )
 
@@ -114,7 +115,7 @@ class TestLoopStopIdempotency:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=False,
         )
 
@@ -135,7 +136,7 @@ class TestLoopStopIdempotency:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=False,
         )
 
@@ -162,7 +163,7 @@ class TestLoopStopIdempotency:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=False,
         )
 
@@ -186,7 +187,7 @@ class TestLoopStopIdempotency:
         loop._store.save(sample_loop_data)
 
         args = SimpleNamespace(
-            loop_id=sample_loop_data["loop_id"][:8],
+            loop_id=sample_loop_data["session_id"][:8],
             force=False,
         )
 

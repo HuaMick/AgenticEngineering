@@ -187,12 +187,13 @@ def test_uat_phase_planning_section_exists():
     with open(process_path, 'r') as f:
         process_yml = yaml.safe_load(f)
 
-    # Check that uat_phase_planning exists in YAML structure
-    assert 'uat_phase_planning' in process_yml, \
+    # uat_phase_planning is nested under the top-level 'process' key
+    process = process_yml.get('process', {})
+    assert 'uat_phase_planning' in process, \
         "Missing uat_phase_planning section in process.yml"
 
     # Check that it's marked as mandatory
-    assert process_yml['uat_phase_planning'].get('mandatory') is True, \
+    assert process['uat_phase_planning'].get('mandatory') is True, \
         "uat_phase_planning should be marked as mandatory: true"
 
     # Read raw content to check text references

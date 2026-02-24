@@ -13,8 +13,8 @@ process:
     - |
       CCI BOOTSTRAP (CLI Context Injection) - Run FIRST:
       ```bash
-      agentic context bootstrap --role planner-audit -j
-      agentic plan task current -j
+      agentic agent context bootstrap --role planner-audit -j
+      agentic agent plan task current -j
       ```
       Use Glob/Grep/Read only if CLI output indicates specific files to examine.
 
@@ -37,7 +37,7 @@ process:
           The plan folder must be created via CLI before auditing can begin.
 
           REQUIRED ACTION:
-          Run: agentic plan init <branch> --description <description>
+          Run: agentic agent plan init <branch> --description <description>
 
           The CLI creates the worktree, workspace entry, and folder structure atomically.
           Do NOT create the plan folder directly with the Write tool.
@@ -50,6 +50,40 @@ process:
       INVENTORY THE PLAN FOLDER:
       List all files in root and subfolders (live/, completed/, audit/, analysis/).
       Record: file path, type (from naming pattern), last modified date.
+
+    - |
+      AUDIT PLAN STRUCTURE HIERARCHY (CRITICAL - must pass before other checks):
+
+      For each plan file (plan_*.yml) in the plan folder:
+      1. Parse the YAML and inspect the ROOT-LEVEL keys
+      2. Check for a `tasks:` key at root level (i.e., NOT nested under `phases:`)
+      3. Check for a `phases:` key at root level
+
+      REQUIRED STRUCTURE (phases -> tasks):
+        phases:
+          - name: "Phase Name"
+            tasks:
+              - id: "task_001"
+                ...
+
+      VIOLATION - tasks at root level (MUST FAIL):
+        tasks:
+          - id: "task_001"
+            ...
+
+      RULES:
+      - If `tasks:` exists at root level, FLAG as HIGH severity:
+        "STRUCTURE VIOLATION: 'tasks' found at root level. Tasks MUST be nested
+         under 'phases' entries. Root-level tasks break downstream parser loops
+         that iterate phases[].tasks[]."
+      - If `phases:` is missing entirely AND `tasks:` is at root, this is a
+        BLOCKING failure - the audit MUST report FAIL for this plan.
+      - If `phases:` exists but individual phases lack a `tasks:` key, FLAG as
+        MEDIUM severity: "Phase '{name}' has no tasks defined."
+      - Each phase entry MUST contain a `tasks:` list. Phases without tasks
+        are empty shells that waste orchestration cycles.
+
+      Add findings to the compliance report under a new `structure_hierarchy` section.
 
     - |
       AUDIT FILE PLACEMENT (for each file ask: "Does this file belong here?"):
@@ -149,6 +183,13 @@ process:
         auditor: "planner-audit"
 
       findings:
+        structure_hierarchy:
+          - file: "{path}"
+            issue: "tasks at root level | phase missing tasks | phases key missing"
+            severity: "high|medium"
+            recommendation: "{action}"
+            blocking: true|false
+
         file_placement:
           - file: "{path}"
             issue: "{description}"
@@ -211,5 +252,9 @@ process:
       COPY-AND-SYNC: Files stay in live/ while work continues; when ALL items done, delete live/ copy.
     - |
       SEVERITY: HIGH=could mislead agent, MEDIUM=wrong location/stale, LOW=minor organizational.
+    - |
+      HIERARCHY ENFORCEMENT: Plans MUST use phases->tasks nesting. Root-level `tasks:` keys
+      are a BLOCKING audit failure. Downstream parsers iterate phases[].tasks[] and will
+      silently skip root-level tasks, causing missed work. Reference: plans.yml#required_fields.
     - |
       NON-DESTRUCTIVE: Audit and report only. Cleaner agents execute cleanup.
