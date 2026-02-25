@@ -12,7 +12,13 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from agenticcli.utils.state_store import StateStore, is_process_running
+from agenticcli.utils.subprocess_utils import get_clean_env
+
 logger = logging.getLogger(__name__)
+
+# Shared session state store (same as session.py)
+_session_store = StateStore("sessions", id_key="session_id")
 
 # Plan type to planner agent mapping
 PLAN_TYPE_TO_PLANNER = {
@@ -278,6 +284,10 @@ class PlannerLoopWorkflow:
     def wait_for_session(self, session_id: str, timeout: int = 600, poll_interval: int = 10) -> Optional[str]:
         """Wait for a session to complete.
 
+        Polls the session state store directly (no CLI call required).
+        Short-circuits on consecutive read failures to avoid wasting the
+        full timeout when the session process dies before writing state.
+
         Args:
             session_id: Session UUID to wait for.
             timeout: Maximum wait time in seconds.
@@ -287,36 +297,56 @@ class PlannerLoopWorkflow:
             Final status string, or None on timeout.
         """
         deadline = time.time() + timeout
+        consecutive_failures = 0
         while time.time() < deadline:
             status = self._get_session_status(session_id)
-            if status in ("completed", "failed", "stopped"):
-                logger.info("Session %s finished with status: %s", session_id[:8], status)
-                return status
+            if status is None:
+                # State not readable — count consecutive failures and bail early
+                consecutive_failures += 1
+                if consecutive_failures >= 3:
+                    logger.error(
+                        "Session %s state unreadable after %d attempts, treating as failed",
+                        session_id[:8], consecutive_failures,
+                    )
+                    return "failed"
+            else:
+                consecutive_failures = 0
+                if status in ("completed", "failed", "stopped"):
+                    logger.info("Session %s finished with status: %s", session_id[:8], status)
+                    return status
+                # If still running, check if PID is actually alive to detect
+                # sessions that died without updating their state file
+                if status == "running":
+                    data = _session_store.load(session_id)
+                    if data:
+                        pid = data.get("pid")
+                        if pid and not is_process_running(pid):
+                            logger.warning(
+                                "Session %s PID %d is dead but status is still 'running' — treating as failed",
+                                session_id[:8], pid,
+                            )
+                            return "failed"
             time.sleep(poll_interval)
 
         logger.warning("Session %s timed out after %ds", session_id[:8], timeout)
         return None
 
     def _get_session_status(self, session_id: str) -> Optional[str]:
-        """Get current session status.
+        """Get current session status by reading the state store directly.
+
+        Reads ~/.agentic/sessions/<session_id>.json rather than invoking
+        the CLI (the `agentic session status` command was removed).
 
         Args:
             session_id: Session UUID.
 
         Returns:
-            Status string or None if check failed.
+            Status string or None if state file not found or unreadable.
         """
-        cmd = ["agentic", "-j", "session", "status", session_id]
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode != 0:
+        data = _session_store.load(session_id)
+        if not data:
             return None
-        try:
-            data = json.loads(result.stdout)
-            return data.get("status")
-        except (json.JSONDecodeError, KeyError):
-            return None
+        return data.get("status")
 
     def is_session_alive(self, session_id: str) -> bool:
         """Quick check if session is still running.
