@@ -315,17 +315,31 @@ class PlannerLoopWorkflow:
                     logger.info("Session %s finished with status: %s", session_id[:8], status)
                     return status
                 # If still running, check if PID is actually alive to detect
-                # sessions that died without updating their state file
+                # sessions that died without updating their state file.
+                # Mirror session.py _update_session_status: dead PID = completed
+                # unless exit_code indicates failure.
                 if status == "running":
                     data = _session_store.load(session_id)
                     if data:
                         pid = data.get("pid")
                         if pid and not is_process_running(pid):
-                            logger.warning(
-                                "Session %s PID %d is dead but status is still 'running' — treating as failed",
-                                session_id[:8], pid,
+                            exit_code = data.get("exit_code")
+                            if exit_code is not None and exit_code != 0:
+                                final_status = "failed"
+                            else:
+                                # Match session.py _update_session_status:
+                                # dead PID with no exit_code info = completed
+                                final_status = "completed"
+                            logger.info(
+                                "Session %s PID %d dead, status='running' → resolving as '%s' (exit_code=%s)",
+                                session_id[:8], pid, final_status, exit_code,
                             )
-                            return "failed"
+                            # Write resolved status so future polls are accurate
+                            from datetime import datetime
+                            data["status"] = final_status
+                            data["ended_at"] = datetime.now().isoformat()
+                            _session_store.save(data)
+                            return final_status
             time.sleep(poll_interval)
 
         logger.warning("Session %s timed out after %ds", session_id[:8], timeout)
