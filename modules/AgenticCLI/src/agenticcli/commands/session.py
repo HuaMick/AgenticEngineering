@@ -510,14 +510,12 @@ def handle(args, ctx=None):
         cmd_list(args, ctx)
     elif args.session_command == "stop":
         cmd_stop(args, ctx)
-    elif args.session_command == "status":
-        cmd_status(args, ctx)
-    elif args.session_command == "health":
-        cmd_health(args, ctx)
+    elif args.session_command == "healthcheck":
+        cmd_healthcheck(args, ctx)
     elif args.session_command == "logs":
         cmd_logs(args, ctx)
     else:
-        print("Usage: agentic session <spawn|list|stop|status|health|logs>", file=sys.stderr)
+        print("Usage: agentic session <spawn|list|stop|healthcheck|logs>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -690,6 +688,7 @@ def cmd_spawn(args, ctx=None):
 
     max_turns = getattr(args, "max_turns", None)
     background = getattr(args, "background", False)
+    no_sdk = getattr(args, "no_sdk", False)
     working_dir = getattr(args, "directory", None) or os.getcwd()
 
     # Generate session ID
@@ -709,7 +708,7 @@ def cmd_spawn(args, ctx=None):
         f"It contains your role, task details, and bootstrap context."
     )
 
-    # Build claude command
+    # Build claude command (used for subprocess path)
     # Always skip permissions for spawned sessions — they run autonomously
     cmd = ["claude", "--print", "--dangerously-skip-permissions"]
     if max_turns:
@@ -741,6 +740,62 @@ def cmd_spawn(args, ctx=None):
         "estimated_tokens": prompt_tokens,
         "context_usage_percent": usage_percent,
     }
+
+    # ── SDK-first path for background sessions ─────────────────────────
+    from agenticcli.utils.sdk_runner import SDK_AVAILABLE
+
+    if background and SDK_AVAILABLE and not no_sdk:
+        try:
+            from claude_agent_sdk import ClaudeAgentOptions
+            from agenticcli.utils.sdk_runner import run_agent_sync
+
+            sdk_options = ClaudeAgentOptions(
+                permission_mode="bypassPermissions",
+                cwd=working_dir,
+            )
+            if max_turns:
+                sdk_options.max_turns = max_turns
+
+            session_data["status"] = "running"
+            session_data["transport"] = "sdk"
+            _store.save(session_data)
+
+            if not is_json_output():
+                console.print(f"[dim]Context usage: [{usage_color}]{usage_percent:.1f}%[/{usage_color}] (~{prompt_tokens:,} tokens)[/dim]")
+                console.print(f"[dim]Running via SDK (session {session_id[:8]})[/dim]")
+
+            sdk_result = run_agent_sync(compiled_context, sdk_options)
+
+            session_data["status"] = sdk_result.status
+            session_data["exit_code"] = 0 if sdk_result.status == "completed" else 1
+            session_data["ended_at"] = datetime.now().isoformat()
+            session_data["cost_usd"] = sdk_result.cost_usd
+            session_data["duration_ms"] = sdk_result.duration_ms
+            session_data["sdk_session_id"] = sdk_result.session_id
+            _store.save(session_data)
+
+            if is_json_output():
+                print_json({
+                    "session_id": session_id,
+                    "status": sdk_result.status,
+                    "transport": "sdk",
+                    "cost_usd": sdk_result.cost_usd,
+                    "duration_ms": sdk_result.duration_ms,
+                    "sdk_session_id": sdk_result.session_id,
+                    "estimated_tokens": prompt_tokens,
+                    "context_usage_percent": usage_percent,
+                })
+            else:
+                if sdk_result.status == "completed":
+                    print_success(f"Session {session_id[:8]} completed via SDK (${sdk_result.cost_usd:.4f}, {sdk_result.duration_ms}ms)")
+                else:
+                    print_error(f"Session {session_id[:8]} failed via SDK: {sdk_result.result[:200]}")
+            return
+        except Exception as e:
+            # SDK path failed, fall through to subprocess
+            logger.warning("SDK spawn failed, falling back to subprocess: %s", e)
+            session_data["status"] = "starting"
+            session_data.pop("transport", None)
 
     try:
         if background:
@@ -1049,7 +1104,7 @@ def cmd_list(args, ctx=None):
     console.print(table)
 
     if stale_count > 0:
-        console.print(f"\n[yellow]Warning: {stale_count} session(s) appear stale. Use 'agentic session health <id>' for details.[/yellow]")
+        console.print(f"\n[yellow]Warning: {stale_count} session(s) appear stale. Use 'agentic session healthcheck <id>' for details.[/yellow]")
 
     # Status summary
     from collections import Counter
@@ -1171,116 +1226,13 @@ def cmd_stop(args, ctx=None):
         sys.exit(1)
 
 
-def cmd_status(args, ctx=None):
-    """Get status of a Claude Code session.
-
-    Args:
-        args: Parsed command arguments with session_id.
-        ctx: Optional CLIContext.
-    """
-    from agenticcli.console import console, is_json_output, print_error, print_header, print_json
-
-    session_id = getattr(args, "session_id", None)
-    if not session_id:
-        print_error("Session ID is required.")
-        sys.exit(1)
-
-    # Find session by ID (support partial matching)
-    sessions = _store.list_all()
-    matching = [s for s in sessions if s.get("session_id", "").startswith(session_id)]
-
-    if not matching:
-        print_error(f"Session not found: {session_id}")
-        sys.exit(1)
-
-    if len(matching) > 1:
-        print_error(f"Multiple sessions match '{session_id}'. Please provide a more specific ID.")
-        sys.exit(1)
-
-    session = _update_session_status(matching[0])
-
-    if is_json_output():
-        print_json(session)
-        return
-
-    print_header(f"Session {session['session_id'][:8]}")
-
-    status_colors = {
-        "running": "green",
-        "completed": "blue",
-        "failed": "red",
-        "starting": "yellow",
-        "stopped": "yellow",
-    }
-    status = session.get("status", "unknown")
-    status_color = status_colors.get(status, "white")
-
-    console.print(f"[cyan]Session ID:[/cyan] {session.get('session_id')}")
-    console.print(f"[cyan]PID:[/cyan] {session.get('pid', 'N/A')}")
-    console.print(f"[cyan]Status:[/cyan] [{status_color}]{status}[/{status_color}]")
-    console.print(f"[cyan]Background:[/cyan] {session.get('background', False)}")
-    console.print(f"[cyan]Working Dir:[/cyan] {session.get('working_dir', 'N/A')}")
-    console.print(f"[cyan]Started:[/cyan] {session.get('started_at', 'N/A')}")
-
-    if session.get("ended_at"):
-        console.print(f"[cyan]Ended:[/cyan] {session.get('ended_at')}")
-
-    if session.get("max_turns"):
-        console.print(f"[cyan]Max Turns:[/cyan] {session.get('max_turns')}")
-
-    console.print(f"[cyan]Prompt:[/cyan] {session.get('prompt', 'N/A')}")
-
-    if session.get("error"):
-        console.print(f"[red]Error:[/red] {session.get('error')}")
-
-    if session.get("exit_code") is not None:
-        console.print(f"[cyan]Exit Code:[/cyan] {session.get('exit_code')}")
-
-    # Display log file paths if they exist
-    stdout_log = session.get("stdout_log")
-    stderr_log = session.get("stderr_log")
-
-    if stdout_log:
-        console.print(f"[cyan]Stdout Log:[/cyan] {stdout_log}")
-    if stderr_log:
-        console.print(f"[cyan]Stderr Log:[/cyan] {stderr_log}")
-
-    # If --show-output is passed and log files exist, display their contents
-    show_output = getattr(args, "show_output", False)
-    if show_output:
-        if stdout_log and Path(stdout_log).exists():
-            console.print("\n[bold cyan]--- Stdout Log Contents ---[/bold cyan]")
-            with open(stdout_log) as f:
-                content = f.read()
-                if content:
-                    console.print(content)
-                else:
-                    console.print("[dim](empty)[/dim]")
-
-        if stderr_log and Path(stderr_log).exists():
-            console.print("\n[bold cyan]--- Stderr Log Contents ---[/bold cyan]")
-            with open(stderr_log) as f:
-                content = f.read()
-                if content:
-                    console.print(f"[red]{content}[/red]")
-                else:
-                    console.print("[dim](empty)[/dim]")
-
-    # Show health warnings for background running sessions
-    if session.get("background") and status == "running":
-        health = _check_session_health(session)
-        unhealthy_signals = [s for s in health["signals"] if not s["ok"]]
-        if unhealthy_signals:
-            console.print("\n[bold yellow]Health Warnings:[/bold yellow]")
-            for sig in unhealthy_signals:
-                console.print(f"  [yellow]! {sig['name']}: {sig['detail']}[/yellow]")
-
-
-def cmd_health(args, ctx=None):
+def cmd_healthcheck(args, ctx=None):
     """Check health/vitality of a session.
 
     Evaluates PID liveness, log file output, and activity recency
-    to determine overall session health.
+    to determine overall session health. Without --diagnose, this is
+    purely read-only. With --diagnose, auto-spawns a diagnostic planner
+    for unhealthy/stale sessions.
 
     Args:
         args: Parsed command arguments with session_id.
@@ -1290,6 +1242,7 @@ def cmd_health(args, ctx=None):
 
     session_id_prefix = getattr(args, "session_id", "")
     json_output = is_json_output() or getattr(args, "json_output", False)
+    diagnose = getattr(args, "diagnose", False)
 
     sessions_dir = _store.get_dir()
     matches = [f for f in sessions_dir.glob("*.json")
@@ -1310,8 +1263,7 @@ def cmd_health(args, ctx=None):
 
     if json_output:
         result = {"session_id": session["session_id"], **health}
-        # Auto-spawn diagnostic for JSON output too
-        if health["stale"] or not health["healthy"]:
+        if diagnose and (health["stale"] or not health["healthy"]):
             if not session.get("diagnostic_spawned", False):
                 new_id = _spawn_diagnostic_planner(session)
                 if new_id:
@@ -1339,19 +1291,15 @@ def cmd_health(args, ctx=None):
     else:
         console.print("[red bold]Verdict: UNHEALTHY[/red bold]")
 
-    # Auto-spawn diagnostic planner for unhealthy/stale sessions
-    if health["stale"] or not health["healthy"]:
+    # Only spawn diagnostic planner when --diagnose is passed
+    if diagnose and (health["stale"] or not health["healthy"]):
         if not session.get("diagnostic_spawned", False):
             new_id = _spawn_diagnostic_planner(session)
             if new_id:
-                if json_output:
-                    pass  # Already returned above
-                else:
-                    console.print(f"\n[cyan]Auto-spawned diagnostic session: {new_id[:8]}[/cyan]")
+                console.print(f"\n[cyan]Auto-spawned diagnostic session: {new_id[:8]}[/cyan]")
         else:
             diag_id = session.get("diagnostic_session_id", "unknown")[:8]
-            if not json_output:
-                console.print(f"\n[dim]Diagnostic already spawned: {diag_id}[/dim]")
+            console.print(f"\n[dim]Diagnostic already spawned: {diag_id}[/dim]")
 
 
 def cmd_logs(args, ctx=None):

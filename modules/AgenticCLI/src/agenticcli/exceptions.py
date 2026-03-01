@@ -72,48 +72,6 @@ class AgenticError(Exception):
         return "".join(parts)
 
 
-class WorktreeError(AgenticError):
-    """Errors related to git worktree operations."""
-
-    default_exit_code: int = 10
-
-    @classmethod
-    def branch_exists(cls, branch: str) -> "WorktreeError":
-        """Create error for existing branch."""
-        return cls(
-            message=f"Branch '{branch}' already exists",
-            recovery_hint=f"Use a different branch name or delete the existing branch with 'git branch -d {branch}'",
-            context=ErrorContext(operation="worktree_create", details={"branch": branch}),
-        )
-
-    @classmethod
-    def worktree_exists(cls, path: str) -> "WorktreeError":
-        """Create error for existing worktree path."""
-        return cls(
-            message=f"Worktree path already exists: {path}",
-            recovery_hint="Remove the existing directory or choose a different location",
-            context=ErrorContext(operation="worktree_create", details={"path": path}),
-        )
-
-    @classmethod
-    def not_in_repo(cls) -> "WorktreeError":
-        """Create error for not being in a git repository."""
-        return cls(
-            message="Not in a git repository",
-            recovery_hint="Run this command from within a git repository or run 'git init'",
-            context=ErrorContext(operation="worktree"),
-        )
-
-    @classmethod
-    def invalid_base_branch(cls, branch: str) -> "WorktreeError":
-        """Create error for invalid base branch."""
-        return cls(
-            message=f"Base branch '{branch}' does not exist",
-            recovery_hint="Specify an existing branch with --base or use the default branch",
-            context=ErrorContext(operation="worktree_create", details={"base_branch": branch}),
-        )
-
-
 class PlanError(AgenticError):
     """Errors related to plan file operations."""
 
@@ -303,7 +261,6 @@ class TemplateError(AgenticError):
 # Mapping of exception types to their exit codes for reference
 EXIT_CODES = {
     "AgenticError": 1,
-    "WorktreeError": 10,
     "PlanError": 20,
     "ConfigError": 30,
     "ValidationError": 40,

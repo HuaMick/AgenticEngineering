@@ -1,0 +1,209 @@
+name: remap-plan-task-to-epic-ticket-cleaning
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: planning
+objective: |
+  Remove deprecated backward compatibility shims and stubs introduced during the
+  migration. This cleanup phase runs AFTER tests pass and verifies no consumer
+  still uses the deprecated plan/task names.
+
+  DEPENDENCY: plan_test.yml must be fully completed and all tests passing.
+
+  CLEANUP SCOPE:
+  - Python compatibility shims (plan.py, task.py, plan_repository.py stubs)
+  - Deprecated CLI aliases (agentic plan ..., --plan flags)
+  - Old naming utility aliases
+  - Any remaining hardcoded docs/plans/ paths not caught in build phase
+  - pyproject.toml/setup.py references if any
+
+phases:
+  - name: Identify Remaining Plan References
+    description: |
+      Audit the codebase to find any remaining plan/task references that
+      should be cleaned up.
+    execution: sequential
+    tasks:
+      - id: clean_01
+        name: Audit codebase for remaining plan/task references
+        description: |
+          Run comprehensive search for remaining plan/task terminology:
+          1. grep -rn "docs/plans" modules/ --include="*.py" (should return empty)
+          2. grep -rn "PlanService\|TaskService\|PlanRepository" modules/ --include="*.py"
+             (should only return shim files and backward compat)
+          3. grep -rn "plan_folder\b" modules/ --include="*.py"
+             (should be replaced by epic_folder everywhere)
+          4. grep -rn "plan_command\|plan_action" modules/ --include="*.py"
+             (old argparse namespace keys - should be replaced)
+          5. grep -rn "docs/plans" modules/AgenticGuidance/assets/ (should be empty)
+          6. grep -rn "agentic plan\|agentic plan task" modules/ --include="*.md"
+             (should show only deprecated alias docs)
+
+          Output a report of all findings categorized by:
+          - Safe to remove (in shim files)
+          - Needs update (functional code still using old names)
+          - Documentation only (acceptable in backward compat docs)
+        status: pending
+        agent: build-python
+        inputs:
+          - modules/AgenticCLI/src/
+          - modules/AgenticGuidance/src/
+        target_files: []
+        success_criteria:
+          - Audit report produced listing all remaining references
+          - Report categorizes each reference as safe/needs-update/doc-only
+
+  - name: Remove Compatibility Shims
+    description: |
+      Remove the backward compatibility shim files introduced in the build phase,
+      replacing with clean imports and removing deprecated code paths.
+    execution: sequential
+    tasks:
+      - id: clean_02
+        name: Remove plan.py, task.py, plan_repository.py shims
+        description: |
+          Verify no external code imports these modules directly, then remove them:
+          1. Verify no test files import from plan.py directly (only via epic.py)
+          2. Verify no CLI code imports from task.py directly (only via ticket.py)
+          3. Delete modules/AgenticGuidance/src/agenticguidance/services/plan.py
+          4. Delete modules/AgenticGuidance/src/agenticguidance/services/task.py
+          5. Delete modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+          6. Update services/__init__.py to remove all old-name exports
+          7. Run full test suite to verify no regressions
+
+          CAUTION: Before deletion, verify the shim file imports are no longer needed.
+          If any external module still imports old names, fix that module first.
+        status: pending
+        agent: build-python
+        inputs:
+          - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+          - modules/AgenticGuidance/src/agenticguidance/services/task.py
+          - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+        target_files:
+          - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+        success_criteria:
+          - plan.py, task.py, plan_repository.py deleted
+          - __init__.py exports only epic/ticket names
+          - All tests still pass after deletion
+
+      - id: clean_03
+        name: Remove deprecated CLI plan.py command module
+        description: |
+          After verifying no tests use plan.py command module directly:
+          1. Verify test_plan.py tests only call via agentic plan (CLI, not direct import)
+          2. Remove plan.py delegating shim code (keep file but remove delegation wrapper)
+             OR delete entirely if nothing imports it
+          3. Update cli.py: Remove the _plan_handle -> epic delegation
+             Replace deprecated plan_app commands with proper error messages:
+             "Command 'agentic plan ...' removed. Use 'agentic epic ...' instead."
+          4. Run test suite to verify no regressions
+          Note: The plan_app can stay as hidden deprecated commands but must show
+          clear error/redirect, not silently delegate.
+        status: pending
+        agent: build-python
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+          - modules/AgenticCLI/src/agenticcli/cli.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/commands/plan.py
+          - modules/AgenticCLI/src/agenticcli/cli.py
+        success_criteria:
+          - agentic plan list shows "Removed: use agentic epic list" error
+          - plan.py command module simplified (no complex delegation)
+          - All agentic epic ... commands still work correctly
+
+      - id: clean_04
+        name: Remove naming utility aliases
+        description: |
+          Clean up naming.py to remove backward compat aliases:
+          1. Remove generate_plan_folder_name alias (keep only generate_epic_folder_name)
+          2. Remove validate_plan_folder_name alias
+          3. Remove parse_plan_folder_name alias
+          4. Update all internal callers in other modules
+          5. Run test suite
+
+          Also clean up worktree.py:
+          - Remove get_live_plan_folders alias
+          - Remove create_planning_folder alias
+          - Remove --no-plan flag (keep only --no-epic)
+        status: pending
+        agent: build-python
+        inputs:
+          - modules/AgenticCLI/src/agenticcli/utils/naming.py
+          - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+        target_files:
+          - modules/AgenticCLI/src/agenticcli/utils/naming.py
+          - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+        success_criteria:
+          - generate_plan_folder_name no longer exists
+          - Only generate_epic_folder_name exists in naming.py
+          - --no-plan flag removed from worktree create command
+          - Tests updated and passing
+
+  - name: Clean Up Test Stubs and Backward Compat Test Code
+    description: |
+      Remove backward compatibility test code that was added during migration.
+    execution: sequential
+    tasks:
+      - id: clean_05
+        name: Remove backward compat test assertions
+        description: |
+          Review and clean up test files:
+          1. Remove tests that verify old PlanService import still works
+             (now that plan.py is deleted, these tests would fail anyway)
+          2. Remove tests that verify agentic plan ... deprecation warning
+             (now that plan commands show error, update assertions)
+          3. Update test_plan.py and test_task*.py to reflect final state:
+             - These files can be left as-is if they test the error messages
+             - Or deleted if no value remains
+          4. Remove any test fixtures that create files in docs/plans/ paths
+        status: pending
+        agent: build-python
+        inputs:
+          - modules/AgenticCLI/tests/test_plan.py
+          - modules/AgenticCLI/tests/test_plan_movement.py
+          - modules/AgenticGuidance/tests/test_services_plan.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan.py
+          - modules/AgenticGuidance/tests/test_services_plan.py
+        success_criteria:
+          - No test fixtures create docs/plans/ directories
+          - Tests for removed commands verify error message output
+          - Full test suite passes
+
+  - name: Final Verification
+    description: |
+      Run the complete test suite one final time to verify clean state.
+    execution: sequential
+    tasks:
+      - id: clean_06
+        name: Run final test suite verification
+        description: |
+          Execute complete test suites across both modules:
+          1. cd modules/AgenticGuidance && python3 -m pytest tests/ -v
+          2. cd modules/AgenticCLI && python3 -m pytest tests/ -v
+          3. Run smoke tests: agentic epic list, agentic epic status
+          4. Verify no docs/plans/ directory exists in repo (only docs/epics/)
+          5. Verify ~/.agentic/epics.db exists and plans.db either deleted or preserved as backup
+        status: pending
+        agent: test-runner
+        inputs: []
+        target_files: []
+        success_criteria:
+          - Both test suites pass with 0 failures
+          - No docs/plans/ directory in repository
+          - docs/epics/live/ and docs/epics/completed/ exist with all epics
+          - agentic epic list shows all epics
+          - agentic plan list shows removal error
+
+loop_structure:
+  type: cleaner-dependency-loop
+  trigger: Cleanup phase begins after all tests pass
+  exit_criteria:
+    success: All plan/task shims removed and tests still pass
+    max_iterations: 3
+    escalation: escalate_to_human
+  participants:
+    - agent: build-python
+      role: executor
+    - agent: test-runner
+      role: validator

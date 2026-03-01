@@ -64,9 +64,9 @@ class TestAgentNameDetection:
         # Old flag syntax should return None
         assert get_agent_name("--planner-guidance") is None
 
-    def test_all_24_agents_registered(self):
-        """Verify all 24 agents are in KNOWN_AGENTS."""
-        assert len(KNOWN_AGENTS) == 24, f"Expected 24 agents, got {len(KNOWN_AGENTS)}"
+    def test_all_23_agents_registered(self):
+        """Verify all 23 agents are in KNOWN_AGENTS."""
+        assert len(KNOWN_AGENTS) == 23, f"Expected 23 agents, got {len(KNOWN_AGENTS)}"
 
     def test_all_agents_have_categories(self):
         """Verify all agents have category mappings."""
@@ -429,6 +429,6 @@ class TestAgentCategories:
         assert len(builders) == 2
 
     def test_deploy_agents_count(self):
-        """Verify 2 deploy agents."""
+        """Verify 1 deploy agent."""
         deployers = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "deploy"]
-        assert len(deployers) == 2
+        assert len(deployers) == 1

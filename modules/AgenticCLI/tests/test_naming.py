@@ -5,7 +5,6 @@ Tests the YYMMDDXX_description naming convention implementation.
 
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -16,6 +15,7 @@ from agenticcli.utils.naming import (
     sanitize_description,
     validate_plan_folder_name,
 )
+
 
 
 class TestGetWorktreeId:
@@ -61,40 +61,6 @@ class TestGetWorktreeId:
         path = Path("/home/code/Repo-260208PN")
         result = get_worktree_id(path, branch="260208PN")
         assert result == "PN"
-
-    @patch("agenticcli.commands.worktree.lookup_abbreviation", return_value="PN")
-    @patch(
-        "agenticcli.commands.worktree.load_worktree_registry",
-        return_value=[{"branch": "my-feature", "abbreviation": "PN"}],
-    )
-    def test_branch_triggers_registry_lookup(self, mock_registry, mock_lookup):
-        """Registry abbreviation is used when branch doesn't match YYMMDDXX pattern."""
-        path = Path("/home/code/Repo-myfeature")
-        result = get_worktree_id(path, branch="my-feature")
-        assert result == "PN"
-        mock_registry.assert_called()
-        mock_lookup.assert_called()
-
-    @patch(
-        "agenticcli.commands.worktree.load_worktree_registry",
-        side_effect=ImportError("no module"),
-    )
-    def test_branch_registry_import_error_falls_back(self, mock_registry):
-        """ImportError in registry lookup falls back to path suffix."""
-        path = Path("/home/code/Repo-feature")
-        result = get_worktree_id(path, branch="feature")
-        assert result == "FE"
-
-    @patch("agenticcli.commands.worktree.lookup_abbreviation", return_value=None)
-    @patch(
-        "agenticcli.commands.worktree.load_worktree_registry",
-        return_value=[],
-    )
-    def test_branch_registry_no_match_falls_back(self, mock_registry, mock_lookup):
-        """No registry match falls back to path suffix extraction."""
-        path = Path("/home/code/Repo-myfeature")
-        result = get_worktree_id(path, branch="myfeature")
-        assert result == "MY"
 
 
 class TestSanitizeDescription:
@@ -169,37 +135,11 @@ class TestGeneratePlanFolderName:
         name = generate_plan_folder_name(path, "My Feature!", date)
         assert name == "260115TE_my_feature"
 
-    @patch("agenticcli.commands.worktree.lookup_abbreviation", return_value="AC")
-    @patch(
-        "agenticcli.commands.worktree.load_worktree_registry",
-        return_value=[{"branch": "agentic-cli", "abbreviation": "AC"}],
-    )
-    def test_branch_parameter_forwarded(self, mock_registry, mock_lookup):
-        """Branch parameter is forwarded to get_worktree_id for registry lookup."""
-        path = Path("/home/code/Repo-test")
-        date = datetime(2026, 2, 8)
-        name = generate_plan_folder_name(path, "feature", date, branch="agentic-cli")
-        assert name == "260208AC_feature"
-
     def test_branch_none_uses_path_fallback(self):
         """branch=None preserves existing path-suffix behavior."""
         path = Path("/home/code/Repo-test")
         date = datetime(2026, 2, 8)
         name = generate_plan_folder_name(path, "feature", date, branch=None)
-        assert name == "260208TE_feature"
-
-    @patch("agenticcli.commands.worktree.lookup_abbreviation", return_value=None)
-    @patch(
-        "agenticcli.commands.worktree.load_worktree_registry",
-        return_value=[],
-    )
-    def test_branch_not_in_registry_uses_path(self, mock_registry, mock_lookup):
-        """Unregistered branch falls back to path suffix extraction."""
-        path = Path("/home/code/Repo-test")
-        date = datetime(2026, 2, 8)
-        name = generate_plan_folder_name(
-            path, "feature", date, branch="unknown-branch"
-        )
         assert name == "260208TE_feature"
 
 

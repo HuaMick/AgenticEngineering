@@ -91,11 +91,10 @@ Interact with the project system through the `agentic` CLI. Avoid manual file ma
 | `agentic configure preferences` | User preferences | `get`, `set`, `list` |
 | `agentic configure env` | Environment vars | `show`, `export`, `run` |
 | `agentic configure state` | State inspection | `list`, `show`, `clear` |
-| `agentic session` | Sessions & agents | `spawn`, `list`, `stop`, `status` |
-| `agentic session orchestrate` | Orchestration | (modes: planning, executor, loop) |
-| `agentic session loop` | Ralph Loops | `start`, `stop`, `status`, `history` |
+| `agentic session` | Sessions & agents | `spawn`, `list`, `stop`, `healthcheck`, `logs` |
+| `agentic session orchestrate` | Orchestration | `planning`, `executing` |
+| `agentic session orchestrate ralph` | Ralph iteration | `start`, `stop`, `next`, `status`, `history` |
 | `agentic session planner` | Planner loop | `start`, `stop`, `status` |
-| `agentic session ralph` | Ralph iteration | `start`, `stop`, `next`, `status` |
 | `agentic session terminal` | Web terminal | `serve` |
 | `agentic agent manifest` | Agent manifest ops | `list`, `show` |
 | `agentic package` | Package management | (packaging) |
@@ -552,11 +551,11 @@ AGENT READS   → agentic question get <id> -j
 ### 15.3 Ralph Loop
 
 ```
-START    → agentic session ralph start --max-iterations 20
-ITERATE  → agentic session ralph next -j   # Returns: execute|plan|complete|blocked
-TRACK    → agentic session ralph status
-HISTORY  → agentic session ralph history
-STOP     → agentic session ralph stop
+START    → agentic session orchestrate ralph start --max-iterations 20
+ITERATE  → agentic session orchestrate ralph next -j   # Returns: execute|plan|complete|blocked
+TRACK    → agentic session orchestrate ralph status
+HISTORY  → agentic session orchestrate ralph history
+STOP     → agentic session orchestrate ralph stop
 ```
 
 ### 15.4 Context Bootstrap (CCI)

@@ -1,0 +1,573 @@
+name: migrate-sessions-to-sdk
+status: active
+priority: high
+worktree: null
+affected_stories:
+- US-CLI-030
+- US-CLI-031
+- US-ORCH-011
+- US-ORCH-014
+loop_structure:
+- name: build-loop-phase1-phase2-phase3
+  type: build-loop
+  applies_to:
+  - Phase 1 - SDK Foundation
+  - Phase 2 - Migrate planner_loop.py
+  - Phase 3 - Migrate session spawn
+  description: Build-test-fix iteration for SDK migration implementation
+  exit_criteria:
+  - All tasks in phase marked completed
+  - Success criteria verified for each task
+  max_iterations: 5
+  on_max_exceeded: escalate_to_user
+- name: test-loop-phase4
+  type: test-loop
+  applies_to:
+  - Phase 4 - End-to-end verification
+  description: Test-fix iteration for integration validation
+  exit_criteria:
+  - SDK_007 validation passes all success criteria
+  max_iterations: 5
+  on_max_exceeded: escalate_to_user
+- name: build-loop-phase5
+  type: build-loop
+  applies_to:
+  - Phase 5 - SDK Resilience (Retry, Timeout, Stall Detection)
+  description: Build-test-fix iteration for SDK resilience features
+  exit_criteria:
+  - All tasks SDK_008 through SDK_012 completed
+  - All new tests pass alongside existing tests
+  - No regressions in existing planner_loop or sdk_runner tests
+  max_iterations: 5
+  on_max_exceeded: escalate_to_user
+- name: build-loop-phase6
+  type: build-loop
+  applies_to:
+  - Phase 6 - Migrate remaining subprocess paths to SDK
+  description: Build-test-fix iteration for remaining subprocess migrations
+  exit_criteria:
+  - All tasks SDK_013 through SDK_017 completed
+  - All new tests pass alongside existing tests
+  - No remaining subprocess Claude CLI invocations (except fallbacks)
+  max_iterations: 5
+  on_max_exceeded: escalate_to_user
+context: 'The AgenticCLI session spawning system currently uses subprocess.Popen to
+  launch
+
+  Claude Code sessions and os.kill(pid, 0) to detect when they finish. This leads
+
+  to chronic lifecycle management bugs:
+
+
+  - Background sessions never update their own status from "running" to "completed"
+
+  - The planner_loop.py relies on dead-PID detection which is fragile and racy
+
+  - Exit codes are never captured for background sessions
+
+  - State files become orphaned when processes die unexpectedly
+
+
+  The Claude Agent SDK (claude-agent-sdk) provides a native Python API that
+
+  eliminates all of these issues:
+
+  - query() returns an async iterator that naturally terminates when done
+
+  - ResultMessage signals success/failure with structured data
+
+  - No PID polling, no state files, no subprocess management
+
+
+  This plan migrates the core session spawning and planner loop to use the SDK.
+
+  '
+sdk_context:
+  target_package: claude-agent-sdk
+  docs_url: https://docs.anthropic.com/en/docs/claude-code/sdk
+  python_ref: https://docs.anthropic.com/en/docs/agent-sdk/python
+impacted_artifacts:
+- artifact_type: service
+  artifact_identifier: agenticcli.commands.session.cmd_spawn
+  impact_type: behavior_change
+  description: Replace subprocess.Popen with claude_agent_sdk.query() for background
+    sessions
+  breaking_change: false
+- artifact_type: service
+  artifact_identifier: agenticcli.workflows.planner_loop.PlannerLoopWorkflow
+  impact_type: behavior_change
+  description: Replace spawn + PID-poll pattern with async SDK query + natural completion
+  breaking_change: false
+- artifact_type: service
+  artifact_identifier: agenticcli.utils.state_store.is_process_running
+  impact_type: deprecation
+  description: PID-based lifecycle detection becomes unnecessary with SDK
+  breaking_change: false
+phases:
+- name: Phase 1 - SDK Foundation
+  execution: sequential
+  description: 'Install the Claude Agent SDK and create a thin wrapper layer that
+
+    provides the same interface as the current subprocess spawning but
+
+    uses the SDK internally. This allows incremental migration.
+
+    '
+  tasks:
+  - id: SDK_001
+    name: Add claude-agent-sdk dependency
+    status: completed
+    agent: build-python
+    description: 'Add claude-agent-sdk to AgenticCLI''s pyproject.toml dependencies.
+
+      Verify installation works. Check minimum version requirements.
+
+
+      Steps:
+
+      1. Run: pip index versions claude-agent-sdk
+
+      2. Add to pyproject.toml: claude-agent-sdk >= <latest_minor>
+
+      3. pip install -e modules/AgenticCLI
+
+      4. python -c "from claude_agent_sdk import query; print(''OK'')"
+
+      '
+    target_files:
+    - modules/AgenticCLI/pyproject.toml
+    success_criteria:
+    - claude-agent-sdk is importable
+    - pip install -e modules/AgenticCLI succeeds
+    - No version conflicts with existing dependencies
+    completed_at: '2026-02-26T11:57:28.653357'
+  - id: SDK_002
+    name: Create SDK session runner module
+    status: completed
+    agent: build-python
+    description: "Create a new module agenticcli/utils/sdk_runner.py that wraps the\n\
+      Claude Agent SDK query() function with the same lifecycle semantics\nas the\
+      \ current subprocess approach.\n\nThe module should provide:\n1. async def run_agent(prompt,\
+      \ options, on_message=None) -> SessionResult\n   - Streams messages from query()\n\
+      \   - Returns SessionResult with status, result_text, cost, usage\n   - Handles\
+      \ errors gracefully with fallback path\n\n2. SessionResult dataclass with:\n\
+      \   - status: \"completed\" | \"failed\"\n   - result: str (agent output)\n\
+      \   - cost_usd: float\n   - duration_ms: int\n   - session_id: str (Claude Code\
+      \ session ID)\n\n3. def run_agent_sync(prompt, options) -> SessionResult\n \
+      \  - Synchronous wrapper using asyncio.run()\n   - For use in non-async code\
+      \ paths\n\nMust include fallback logic:\n```python\ntry:\n    from claude_agent_sdk\
+      \ import query, ClaudeAgentOptions\n    SDK_AVAILABLE = True\nexcept ImportError:\n\
+      \    SDK_AVAILABLE = False\n```\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/utils/state_store.py
+    success_criteria:
+    - sdk_runner.py exists and is importable
+    - run_agent_sync() returns SessionResult
+    - Graceful fallback when SDK not installed
+    completed_at: '2026-02-26T11:58:37.344255'
+  - id: SDK_003
+    name: Write SDK runner unit tests
+    status: completed
+    agent: build-python
+    description: "Create tests for sdk_runner.py using mocked SDK responses.\nUse\
+      \ unittest.mock.AsyncMock for the query() async iterator.\n\nTest cases:\n1.\
+      \ Successful agent run \u2192 SessionResult(status=\"completed\")\n2. Agent\
+      \ error \u2192 SessionResult(status=\"failed\")\n3. SDK not installed \u2192\
+      \ fallback behavior\n4. Streaming messages are passed to on_message callback\n"
+    target_files:
+    - modules/AgenticCLI/tests/test_sdk_runner.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    success_criteria:
+    - All tests pass
+    - Both success and failure paths covered
+    - SDK import fallback tested
+    completed_at: '2026-02-26T11:59:54.777016'
+- name: Phase 2 - Migrate planner_loop.py
+  execution: sequential
+  description: 'Replace the subprocess-based agent spawning in planner_loop.py with
+
+    the SDK runner. This eliminates PID polling and dead-process detection.
+
+    '
+  tasks:
+  - id: SDK_004
+    name: Replace spawn methods with SDK runner calls
+    status: completed
+    agent: build-python
+    description: "In planner_loop.py, replace these methods to use sdk_runner:\n-\
+      \ spawn_explore_agent() \u2192 run agent synchronously, return result\n- spawn_story_agent()\
+      \ \u2192 same\n- spawn_planner() \u2192 same\n- spawn_reviewer() \u2192 same\n\
+      - _spawn_orchestration_planner() \u2192 same\n\nThe wait_for_session() method\
+      \ becomes unnecessary \u2014 the SDK call\nblocks until completion. Simplify\
+      \ _process_plan() to:\n```python\nresult = run_agent_sync(explore_prompt, explore_options)\n\
+      if result.status != \"completed\":\n    return False\n# No more spawn + wait\
+      \ pattern\n```\n\nCRITICAL: Keep the state file write for observability:\n-\
+      \ Still write session state to StateStore\n- But status is determined by SDK\
+      \ result, not PID polling\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - No subprocess.Popen calls in planner_loop.py
+    - No PID polling in planner_loop.py
+    - State files still written for observability
+    - Planning loop processes plan successfully
+    completed_at: '2026-02-26T12:02:41.152716'
+  - id: SDK_005
+    name: Update planner_loop tests
+    status: completed
+    agent: build-python
+    description: 'Update existing planner_loop tests to mock the SDK runner
+
+      instead of subprocess calls. Remove tests for PID polling
+
+      and dead-process detection.
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    success_criteria:
+    - All planner_loop tests pass
+    - No subprocess mocking needed
+    completed_at: '2026-02-26T12:04:40.575390'
+- name: Phase 3 - Migrate session spawn
+  execution: sequential
+  description: 'Migrate the cmd_spawn function in session.py to use the SDK for
+
+    background sessions. Foreground sessions keep the subprocess approach
+
+    for interactive output streaming.
+
+    '
+  tasks:
+  - id: SDK_006
+    name: Add SDK path to cmd_spawn for background sessions
+    status: completed
+    agent: build-python
+    description: "In session.py cmd_spawn(), add an SDK-first path for background\
+      \ sessions:\n\n```python\nif background and SDK_AVAILABLE:\n    # Use SDK \u2014\
+      \ natural completion, no PID polling needed\n    result = run_agent_sync(prompt,\
+      \ options)\n    session_data[\"status\"] = result.status\n    session_data[\"\
+      exit_code\"] = 0 if result.status == \"completed\" else 1\n    session_data[\"\
+      ended_at\"] = datetime.now().isoformat()\nelse:\n    # Fallback: existing subprocess.Popen\
+      \ approach\n    ...\n```\n\nThe subprocess path must remain as fallback for:\n\
+      - SDK not installed\n- Foreground sessions (interactive output needed)\n- Explicit\
+      \ --no-sdk flag (for debugging)\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    success_criteria:
+    - Background sessions use SDK when available
+    - Foreground sessions work as before
+    - State files correctly updated with completion status
+    - Exit codes properly captured
+    completed_at: '2026-02-26T12:07:31.905235'
+- name: Phase 4 - End-to-end verification
+  execution: sequential
+  description: 'Run the planning orchestration end-to-end to verify the SDK
+
+    migration works correctly in a live environment.
+
+    '
+  tasks:
+  - id: SDK_007
+    name: Run planning orchestration with SDK
+    status: completed
+    agent: test-runner
+    description: 'Execute the full planning orchestration for a test plan:
+
+      1. agentic session orchestrate planning --plan <test_plan>
+
+      2. Verify sessions complete with "completed" status
+
+      3. Verify no PID polling fallback is triggered
+
+      4. Verify state files reflect SDK-determined status
+
+      '
+    success_criteria:
+    - Planning orchestration completes successfully
+    - All spawned sessions resolve to "completed" via SDK
+    - No "dead PID" log messages appear
+    - Plan gets orchestration MMD generated
+    completed_at: '2026-02-26T12:11:33.146945'
+- name: Phase 5 - SDK Resilience (Retry, Timeout, Stall Detection)
+  execution: sequential
+  description: "The SDK migration (Phases 1-4) replaced subprocess spawning but introduced\
+    \ a\ncritical resilience gap: the SDK path has zero retry logic, no timeouts,\
+    \ and\ntreats dropped streaming connections as successful completions. This was\n\
+    discovered when an orchestration-planning agent stalled overnight \u2014 the API\n\
+    stream dropped mid-response (stop_reason=None) and the system silently treated\n\
+    the empty result as \"completed\" instead of retrying.\n\nThis phase adds timeout,\
+    \ retry, and stall detection to close the gap.\n"
+  tasks:
+  - id: SDK_008
+    name: Add timeout to SDK query stream
+    status: completed
+    agent: build-python
+    description: "In sdk_runner.py run_agent(), wrap the async query() iteration with\n\
+      asyncio.wait_for() to enforce a maximum execution time.\n\nImplementation:\n\
+      1. Add a `timeout_seconds` parameter to run_agent() (default: 1800 = 30 min)\n\
+      2. Wrap the async for loop with asyncio.wait_for(timeout=timeout_seconds)\n\
+      3. Catch asyncio.TimeoutError and return SessionResult(status=\"failed\",\n\
+      \   result=\"SDK query timed out after {timeout_seconds}s\")\n4. Log timeout\
+      \ events at WARNING level\n\nThe timeout should be configurable per-call so\
+      \ orchestration can set longer\ntimeouts for complex agents and shorter ones\
+      \ for simple explore agents.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    success_criteria:
+    - run_agent() accepts timeout_seconds parameter
+    - asyncio.TimeoutError is caught and returns failed SessionResult
+    - Default timeout is 1800 seconds (30 minutes)
+    - Timeout event is logged at WARNING level
+  - id: SDK_009
+    name: Detect and reject empty/stalled results
+    status: completed
+    agent: build-python
+    description: "In sdk_runner.py run_agent(), when the async generator exits without\n\
+      yielding a ResultMessage, this currently returns status=\"completed\" with\n\
+      empty text. This is the root cause of the silent stall bug.\n\nFix:\n1. After\
+      \ the async for loop, if final_result is None (no ResultMessage\n   received),\
+      \ return SessionResult(status=\"failed\",\n   result=\"No ResultMessage received\
+      \ - stream may have dropped\")\n2. Add a result validation step: if result text\
+      \ is empty AND cost_usd is 0,\n   log a WARNING and set status=\"failed\"\n\
+      3. Only return status=\"completed\" when a genuine ResultMessage was received\n\
+      \nThis ensures dropped connections are detected as failures, not successes.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    success_criteria:
+    - Missing ResultMessage returns status="failed" (not "completed")
+    - Empty result + zero cost triggers failure detection
+    - Genuine completions still return status="completed"
+    - Warning logged for stall detection events
+  - id: SDK_010
+    name: Add retry logic to _run_via_sdk in planner_loop
+    status: completed
+    agent: build-python
+    description: "In planner_loop.py _run_via_sdk() (or _run_role_agent()), add retry\
+      \ logic\nfor failed SDK executions. Currently it's single-shot with no recovery.\n\
+      \nImplementation:\n1. Add max_retries parameter (default: 3) to _run_via_sdk()\n\
+      2. On failure (status != \"completed\"), retry with exponential backoff:\n \
+      \  - Attempt 1: immediate\n   - Attempt 2: wait 2 seconds\n   - Attempt 3: wait\
+      \ 4 seconds\n3. Log each retry at INFO level: \"Retrying SDK agent (attempt\
+      \ {n}/{max}): {reason}\"\n4. After all retries exhausted, return the last failure\
+      \ result\n5. Do NOT retry on user-initiated cancellation (KeyboardInterrupt)\n\
+      \nAlso pass appropriate timeouts to run_agent_sync():\n- explore agents: 600s\
+      \ (10 min)\n- story/planner/reviewer agents: 1800s (30 min)\n- orchestration\
+      \ agents: 3600s (60 min)\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    success_criteria:
+    - Failed SDK calls are retried up to 3 times
+    - Exponential backoff between retries (2s, 4s)
+    - Each retry is logged with attempt number and failure reason
+    - Timeout values are role-appropriate
+    - KeyboardInterrupt is not retried
+  - id: SDK_011
+    name: Add result validation to _process_plan
+    status: completed
+    agent: build-python
+    description: "In planner_loop.py _process_plan(), add validation of agent results\
+      \ after\neach phase. Currently any status=\"completed\" result passes, even\
+      \ if\nsuspiciously empty.\n\nImplementation:\n1. After each _run_role_agent()\
+      \ call, validate the SessionResult:\n   - Check result.result is not empty (or\
+      \ whitespace-only)\n   - Check result.duration_ms > 0\n   - Log a WARNING for\
+      \ suspicious results but still accept them\n     (the retry logic in SDK_010\
+      \ handles actual failures)\n2. Add a _validate_result(result, role_name) helper\
+      \ method\n3. Log result summary at INFO level: \"Agent {role} completed in {duration}ms,\n\
+      \   {len(result.result)} chars output\"\n\nThis provides observability into\
+      \ agent execution quality without\nadding false-negative rejections.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    success_criteria:
+    - Each agent result is validated after execution
+    - Suspicious results (empty text, zero duration) logged as WARNING
+    - Result summary logged at INFO level for all executions
+    - No false rejections of legitimate results
+  - id: SDK_012
+    name: Write tests for retry and timeout logic
+    status: completed
+    agent: build-python
+    description: 'Add tests covering the new resilience features:
+
+
+      In test_sdk_runner.py:
+
+      1. Test timeout fires and returns failed SessionResult
+
+      2. Test missing ResultMessage returns failed (not completed)
+
+      3. Test empty result + zero cost triggers failure detection
+
+      4. Test genuine completion still works
+
+
+      In test_planner_loop.py:
+
+      5. Test retry logic: mock first 2 calls as failed, 3rd succeeds
+
+      6. Test retry exhaustion: all 3 attempts fail, returns last failure
+
+      7. Test KeyboardInterrupt is not retried
+
+      8. Test timeout values are passed correctly per role
+
+      9. Test result validation logs warnings for suspicious results
+
+      '
+    target_files:
+    - modules/AgenticCLI/tests/test_sdk_runner.py
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    success_criteria:
+    - All new tests pass
+    - Timeout, stall detection, and retry paths all covered
+    - Both success and failure scenarios tested
+    - No regressions in existing tests
+- name: Phase 6 - Migrate remaining subprocess paths to SDK
+  execution: sequential
+  description: 'Phases 1-4 migrated planner_loop.py and session.py to SDK. Phase 5
+    added
+
+    resilience. But three other command files still shell out to `claude --print`
+
+    via subprocess instead of using the SDK: plan.py (plan generation + task
+
+    spawning), orchestrate.py (orchestration loop spawning), and ralph.py
+
+    (tmux + manual claude CLI invocation).
+
+
+    This phase replaces those remaining subprocess patterns with SDK calls,
+
+    eliminating the last manual Claude CLI invocations from the codebase.
+
+    '
+  tasks:
+  - id: SDK_013
+    name: Migrate plan.py plan generation to SDK
+    status: completed
+    agent: build-python
+    description: "In plan.py, replace the subprocess-based plan generation with SDK\
+      \ calls.\n\nCurrent pattern (around lines 782-813):\n  cmd = [\"claude\", \"\
+      --print\", \"--dangerously-skip-permissions\"]\n  result = subprocess.run(cmd,\
+      \ capture_output=True)\n\nReplace with:\n  from agenticcli.utils.sdk_runner\
+      \ import run_agent_sync, SDK_AVAILABLE\n  if SDK_AVAILABLE:\n      result =\
+      \ run_agent_sync(prompt, options, timeout_seconds=1800)\n  else:\n      # Keep\
+      \ subprocess fallback\n\nAlso replace task spawning (around lines 1003-1008):\n\
+      \  process = subprocess.Popen(cmd, ...)\nWith SDK call for background task execution.\n\
+      \nKeep subprocess fallback for when SDK is unavailable.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    success_criteria:
+    - Plan generation uses SDK when available
+    - Task spawning uses SDK when available
+    - Subprocess fallback retained for SDK unavailability
+    - Existing plan generation behavior unchanged
+  - id: SDK_014
+    name: Migrate orchestrate.py loop spawning to SDK
+    status: completed
+    agent: build-python
+    description: "In orchestrate.py, replace subprocess.Popen for orchestration loop\n\
+      spawning with SDK calls.\n\nCurrent pattern (around lines 103-114, 320):\n \
+      \ process = subprocess.Popen(cmd, start_new_session=True)\n  state[\"pid\"]\
+      \ = process.pid\n\nFor background orchestration loops, use SDK:\n  result =\
+      \ run_agent_sync(prompt, options, timeout_seconds=3600)\n\nFor foreground execution,\
+      \ SDK can also be used since run_agent_sync\nblocks until completion.\n\nKeep\
+      \ subprocess fallback for SDK unavailability.\nUpdate state tracking to use\
+      \ SDK session_id instead of PID where possible.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    success_criteria:
+    - Orchestration loop spawning uses SDK when available
+    - Both background and foreground paths migrated
+    - State tracking updated for SDK sessions
+    - Subprocess fallback retained
+  - id: SDK_015
+    name: Migrate ralph.py from tmux+claude CLI to SDK
+    status: completed
+    agent: build-python
+    description: "In ralph.py, replace the manual tmux + claude CLI pattern with SDK\
+      \ calls.\n\nCurrent pattern (around lines 178-191):\n  claude_cmd = 'claude\
+      \ --dangerously-skip-permissions -p \"$(cat {prompt_path})\"'\n  subprocess.run([\"\
+      tmux\", \"new-session\", \"-d\", \"-s\", name, claude_cmd])\n\nReplace with\
+      \ SDK for the agent execution part:\n  result = run_agent_sync(prompt, options,\
+      \ timeout_seconds=3600)\n\nNOTE: tmux may still be needed for interactive foreground\
+      \ sessions where\nthe user wants to attach and watch. For background ralph loops,\
+      \ SDK is\npreferred. Evaluate what can be migrated vs what must stay as tmux.\n\
+      \nKeep tmux for interactive attach (`tmux attach -t`) use cases.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    success_criteria:
+    - Background ralph loops use SDK when available
+    - Interactive/foreground sessions keep tmux (user needs to attach)
+    - Prompt loading uses Python file I/O not shell substitution
+    - Subprocess fallback retained for SDK unavailability
+  - id: SDK_016
+    name: Add tool allow-lists per agent role
+    status: completed
+    agent: build-python
+    description: "Add role-based tool restrictions to SDK options. Currently all agents\n\
+      run with bypassPermissions and unrestricted tool access.\n\nIn sdk_runner.py\
+      \ or planner_loop.py, add a ROLE_TOOL_ALLOWLIST mapping:\n  ROLE_TOOL_ALLOWLIST\
+      \ = {\n      \"explore\": [\"Read\", \"Glob\", \"Grep\", \"Bash\"],\n      \"\
+      planner-build\": [\"Read\", \"Glob\", \"Grep\", \"Write\", \"Bash\"],\n    \
+      \  \"planner-reviewer\": [\"Read\", \"Glob\", \"Grep\"],\n      \"test-runner\"\
+      : [\"Read\", \"Glob\", \"Grep\", \"Bash\", \"Edit\"],\n      \"build-python\"\
+      : [\"Read\", \"Glob\", \"Grep\", \"Edit\", \"Write\", \"Bash\"],\n  }\n\nPass\
+      \ allowed_tools to ClaudeAgentOptions when building SDK options.\nThis hardens\
+      \ security by limiting what each agent role can do.\n\nDefault: if role not\
+      \ in mapping, allow all tools (backwards compatible).\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/cli-agent-architecture.yml
+    success_criteria:
+    - Each role gets appropriate tool restrictions
+    - Unknown roles default to all tools (no breakage)
+    - allowed_tools passed to ClaudeAgentOptions
+    - Existing agent behavior unchanged (tools they use are in their allowlist)
+  - id: SDK_017
+    name: Write tests for Phase 6 migrations
+    status: completed
+    agent: build-python
+    description: "Add tests covering the new SDK paths in plan.py, orchestrate.py,\
+      \ and ralph.py.\n\nTests needed:\n1. plan.py: Mock SDK, verify plan generation\
+      \ uses run_agent_sync\n2. plan.py: Mock SDK unavailable, verify subprocess fallback\n\
+      3. orchestrate.py: Mock SDK, verify loop spawning uses run_agent_sync\n4. orchestrate.py:\
+      \ Verify state tracking with SDK session_id\n5. ralph.py: Mock SDK, verify background\
+      \ loop uses SDK\n6. ralph.py: Verify foreground/interactive still uses tmux\n\
+      7. Tool allow-lists: Verify correct tools per role\n8. Tool allow-lists: Verify\
+      \ unknown role gets all tools\n\nRun full test suite after:\n  python3 -m pytest\
+      \ modules/AgenticCLI/tests/ -v\n"
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_commands.py
+    - modules/AgenticCLI/tests/test_ralph_commands.py
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    - modules/AgenticCLI/tests/test_sdk_runner.py
+    success_criteria:
+    - All new tests pass
+    - SDK and subprocess fallback paths tested
+    - Tool allow-list behavior verified
+    - No regressions in existing tests

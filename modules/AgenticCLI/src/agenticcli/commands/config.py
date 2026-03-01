@@ -191,9 +191,6 @@ def cmd_init(args, ctx=None):
     created_prefs = False
     if not prefs_file.exists():
         default_prefs = {
-            "worktree": {
-                "default_base": "main",
-            },
             "plan": {
                 "auto_scaffold": True,
             },

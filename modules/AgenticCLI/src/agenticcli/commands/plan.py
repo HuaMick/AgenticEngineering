@@ -17,7 +17,7 @@ _agent_types_cache: set | None = None
 # Fallback set used when filesystem scanning fails
 _FALLBACK_AGENT_TYPES = {
     "build-python", "build-flutter",
-    "deploy-worktree", "deploy-cicd",
+    "deploy-cicd",
     "orchestration-executor", "orchestration-planning", "orchestration-friction",
     "planner-build", "planner-test", "planner-guidance", "planner-cleaning",
     "planner-reviewer", "planner-audit", "planner-orchestration", "planner-guidance-testing",
@@ -255,7 +255,7 @@ def _get_plan_branch(plan_path: Path) -> str | None:
     """Extract the branch name associated with a plan folder.
 
     Tries PlanRepository (TinyDB) first for fast lookup, then falls back
-    to reading YAML files and the worktree registry.
+    to reading YAML files.
 
     Args:
         plan_path: Path to the plan folder.
@@ -295,83 +295,11 @@ def _get_plan_branch(plan_path: Path) -> str | None:
                 if branch and branch.strip() and branch.strip() not in ("main", "master", ""):
                     return branch.strip().strip('"').strip("'")
 
-            # Check worktree_path (extract branch from path name)
-            wt_path = content.get("worktree_path") or (plan_data or {}).get("worktree")
-            if wt_path and isinstance(wt_path, str):
-                wt_path = wt_path.strip().strip('"').strip("'")
-                wt_name = Path(wt_path).name
-                # Pattern: RepoName-branch
-                if "-" in wt_name:
-                    return wt_name.split("-", 1)[1]
         except yaml.YAMLError:
             continue
 
-    # Fallback: match plan folder abbreviation against worktree registry
-    folder_name = plan_path.name
-    if len(folder_name) >= 8 and folder_name[6:8].isalpha():
-        abbr = folder_name[6:8]
-        try:
-            import subprocess
-            result = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                capture_output=True, text=True, check=True,
-            )
-            repo_root = Path(result.stdout.strip())
-            from agenticcli.commands.worktree import load_worktree_registry
-            registry = load_worktree_registry(repo_root)
-            for entry in registry:
-                if entry.get("abbreviation") == abbr:
-                    return entry.get("branch")
-        except Exception:
-            pass
-
     return None
 
-
-def _try_worktree_cleanup_after_archive(plan_path: Path):
-    """Attempt worktree cleanup after a plan is archived.
-
-    Called after successful plan archival. Checks if the worktree
-    associated with the archived plan has any remaining live plans.
-    If not (and no active sessions), removes the worktree.
-
-    Args:
-        plan_path: Path to the plan folder (before archival).
-    """
-    import subprocess
-
-    branch = _get_plan_branch(plan_path)
-    if not branch or branch in ("main", "master"):
-        return
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, check=True,
-        )
-        repo_root = Path(result.stdout.strip())
-    except subprocess.CalledProcessError:
-        return
-
-    main_worktree_path = find_main_worktree(repo_root)
-    if main_worktree_path is None:
-        main_worktree_path = repo_root
-
-    from agenticcli.commands.worktree import cleanup_worktree_if_idle
-
-    cleanup_result = cleanup_worktree_if_idle(branch, repo_root, main_worktree_path)
-    if cleanup_result.get("cleaned"):
-        from agenticcli.console import print_info
-        print_info(f"Auto-cleaned worktree: {cleanup_result.get('path')}")
-
-        # Sync workspace file after cleanup to remove stale entries
-        from agenticcli.commands.worktree import cmd_sync
-        from types import SimpleNamespace
-        try:
-            cmd_sync(SimpleNamespace())
-        except Exception:
-            # Don't fail cleanup if sync fails
-            pass
 
 
 def handle(args, ctx=None):
@@ -570,7 +498,7 @@ def find_plan_folder(path: str | None = None) -> Path:
     if list(cwd.glob("plan_*.yml")):
         return cwd
 
-    # Check if we're in a worktree with plans
+    # Check if we're in a repo with plans
     plans_dir = cwd / "docs" / "plans" / "live"
     if plans_dir.exists():
         # Return first plan folder found (flattened: has plan_*.yml files)
@@ -581,46 +509,6 @@ def find_plan_folder(path: str | None = None) -> Path:
     print("Error: Could not find a plan folder. Specify path explicitly.", file=sys.stderr)
     sys.exit(1)
 
-
-def find_main_worktree(repo_root: Path) -> Path | None:
-    """Find the main worktree path (branch main or master).
-
-    Main-First Planning: Plans should always be created in the main worktree
-    for visibility and traceability.
-
-    Args:
-        repo_root: Path to any worktree in the repository.
-
-    Returns:
-        Path to main worktree, or None if not found.
-    """
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["git", "worktree", "list", "--porcelain"],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=repo_root,
-        )
-        lines = result.stdout.strip().split("\n")
-        i = 0
-        while i < len(lines):
-            if lines[i].startswith("worktree "):
-                wt_path = lines[i].split(" ", 1)[1]
-                for j in range(i + 1, min(i + 5, len(lines))):
-                    if lines[j].startswith("branch "):
-                        wt_branch = lines[j].split(" ", 1)[1].replace("refs/heads/", "")
-                        if wt_branch in ("main", "master"):
-                            return Path(wt_path)
-                        break
-                    elif lines[j].startswith("worktree "):
-                        break
-            i += 1
-    except subprocess.CalledProcessError:
-        pass
-    return None
 
 
 def _slugify_objective(objective: str) -> str:
@@ -755,8 +643,7 @@ def cmd_new(args, ctx=None):
         print_error("Not in a git repository")
         sys.exit(1)
 
-    main_worktree_path = find_main_worktree(repo_root) or repo_root
-    plans_live = main_worktree_path / "docs" / "plans" / "live"
+    plans_live = repo_root / "docs" / "plans" / "live"
 
     # Find the folder we just created (most recently modified matching description)
     from agenticcli.utils.naming import sanitize_description
@@ -778,19 +665,59 @@ def cmd_new(args, ctx=None):
     # Build planner prompt
     planner_prompt = build_planner_prompt(objective, plan_folder)
 
-    # Build claude command
-    claude_cmd = ["claude", "--print"]
-    if dangerously_skip_permissions:
-        claude_cmd.append("--dangerously-skip-permissions")
-    if max_turns:
-        claude_cmd.extend(["--max-turns", str(max_turns)])
-    claude_cmd.append(planner_prompt)
+    # Try SDK-first path for plan generation
+    from agenticcli.utils.sdk_runner import SDK_AVAILABLE, run_agent_sync
 
-    # Spawn planner in foreground
-    try:
+    planner_stdout = ""
+    planner_stderr = ""
+    planner_exitcode = 0
+
+    if SDK_AVAILABLE:
+        # SDK path: run planner agent via SDK (no subprocess needed)
+        try:
+            from claude_agent_sdk import ClaudeAgentOptions
+            sdk_options = ClaudeAgentOptions(
+                permission_mode="bypassPermissions",
+                cwd=str(plan_folder),
+            )
+        except ImportError:
+            sdk_options = None
+
         if not is_json_output():
-            status_message = "Running planner agent..."
+            status_message = "Running planner agent (SDK)..."
             with get_status(status_message):
+                sdk_result = run_agent_sync(planner_prompt, sdk_options, timeout_seconds=1800)
+        else:
+            sdk_result = run_agent_sync(planner_prompt, sdk_options, timeout_seconds=1800)
+
+        planner_stdout = sdk_result.result
+        planner_exitcode = 0 if sdk_result.status == "completed" else 1
+        if sdk_result.status != "completed":
+            planner_stderr = sdk_result.result
+    else:
+        # Subprocess fallback: use claude CLI
+        claude_cmd = ["claude", "--print"]
+        if dangerously_skip_permissions:
+            claude_cmd.append("--dangerously-skip-permissions")
+        if max_turns:
+            claude_cmd.extend(["--max-turns", str(max_turns)])
+        claude_cmd.append(planner_prompt)
+
+        try:
+            if not is_json_output():
+                status_message = "Running planner agent..."
+                with get_status(status_message):
+                    result = subprocess.run(
+                        claude_cmd,
+                        cwd=plan_folder,
+                        capture_output=True,
+                        text=True,
+                    )
+                    planner_stdout = result.stdout
+                    planner_stderr = result.stderr
+                    planner_exitcode = result.returncode
+            else:
+                # In JSON mode, run without status indicator
                 result = subprocess.run(
                     claude_cmd,
                     cwd=plan_folder,
@@ -800,54 +727,43 @@ def cmd_new(args, ctx=None):
                 planner_stdout = result.stdout
                 planner_stderr = result.stderr
                 planner_exitcode = result.returncode
-        else:
-            # In JSON mode, run without status indicator
-            result = subprocess.run(
-                claude_cmd,
-                cwd=plan_folder,
-                capture_output=True,
-                text=True,
-            )
-            planner_stdout = result.stdout
-            planner_stderr = result.stderr
-            planner_exitcode = result.returncode
 
-        # Validate that plan_build.yml was created
-        plan_build_file = plan_folder / "plan_build.yml"
-        if not plan_build_file.exists() or plan_build_file.stat().st_size == 0:
-            if not is_json_output():
-                print_error("Planner did not create plan_build.yml")
-                if planner_stdout:
-                    console.print("[yellow]Planner output:[/yellow]")
-                    console.print(planner_stdout)
-                if planner_stderr:
-                    console.print("[red]Planner errors:[/red]")
-                    console.print(planner_stderr)
+        except FileNotFoundError:
+            print_error("Claude CLI not found. Make sure 'claude' is installed and in PATH.")
+            sys.exit(1)
+        except Exception as e:
+            print_error(f"Failed to spawn planner: {e}")
             sys.exit(1)
 
+    # Validate that plan_build.yml was created
+    plan_build_file = plan_folder / "plan_build.yml"
+    if not plan_build_file.exists() or plan_build_file.stat().st_size == 0:
         if not is_json_output():
-            if planner_exitcode == 0:
-                print_success("Planner agent completed")
-            else:
-                print_error(f"Planner agent failed with exit code {planner_exitcode}")
-                if planner_stderr:
-                    console.print(f"[red]{planner_stderr}[/red]")
-
-        # Re-sync plan to TinyDB now that planner has populated plan_build.yml (non-fatal)
-        try:
-            from agenticguidance.services.plan_repository import PlanRepository
-            repo = PlanRepository(auto_bootstrap=False)
-            repo.import_from_yaml(plan_folder)
-            repo.close()
-        except Exception:
-            pass
-
-    except FileNotFoundError:
-        print_error("Claude CLI not found. Make sure 'claude' is installed and in PATH.")
+            print_error("Planner did not create plan_build.yml")
+            if planner_stdout:
+                console.print("[yellow]Planner output:[/yellow]")
+                console.print(planner_stdout)
+            if planner_stderr:
+                console.print("[red]Planner errors:[/red]")
+                console.print(planner_stderr)
         sys.exit(1)
-    except Exception as e:
-        print_error(f"Failed to spawn planner: {e}")
-        sys.exit(1)
+
+    if not is_json_output():
+        if planner_exitcode == 0:
+            print_success("Planner agent completed")
+        else:
+            print_error(f"Planner agent failed with exit code {planner_exitcode}")
+            if planner_stderr:
+                console.print(f"[red]{planner_stderr}[/red]")
+
+    # Re-sync plan to TinyDB now that planner has populated plan_build.yml (non-fatal)
+    try:
+        from agenticguidance.services.plan_repository import PlanRepository
+        repo = PlanRepository(auto_bootstrap=False)
+        repo.import_from_yaml(plan_folder)
+        repo.close()
+    except Exception:
+        pass
 
     # Step 3: Generate orchestration MMD (Phase 3)
     if not is_json_output():
@@ -998,25 +914,50 @@ def cmd_new(args, ctx=None):
                         if dangerously_skip_permissions:
                             spawn_cmd.append("--dangerously-skip-permissions")
 
-                        try:
-                            # Spawn in background
-                            proc = subprocess.Popen(
-                                spawn_cmd,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                text=True,
-                            )
-                            phase_sessions.append({
-                                "task_id": task_id,
-                                "process": proc,
-                                "command": " ".join(spawn_cmd),
-                            })
-                            total_tasks += 1
-                            if not is_json_output():
-                                print_info(f"    Task {task_id}: spawned (PID {proc.pid})")
-                        except Exception as e:
-                            if not is_json_output():
-                                print_error(f"    Task {task_id}: failed to spawn - {e}")
+                        # Use SDK for task spawning when available (avoids PID polling)
+                        from agenticcli.utils.sdk_runner import SDK_AVAILABLE as _PLAN_SDK_AVAILABLE
+                        if _PLAN_SDK_AVAILABLE:
+                            try:
+                                from agenticcli.utils.sdk_runner import run_agent_sync as _plan_run_sdk
+                                task_prompt = (
+                                    f"Execute task {task_id} from plan {str(plan_folder).split('/')[-1]}.\n"
+                                    f"Run: agentic -j agent plan task start {task_id} --plan {str(plan_folder).split('/')[-1]}\n"
+                                    "Then complete the task as described in the plan."
+                                )
+                                phase_sessions.append({
+                                    "task_id": task_id,
+                                    "sdk_prompt": task_prompt,
+                                    "sdk_options": None,
+                                    "command": " ".join(spawn_cmd),
+                                    "use_sdk": True,
+                                })
+                                total_tasks += 1
+                                if not is_json_output():
+                                    print_info(f"    Task {task_id}: queued for SDK execution")
+                            except Exception as e:
+                                if not is_json_output():
+                                    print_error(f"    Task {task_id}: failed to queue - {e}")
+                        else:
+                            # Subprocess fallback: spawn via Popen
+                            try:
+                                proc = subprocess.Popen(
+                                    spawn_cmd,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE,
+                                    text=True,
+                                )
+                                phase_sessions.append({
+                                    "task_id": task_id,
+                                    "process": proc,
+                                    "command": " ".join(spawn_cmd),
+                                    "use_sdk": False,
+                                })
+                                total_tasks += 1
+                                if not is_json_output():
+                                    print_info(f"    Task {task_id}: spawned (PID {proc.pid})")
+                            except Exception as e:
+                                if not is_json_output():
+                                    print_error(f"    Task {task_id}: failed to spawn - {e}")
 
                     spawned_sessions.extend(phase_sessions)
 
@@ -1027,13 +968,26 @@ def cmd_new(args, ctx=None):
 
                         for session in phase_sessions:
                             try:
-                                session["process"].wait()
-                                if not is_json_output():
-                                    exit_code = session["process"].returncode
-                                    if exit_code == 0:
-                                        print_success(f"    Task {session['task_id']}: completed")
-                                    else:
-                                        print_error(f"    Task {session['task_id']}: failed (exit code {exit_code})")
+                                if session.get("use_sdk"):
+                                    from agenticcli.utils.sdk_runner import run_agent_sync as _wait_sdk
+                                    sdk_res = _wait_sdk(
+                                        session["sdk_prompt"],
+                                        session.get("sdk_options"),
+                                        timeout_seconds=1800,
+                                    )
+                                    if not is_json_output():
+                                        if sdk_res.status == "completed":
+                                            print_success(f"    Task {session['task_id']}: completed")
+                                        else:
+                                            print_error(f"    Task {session['task_id']}: failed")
+                                else:
+                                    session["process"].wait()
+                                    if not is_json_output():
+                                        exit_code = session["process"].returncode
+                                        if exit_code == 0:
+                                            print_success(f"    Task {session['task_id']}: completed")
+                                        else:
+                                            print_error(f"    Task {session['task_id']}: failed (exit code {exit_code})")
                             except Exception as e:
                                 if not is_json_output():
                                     print_error(f"    Task {session['task_id']}: error waiting - {e}")
@@ -1096,25 +1050,21 @@ def cmd_new(args, ctx=None):
 
 
 def cmd_init(args, ctx=None):
-    """Initialize worktree and plan folder with proper naming convention.
+    """Initialize plan folder with proper naming convention.
 
-    Combines worktree creation (if needed) with plan folder scaffolding.
-    Enforces YYMMDDXX_description naming convention programmatically.
+    Creates a plan folder in docs/plans/live/ with YYMMDDXX_description naming.
 
     Exit codes:
         0: Success, folder created
-        1: Worktree creation failed
         2: Folder already exists
         3: Invalid branch name or description
     """
     import subprocess
 
-    from agenticcli.commands.worktree import create_planning_folder, find_workspace_file, update_workspace_add
     from agenticcli.console import (
         console,
         is_json_output,
         print_error,
-        print_info,
         print_json,
         print_success,
     )
@@ -1142,129 +1092,8 @@ def cmd_init(args, ctx=None):
         print_error("Not in a git repository")
         sys.exit(1)
 
-    repo_name = repo_root.name.split("-")[0] if "-" in repo_root.name else repo_root.name
-
-    # Main-First Planning: Always create plans in main worktree
-    main_worktree_path = find_main_worktree(repo_root)
-    if main_worktree_path is None:
-        # Fallback: use repo_root if main worktree detection fails
-        main_worktree_path = repo_root
-
-    # Calculate expected worktree path
-    worktree_path = repo_root.parent / f"{repo_name}-{branch}"
-
-    # Check if worktree exists for this branch
-    worktree_exists = False
-    existing_worktree_path = None
-
-    try:
-        result = subprocess.run(
-            ["git", "worktree", "list", "--porcelain"],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=repo_root,
-        )
-        lines = result.stdout.strip().split("\n")
-        i = 0
-        while i < len(lines):
-            if lines[i].startswith("worktree "):
-                wt_path = lines[i].split(" ", 1)[1]
-                for j in range(i + 1, min(i + 5, len(lines))):
-                    if lines[j].startswith("branch "):
-                        wt_branch = lines[j].split(" ", 1)[1].replace("refs/heads/", "")
-                        if wt_branch == branch:
-                            worktree_exists = True
-                            existing_worktree_path = Path(wt_path)
-                            break
-                    elif lines[j].startswith("worktree "):
-                        break
-            i += 1
-    except subprocess.CalledProcessError:
-        pass
-
-    # Determine final worktree path
-    worktree_reused = False
-    if worktree_exists:
-        worktree_path = existing_worktree_path
-        if not is_json_output():
-            print_info(f"Using existing worktree at {worktree_path}")
-    else:
-        # Worktree reuse: check for idle worktrees before creating new ones.
-        # Per error-driven-planning-protocol: only create new worktree if
-        # ALL existing worktrees have active sessions.
-        from agenticcli.commands.worktree import find_idle_worktrees
-
-        idle_worktrees = find_idle_worktrees(repo_root)
-        if idle_worktrees:
-            # Reuse the first idle worktree by switching its branch
-            reuse_wt = idle_worktrees[0]
-            reuse_path = Path(reuse_wt["path"])
-            old_branch = reuse_wt.get("branch", "unknown")
-
-            if not is_json_output():
-                print_info(f"Reusing idle worktree at {reuse_path} (was on '{old_branch}')")
-
-            # Create the new branch from base and checkout in the idle worktree
-            try:
-                subprocess.run(
-                    ["git", "branch", branch, base],
-                    check=True,
-                    cwd=repo_root,
-                    capture_output=True,
-                )
-            except subprocess.CalledProcessError:
-                pass  # Branch may already exist, that's OK
-
-            try:
-                subprocess.run(
-                    ["git", "checkout", branch],
-                    check=True,
-                    cwd=str(reuse_path),
-                    capture_output=is_json_output(),
-                )
-                worktree_path = reuse_path
-                worktree_reused = True
-                if not is_json_output():
-                    console.print(f"  [green]Switched worktree[/green] to branch '{branch}'")
-            except subprocess.CalledProcessError as e:
-                # Checkout failed (e.g., dirty working tree), fall through to create new
-                if not is_json_output():
-                    print_info(f"Cannot reuse worktree (checkout failed), creating new one")
-                worktree_reused = False
-
-        if not worktree_reused:
-            # Create new worktree (last resort)
-            if not is_json_output():
-                print_info(f"Creating worktree for branch '{branch}' at {worktree_path}")
-
-            try:
-                subprocess.run(
-                    ["git", "worktree", "add", "-b", branch, str(worktree_path), base],
-                    check=True,
-                    cwd=repo_root,
-                    capture_output=is_json_output(),
-                )
-                if not is_json_output():
-                    console.print(f"  [green]Created worktree[/green] at {worktree_path}")
-            except subprocess.CalledProcessError as e:
-                print_error(f"Failed to create worktree: {e}")
-                sys.exit(1)
-
-    # Update VS Code workspace file (for both new and reused worktrees)
-    # Note: update_workspace_add() is idempotent and checks for existing entries
-    workspace_file = find_workspace_file(repo_root)
-    if workspace_file:
-        workspace_updated = update_workspace_add(
-            workspace_file, worktree_path, branch, repo_name
-        )
-        if workspace_updated and not is_json_output():
-            console.print(f"  [green]Updated workspace file[/green] {workspace_file.name}")
-    else:
-        workspace_updated = False
-
-    # Generate plan folder name using new naming algorithm
-    plan_folder_name = generate_plan_folder_name(worktree_path, description, branch=branch)
+    # Generate plan folder name
+    plan_folder_name = generate_plan_folder_name(repo_root, description, branch=branch)
 
     # Validate the generated name
     is_valid, error = validate_plan_folder_name(plan_folder_name)
@@ -1272,8 +1101,8 @@ def cmd_init(args, ctx=None):
         print_error(f"Generated name '{plan_folder_name}' is invalid: {error}")
         sys.exit(3)
 
-    # Main-First Planning: Plan goes in main worktree, execution in feature worktree
-    plan_path = main_worktree_path / "docs" / "plans" / "live" / plan_folder_name
+    # Create plan folder in docs/plans/live/
+    plan_path = repo_root / "docs" / "plans" / "live" / plan_folder_name
 
     # Check if folder already exists
     if plan_path.exists():
@@ -1281,9 +1110,9 @@ def cmd_init(args, ctx=None):
         sys.exit(2)
 
     # Create the folder structure
-    create_planning_folder(plan_path)
+    plan_path.mkdir(parents=True, exist_ok=True)
 
-    # If --objective provided, write plan_build.yml with objective (replaces plan bootstrap)
+    # If --objective provided, write plan_build.yml with objective
     objective = getattr(args, "objective", None)
     if objective:
         created_date = datetime.now().strftime("%Y-%m-%d")
@@ -1292,7 +1121,6 @@ def cmd_init(args, ctx=None):
 # Created: {created_date}
 
 name: "{description}"
-worktree_path: "{worktree_path}"
 branch: "{branch}"
 status: "active"
 priority: "high"
@@ -1321,15 +1149,10 @@ phases:
 
     # Output results
     result_data = {
-        "worktree": str(worktree_path),
-        "worktree_created": not worktree_exists and not worktree_reused,
-        "worktree_reused": worktree_reused,
         "branch": branch,
         "base": base,
         "plan_folder": str(plan_path),
         "plan_folder_name": plan_folder_name,
-        "main_worktree": str(main_worktree_path),
-        "workspace_updated": workspace_updated,
     }
     if objective:
         result_data["objective"] = objective
@@ -1338,12 +1161,10 @@ phases:
         print_json(result_data)
     else:
         console.print(f"  [green]Created plan folder[/green] at {plan_path}")
-        console.print("  [dim](Main-First Planning: plan in main worktree)[/dim]")
         if objective:
             console.print(f"  [green]Wrote plan_build.yml[/green] with objective")
         console.print()
         print_success(f"Plan initialized: {plan_folder_name}")
-        console.print(f"[dim]Execution worktree:[/dim] {worktree_path}")
         console.print(f"[dim]Plan folder:[/dim] {plan_path}")
         console.print()
         console.print("[dim]Link related user stories in inputs.yml:[/dim]")
@@ -1353,25 +1174,34 @@ phases:
 
 def cmd_scaffold(args):
     """Create planning folder structure (DEPRECATED - use 'agentic plan init' instead)."""
-    from agenticcli.commands.worktree import create_planning_folder
     from agenticcli.console import is_json_output, print_json
 
     name = args.name
-    worktree = Path(args.worktree) if args.worktree else Path.cwd()
+    base_path = Path.cwd()
 
-    plan_path = worktree / "docs" / "plans" / "live" / name
+    plan_path = base_path / "docs" / "plans" / "live" / name
 
     # Print deprecation warning
     if not is_json_output():
         print("\n[WARNING] 'agentic plan scaffold' is DEPRECATED", file=sys.stderr)
         print("Use 'agentic plan init <branch> --description <description>' instead", file=sys.stderr)
-        print("The scaffold command creates only the folder without worktree or workspace updates.\n", file=sys.stderr)
+        print("The scaffold command creates only the folder structure.\n", file=sys.stderr)
 
     if plan_path.exists():
         print(f"Error: Plan folder already exists: {plan_path}", file=sys.stderr)
         sys.exit(1)
 
-    create_planning_folder(plan_path)
+    plan_path.mkdir(parents=True, exist_ok=True)
+    # Create a minimal stub plan_build.yml
+    stub_content = f"""# Plan: {name}
+# Created by: agentic plan scaffold (DEPRECATED)
+_template_status: stub
+name: "{name}"
+status: "planning"
+phases: []
+"""
+    (plan_path / "plan_build.yml").write_text(stub_content)
+
     if is_json_output():
         print_json({"name": name, "path": str(plan_path), "folder": str(plan_path), "deprecated": True})
     else:

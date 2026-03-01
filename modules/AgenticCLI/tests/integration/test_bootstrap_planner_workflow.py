@@ -63,17 +63,6 @@ def mock_git_context(temp_git_repo, monkeypatch):
     from agenticcli.utils import git
 
     monkeypatch.setattr(git, "get_project_root", lambda: temp_git_repo)
-    monkeypatch.setattr(git, "find_main_worktree", lambda root: root)
-
-    # Patch find_main_worktree in the plan module too (it imports locally)
-    monkeypatch.setattr(
-        "agenticcli.commands.plan.find_main_worktree", lambda root: root
-    )
-
-    # Patch find_idle_worktrees to return empty (no idle worktrees in temp repo)
-    monkeypatch.setattr(
-        "agenticcli.commands.worktree.find_idle_worktrees", lambda root: []
-    )
 
     # Wrap subprocess.run to redirect git rev-parse to the temp repo
     real_subprocess_run = subprocess.run
@@ -87,9 +76,6 @@ def mock_git_context(temp_git_repo, monkeypatch):
                 result.stderr = ""
                 result.returncode = 0
                 return result
-        if isinstance(cmd, list) and cmd[:2] == ["git", "worktree"]:
-            # Redirect worktree commands to temp repo
-            kwargs["cwd"] = temp_git_repo
         return real_subprocess_run(cmd, *args, **kwargs)
 
     monkeypatch.setattr("agenticcli.commands.plan.subprocess.run", patched_subprocess_run)
@@ -132,33 +118,6 @@ class TestBootstrapPlannerWorkflow:
         assert "context" in plan_data
         assert "phases" in plan_data
         assert plan_data["context"].strip() == "Implement test feature for workflow"
-
-    def test_bootstrap_plan_has_worktree_path(self, mock_git_context):
-        """Test that bootstrapped plan includes worktree_path for planner."""
-        from agenticcli.commands import plan
-
-        args = SimpleNamespace(
-            branch="worktree-test",
-            objective="Test worktree path",
-            description="worktree path",
-        )
-
-        with patch("agenticcli.console.is_json_output", return_value=False):
-            with patch("builtins.print"):
-                plan.cmd_bootstrap(args)
-
-        plans_dir = mock_git_context / "docs" / "plans" / "live"
-        plan_folders = list(plans_dir.glob("*_worktree_path"))
-        plan_folder = plan_folders[0]
-
-        # Flattened structure
-        plan_build_file = plan_folder / "plan_build.yml"
-        with open(plan_build_file) as f:
-            plan_data = yaml.safe_load(f)
-
-        # Planner needs worktree_path to know where to work
-        assert "worktree_path" in plan_data
-        assert "worktree-test" in plan_data["worktree_path"]
 
     def test_bootstrap_plan_has_initial_tasks(self, mock_git_context):
         """Test that bootstrapped plan has initial tasks for planner."""
@@ -294,7 +253,7 @@ class TestBootstrapPlannerWorkflow:
             plan_data = yaml.safe_load(f)
 
         # Planner needs these metadata fields
-        required_fields = ["name", "branch", "status", "context", "worktree_path"]
+        required_fields = ["name", "branch", "status", "context"]
         for field in required_fields:
             assert field in plan_data, f"Missing required field: {field}"
 

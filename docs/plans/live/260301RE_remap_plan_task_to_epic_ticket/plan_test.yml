@@ -1,0 +1,525 @@
+name: remap-plan-task-to-epic-ticket-test
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: planning
+objective: |
+  Validate the epic/ticket rename through comprehensive test coverage.
+  This phase updates all existing tests to use the new epic/ticket terminology
+  and adds new tests to verify backward compatibility of deprecated plan/task aliases.
+
+  DEPENDENCY: plan_build.yml must be fully completed before this phase begins.
+
+  TEST SCOPE:
+  - AgenticGuidance tests: ~27 test files (services, integration, UAT)
+  - AgenticCLI tests: ~80+ test files (unit, integration, CLI smoke tests)
+  - Total estimated: 2000+ test functions to verify
+
+phases:
+  - name: AgenticGuidance Service Tests Update
+    description: |
+      Update all AgenticGuidance test files to use the new epic/ticket terminology.
+    execution: sequential
+    tasks:
+      - id: test_01
+        name: Update test_services_plan.py -> test_services_epic.py
+        description: |
+          Rename and update test file:
+          - Rename to test_services_epic.py (keep test_services_plan.py as alias if needed)
+          - Update all imports: from agenticguidance.services.plan import PlanService ->
+            from agenticguidance.services.epic import EpicService
+          - Update all class names: PlanService -> EpicService
+          - Update all method names: create_plan -> create_epic, etc.
+          - Update path assertions: docs/plans/ -> docs/epics/
+          - Add tests that verify old PlanService still importable (backward compat)
+          Also update test_services_plan_service.py and test_services_plan_service_integration.py
+          in the same way.
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticGuidance/tests/test_services_plan.py
+          - modules/AgenticGuidance/tests/test_services_plan_service.py
+          - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
+          - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+        target_files:
+          - modules/AgenticGuidance/tests/test_services_epic.py
+          - modules/AgenticGuidance/tests/test_services_plan.py
+          - modules/AgenticGuidance/tests/test_services_plan_service.py
+          - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
+        success_criteria:
+          - test_services_epic.py passes all tests
+          - Backward compat tests: PlanService import succeeds
+          - All create_epic, get_epic methods tested
+          - docs/epics/ paths used in all path assertions
+
+      - id: test_02
+        name: Update test_services_task.py -> test_services_ticket.py
+        description: |
+          Rename and update:
+          - test_services_ticket.py with TicketService, Ticket, TicketStatus
+          - Update all imports and class names
+          - Update method assertions: start_ticket, complete_ticket, get_ticket
+          - Add backward compat tests: TaskService still importable
+          Keep test_services_task.py as backward compat test file.
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticGuidance/tests/test_services_task.py
+          - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+        target_files:
+          - modules/AgenticGuidance/tests/test_services_ticket.py
+          - modules/AgenticGuidance/tests/test_services_task.py
+        success_criteria:
+          - test_services_ticket.py covers all TicketService methods
+          - TaskService backward compat test passes
+
+      - id: test_03
+        name: Update plan_repository and plan_resurrection tests
+        description: |
+          Update test_plan_repository_filelock.py:
+          - Update PlanRepository -> EpicRepository imports
+          - Update method names: create_plan -> create_epic, etc.
+          - Update table name assertions: "plans" -> "epics", "tasks" -> "tickets"
+          - Update path assertions: /plans/ -> /epics/
+          - Add migration test: verify old "plans" table in plans.db migrates to "epics" in epics.db
+          Update test_plan_resurrection.py:
+          - Update path references
+          - Update class/method names
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticGuidance/tests/test_plan_repository_filelock.py
+          - modules/AgenticGuidance/tests/test_plan_resurrection.py
+          - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+        target_files:
+          - modules/AgenticGuidance/tests/test_plan_repository_filelock.py
+          - modules/AgenticGuidance/tests/test_plan_resurrection.py
+        success_criteria:
+          - EpicRepository tests pass
+          - Table name assertions updated to "epics"/"tickets"
+          - Migration test verifies plans.db -> epics.db
+
+      - id: test_04
+        name: Update ralph, context, and integration test files
+        description: |
+          test_services_ralph.py:
+            - Update EpicInfo/EpicAction imports
+            - Update discover_epics method calls
+            - Update path assertions: docs/epics/live
+          test_services_context.py:
+            - Update MainFirstEpicResolver imports
+            - Update resolve_active_epic method calls
+          test_integration_planning_with_stories.py:
+            - Update plan/task vocabulary throughout
+          test_planner_build_story_generation.py, test_planner_test_story_validation.py:
+            - Update path references and plan_folder -> epic_folder
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticGuidance/tests/test_services_ralph.py
+          - modules/AgenticGuidance/tests/test_services_context.py
+          - modules/AgenticGuidance/tests/test_integration_planning_with_stories.py
+          - modules/AgenticGuidance/tests/test_planner_build_story_generation.py
+          - modules/AgenticGuidance/tests/test_planner_test_story_validation.py
+        target_files:
+          - modules/AgenticGuidance/tests/test_services_ralph.py
+          - modules/AgenticGuidance/tests/test_services_context.py
+          - modules/AgenticGuidance/tests/test_integration_planning_with_stories.py
+          - modules/AgenticGuidance/tests/test_planner_build_story_generation.py
+          - modules/AgenticGuidance/tests/test_planner_test_story_validation.py
+        success_criteria:
+          - Ralph service tests pass with EpicInfo/EpicAction
+          - Context service tests pass with MainFirstEpicResolver
+          - Integration tests pass with updated paths
+
+      - id: test_05
+        name: Update TinyDB UAT tests
+        description: |
+          Update the TinyDB UAT tests added for the migration:
+          test_uat_tinydb_crud.py:
+            - Update to use EpicRepository instead of PlanRepository
+            - Update table assertions: "epics", "tickets"
+            - Update method names
+          test_uat_tinydb_yaml_compat.py:
+            - Update path references to docs/epics/
+            - Update class names
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticGuidance/tests/test_uat_tinydb_crud.py
+          - modules/AgenticGuidance/tests/test_uat_tinydb_yaml_compat.py
+          - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+        target_files:
+          - modules/AgenticGuidance/tests/test_uat_tinydb_crud.py
+          - modules/AgenticGuidance/tests/test_uat_tinydb_yaml_compat.py
+        success_criteria:
+          - Both UAT test files pass with EpicRepository
+          - YAML/TinyDB compatibility verified with ticket_*.yml files
+
+  - name: AgenticCLI Test Updates
+    description: |
+      Update all AgenticCLI test files for epic/ticket terminology.
+    execution: sequential
+    tasks:
+      - id: test_06
+        name: Update core plan command test files
+        description: |
+          Update the main plan command test files:
+          test_plan.py -> test_epic.py (create new, keep old for backward compat):
+            - CLI invocations: ["plan", "status"] -> ["epic", "status"]
+            - Path assertions: docs/plans/live -> docs/epics/live
+            - agentic plan task -> agentic epic ticket
+          test_plan_movement.py:
+            - EpicMovementWorkflow instead of PlanMovementWorkflow
+            - Method names: archive_epic_folder, etc.
+          test_plan_init.py:
+            - agentic agent epic init instead of plan init
+          test_plan_new.py, test_plan_new_uat.py:
+            - Update path assertions
+          test_plan_bootstrap.py:
+            - agentic agent epic bootstrap
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticCLI/tests/test_plan.py
+          - modules/AgenticCLI/tests/test_plan_movement.py
+          - modules/AgenticCLI/tests/test_plan_init.py
+          - modules/AgenticCLI/tests/test_plan_new.py
+          - modules/AgenticCLI/tests/test_plan_new_uat.py
+          - modules/AgenticCLI/tests/test_plan_bootstrap.py
+        target_files:
+          - modules/AgenticCLI/tests/test_epic.py
+          - modules/AgenticCLI/tests/test_plan.py
+          - modules/AgenticCLI/tests/test_plan_movement.py
+          - modules/AgenticCLI/tests/test_plan_init.py
+          - modules/AgenticCLI/tests/test_plan_new.py
+          - modules/AgenticCLI/tests/test_plan_new_uat.py
+          - modules/AgenticCLI/tests/test_plan_bootstrap.py
+        success_criteria:
+          - test_epic.py passes all tests with agentic epic ... commands
+          - test_plan.py tests pass (backward compat via deprecation redirect)
+          - All path assertions use docs/epics/
+
+      - id: test_07
+        name: Update task/ticket command test files
+        description: |
+          Update task-related test files:
+          test_cli_task.py -> update to use agentic agent epic ticket commands
+          test_task_list_commands.py -> update to ticket vocabulary
+          test_task_workflow.py -> TicketPresetWorkflow
+          test_plan_nested_tasks.py -> test_epic_nested_tickets.py
+          integration/test_task_commands.py -> update to ticket sub-commands
+          All assertions on task_id, task_action -> ticket_id, ticket_action
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticCLI/tests/test_cli_task.py
+          - modules/AgenticCLI/tests/test_task_list_commands.py
+          - modules/AgenticCLI/tests/test_task_workflow.py
+          - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+          - modules/AgenticCLI/tests/integration/test_task_commands.py
+        target_files:
+          - modules/AgenticCLI/tests/test_cli_task.py
+          - modules/AgenticCLI/tests/test_task_list_commands.py
+          - modules/AgenticCLI/tests/test_task_workflow.py
+          - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+          - modules/AgenticCLI/tests/integration/test_task_commands.py
+        success_criteria:
+          - All ticket command tests pass
+          - agentic agent epic ticket start/complete work in tests
+
+      - id: test_08
+        name: Update orchestration and planner loop test files
+        description: |
+          test_plan_orchestration.py -> update path references
+          test_orchestrate_command.py -> update --plan -> --epic flag assertions
+          test_planner_loop.py -> update epic_folder, plans_dir -> epics_dir
+          test_orchestration_workflow.py -> update path assertions
+          integration/test_orchestrate_integration.py -> update paths
+          integration/test_orchestration_sync.py -> update paths
+          integration/test_plan_creation_flow.py -> test_epic_creation_flow.py
+          integration/test_plan_path_arguments.py -> test_epic_path_arguments.py
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticCLI/tests/test_plan_orchestration.py
+          - modules/AgenticCLI/tests/test_orchestrate_command.py
+          - modules/AgenticCLI/tests/test_planner_loop.py
+          - modules/AgenticCLI/tests/test_orchestration_workflow.py
+          - modules/AgenticCLI/tests/integration/test_orchestrate_integration.py
+          - modules/AgenticCLI/tests/integration/test_orchestration_sync.py
+          - modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+          - modules/AgenticCLI/tests/integration/test_plan_path_arguments.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_orchestration.py
+          - modules/AgenticCLI/tests/test_orchestrate_command.py
+          - modules/AgenticCLI/tests/test_planner_loop.py
+          - modules/AgenticCLI/tests/test_orchestration_workflow.py
+          - modules/AgenticCLI/tests/integration/test_orchestrate_integration.py
+          - modules/AgenticCLI/tests/integration/test_orchestration_sync.py
+          - modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+          - modules/AgenticCLI/tests/integration/test_plan_path_arguments.py
+        success_criteria:
+          - All orchestration tests pass
+          - docs/epics/ paths in all assertions
+
+      - id: test_09
+        name: Update remaining CLI test files with plan references
+        description: |
+          Update all remaining test files that reference plan terminology:
+          test_plan_phase.py, test_plan_question_gate.py, test_plan_validate_fences.py
+          test_worktree.py -> update plan_folder -> epic_folder references
+          test_worktree_registry.py -> update path assertions
+          test_session_commands.py -> update --plan -> --epic references
+          test_cli.py, test_cli_restructure.py -> update plan group assertions
+          test_naming.py -> update generate_plan_folder_name -> generate_epic_folder_name
+          integration/test_auto_archive_trigger.py -> update paths
+          integration/test_bootstrap_planner_workflow.py -> update paths
+          integration/test_workflow_sequences.py -> update paths
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticCLI/tests/test_plan_phase.py
+          - modules/AgenticCLI/tests/test_plan_question_gate.py
+          - modules/AgenticCLI/tests/test_plan_validate_fences.py
+          - modules/AgenticCLI/tests/test_worktree.py
+          - modules/AgenticCLI/tests/test_session_commands.py
+          - modules/AgenticCLI/tests/test_cli.py
+          - modules/AgenticCLI/tests/test_naming.py
+          - modules/AgenticCLI/tests/integration/test_auto_archive_trigger.py
+          - modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py
+        target_files:
+          - modules/AgenticCLI/tests/test_plan_phase.py
+          - modules/AgenticCLI/tests/test_plan_question_gate.py
+          - modules/AgenticCLI/tests/test_plan_validate_fences.py
+          - modules/AgenticCLI/tests/test_worktree.py
+          - modules/AgenticCLI/tests/test_session_commands.py
+          - modules/AgenticCLI/tests/test_cli.py
+          - modules/AgenticCLI/tests/test_naming.py
+          - modules/AgenticCLI/tests/integration/test_auto_archive_trigger.py
+        success_criteria:
+          - All 80+ test files run without errors
+          - No remaining hardcoded docs/plans/ paths in test assertions
+          - generate_epic_folder_name tested
+
+  - name: Audit-Identified Test Gaps
+    description: |
+      Test files identified by post-plan codebase audit that were not covered
+      in the original test tasks.
+    execution: sequential
+    tasks:
+      - id: test_13
+        name: Update context, ralph, worktree, and workspace test files
+        description: |
+          These test files were missing from the original plan:
+
+          test_context_commands.py:
+            - plan_repo, plan_cli_runner fixtures -> epic_repo, epic_cli_runner
+            - Update context command assertions
+
+          test_ralph_commands.py:
+            - Update plan references in Ralph command tests
+            - Update PlanInfo -> EpicInfo assertions
+
+          test_worktree_registry.py:
+            - Update plan folder name patterns in registry assertions
+
+          test_worktree_reuse.py:
+            - Update plan folder reuse logic assertions
+
+          tests/commands/test_workspace_sync.py:
+            - Update plan_folder_name references in workspace sync tests
+
+          test_cli_restructure.py:
+            - Update plan command group restructuring assertions
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticCLI/tests/test_context_commands.py
+          - modules/AgenticCLI/tests/test_ralph_commands.py
+          - modules/AgenticCLI/tests/test_worktree_registry.py
+          - modules/AgenticCLI/tests/test_worktree_reuse.py
+          - modules/AgenticCLI/tests/commands/test_workspace_sync.py
+          - modules/AgenticCLI/tests/test_cli_restructure.py
+        target_files:
+          - modules/AgenticCLI/tests/test_context_commands.py
+          - modules/AgenticCLI/tests/test_ralph_commands.py
+          - modules/AgenticCLI/tests/test_worktree_registry.py
+          - modules/AgenticCLI/tests/test_worktree_reuse.py
+          - modules/AgenticCLI/tests/commands/test_workspace_sync.py
+          - modules/AgenticCLI/tests/test_cli_restructure.py
+        success_criteria:
+          - All context/ralph/worktree test files use epic/ticket vocabulary
+          - Fixtures renamed to epic_repo, epic_cli_runner
+
+      - id: test_14
+        name: Update conftest.py fixtures and question/story integration tests
+        description: |
+          conftest.py:
+            - temp_repo fixture: docs/plans/live -> docs/epics/live
+            - Any plan_folder fixtures -> epic_folder
+            - Update fixture docstrings
+
+          Question/story integration test files:
+            - test_preset_templates.py: plan-related preset templates
+            - test_uat_ask_with_suggestions.py: plan_folder fixture
+            - test_uat_interactive_answer.py: plan_with_multiple_questions fixture
+            - test_interactive_answer.py: plan_with_pending_question fixture
+            - integration/test_question_commands.py: plan_with_question* fixtures
+            - integration/test_workflow_sequences.py: plan workflow sequences
+            - test_stories.py: stories with plan references
+            - integration/test_user_stories.py: user stories in plans
+
+          All fixtures named plan_with_* -> epic_with_*
+          All plan_folder fixtures -> epic_folder
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticCLI/tests/conftest.py
+          - modules/AgenticCLI/tests/test_preset_templates.py
+          - modules/AgenticCLI/tests/test_uat_ask_with_suggestions.py
+          - modules/AgenticCLI/tests/test_uat_interactive_answer.py
+          - modules/AgenticCLI/tests/test_interactive_answer.py
+          - modules/AgenticCLI/tests/integration/test_question_commands.py
+          - modules/AgenticCLI/tests/integration/test_workflow_sequences.py
+          - modules/AgenticCLI/tests/test_stories.py
+          - modules/AgenticCLI/tests/integration/test_user_stories.py
+        target_files:
+          - modules/AgenticCLI/tests/conftest.py
+          - modules/AgenticCLI/tests/test_preset_templates.py
+          - modules/AgenticCLI/tests/test_uat_ask_with_suggestions.py
+          - modules/AgenticCLI/tests/test_uat_interactive_answer.py
+          - modules/AgenticCLI/tests/test_interactive_answer.py
+          - modules/AgenticCLI/tests/integration/test_question_commands.py
+          - modules/AgenticCLI/tests/integration/test_workflow_sequences.py
+          - modules/AgenticCLI/tests/test_stories.py
+          - modules/AgenticCLI/tests/integration/test_user_stories.py
+        success_criteria:
+          - conftest.py fixtures use docs/epics/live paths
+          - All question/story tests use epic_with_* fixture names
+          - No remaining docs/plans/ references in test fixtures
+
+      - id: test_15
+        name: Update exception, validation, and new build_16-20 related tests
+        description: |
+          Tests for the new build tasks added by the audit:
+
+          test_exceptions.py:
+            - Update PlanFileError -> EpicFileError assertions
+            - Update PlanFolderError -> EpicFolderError assertions
+
+          test_validation.py:
+            - Update validate_plan_* -> validate_epic_* function calls
+            - Update PLAN_REQUIRED_FIELDS -> EPIC_REQUIRED_FIELDS assertions
+
+          test_permission_skip_flag.py:
+            - Update any plan command references
+
+          integration/test_stop_idempotency_e2e.py:
+            - Update any plan references
+
+          test_sdk_runner.py:
+            - Update any plan_folder references
+
+          test_uat_phone_notifications.py:
+            - Update plan references in UAT
+
+          Also verify new files have tests:
+            - ticket_workflow.py needs test_ticket_workflow.py
+            - epic.py command needs test_epic.py (already in test_06)
+        status: pending
+        agent: test-builder
+        inputs:
+          - modules/AgenticCLI/tests/test_exceptions.py
+          - modules/AgenticCLI/tests/test_validation.py
+          - modules/AgenticCLI/tests/test_permission_skip_flag.py
+          - modules/AgenticCLI/tests/integration/test_stop_idempotency_e2e.py
+          - modules/AgenticCLI/tests/test_sdk_runner.py
+          - modules/AgenticCLI/tests/test_uat_phone_notifications.py
+        target_files:
+          - modules/AgenticCLI/tests/test_exceptions.py
+          - modules/AgenticCLI/tests/test_validation.py
+          - modules/AgenticCLI/tests/test_permission_skip_flag.py
+          - modules/AgenticCLI/tests/integration/test_stop_idempotency_e2e.py
+          - modules/AgenticCLI/tests/test_sdk_runner.py
+          - modules/AgenticCLI/tests/test_uat_phone_notifications.py
+          - modules/AgenticCLI/tests/test_ticket_workflow.py
+        success_criteria:
+          - Exception tests use EpicFileError/EpicFolderError
+          - Validation tests use validate_epic_* functions
+          - ticket_workflow.py has corresponding tests
+          - All test files pass
+
+  - name: Full Test Suite Execution and Coverage
+    description: |
+      Run the complete test suites and verify coverage.
+    execution: sequential
+    tasks:
+      - id: test_10
+        name: Run AgenticGuidance full test suite
+        description: |
+          Execute the complete AgenticGuidance test suite:
+          cd modules/AgenticGuidance && python3 -m pytest tests/ -v --tb=short
+          Fix any remaining failures not addressed in prior tasks.
+          Target: all tests pass with 0 errors.
+        status: pending
+        agent: test-runner
+        inputs:
+          - modules/AgenticGuidance/tests/
+        target_files: []
+        success_criteria:
+          - All AgenticGuidance tests pass (0 failures, 0 errors)
+          - No test imports old plan.py names directly (only via compat shim)
+
+      - id: test_11
+        name: Run AgenticCLI full test suite
+        description: |
+          Execute the complete AgenticCLI test suite:
+          cd modules/AgenticCLI && python3 -m pytest tests/ -v --tb=short
+          Fix any remaining failures.
+          Target: all tests pass with 0 errors.
+          Note: Backward compat tests for agentic plan ... should verify
+          deprecation warnings are emitted.
+        status: pending
+        agent: test-runner
+        inputs:
+          - modules/AgenticCLI/tests/
+        target_files: []
+        success_criteria:
+          - All AgenticCLI tests pass (0 failures, 0 errors)
+          - Deprecation warning tests pass for old plan commands
+
+      - id: test_12
+        name: Run smoke test for agentic CLI commands
+        description: |
+          Run end-to-end smoke tests via the installed agentic CLI:
+          1. agentic epic list (should work)
+          2. agentic plan list (should work with deprecation warning)
+          3. agentic epic status (should work)
+          4. agentic --version (should show current version)
+          5. agentic agent epic init --help (should show help)
+          6. agentic agent epic ticket --help (should show help)
+          Verify CLI is responsive and commands route correctly.
+        status: pending
+        agent: test-runner
+        inputs: []
+        target_files: []
+        success_criteria:
+          - agentic epic list exits 0
+          - agentic plan list exits 0 with deprecation warning in output
+          - agentic agent epic init --help shows usage
+          - agentic agent epic ticket start --help shows usage
+
+loop_structure:
+  type: test-fix-loop
+  trigger: Test phase begins after build phase completes
+  exit_criteria:
+    success: All test suites pass with 0 failures
+    max_iterations: 5
+    escalation: escalate_to_human
+  participants:
+    - agent: test-builder
+      role: executor
+    - agent: test-runner
+      role: validator
+    - agent: build-python
+      role: fixer

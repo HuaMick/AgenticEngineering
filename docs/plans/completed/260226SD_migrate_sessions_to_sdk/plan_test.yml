@@ -1,0 +1,375 @@
+_template_status: active
+name: SDK Session Migration - Test and UAT Plan
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+objective: "Validate the Claude Agent SDK migration across three test tiers:\n\n1.\
+  \ Unit tests: sdk_runner.py in isolation (mocked SDK responses)\n2. Integration\
+  \ tests: planner_loop.py SDK execution path and session.py\n   background spawn\
+  \ SDK path, both using SDK mocks\n3. UAT: Validate acceptance criteria for affected\
+  \ user stories\n   US-CLI-030, US-CLI-031, US-ORCH-011, US-ORCH-014\n\nAll tests\
+  \ must pass and story test_status fields must be updated to reflect\nthe validated\
+  \ state of the SDK migration.\n"
+affected_stories:
+- US-CLI-030
+- US-CLI-031
+- US-ORCH-011
+- US-ORCH-014
+loop_structure:
+- name: test-fix-loop-unit
+  type: test-fix-loop
+  applies_to:
+  - Phase 1 - SDK Runner Unit Tests
+  description: 'Run unit tests for sdk_runner.py. On failure, diagnose and fix
+
+    the implementation or test, then re-run until passing.
+
+    '
+  exit_criteria:
+  - All test_sdk_runner.py tests pass (pytest exit code 0)
+  max_iterations: 5
+  on_max_exceeded: escalate_to_user
+- name: test-fix-loop-integration
+  type: test-fix-loop
+  applies_to:
+  - Phase 2 - Planner Loop Integration Tests
+  - Phase 3 - Session Spawn Integration Tests
+  description: 'Run integration tests for SDK paths in planner_loop and session.py.
+
+    On failure, diagnose root cause (SDK mock mismatch vs logic bug),
+
+    apply fix, and re-run.
+
+    '
+  exit_criteria:
+  - All planner_loop SDK integration tests pass
+  - All session spawn SDK integration tests pass
+  max_iterations: 5
+  on_max_exceeded: escalate_to_user
+- name: test-fix-loop-regression
+  type: test-fix-loop
+  applies_to:
+  - Phase 4 - Full Regression Suite
+  description: 'Run the complete AgenticCLI test suite to catch any regressions
+
+    introduced by the SDK migration. Fix any newly broken tests.
+
+    '
+  exit_criteria:
+  - All AgenticCLI tests pass (zero failures)
+  max_iterations: 3
+  on_max_exceeded: escalate_to_user
+- name: uat-validation-loop
+  type: uat-loop
+  applies_to:
+  - Phase 5 - UAT Story Validation
+  description: 'Validate each affected user story against acceptance criteria.
+
+    If a criterion is not met, identify the gap and fix it before
+
+    continuing to the next story.
+
+    '
+  exit_criteria:
+  - All four affected stories pass acceptance criteria
+  - test_status updated to "passing" in user story files
+  max_iterations: 3
+  on_max_exceeded: escalate_to_user
+phases:
+- name: Phase 1 - SDK Runner Unit Tests
+  status: pending
+  execution: sequential
+  description: 'Run all unit tests for sdk_runner.py. These tests use mocked SDK
+
+    responses and should already be passing from the build phase.
+
+    This phase confirms the test suite is green before integration testing.
+
+    '
+  tasks:
+  - id: TST_001
+    name: Run sdk_runner unit tests
+    status: completed
+    agent: test-runner
+    description: "Run the existing sdk_runner unit tests:\n  python3 -m pytest modules/AgenticCLI/tests/test_sdk_runner.py\
+      \ -v\n\nVerify all test classes pass:\n- TestRunAgent (7 tests)\n- TestRunAgentSync\
+      \ (2 tests)\n- TestSessionResult (2 tests)\n\nIf any test fails, diagnose and\
+      \ fix the sdk_runner.py implementation\nor test before proceeding.\n"
+    target_files:
+    - modules/AgenticCLI/tests/test_sdk_runner.py
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    success_criteria:
+    - All 11 tests in test_sdk_runner.py pass
+    - No import errors or fixture failures
+    - Both success and failure code paths covered
+  - id: TST_002
+    name: Verify sdk_runner fallback behavior
+    status: completed
+    agent: test-runner
+    description: "Explicitly confirm the SDK_AVAILABLE=False fallback path:\n  python3\
+      \ -c \"\n  from unittest.mock import patch\n  with patch('agenticcli.utils.sdk_runner.SDK_AVAILABLE',\
+      \ False):\n      from agenticcli.utils.sdk_runner import run_agent_sync\n  \
+      \    r = run_agent_sync('test')\n      assert r.status == 'failed'\n      assert\
+      \ 'not installed' in r.result\n      print('Fallback OK:', r.result)\n  \"\n\
+      \nThis validates that the graceful degradation path works end-to-end\nwithout\
+      \ the real SDK installed.\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/sdk_runner.py
+    success_criteria:
+    - Fallback returns SessionResult(status="failed") with descriptive message
+    - No exception raised when SDK_AVAILABLE is False
+    - Both run_agent() and run_agent_sync() handle the fallback correctly
+- name: Phase 2 - Planner Loop Integration Tests
+  status: pending
+  execution: sequential
+  description: 'Run integration tests for the planner_loop.py SDK execution paths.
+
+    Focus on the _run_role_agent, _run_via_sdk, and _run_via_subprocess
+
+    methods to confirm both paths function correctly with mocked dependencies.
+
+    '
+  tasks:
+  - id: TST_003
+    name: Run planner_loop SDK integration tests
+    status: completed
+    agent: test-runner
+    description: "Run the planner_loop test suite focused on SDK-related test classes:\n\
+      \  python3 -m pytest modules/AgenticCLI/tests/test_planner_loop.py \\\n    -v\
+      \ -k \"TestRunRoleAgent or TestDetectSdkObjective or TestDeterminePlanTypeWithSdkRouting\"\
+      \n\nExpected classes:\n- TestRunRoleAgent: SDK path records session state, subprocess\
+      \ fallback\n- TestDetectSdkObjective: keyword detection, case-insensitive, YAML\
+      \ parsing\n- TestDeterminePlanTypeWithSdkRouting: build+SDK context -> \"sdk\"\
+      \ type\n\nIf any tests fail, fix the planner_loop implementation or test mocks.\n"
+    target_files:
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    success_criteria:
+    - TestRunRoleAgent tests pass (SDK state written, subprocess fallback works)
+    - TestDetectSdkObjective tests pass (all 7 keyword scenarios)
+    - TestDeterminePlanTypeWithSdkRouting tests pass (sdk routing logic correct)
+  - id: TST_004
+    name: Run full planner_loop test suite
+    status: completed
+    agent: test-runner
+    description: "Run the complete planner_loop test file to verify no regressions\n\
+      from the SDK migration:\n  python3 -m pytest modules/AgenticCLI/tests/test_planner_loop.py\
+      \ -v\n\nAll test classes must pass including PlannerLoopRunner orchestration\
+      \ tests.\nPay attention to TestPlannerLoopRunner which exercises the full workflow\n\
+      with mocked SDK spawn results.\n"
+    target_files:
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    success_criteria:
+    - All planner_loop tests pass (zero failures)
+    - No subprocess mocking needed for SDK path tests
+    - SessionResult-based spawn methods all return correct statuses
+- name: Phase 3 - Session Spawn Integration Tests
+  status: pending
+  execution: sequential
+  description: 'Run integration tests for the session.py SDK background spawn path.
+
+    Verify that the SDK-first path in cmd_spawn works correctly and that
+
+    the subprocess fallback remains functional.
+
+    '
+  tasks:
+  - id: TST_005
+    name: Run session command tests
+    status: completed
+    agent: test-runner
+    description: "Run session command tests to verify SDK spawn integration:\n  python3\
+      \ -m pytest modules/AgenticCLI/tests/test_session_commands.py -v\n\nFocus on:\n\
+      - Background spawn with SDK available (SDK path used)\n- Background spawn with\
+      \ SDK unavailable (subprocess fallback)\n- Foreground spawn (always uses subprocess\
+      \ path)\n- Session state written correctly for SDK-spawned sessions\n- exit_code\
+      \ and ended_at fields populated for SDK sessions\n"
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - All session command tests pass
+    - SDK path tested for background sessions
+    - Subprocess fallback path tested
+    - State file fields (status, exit_code, ended_at) verified for both paths
+  - id: TST_006
+    name: Verify stop idempotency with SDK sessions
+    status: completed
+    agent: test-runner
+    description: "Run the stop idempotency end-to-end test to confirm SDK sessions\n\
+      can be stopped correctly:\n  python3 -m pytest modules/AgenticCLI/tests/integration/test_stop_idempotency_e2e.py\
+      \ -v\n\nSDK sessions have no PID. The stop command must handle SDK-spawned\n\
+      sessions (transport: \"sdk\") gracefully \u2014 they are already complete\n\
+      by the time stop is called, so stop must be idempotent.\n"
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_stop_idempotency_e2e.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - Stop on an already-completed SDK session does not error
+    - Stop is idempotent for SDK sessions (calling stop twice is safe)
+    - Stop on a subprocess session still works as before
+- name: Phase 4 - Full Regression Suite
+  status: pending
+  execution: sequential
+  description: 'Run the complete AgenticCLI test suite to catch any regressions
+
+    introduced by the SDK migration across all modules.
+
+    '
+  tasks:
+  - id: TST_007
+    name: Run full AgenticCLI test suite
+    status: completed
+    agent: test-runner
+    description: "Run the complete test suite:\n  python3 -m pytest modules/AgenticCLI/tests/\
+      \ -x -q\n\nAll tests must pass. Zero failures. Document the final test count\n\
+      in the result field once complete.\n"
+    target_files:
+    - modules/AgenticCLI/tests/
+    success_criteria:
+    - All AgenticCLI tests pass
+    - Zero failures or errors
+    - No new test skips introduced by the SDK migration
+  - id: TST_008
+    name: Run AgenticGuidance regression tests
+    status: completed
+    agent: test-runner
+    description: "Run guidance tests to confirm the SDK migration did not affect\n\
+      AgenticGuidance services:\n  python3 -m pytest modules/AgenticGuidance/tests/\
+      \ -x -q\n\nFocus on plan service, task service, and state management tests.\n\
+      The SDK migration only touched AgenticCLI \u2014 guidance tests should\nall\
+      \ pass without changes.\n"
+    target_files:
+    - modules/AgenticGuidance/tests/
+    success_criteria:
+    - AgenticGuidance tests pass (or only pre-existing failures)
+    - No new failures introduced by SDK migration
+    - Plan and task service tests unaffected
+- name: Phase 5 - UAT Story Validation
+  status: pending
+  execution: sequential
+  description: 'Validate each affected user story acceptance criteria against the
+
+    SDK migration implementation. Update test_status fields in user
+
+    story YAML files to reflect validated state.
+
+    '
+  tasks:
+  - id: UAT_001
+    name: Validate US-CLI-030 - Spawn Claude Code Session
+    status: completed
+    agent: test-runner
+    description: "Validate acceptance criteria for US-CLI-030 (Spawn Claude Code Session)\n\
+      against the SDK migration.\n\nCriteria to verify:\n1. agentic session spawn\
+      \ --prompt <text> launches a Claude Code session\n   - SDK path: background\
+      \ sessions now use run_agent_sync() internally\n   - Verify session metadata\
+      \ is persisted to state store\n2. Background mode (--background) returns immediately\
+      \ with a session ID\n   - With SDK: session completes synchronously then returns\
+      \ ID\n   - State written with status=\"completed\" and transport=\"sdk\"\n3.\
+      \ Output logs are written (SDK result captured in state store)\n4. Session metadata\
+      \ includes sdk_session_id from SDK result\n\nTest approach:\n  python3 -c \"\
+      \n  from unittest.mock import patch, MagicMock\n  from agenticcli.utils.sdk_runner\
+      \ import SessionResult\n  # Mock run_agent_sync to return a successful result\n\
+      \  # Call cmd_spawn with --background and verify state file content\n  \"\n\n\
+      Update US-CLI-030 test_status to 'passing' if all criteria met.\n"
+    target_files:
+    - docs/userstories/AgenticCLI/03_session_and_loop.yml
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - All US-CLI-030 acceptance criteria verified
+    - Session state contains transport="sdk" for SDK-spawned sessions
+    - test_status updated to "passing" in user story file
+  - id: UAT_002
+    name: Validate US-CLI-031 - List and Monitor Sessions
+    status: completed
+    agent: test-runner
+    description: "Validate acceptance criteria for US-CLI-031 (List and Monitor Sessions)\n\
+      in the context of SDK-spawned sessions.\n\nCriteria to verify:\n1. agentic session\
+      \ list shows SDK-spawned sessions with correct status\n   - SDK sessions have\
+      \ status=\"completed\" immediately (no \"running\" limbo)\n   - session list\
+      \ must display transport field or sdk_session_id\n2. Session status includes\
+      \ all valid values: running, completed, failed, stopped\n   - SDK sessions should\
+      \ show \"completed\" or \"failed\" (never stuck \"running\")\n3. JSON output\
+      \ includes sdk_session_id and transport fields for SDK sessions\n4. Active filter\
+      \ (--active) correctly excludes completed SDK sessions\n\nVerify via:\n  python3\
+      \ -m pytest modules/AgenticCLI/tests/test_session_commands.py \\\n    -v -k\
+      \ \"list\"\n\nUpdate US-CLI-031 test_status to 'passing' if all criteria met.\n"
+    target_files:
+    - docs/userstories/AgenticCLI/03_session_and_loop.yml
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - SDK sessions appear in session list with correct status
+    - No SDK sessions stuck in "running" state after completion
+    - test_status updated to "passing" in user story file
+  - id: UAT_003
+    name: Validate US-ORCH-011 - Dynamic Agent Routing
+    status: completed
+    agent: test-runner
+    description: "Validate US-ORCH-011 (Dynamic Agent Routing) acceptance criteria\n\
+      in the context of the SDK migration in planner_loop.py.\n\nCriteria to verify:\n\
+      1. Builder phases route to build-python via planner_loop spawn_planner()\n \
+      \  - SDK path: _run_role_agent(\"planner-build\", plan_folder)\n   - Routing\
+      \ determined from PLAN_TYPE_TO_PLANNER dict\n2. SDK-specific plans route to\
+      \ planner-sdk when context has SDK keywords\n   - detect_sdk_objective() correctly\
+      \ identifies SDK plans\n   - determine_plan_type() returns \"sdk\" for SDK-context\
+      \ build plans\n3. Each agent type called with correct role string via SDK\n\n\
+      Verify via:\n  python3 -m pytest modules/AgenticCLI/tests/test_planner_loop.py\
+      \ \\\n    -v -k \"TestDeterminePlanType or TestDetectSdk\"\n\nUpdate US-ORCH-011\
+      \ test_status to 'passing' if all criteria met.\n"
+    target_files:
+    - docs/userstories/Orchestration/02_execution_workflow.yml
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    success_criteria:
+    - Agent routing tests confirm correct role assignment per plan type
+    - SDK keyword detection enables planner-sdk routing
+    - test_status updated to "passing" in user story file
+  - id: UAT_004
+    name: Validate US-ORCH-014 - Persistent Execution State
+    status: completed
+    agent: test-runner
+    description: "Validate US-ORCH-014 (Persistent Execution State) for SDK sessions.\n\
+      \nThe SDK migration changes HOW state is written but must preserve the\ninvariant\
+      \ that state is always written and is accurate.\n\nCriteria to verify:\n1. Task\
+      \ statuses persisted to plan YAML via atomic file operations\n   - SDK_007 completion\
+      \ status was written to plan_build.yml\n   - All 7 tasks show completed_at timestamps\n\
+      2. FileLock ensures concurrent agents cannot corrupt state\n   - _session_store.save()\
+      \ uses atomic StateStore operations\n3. An interrupted executor can resume by\
+      \ reading current task status\n   - SDK sessions: status written BEFORE run\
+      \ (status=\"running\") and\n     AFTER run (status=\"completed\"/\"failed\"\
+      ) \u2014 both writes must occur\n4. Completed tasks not re-executed\n   - PlannerLoopRunner.run()\
+      \ checks existing MMDs before re-processing\n5. agentic plan task current returns\
+      \ the correct next task after resume\n\nVerify state write pattern in _run_via_sdk:\n\
+      \  - Initial write: status=\"running\"\n  - Final write: status=result.status,\
+      \ ended_at set, cost_usd set\n  Both writes use _session_store.save()\n\nVerify\
+      \ via:\n  python3 -m pytest modules/AgenticCLI/tests/test_planner_loop.py \\\
+      \n    -v -k \"test_sdk_path_records_session_state\"\n\nUpdate US-ORCH-014 test_status\
+      \ to 'passing' if all criteria met.\n"
+    target_files:
+    - docs/userstories/Orchestration/02_execution_workflow.yml
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    success_criteria:
+    - SDK sessions write state before and after execution
+    - State includes transport="sdk", ended_at, cost_usd, sdk_session_id
+    - test_status updated to "passing" in user story file
+  - id: UAT_005
+    name: Update story test_status fields
+    status: completed
+    agent: build-python
+    description: "After all four UAT tasks pass, update the user story YAML files\n\
+      to reflect the validated state of the SDK migration:\n\nIn docs/userstories/AgenticCLI/03_session_and_loop.yml:\n\
+      \  - US-CLI-030: test_status: passing, last_tested: 2026-02-27,\n    tested_by_plan:\
+      \ 260226SD_migrate_sessions_to_sdk\n  - US-CLI-031: test_status: passing, last_tested:\
+      \ 2026-02-27,\n    tested_by_plan: 260226SD_migrate_sessions_to_sdk\n\nIn docs/userstories/Orchestration/02_execution_workflow.yml:\n\
+      \  - US-ORCH-011: test_status: passing, last_tested: 2026-02-27,\n    tested_by_plan:\
+      \ 260226SD_migrate_sessions_to_sdk\n  - US-ORCH-014: test_status: passing, last_tested:\
+      \ 2026-02-27,\n    tested_by_plan: 260226SD_migrate_sessions_to_sdk\n\nAlso\
+      \ add brief test_notes for each story describing what was validated.\n"
+    target_files:
+    - docs/userstories/AgenticCLI/03_session_and_loop.yml
+    - docs/userstories/Orchestration/02_execution_workflow.yml
+    success_criteria:
+    - All four affected stories have test_status: passing
+    - last_tested dates set to 2026-02-27
+    - tested_by_plan set to 260226SD_migrate_sessions_to_sdk
+    - Brief test_notes added describing SDK validation

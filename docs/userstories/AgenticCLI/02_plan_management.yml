@@ -14,6 +14,7 @@ stories:
   - The --base flag specifies the base branch for the worktree
   - If worktree already exists, it is reused without error
   - Plan folder name is generated programmatically, not interpreted by agents
+  - The new plan is imported into TinyDB immediately after folder creation
   related_commands:
   - agentic plan init <branch> --description <desc> --base <base>
   related_agents:
@@ -72,12 +73,20 @@ stories:
   - Each plan shows name, status, and creation date
   - Plans are organized by status (live vs completed)
   - JSON output mode is supported for scripting
+  - Plan data is sourced from TinyDB (via PlanService.list_plans) with YAML fallback
+  - Each plan entry includes action_required field (blocked, needs_planning, execute, archive)
+  - has_orchestration is determined by filesystem check for orchestration_*.mmd
+  - Task counts (pending, in_progress, completed) are sourced from TinyDB when available
+  architecture_notes:
+  - cmd_list uses PlanService (TinyDB-first) for plan metadata and task counts
+  - Orchestration MMD presence is checked from the filesystem, not TinyDB
+  - Deferred plans show action_required="blocked" regardless of task state
   related_commands:
   - agentic plan list
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 - id: US-CLI-014
   title: Validate Plan Structure
   category: plan_management
@@ -109,13 +118,20 @@ stories:
   - The --verbose flag shows full task details including guidance and criteria
   - Auto-detects the plan folder if --plan is not specified
   - JSON output is supported
+  - Task data is sourced from TinyDB (repo.get_tasks) when TinyDB has matching data
+  - Falls back to scanning plan_*.yml files when TinyDB has no matching plan or task data
+  - TinyDB results are only used when stored folder path matches the actual plan path
+  architecture_notes:
+  - cmd_task_list calls repo.get_tasks(plan_name, status_filter) for TinyDB path
+  - YAML fallback iterates plan_*.yml files and extracts tasks from phases structure
+  - Source is indicated as "(via TinyDB)" or the YAML filename in verbose output
   related_commands:
   - agentic plan task list
   - agentic plan task list --status pending --verbose
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 - id: US-CLI-021
   title: Get Current Task
   category: task_management
@@ -129,15 +145,23 @@ stories:
   - Returns task ID, description, phase, guidance, and success criteria
   - Returns empty result with clear message when no tasks remain
   - JSON output includes all task metadata
+  - Current task is sourced from TinyDB (repo.get_current_task) when available
+  - Falls back to YAML scan if TinyDB has no matching plan or returns no current task
+  - Task counts for completion detection use repo.get_task_counts from TinyDB
+  - JSON response includes all_complete field when all tasks are done
+  architecture_notes:
+  - cmd_task_current calls repo.get_current_task(plan_name) for TinyDB path
+  - Completion stats use repo.get_task_counts(plan_name) for total and completed counts
+  - YAML fallback scans all plan_*.yml files to find in_progress then pending tasks
   related_commands:
   - agentic plan task current
   - agentic plan task current --plan <path>
   related_agents:
   - orchestration-executor
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 - id: US-CLI-022
   title: Start and Complete Tasks
   category: task_management
@@ -150,19 +174,25 @@ stories:
   - Start requires orchestration_*.mmd to exist (plan must be orchestrated)
   - agentic plan task complete <id> sets status to completed with timestamp
   - Status transitions are validated (cannot complete a pending task directly)
-  - File operations are atomic (uses FileLock)
-  - Multiple agents cannot start the same task simultaneously
+  - Task status is updated in TinyDB first (repo.update_task_status), then synced to YAML
+  - YAML files are kept in sync via repo.sync_to_yaml for git visibility
+  - Falls back to direct YAML mutation when TinyDB path fails or has no matching plan
+  - Multiple agents cannot start the same task simultaneously (FileLock protection)
   - Completing the last task does NOT trigger auto-archive (plan stays in live/)
+  architecture_notes:
+  - cmd_task_start and cmd_task_complete call _update_task_status internally
+  - _update_task_status is TinyDB-first: calls repo.update_task_status then repo.sync_to_yaml
+  - FileLock is applied at the TinyDB level via PlanRepository._lock
   related_commands:
   - agentic agent plan task start <id>
   - agentic agent plan task complete <id>
   related_agents:
   - orchestration-executor
   - build-python
-  last_tested: '2026-02-23'
-  test_status: passed
+  last_tested: "2026-02-24"
+  test_status: passing
   test_notes: 'Validated by plan 260222RA: task start/complete work correctly, no auto-archive side effects'
-  tested_by_plan: 260222RA_remove_auto_archive_from_cli_task_completion
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 - id: US-CLI-023
   title: Add Tasks to Plan
   category: task_management
@@ -177,13 +207,21 @@ stories:
   - The --priority flag sets task priority (low, medium, high)
   - Without --phase, the task is added to the last phase
   - Auto-generated IDs follow the phase_sequence convention
+  - Task is added via TinyDB (repo.add_task) first, then synced to YAML
+  - Falls back to direct YAML mutation when TinyDB path fails or has no matching plan
+  - YAML is synced via repo.sync_to_yaml after TinyDB insertion for git visibility
+  - If no phases exist in TinyDB, an "Ad-hoc Tasks" phase is created automatically
+  architecture_notes:
+  - cmd_task_add calls repo.add_task(plan_name, phase_name, task_dict) for TinyDB path
+  - Phase lookup uses repo.get_phase and repo.list_phases to find target phase
+  - JSON output indicates whether task was added via "TinyDB" or "YAML"
   related_commands:
   - agentic plan task add <desc>
   - agentic plan task add <desc> --phase P2 --priority high
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 - id: US-CLI-024
   title: Update Task Status with Notes
   category: task_management
@@ -197,13 +235,19 @@ stories:
   - The --note flag adds text to the task record
   - When marking completed, a timestamp is automatically recorded
   - Status transitions are validated
+  - Task status is updated in TinyDB first (repo.update_task_status), then synced to YAML
+  - Falls back to direct YAML mutation when TinyDB path fails or has no matching plan
   - Updating status to completed does NOT trigger auto-archive (plan stays in live/)
+  architecture_notes:
+  - cmd_task_update calls repo.update_task_status(plan_name, task_id, new_status) for TinyDB path
+  - Transition validation occurs both in TinyDB path and YAML fallback path
+  - Notes are stored in task.completion_note field in YAML; TinyDB sync carries them through
   related_commands:
   - agentic agent plan task update <id> --status completed --note 'Tests passing'
-  last_tested: '2026-02-23'
-  test_status: passed
+  last_tested: "2026-02-24"
+  test_status: passing
   test_notes: 'Validated by plan 260222RA: task update works correctly, no auto-archive side effects'
-  tested_by_plan: 260222RA_remove_auto_archive_from_cli_task_completion
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 - id: US-CLI-025
   title: Prefill Tasks from Preset
   category: task_management
@@ -236,14 +280,24 @@ stories:
   - agentic plan phase list shows all phases with status and task counts
   - agentic plan phase update <id> --status in_progress changes phase status
   - Phase IDs are unique within a plan
+  - Phase add uses TinyDB (repo.add_phase) first, then syncs to YAML
+  - Phase update uses TinyDB (repo.update_phase) first, then syncs to YAML
+  - Phase list sources data from TinyDB (repo.get_plan) when available
+  - All phase operations fall back to direct plan_build.yml mutation when TinyDB path fails
+  - Status transitions are validated in both TinyDB and YAML fallback paths
+  architecture_notes:
+  - cmd_phase_add calls repo.add_phase(plan_name, phase_dict) for TinyDB path
+  - cmd_phase_update calls repo.update_phase(plan_name, phase_id, updates) for TinyDB path
+  - cmd_phase_list reads from repo.get_plan(plan_name).phases for TinyDB path
+  - YAML sync via repo.sync_to_yaml is called after successful TinyDB mutations
   related_commands:
   - agentic plan phase add --id P1 --name 'Core Implementation'
   - agentic plan phase list
   - agentic plan phase update P1 --status completed
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 - id: US-CLI-016
   title: Generate Orchestration MMD
   category: orchestration
@@ -283,13 +337,21 @@ stories:
   - The --force flag on unarchive skips confirmation
   - Archived plans retain all files and history
   - The orchestration-loop is responsible for archiving via explicit move command
+  - Archiving updates TinyDB via repo.archive_plan (updates status and folder path)
+  - Unarchiving updates TinyDB via repo.unarchive_plan (resets status and folder path)
+  - Physical folder moves (shutil.move / shutil.copytree) happen independently of TinyDB
+  - TinyDB updates are non-fatal; physical file operation succeeds even if TinyDB fails
+  architecture_notes:
+  - cmd_archive performs shutil.copytree first, then calls repo.archive_plan(plan_name)
+  - cmd_unarchive performs shutil.move first, then calls repo.unarchive_plan(plan_name)
+  - --force on unarchive handles case where plan already exists in live/ by resyncing TinyDB path
   related_commands:
   - agentic plan move folder --plan <name> --force
   - agentic plan unarchive --plan <name>
-  last_tested: '2026-02-23'
-  test_status: passed
+  last_tested: "2026-02-24"
+  test_status: passing
   test_notes: 'Validated by plan 260222RA: auto-archive removed, explicit archive via plan move folder works correctly'
-  tested_by_plan: 260222RA_remove_auto_archive_from_cli_task_completion
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 - id: US-CLI-018
   title: Move Completed Tasks
   category: archiving

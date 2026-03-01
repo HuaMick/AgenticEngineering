@@ -57,6 +57,11 @@ def mock_sessions_dir(sessions_dir, monkeypatch):
     context_dir = sessions_dir / "context"
     context_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
+
+    # Disable SDK path so subprocess-based tests exercise the subprocess code path.
+    # SDK-specific tests should re-enable this explicitly.
+    import agenticcli.utils.sdk_runner as _sdk_mod
+    monkeypatch.setattr(_sdk_mod, "SDK_AVAILABLE", False)
     return sessions_dir
 
 
@@ -601,84 +606,6 @@ class TestSessionStopCommand:
         assert "already exited" in captured.out
 
 
-class TestSessionStatusCommand:
-    """Tests for the session status command."""
-
-    def test_status_requires_session_id(self, mock_sessions_dir, capsys):
-        """Test that status requires a session ID."""
-        from agenticcli.commands import session
-
-        args = SimpleNamespace(session_id=None)
-
-        with pytest.raises(SystemExit) as exc_info:
-            session.cmd_status(args)
-
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "Session ID is required" in captured.err
-
-    def test_status_session_not_found(self, mock_sessions_dir, capsys):
-        """Test status for a nonexistent session."""
-        from agenticcli.commands import session
-
-        args = SimpleNamespace(session_id="nonexistent")
-
-        with pytest.raises(SystemExit) as exc_info:
-            session.cmd_status(args)
-
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        assert "Session not found" in captured.err
-
-    def test_status_displays_session_info(self, mock_sessions_dir, sample_session_data, capsys):
-        """Test that status displays session information."""
-        from agenticcli.commands import session
-
-        session._store.save(sample_session_data)
-
-        # Mock is_process_running to return True
-        with patch.object(session, "is_process_running", return_value=True):
-            args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
-            session.cmd_status(args)
-
-        captured = capsys.readouterr()
-        assert "Session " in captured.out
-        assert sample_session_data["session_id"][:8] in captured.out
-        assert "running" in captured.out.lower()
-
-    @patch("agenticcli.console.is_json_output")
-    def test_status_json_output(self, mock_json_output, mock_sessions_dir, sample_session_data, capsys):
-        """Test status with JSON output."""
-        from agenticcli.commands import session
-
-        mock_json_output.return_value = True
-        session._store.save(sample_session_data)
-
-        # Mock is_process_running to return True
-        with patch.object(session, "is_process_running", return_value=True):
-            args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
-            session.cmd_status(args)
-
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-        assert output["session_id"] == sample_session_data["session_id"]
-        assert output["status"] == "running"
-
-    def test_status_partial_id_matching(self, mock_sessions_dir, sample_session_data, capsys):
-        """Test that status supports partial ID matching."""
-        from agenticcli.commands import session
-
-        session._store.save(sample_session_data)
-
-        # Use only first 4 characters of session ID
-        with patch.object(session, "is_process_running", return_value=True):
-            args = SimpleNamespace(session_id=sample_session_data["session_id"][:4])
-            session.cmd_status(args)
-
-        captured = capsys.readouterr()
-        assert "Session " in captured.out
-
-
 class TestSessionHandleRouting:
     """Tests for the session handle function routing."""
 
@@ -707,15 +634,6 @@ class TestSessionHandleRouting:
         from agenticcli.commands import session
 
         args = SimpleNamespace(session_command="stop", session_id=None)
-
-        with pytest.raises(SystemExit):
-            session.handle(args)
-
-    def test_handle_routes_to_status(self, mock_sessions_dir):
-        """Test that handle routes status command correctly."""
-        from agenticcli.commands import session
-
-        args = SimpleNamespace(session_command="status", session_id=None)
 
         with pytest.raises(SystemExit):
             session.handle(args)
@@ -1228,11 +1146,11 @@ class TestCheckSessionHealth:
         assert health["stale"] is False
 
 
-class TestSessionHealthCommand:
-    """Tests for cmd_health command."""
+class TestSessionHealthcheckCommand:
+    """Tests for cmd_healthcheck command."""
 
-    def test_health_healthy_session(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
-        """Test health command displays HEALTHY verdict."""
+    def test_healthcheck_healthy_session(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
+        """Test healthcheck command displays HEALTHY verdict."""
         from agenticcli.commands import session
 
         session._store.save(sample_session_data)
@@ -1242,13 +1160,13 @@ class TestSessionHealthCommand:
         monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
-        session.cmd_health(args)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         assert "HEALTHY" in captured.out
 
-    def test_health_stale_session(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
-        """Test health command displays STALE verdict."""
+    def test_healthcheck_stale_session_no_diagnose(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
+        """Test healthcheck displays STALE verdict without spawning diagnostic when --diagnose is not set."""
         import time as time_mod
         from agenticcli.commands import session
 
@@ -1259,31 +1177,62 @@ class TestSessionHealthCommand:
         os.utime(stdout_log, (old_time, old_time))
 
         monkeypatch.setattr(session, "is_process_running", lambda pid: True)
-        monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: None)
+
+        spawn_called = []
+        monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
-        session.cmd_health(args)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         assert "STALE" in captured.out
+        assert len(spawn_called) == 0  # No diagnostic spawn without --diagnose
 
-    def test_health_unhealthy_session(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
-        """Test health command displays UNHEALTHY verdict."""
+    def test_healthcheck_stale_session_with_diagnose(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
+        """Test healthcheck spawns diagnostic when --diagnose is set for stale sessions."""
+        import time as time_mod
+        from agenticcli.commands import session
+
+        session._store.save(sample_session_data)
+        stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
+        stdout_log.write_text("Old output")
+        old_time = time_mod.time() - (20 * 60)
+        os.utime(stdout_log, (old_time, old_time))
+
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
+
+        spawned_ids = []
+
+        def mock_spawn(s):
+            new_id = "diag-1234-5678"
+            spawned_ids.append(new_id)
+            return new_id
+
+        monkeypatch.setattr(session, "_spawn_diagnostic_planner", mock_spawn)
+
+        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], diagnose=True)
+        session.cmd_healthcheck(args)
+
+        captured = capsys.readouterr()
+        assert "STALE" in captured.out
+        assert len(spawned_ids) == 1
+
+    def test_healthcheck_unhealthy_session(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
+        """Test healthcheck command displays UNHEALTHY verdict."""
         from agenticcli.commands import session
 
         session._store.save(sample_session_data)
         monkeypatch.setattr(session, "is_process_running", lambda pid: False)
-        monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: None)
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
-        session.cmd_health(args)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         assert "UNHEALTHY" in captured.out
 
     @patch("agenticcli.console.is_json_output")
-    def test_health_json_output(self, mock_json, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
-        """Test health command with JSON output."""
+    def test_healthcheck_json_output(self, mock_json, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
+        """Test healthcheck command with JSON output."""
         from agenticcli.commands import session
 
         mock_json.return_value = True
@@ -1294,7 +1243,7 @@ class TestSessionHealthCommand:
         monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], json_output=True)
-        session.cmd_health(args)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         output = json.loads(captured.out)
@@ -1303,8 +1252,8 @@ class TestSessionHealthCommand:
         assert "signals" in output
         assert "stale" in output
 
-    def test_health_partial_id(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
-        """Test health command with partial ID matching."""
+    def test_healthcheck_partial_id(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
+        """Test healthcheck command with partial ID matching."""
         from agenticcli.commands import session
 
         session._store.save(sample_session_data)
@@ -1314,17 +1263,17 @@ class TestSessionHealthCommand:
         monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:4])
-        session.cmd_health(args)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         assert "Session Health" in captured.out
 
-    def test_health_no_match(self, mock_sessions_dir, mock_logs_dir, capsys):
-        """Test health command with non-existent session."""
+    def test_healthcheck_no_match(self, mock_sessions_dir, mock_logs_dir, capsys):
+        """Test healthcheck command with non-existent session."""
         from agenticcli.commands import session
 
         args = SimpleNamespace(session_id="nonexistent")
-        session.cmd_health(args)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         assert "No session found" in captured.err
@@ -1520,91 +1469,6 @@ class TestStaleWarningInList:
         assert "-" in captured.out
 
 
-class TestWorktreeAliasCliHelp:
-    """Tests for --worktree/-w alias on session spawn and loop start CLI commands."""
-
-    def test_session_spawn_help_shows_worktree(self):
-        """Test that session spawn --help shows --worktree/-w flag."""
-        from typer.testing import CliRunner
-        from agenticcli.cli import app
-
-        runner = CliRunner()
-        result = runner.invoke(app, ["session", "spawn", "--help"])
-        assert "--worktree" in result.output
-        assert "-w" in result.output
-        assert "--directory" in result.output
-
-    def test_loop_start_help_shows_worktree(self):
-        """Test that loop start --help shows --worktree/-w flag."""
-        from typer.testing import CliRunner
-        from agenticcli.cli import app
-
-        runner = CliRunner()
-        result = runner.invoke(app, ["session", "loop", "start", "--help"])
-        assert "--worktree" in result.output
-        assert "-w" in result.output
-        assert "--directory" in result.output
-
-    @patch("agenticcli.commands.session.is_process_running")
-    @patch("agenticcli.commands.session.subprocess.Popen")
-    def test_spawn_worktree_passes_directory(self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, tmp_path):
-        """Test that --worktree passes through to directory parameter in session spawn."""
-        from typer.testing import CliRunner
-        from agenticcli.cli import app
-
-        mock_process = MagicMock()
-        mock_process.pid = 11111
-        mock_popen.return_value = mock_process
-        mock_is_running.return_value = True
-
-        runner = CliRunner()
-        result = runner.invoke(app, [
-            "session", "spawn",
-            "--prompt", "test",
-            "--worktree", str(tmp_path),
-            "--background",
-        ])
-
-        # Verify Popen was called (spawn succeeded)
-        mock_popen.assert_called_once()
-        call_kwargs = mock_popen.call_args
-        cmd = call_kwargs[0][0]
-        # The cwd should be set to the worktree path
-        popen_kwargs = call_kwargs[1] if len(call_kwargs) > 1 else call_kwargs.kwargs
-        assert str(tmp_path) in str(popen_kwargs.get("cwd", ""))
-
-    def test_spawn_worktree_and_directory_mutual_exclusion(self, mock_sessions_dir, mock_logs_dir):
-        """Test that --worktree and --directory together cause an error."""
-        from typer.testing import CliRunner
-        from agenticcli.cli import app
-
-        runner = CliRunner()
-        result = runner.invoke(app, [
-            "session", "spawn",
-            "--prompt", "test",
-            "--worktree", "/some/path",
-            "--directory", "/other/path",
-            "--background",
-        ])
-
-        assert result.exit_code != 0
-
-    def test_loop_start_worktree_and_directory_mutual_exclusion(self):
-        """Test that --worktree and --directory together cause an error on loop start."""
-        from typer.testing import CliRunner
-        from agenticcli.cli import app
-
-        runner = CliRunner()
-        result = runner.invoke(app, [
-            "loop", "start",
-            "--prompt", "test loop",
-            "--worktree", "/some/path",
-            "--directory", "/other/path",
-        ])
-
-        assert result.exit_code != 0
-
-
 class TestCheckTmuxSession:
     """Tests for _check_tmux_session helper."""
 
@@ -1658,11 +1522,11 @@ class TestCheckTmuxSession:
 class TestSessionHandleRoutingNewCommands:
     """Tests for handle routing of new commands."""
 
-    def test_handle_routes_to_health(self, mock_sessions_dir, mock_logs_dir, capsys):
-        """Test that handle routes health command correctly."""
+    def test_handle_routes_to_healthcheck(self, mock_sessions_dir, mock_logs_dir, capsys):
+        """Test that handle routes healthcheck command correctly."""
         from agenticcli.commands import session
 
-        args = SimpleNamespace(session_command="health", session_id="nonexistent")
+        args = SimpleNamespace(session_command="healthcheck", session_id="nonexistent")
         session.handle(args)
 
         captured = capsys.readouterr()
@@ -1684,12 +1548,12 @@ class TestSessionHandleRoutingNewCommands:
 
 
 class TestDiagnosticAutoSpawn:
-    """Tests for diagnostic auto-spawn in health check."""
+    """Tests for diagnostic auto-spawn in healthcheck (requires --diagnose)."""
 
-    def test_spawns_diagnostic_for_stale_session(
+    def test_spawns_diagnostic_for_stale_session_with_diagnose(
         self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
     ):
-        """Test that cmd_health auto-spawns diagnostic for stale sessions."""
+        """Test that cmd_healthcheck auto-spawns diagnostic for stale sessions when --diagnose is set."""
         import time as time_mod
         from agenticcli.commands import session
 
@@ -1710,13 +1574,38 @@ class TestDiagnosticAutoSpawn:
 
         monkeypatch.setattr(session, "_spawn_diagnostic_planner", mock_spawn)
 
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
-        session.cmd_health(args)
+        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], diagnose=True)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         assert "STALE" in captured.out
         assert len(spawned_ids) == 1
         assert "diag-123" in captured.out  # Truncated to 8 chars
+
+    def test_no_diagnostic_without_diagnose_flag(
+        self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
+    ):
+        """Test that diagnostic is NOT spawned without --diagnose even for stale sessions."""
+        import time as time_mod
+        from agenticcli.commands import session
+
+        session._store.save(sample_session_data)
+        stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
+        stdout_log.write_text("Old output")
+        old_time = time_mod.time() - (20 * 60)
+        os.utime(stdout_log, (old_time, old_time))
+
+        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
+
+        spawn_called = []
+        monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
+
+        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
+        session.cmd_healthcheck(args)
+
+        captured = capsys.readouterr()
+        assert "STALE" in captured.out
+        assert len(spawn_called) == 0
 
     def test_diagnostic_spawns_only_once(
         self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
@@ -1734,8 +1623,8 @@ class TestDiagnosticAutoSpawn:
         spawn_called = []
         monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
 
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
-        session.cmd_health(args)
+        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], diagnose=True)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         assert len(spawn_called) == 0
@@ -1745,7 +1634,7 @@ class TestDiagnosticAutoSpawn:
     def test_no_diagnostic_for_healthy_session(
         self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
     ):
-        """Test that diagnostic is NOT spawned for healthy sessions."""
+        """Test that diagnostic is NOT spawned for healthy sessions even with --diagnose."""
         from agenticcli.commands import session
 
         session._store.save(sample_session_data)
@@ -1757,8 +1646,8 @@ class TestDiagnosticAutoSpawn:
         spawn_called = []
         monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
 
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
-        session.cmd_health(args)
+        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], diagnose=True)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         assert "HEALTHY" in captured.out
@@ -1768,7 +1657,7 @@ class TestDiagnosticAutoSpawn:
     def test_diagnostic_in_json_output(
         self, mock_json, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
     ):
-        """Test diagnostic spawn info appears in JSON health output."""
+        """Test diagnostic spawn info appears in JSON healthcheck output when --diagnose is set."""
         from agenticcli.commands import session
 
         mock_json.return_value = True
@@ -1777,8 +1666,8 @@ class TestDiagnosticAutoSpawn:
         monkeypatch.setattr(session, "is_process_running", lambda pid: False)
         monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: "new-diag-9999")
 
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], json_output=True)
-        session.cmd_health(args)
+        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], json_output=True, diagnose=True)
+        session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         output = json.loads(captured.out)
@@ -1952,86 +1841,6 @@ class TestLogFileDescriptorManagement:
 
         # Both files should be closed even though Popen failed
         assert len(closed_files) == 2
-
-
-class TestWorktreeAlias:
-    """Tests for --worktree/-w alias on session spawn and loop start (GA_006)."""
-
-    @patch("agenticcli.commands.session.is_process_running")
-    @patch("agenticcli.commands.session.subprocess.Popen")
-    def test_worktree_passed_as_directory(self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, capsys):
-        """Test that --worktree value is passed through as directory to cmd_spawn."""
-        from agenticcli.commands import session
-
-        mock_process = MagicMock()
-        mock_process.pid = 44444
-        mock_popen.return_value = mock_process
-        mock_is_running.return_value = True
-
-        args = SimpleNamespace(
-            prompt="Test worktree alias",
-            max_turns=None,
-            background=True,
-            directory="/tmp/my-worktree",
-            role=None,
-            task=None,
-            plan=None,
-            dangerously_skip_permissions=False,
-        )
-
-        session.cmd_spawn(args)
-
-        # Verify Popen was called with the worktree path as cwd
-        call_kwargs = mock_popen.call_args[1]
-        assert call_kwargs["cwd"] == "/tmp/my-worktree"
-
-        # Verify session record has the worktree as working_dir
-        sessions = session._store.list_all()
-        assert len(sessions) == 1
-        assert sessions[0]["working_dir"] == "/tmp/my-worktree"
-
-    def test_typer_worktree_and_directory_mutual_exclusion(self):
-        """Test that --worktree and --directory are mutually exclusive at the Typer level."""
-        from typer.testing import CliRunner
-
-        from agenticcli.cli import app
-
-        runner = CliRunner()
-        result = runner.invoke(app, [
-            "session", "spawn",
-            "--worktree", "/tmp/wt",
-            "--directory", "/tmp/dir",
-            "--prompt", "test",
-        ])
-
-        assert result.exit_code != 0
-        assert "mutually exclusive" in result.output.lower()
-
-    def test_typer_worktree_appears_in_help(self):
-        """Test that --worktree/-w appears in session spawn help output."""
-        from typer.testing import CliRunner
-
-        from agenticcli.cli import app
-
-        runner = CliRunner()
-        result = runner.invoke(app, ["session", "spawn", "--help"])
-
-        assert "--worktree" in result.output
-        assert "-w" in result.output
-        assert "--directory" in result.output
-        assert "-d" in result.output
-
-    def test_typer_loop_start_worktree_appears_in_help(self):
-        """Test that --worktree/-w appears in loop start help output."""
-        from typer.testing import CliRunner
-
-        from agenticcli.cli import app
-
-        runner = CliRunner()
-        result = runner.invoke(app, ["session", "loop", "start", "--help"])
-
-        assert "--worktree" in result.output
-        assert "-w" in result.output
 
 
 class TestTmuxHealthIntegration:

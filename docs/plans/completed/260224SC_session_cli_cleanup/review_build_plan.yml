@@ -1,0 +1,220 @@
+reviewer: planner-reviewer
+plan_reviewed: plan_build.yml
+plan_folder: 260224SC_session_cli_cleanup
+reviewed_at: "2026-02-26T11:00:00"
+decision: REJECT
+
+summary: |
+  The session CLI cleanup plan has been EXECUTED but fails structural review on
+  multiple blocking fences. The implementation work itself appears correct (test plan
+  shows 1553 passed), but the plan artifacts have structural issues that must be
+  remediated before approval and archival.
+
+  Critical finding: All 14 build tasks are marked `pending` but the codebase already
+  reflects all changes (git diff shows 2062 lines changed across 8 files). The test
+  plan is already `completed`. This indicates execution proceeded without plan review
+  or task status tracking.
+
+checklist_results:
+  plan_structure:
+    status: PARTIAL_FAIL
+    items:
+      - check: "Plan has unique name at root level"
+        result: PASS
+        note: "name: session-cli-cleanup"
+      - check: "Worktree path is absolute and correct"
+        result: FAIL
+        note: "Missing worktree_path field entirely. plan_test.yml has it but plan_build.yml does not."
+      - check: "Plan folder follows YYMMDDXX_description naming"
+        result: PASS
+        note: "260224SC_session_cli_cleanup"
+      - check: "Plan objective clearly states what will be improved"
+        result: PASS
+        note: "context field provides clear description of all 4 restructuring goals"
+      - check: "Plan files at folder root, NOT in subdirectories"
+        result: PASS
+      - check: "No plan_live_ prefix in filenames"
+        result: PASS
+      - check: "No nested subfolders containing plan files"
+        result: PASS
+
+  inputs:
+    status: PASS
+    items:
+      - check: "Context references at file-level or directory-level"
+        result: PASS
+        note: "Each task has target_files and inputs where needed"
+      - check: "Each input has location and description"
+        result: PASS
+      - check: "Referenced files exist"
+        result: PASS_WITH_CAVEAT
+        note: "Some target_files (loop.py, loop tests) already deleted as part of execution"
+
+  success_criteria:
+    status: PARTIAL_FAIL
+    items:
+      - check: "Each phase has measurable success criteria"
+        result: PASS
+        note: "Task-level criteria are specific and verifiable"
+      - check: "Success criteria include user-focused validation"
+        result: FAIL
+        note: "No UAT phase. No story-level validation. Affected user stories exist but are not referenced."
+      - check: "Technical validation criteria are verifiable"
+        result: PASS
+      - check: "Criteria define observable outcomes"
+        result: PASS
+
+  task_structure:
+    status: PASS
+    items:
+      - check: "Each task specifies exact target files"
+        result: PASS
+      - check: "Agent types correctly allocated"
+        result: PASS
+        note: "build-python for code changes, test-runner for verification"
+      - check: "Operations properly ordered"
+        result: PASS
+        note: "Delete -> remove refs -> update tests per component"
+      - check: "Each task has concrete acceptance criteria"
+        result: PASS
+
+  pattern_alignment:
+    status: PARTIAL_FAIL
+    items:
+      - check: "D -> W -> E patterns where applicable"
+        result: N/A
+        note: "CLI cleanup/deletion - pattern not applicable"
+      - check: "Phase dependencies explicitly declared"
+        result: PASS
+        note: "Sequential execution declared per phase"
+      - check: "Mandatory loops included"
+        result: FAIL
+        note: "No audit-test-fix loop. Phase 5 has test run but no loop for iterating on failures."
+
+  loop_structure:
+    status: FAIL
+    items:
+      - check: "loop_structure section exists"
+        result: FAIL
+        note: "Non-trivial plan (14 tasks, 5 phases) missing loop_structure section entirely"
+
+  context_quality:
+    status: PASS
+    items:
+      - check: "No inline definitions duplicating shared assets"
+        result: PASS
+      - check: "No duplicate definitions across files"
+        result: PASS
+      - check: "File references resolve"
+        result: PASS
+
+fence_results:
+  rlm_usage:
+    status: SKIPPED
+    note: "No RLM patterns referenced"
+
+  mmd_presence:
+    status: FAIL
+    blocking: true
+    note: |
+      No orchestration_*.mmd file in plan folder. Plan has 14 tasks across 5 phases -
+      not eligible for single-task exception. Must have orchestration MMD with GOAL,
+      AGENT_ROUTING, and PHASES metadata.
+
+  file_placement:
+    status: PASS
+    note: "plan_build.yml and plan_test.yml at folder root. No misplaced files."
+
+  codebase_verification:
+    status: FAIL
+    blocking: true
+    note: |
+      STALE PLAN: >50% of pending tasks are already implemented in the codebase.
+      Git diff shows 2062 lines changed across 8 target files:
+      - loop.py: DELETED (571 lines removed)
+      - cli.py: MODIFIED (104 lines changed)
+      - ralph.py: MODIFIED (10 lines changed)
+      - session.py: MODIFIED (137 lines changed)
+      - test_loop_integration.py: DELETED (873 lines removed)
+      - test_loop_stop_idempotency.py: DELETED (200 lines removed)
+      - test_ralph_commands.py: MODIFIED (62 lines changed)
+      - test_session_commands.py: MODIFIED (259 lines changed)
+
+      All 14 build tasks marked `pending` but ALL appear implemented.
+      Test plan shows `completed` with 1553 tests passing.
+      Task statuses must be updated to reflect actual state.
+
+  self_review_validation:
+    status: FAIL
+    blocking: true
+    note: |
+      PC-002 (All References Resolve): target_files for SC_001 and SC_003 reference
+      deleted files (loop.py, test_loop_*.py). These were valid at plan creation but
+      are now stale. Task statuses should reflect completion.
+
+  infrastructure_implementation:
+    status: PASS
+    note: "Only references build-python and test-runner agents - both fully implemented."
+
+  open_questions_validation:
+    status: SKIPPED
+    note: "No open_questions section present. Valid for this plan type."
+
+  story_validation:
+    status: FAIL
+    blocking: true
+    note: |
+      BLOCKING: Build plan MUST have affected_stories field. No escape hatch for build plans.
+
+      Missing affected_stories. The following user stories are clearly impacted:
+      - US-CLI-033 (Inspect Session Health and Logs): renamed health -> healthcheck, added --diagnose
+      - US-CLI-034 (Start Ralph Loop): moved from "session ralph" to "session orchestrate ralph"
+      - US-CLI-035 (Stop Running Loop): same command path change
+      - US-CLI-036 (Monitor Loop Progress): same command path change
+
+      Note: The user story files (03_session_and_loop.yml) have ALREADY been updated to
+      reflect the new command structure, confirming these stories were affected.
+      The plan must declare them in affected_stories and include UAT tasks.
+
+feedback:
+  blocking_issues:
+    - issue: "Missing affected_stories"
+      fence: "story_validation"
+      remediation: |
+        Add to plan_build.yml root level:
+        affected_stories:
+          - US-CLI-033
+          - US-CLI-034
+          - US-CLI-035
+          - US-CLI-036
+    - issue: "Missing orchestration MMD"
+      fence: "mmd_presence"
+      remediation: |
+        Create orchestration_260224SC.mmd with GOAL, AGENT_ROUTING, and PHASES headers.
+        Since execution is already complete, this is a retroactive documentation requirement.
+    - issue: "Stale task statuses"
+      fence: "codebase_verification"
+      remediation: |
+        Update all 14 tasks in plan_build.yml from `status: pending` to `status: completed`
+        with completed_at timestamps. The work is done - the plan must reflect reality.
+    - issue: "Missing worktree_path"
+      fence: "plan_structure"
+      remediation: |
+        Add worktree_path: /home/code/AgenticEngineering to plan_build.yml root level.
+
+  non_blocking_issues:
+    - issue: "Missing loop_structure section"
+      checklist: "loop_structure"
+      note: "Non-trivial plan should define loop_structure. Lower priority since execution is complete."
+    - issue: "No UAT phase"
+      checklist: "success_criteria"
+      note: |
+        A UAT phase validating the affected user stories would strengthen this plan.
+        Since execution is complete and tests pass, this is a documentation gap.
+
+  positive_observations:
+    - "Well-structured phases with logical ordering (remove -> move -> rename -> verify)"
+    - "Task descriptions are detailed with specific line references and before/after examples"
+    - "impacted_artifacts section is thorough with breaking_change annotations"
+    - "Test plan shows comprehensive coverage with 1553 tests passing"
+    - "Each task has clear, verifiable success criteria"

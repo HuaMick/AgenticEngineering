@@ -14,78 +14,35 @@ cli_commands:
     3. Reference from inputs.yml files that need the command
     4. Document usage in command description
 
-  worktree:
-    create:
-      command: "agentic worktree create <branch> --base <base-branch>"
-      description: "Create git worktree with automatic plan folder structure"
-      parameters:
-        branch: "Feature branch name to create"
-        base-branch: "Base branch to create from (e.g., main)"
-      example: "agentic worktree create feature_auth --base main"
-
-    list:
-      command: "agentic worktree list"
-      description: "List all git worktrees in repository"
-
-    status:
-      command: "agentic worktree status"
-      description: "Show status of current worktree including plan folder"
-
   plan:
     init:
-      command: "agentic agent plan init <branch> [--description <desc>] [--base <base-branch>]"
+      command: "agentic agent plan init <branch> [--description <desc>]"
       description: |
-        Initialize worktree and plan folder with enforced naming convention.
-        Combines worktree creation (if needed) with plan folder scaffolding.
+        Initialize a plan folder with enforced naming convention.
+        Creates plan folder scaffolding in docs/plans/live/.
         Naming convention (YYMMDDXX_description) is enforced programmatically.
-
-        MAIN-FIRST PLANNING: Plan folders are ALWAYS created in the main worktree,
-        even when run from a feature worktree. This ensures all plans are visible
-        from a single location (main worktree's docs/plans/live/) before execution.
-        - Plan folder: Created in main worktree's docs/plans/live/
-        - Feature worktree: Created (or reused) for execution
       parameters:
-        branch: "Branch name for worktree (required)"
+        branch: "Branch name for the plan (required)"
         --description/-d: "Plan description for folder name (optional, defaults to branch)"
-        --base/-b: "Base branch to create worktree from (default: main)"
-      main_first_planning: true
       exit_codes:
-        0: "Success - worktree and plan folder created"
-        1: "Worktree creation failed or not in git repository"
+        0: "Success - plan folder created"
+        1: "Not in git repository"
         2: "Plan folder already exists (use different description)"
         3: "Invalid branch name or description"
       json_output:
-        worktree: "Absolute path to feature worktree (for execution)"
-        worktree_created: "Boolean - true if new worktree created, false if reused"
         branch: "Branch name"
-        base: "Base branch used"
-        plan_folder: "Absolute path to plan folder (IN MAIN WORKTREE, not feature worktree)"
+        plan_folder: "Absolute path to plan folder"
         plan_folder_name: "Generated folder name (YYMMDDXX_description format)"
-        main_worktree: "Absolute path to main worktree where plan folder was created"
       naming_convention:
         pattern: "YYMMDDXX_description"
         components:
           YYMMDD: "Current date (year/month/day)"
-          XX: "2 uppercase letters from worktree path suffix (e.g., AG from -agenticguidance)"
+          XX: "2 uppercase letters (e.g., from branch name suffix)"
           description: "Sanitized description (lowercase, underscores, max 50 chars)"
         regex: "^\\d{6}[A-Z]{2}_[a-z0-9_]+$"
       examples:
         - "agentic agent plan init feature-auth --description user_authentication"
-        - "agentic agent plan init bugfix --base develop"
         - "agentic -j agent plan init my-feature --description api_refactor"
-      example_json_output: |
-        {
-          "worktree": "/home/code/MyProject-my-feature",
-          "worktree_created": true,
-          "branch": "my-feature",
-          "base": "main",
-          "plan_folder": "/home/code/MyProject/docs/plans/live/260119MF_api_refactor",
-          "plan_folder_name": "260119MF_api_refactor",
-          "main_worktree": "/home/code/MyProject"
-        }
-        Note: plan_folder points to MAIN worktree, not the feature worktree.
-      note: "Prefer this over 'worktree create' + 'plan scaffold' for new plans"
-      reference: "modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml#Main-First Planning"
 
     validate:
       command: "agentic agent plan validate <plan_folder_path>"
@@ -104,11 +61,10 @@ cli_commands:
       description: "List all plans in docs/plans/live/"
 
     scaffold:
-      command: "agentic agent plan scaffold <name> --worktree <path>"
+      command: "agentic agent plan scaffold <name>"
       description: "Create plan folder structure from template (low-level, prefer plan init)"
       parameters:
         name: "Plan name in YYMMDDXX_description format (e.g., 260115AG_feature_auth)"
-        path: "Worktree path for plan creation"
       note: "Prefer 'agentic agent plan init' which generates correct naming automatically"
 
     task_start:
@@ -250,7 +206,7 @@ cli_commands:
 
     task:
       command: "agentic agent context task [-j]"
-      description: "Get current task from the main worktree plan"
+      description: "Get current task from the active plan"
       parameters:
         -j: "Output in JSON format"
       note: "NOTE: Old path 'agentic context task ...' has been removed. Use 'agentic agent context task ...'."
@@ -265,16 +221,15 @@ cli_commands:
 
   session:
     # Session management commands for spawning and managing Claude Code sessions
-    # Sessions enable parallel execution across multiple worktrees/contexts
+    # Sessions enable parallel execution across multiple directories/contexts
     spawn:
-      command: "agentic session spawn --role <agent-role> [--directory <path> | --worktree <path>] [--plan <plan-folder>] [--task <task-id>] [-b] [-j]"
+      command: "agentic session spawn --role <agent-role> [--directory <path>] [--plan <plan-folder>] [--task <task-id>] [-b] [-j]"
       description: |
         Spawn a new Claude Code session for parallel agent execution.
         Sessions run in isolated contexts and can target specific directories.
 
         Returns session ID and connection details for monitoring.
         Note: --role and --task are mutually exclusive.
-        Note: --directory and --worktree are mutually exclusive (--worktree is an alias for --directory).
       parameters:
         --prompt/-p: "Direct prompt string for the session"
         --role: "Agent role identifier for the session (e.g., build-python, test-runner)"
@@ -283,7 +238,6 @@ cli_commands:
         --max-turns/-m: "Maximum agentic turns"
         --background/-b: "Run session in background"
         --directory/-d: "Working directory for session execution (optional)"
-        --worktree/-w: "Worktree path for session execution (alias for --directory, mutually exclusive)"
         --dangerously-skip-permissions: "Skip permission prompts"
         -j: "Output in JSON format for machine parsing"
       json_output:
@@ -300,8 +254,7 @@ cli_commands:
         3: "Session spawn failed"
       examples:
         - "agentic session spawn --role build-python -j"
-        - "agentic session spawn --role test-runner --directory /home/code/MyProject-feature -b"
-        - "agentic session spawn --role test-runner --worktree /home/code/MyProject-feature -b"
+        - "agentic session spawn --role test-runner --directory /home/code/MyProject -b"
         - "agentic session spawn --role orchestration-executor --plan 260127XX_feature --dangerously-skip-permissions"
 
     list:
@@ -322,9 +275,9 @@ cli_commands:
         1: "Session not found"
         2: "Session already stopped"
 
-    status:
-      command: "agentic session status <session-id> [-j]"
-      description: "Get detailed status of a specific session"
+    healthcheck:
+      command: "agentic session healthcheck <session-id> [-j]"
+      description: "Get detailed health status of a specific session"
       parameters:
         session-id: "Session ID to query"
         -j: "Output in JSON format"
@@ -339,15 +292,15 @@ cli_commands:
   loop:
     # Ralph Loop management commands for iterative agent workflows
     # Loops are prompt-driven with configurable iteration limits
+    # NOTE: Loop commands are accessed via `agentic session orchestrate ralph <subcommand>`
     start:
-      command: "agentic loop start --prompt <text> [--entrypoint <name>] [--max-iterations <n>] [--completion-promise <text>] [-b] [-d <dir> | -w <dir>] [-j]"
+      command: "agentic session orchestrate ralph start --prompt <text> [--entrypoint <name>] [--max-iterations <n>] [--completion-promise <text>] [-b] [-d <dir>] [-j]"
       description: |
         Start a Ralph Loop for iterative agent execution.
         Loops are driven by a prompt (or entrypoint) rather than a loop-type positional arg.
 
         The prompt defines the iteration goal, and --completion-promise sets the
         exit condition text that must appear in output to terminate the loop.
-        Note: --directory and --worktree are mutually exclusive (--worktree is an alias for --directory).
       parameters:
         --prompt/-p: "Direct prompt string for the loop"
         --prompt-file/-f: "Read prompt from file instead of inline"
@@ -356,7 +309,6 @@ cli_commands:
         --completion-promise/-c: "Text that must appear in output to complete loop"
         --background/-b: "Run loop in background"
         --directory/-d: "Working directory for the loop"
-        --worktree/-w: "Worktree path for the loop (alias for --directory, mutually exclusive)"
         --output/-o: "Output file path"
         --dangerously-skip-permissions: "Skip permission prompts"
         -j: "Output in JSON format"
@@ -369,12 +321,12 @@ cli_commands:
         1: "Missing prompt/entrypoint"
         3: "Loop start failed"
       examples:
-        - "agentic loop start --prompt 'Run tests and fix failures' --max-iterations 5 -j"
-        - "agentic loop start --entrypoint test-fix --completion-promise 'All tests pass' -b"
-        - "agentic loop start --prompt-file loop_prompt.md -m 3 -d /home/code/MyProject"
+        - "agentic session orchestrate ralph start --prompt 'Run tests and fix failures' --max-iterations 5 -j"
+        - "agentic session orchestrate ralph start --entrypoint test-fix --completion-promise 'All tests pass' -b"
+        - "agentic session orchestrate ralph start --prompt-file loop_prompt.md -m 3 -d /home/code/MyProject"
 
     stop:
-      command: "agentic loop stop <loop-id> [--force]"
+      command: "agentic session orchestrate ralph stop <loop-id> [--force]"
       description: "Stop a running Ralph Loop"
       parameters:
         loop-id: "Loop ID to stop (required)"
@@ -385,7 +337,7 @@ cli_commands:
         2: "Loop already stopped"
 
     status:
-      command: "agentic loop status <loop-id> [-j]"
+      command: "agentic session orchestrate ralph status <loop-id> [-j]"
       description: "Get status of a specific loop"
       parameters:
         loop-id: "Loop ID to check (required)"
@@ -397,7 +349,7 @@ cli_commands:
         max_iterations: "Maximum iterations allowed"
 
     history:
-      command: "agentic loop history [--active] [--status <filter>] [--limit <n>] [-j]"
+      command: "agentic session orchestrate ralph history [--active] [--status <filter>] [--limit <n>] [-j]"
       description: "Show past loop executions"
       parameters:
         --active/-a: "Show only active loops"
@@ -523,8 +475,8 @@ usage_notes:
     - "Prefer CLI over manual file operations for consistency"
     - "CLI validates inputs and enforces naming conventions programmatically"
     - "Errors are returned with actionable messages and exit codes"
-    - "Use 'agentic agent plan init' as primary entry point for new plans (replaces deploy-worktree spawn)"
+    - "Use 'agentic agent plan init' as primary entry point for new plans"
     - "JSON output (-j flag) available for machine-parseable responses"
     - "CCI context commands (agent context bootstrap, agent context role, etc.) provide deterministic context retrieval"
-    - "Session commands enable parallel Claude Code execution across worktrees"
-    - "Loop commands manage iterative workflows via prompt-driven iteration"
+    - "Session commands enable parallel Claude Code execution across different directories"
+    - "Loop commands (agentic session orchestrate ralph start/stop/status/history) manage iterative workflows via prompt-driven iteration"

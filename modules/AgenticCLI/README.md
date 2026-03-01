@@ -692,9 +692,11 @@ agentic session spawn -p "Build docs" --background --directory /path/to/project
 agentic session list
 agentic session list --active  # Only show running sessions
 
-# Get detailed status of a session
-agentic session status <session-id>
-agentic session status abc123 --show-output  # Include log contents
+# Get health check of a session
+agentic session healthcheck <session-id>
+
+# Get session output logs
+agentic session logs abc123
 
 # Stop a running session
 agentic session stop <session-id>
@@ -758,24 +760,33 @@ agentic session stop abc123 --force
 - `session_id` (required): Full or partial session UUID
 - `--force`: Use SIGKILL instead of SIGTERM
 
-**status** - Get detailed session information
+**healthcheck** - Get session health information
 
-Displays comprehensive information about a session including status, timing, logs, and output.
+Displays health and status information about a session. Use `--diagnose` to auto-spawn diagnostics.
 
 ```bash
-# Get session status
-agentic session status abc123
+# Get session health check
+agentic session healthcheck abc123
 
-# Include output log contents
-agentic session status abc123 --show-output
+# Auto-spawn diagnostics on unhealthy session
+agentic session healthcheck abc123 --diagnose
 
 # JSON output
-agentic -j session status abc123
+agentic -j session healthcheck abc123
 ```
 
-**Options for `session status`:**
+**logs** - Get session output logs
+
+Displays the output logs of a session.
+
+```bash
+# Get session logs
+agentic session logs abc123
+```
+
+**Options for `session healthcheck`:**
 - `session_id` (required): Full or partial session UUID
-- `--show-output`: Display contents of stdout and stderr logs
+- `--diagnose`: Auto-spawn diagnostics if the session is unhealthy
 
 **Session Storage:**
 
@@ -784,30 +795,30 @@ Sessions are tracked in `~/.agentic/sessions/`:
 - Output logs: `~/.agentic/sessions/logs/<session-id>.stdout.log`
 - Error logs: `~/.agentic/sessions/logs/<session-id>.stderr.log`
 
-### loop - Ralph Loop Management
+### session orchestrate ralph - Ralph Loop Management
 
 Start, stop, and monitor Ralph Loop executions. A Ralph Loop is an iterative execution cycle where an agent repeatedly processes a prompt until a completion condition is met or max iterations are reached.
 
 ```bash
 # Start a Ralph Loop with inline prompt
-agentic loop start --prompt "Fix all failing tests"
-agentic loop start -p "Implement the feature" --max-iterations 20
+agentic session orchestrate ralph start --prompt "Fix all failing tests"
+agentic session orchestrate ralph start -p "Implement the feature" --max-iterations 20
 
 # Start from entrypoint or file
-agentic loop start --entrypoint _orchestrate
-agentic loop start --prompt-file task.txt --background
+agentic session orchestrate ralph start --entrypoint _orchestrate
+agentic session orchestrate ralph start --prompt-file task.txt --background
 
 # Stop a running loop
-agentic loop stop <loop-id>
-agentic loop stop abc123 --force
+agentic session orchestrate ralph stop <loop-id>
+agentic session orchestrate ralph stop abc123 --force
 
 # Get detailed loop status
-agentic loop status <loop-id>
+agentic session orchestrate ralph status <loop-id>
 
 # Show loop execution history
-agentic loop history
-agentic loop history --active
-agentic loop history --status completed --limit 50
+agentic session orchestrate ralph history
+agentic session orchestrate ralph history --active
+agentic session orchestrate ralph history --status completed --limit 50
 ```
 
 #### Subcommand Details
@@ -818,19 +829,19 @@ Launches a Ralph Loop that iteratively executes a prompt until completion. Promp
 
 ```bash
 # Basic loop with inline prompt
-agentic loop start --prompt "Run tests and fix any failures"
+agentic session orchestrate ralph start --prompt "Run tests and fix any failures"
 
 # From entrypoint with custom max iterations
-agentic loop start -e _orchestrate -m 20
+agentic session orchestrate ralph start -e _orchestrate -m 20
 
 # From file, background mode, with completion detection
-agentic loop start -f prompt.txt -b -c "All done"
+agentic session orchestrate ralph start -f prompt.txt -b -c "All done"
 
 # With specific working directory and output file
-agentic loop start -p "Build feature" -d /path/to/project -o results.txt
+agentic session orchestrate ralph start -p "Build feature" -d /path/to/project -o results.txt
 ```
 
-**Options for `loop start`:**
+**Options for `session orchestrate ralph start`:**
 - `--prompt`, `-p`: Direct prompt string to execute in the loop
 - `--prompt-file`, `-f`: Path to file containing the prompt (supports .txt and .md)
 - `--entrypoint`, `-e`: Entrypoint reference to load as the prompt (e.g., `_orchestrate`, `plan_build`)
@@ -851,16 +862,16 @@ Sends a termination signal to the loop process. By default uses SIGTERM for grac
 
 ```bash
 # Graceful stop (allows current iteration to complete)
-agentic loop stop abc123
+agentic session orchestrate ralph stop abc123
 
 # Force kill (immediate termination)
-agentic loop stop abc123 --force
+agentic session orchestrate ralph stop abc123 --force
 
 # Stop using partial ID match
-agentic loop stop abc
+agentic session orchestrate ralph stop abc
 ```
 
-**Options for `loop stop`:**
+**Options for `session orchestrate ralph stop`:**
 - `loop_id` (required): Full or partial loop UUID
 - `--force`, `-f`: Use SIGKILL instead of SIGTERM for immediate termination
 
@@ -870,16 +881,16 @@ Shows comprehensive information about a loop including status, iteration progres
 
 ```bash
 # Get loop status
-agentic loop status abc123
+agentic session orchestrate ralph status abc123
 
 # Use partial ID match
-agentic loop status abc
+agentic session orchestrate ralph status abc
 
 # JSON output for scripting
-agentic -j loop status abc123
+agentic -j session orchestrate ralph status abc123
 ```
 
-**Options for `loop status`:**
+**Options for `session orchestrate ralph status`:**
 - `loop_id` (required): Full or partial loop UUID
 
 **Status Information Displayed:**
@@ -897,23 +908,23 @@ Lists all Ralph Loop executions with their status, sorted by start time (most re
 
 ```bash
 # Show all recent loops
-agentic loop history
+agentic session orchestrate ralph history
 
 # Show only running loops
-agentic loop history --active
+agentic session orchestrate ralph history --active
 
 # Filter by status
-agentic loop history --status running
-agentic loop history --status completed
+agentic session orchestrate ralph history --status running
+agentic session orchestrate ralph history --status completed
 
 # Increase result limit
-agentic loop history --limit 50
+agentic session orchestrate ralph history --limit 50
 
 # JSON output for scripting
-agentic -j loop history
+agentic -j session orchestrate ralph history
 ```
 
-**Options for `loop history`:**
+**Options for `session orchestrate ralph history`:**
 - `--active`, `-a`: Show only active (running) loops
 - `--status`, `-s`: Filter by status (running, completed, failed, stopped)
 - `--limit`, `-l`: Maximum number of loops to show (default: 20)
@@ -1007,7 +1018,7 @@ agentic template generate build \
 
 | Category | Scope | Commands |
 |----------|-------|----------|
-| **Global** | Any directory | setup, health, config, prefs, update, rebuild, state, env, session, loop |
+| **Global** | Any directory | setup, health, config, prefs, update, rebuild, state, env, session, session orchestrate ralph |
 | **Project** | Requires .git or .agenticcli.yml | worktree, plan, agent (context, entrypoint, stories, manifest, question), langsmith, inputs, template |
 
 Project commands require being in a git repository or having a `.agenticcli.yml` file in the directory tree.
@@ -1041,8 +1052,7 @@ AgenticCLI/
 │   │   ├── context.py      # CCI context injection
 │   │   ├── entrypoint.py   # Workflow entrypoints
 │   │   ├── langsmith.py    # LangSmith integration
-│   │   ├── session.py      # Session management
-│   │   ├── loop.py         # Ralph Loop management
+│   │   ├── session.py      # Session management (includes orchestrate ralph subcommands)
 │   │   ├── config.py       # Configuration
 │   │   ├── preferences.py  # Preferences
 │   │   ├── setup.py        # Setup wizard

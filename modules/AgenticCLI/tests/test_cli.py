@@ -25,15 +25,6 @@ class TestCLIHelp:
 class TestSubcommandHelp:
     """Tests for subcommand help output."""
 
-    def test_worktree_help(self, cli_runner):
-        """Test devops worktree --help output."""
-        stdout, stderr, code = cli_runner(["devops", "worktree", "--help"])
-        assert "worktree" in stdout.lower()
-        assert "create" in stdout
-        assert "list" in stdout
-        assert "remove" in stdout
-        assert code == 0
-
     def test_plan_help(self, cli_runner):
         """Test plan --help output shows user-facing commands only."""
         stdout, stderr, code = cli_runner(["plan", "--help"])
@@ -80,16 +71,6 @@ class TestCLIVersion:
 
 class TestCommandAliases:
     """Tests for command aliases."""
-
-    def test_worktree_alias_wt(self, cli_runner):
-        """Test 'wt' alias works for worktree under devops."""
-        result_full = cli_runner(["devops", "worktree", "--help"])
-        result_alias = cli_runner(["devops", "wt", "--help"])
-        assert result_full.returncode == 0
-        assert result_alias.returncode == 0
-        # Both should show worktree help
-        assert "create" in result_alias.stdout
-        assert "list" in result_alias.stdout
 
     def test_configure_alias_cfg(self, cli_runner):
         """Test 'cfg' alias works for configure."""

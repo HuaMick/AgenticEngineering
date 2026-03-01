@@ -33,9 +33,9 @@ class TestConfigGet:
 
     def test_get_existing_key(self, cli_runner, sample_prefs):
         """Test getting an existing preference."""
-        stdout, stderr, code = cli_runner(["configure", "config", "get", "worktree.default_base"])
-        assert "main" in stdout
-        assert "worktree.default_base" in stdout
+        stdout, stderr, code = cli_runner(["configure", "config", "get", "plan.auto_scaffold"])
+        assert "True" in stdout or "true" in stdout
+        assert "plan.auto_scaffold" in stdout
         assert code == 0
 
     def test_get_nested_key(self, cli_runner, sample_prefs):
@@ -120,10 +120,9 @@ class TestConfigList:
         """Test listing all preferences."""
         stdout, stderr, code = cli_runner(["configure", "config", "list"])
         assert "Preferences:" in stdout
-        # Rich tree output shows "worktree" without colon
-        assert "worktree" in stdout
-        assert "default_base" in stdout
-        assert "main" in stdout
+        # Rich tree output shows "plan" section
+        assert "plan" in stdout
+        assert "auto_scaffold" in stdout
         assert code == 0
 
     def test_list_no_preferences(self, cli_runner, temp_config_dir):

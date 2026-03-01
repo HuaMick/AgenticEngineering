@@ -32,7 +32,7 @@ TEMPLATES = {
 
 plan:
   name: "Build Phase Implementation"
-  worktree: "{worktree}"
+  project_root: "{project_root}"
   branch: "{branch}"
   status: planning
   created: "{date}"
@@ -55,7 +55,7 @@ plan:
 
 plan:
   name: "Test Phases"
-  worktree: "{worktree}"
+  project_root: "{project_root}"
   branch: "{branch}"
   status: pending
   created: "{date}"
@@ -91,7 +91,7 @@ plan:
 
 plan:
   name: "Audit and Cleanup"
-  worktree: "{worktree}"
+  project_root: "{project_root}"
   branch: "{branch}"
   status: pending
   created: "{date}"
@@ -129,7 +129,7 @@ plan:
 
 plan:
   name: "Guidance Improvement"
-  worktree: "{worktree}"
+  project_root: "{project_root}"
   branch: "{branch}"
   status: pending
   created: "{date}"
@@ -164,7 +164,7 @@ def _get_context() -> dict:
     """Get context for template substitution."""
     import subprocess
 
-    worktree = str(Path.cwd())
+    project_root = str(Path.cwd())
     branch = ""
 
     try:
@@ -180,7 +180,7 @@ def _get_context() -> dict:
 
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
-        "worktree": worktree,
+        "project_root": project_root,
         "branch": branch,
     }
 
@@ -388,7 +388,7 @@ def _try_jinja2_render(template_type: str, context: dict) -> str | None:
             # Create context
             tpl_context = TemplateContext(
                 plan_name=context.get("plan_name", template_type.title()),
-                worktree=context.get("worktree", ""),
+                project_root=context.get("project_root", ""),
                 branch=context.get("branch", ""),
             )
             workflow.context = tpl_context

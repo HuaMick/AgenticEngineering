@@ -66,10 +66,10 @@ process:
         # Spawn a Claude Code session for an agent role
         agentic session spawn --role <agent-role> --plan <plan-folder> -j
 
-        # Check session status
-        agentic session status <session-id> -j
+        # Check session health/detail status
+        agentic session healthcheck <session-id> -j
 
-        # List active sessions
+        # List active sessions (for status overview)
         agentic session list -j
         ```
 
@@ -77,13 +77,13 @@ process:
         When starting test-fix or build-validate loops, use CLI loop commands:
         ```bash
         # Start a Ralph Loop with a prompt
-        agentic loop start --prompt 'Run tests and fix failures' --max-iterations 5 -j
+        agentic session orchestrate ralph start --prompt 'Run tests and fix failures' --max-iterations 5 -j
 
         # Start a Ralph Loop with an entrypoint
-        agentic loop start --entrypoint test-fix --completion-promise 'All tests pass' -b
+        agentic session orchestrate ralph start --entrypoint test-fix --completion-promise 'All tests pass' -b
 
         # Check loop status (loop-id is required)
-        agentic loop status <loop-id> -j
+        agentic session orchestrate ralph status <loop-id> -j
         ```
 
         MANDATE: Use CLI for all session/loop state management.
@@ -206,7 +206,7 @@ process:
         2. Resolve agent_type to specific agent:
            - builder -> build-python (default) or build-flutter (Flutter projects)
            - tester -> test-runner (execution) or test-guidance-simulator (guidance)
-           - deployer -> deploy-cicd or deploy-worktree
+           - deployer -> deploy-cicd
            - teacher -> teacher-update-guidance or teacher-update-assets
            - cleaner -> planner-cleaning
            - auditor -> test-audit or test-final-output
@@ -415,42 +415,7 @@ process:
         Skipping this gate is a fence violation.
 
     # =========================================================================
-    # PHASE 2.6: WORKTREE COMMIT & MERGE (MANDATORY for worktree plans)
-    # =========================================================================
-    - id: "worktree_commit_merge"
-      name: "Commit and Merge Worktree Changes"
-      description: |
-        FENCE: Changes made in a worktree MUST be committed and merged back to
-        main before shutdown. Without this step, execution results are stranded
-        in the worktree branch and the running codebase is not updated.
-
-        DETECTION:
-        1. Read plan metadata for worktree/branch fields
-        2. If plan has a worktree path different from the main repo, merge is required
-        3. If plan was executed in the main worktree, skip this step
-
-        COMMIT STEP (in the worktree):
-        1. cd to worktree path
-        2. `git add -A` (stage all changes)
-        3. `git commit -m "feat: <plan_name> - <brief description>"`
-        4. Verify commit succeeded
-
-        MERGE STEP (back in main worktree):
-        1. cd to main worktree
-        2. `git merge <branch_name> --no-ff -m "Merge <plan_name>"`
-        3. If merge conflicts: transition to BLOCKED, report conflicts
-        4. Verify merge succeeded
-
-        SKIP CONDITIONS:
-        - Plan executed in main worktree (no separate branch)
-        - Plan is guidance-only with no code changes
-        - Plan metadata has merge_strategy: "manual" or merge_strategy: "pr"
-
-        FENCE: Do NOT proceed to shutdown without committing worktree changes.
-        Stranded worktree changes are a critical execution gap.
-
-    # =========================================================================
-    # PHASE 2.7: INTEGRATION SMOKE TEST GATE (CLI command verification)
+    # PHASE 2.6: INTEGRATION SMOKE TEST GATE (CLI command verification)
     # =========================================================================
     - id: "integration_smoke_test_gate"
       name: "Integration Smoke Test Gate"

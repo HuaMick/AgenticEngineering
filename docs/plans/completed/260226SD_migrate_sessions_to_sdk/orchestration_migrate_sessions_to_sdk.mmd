@@ -1,0 +1,218 @@
+%% =============================================================================
+%% GOAL: Migrate AgenticCLI session spawning from subprocess.Popen + PID polling
+%% to the Claude Agent SDK (claude-agent-sdk). Eliminates chronic lifecycle bugs:
+%% - Background sessions stuck in "running" state
+%% - Fragile dead-PID detection in planner_loop.py
+%% - Exit codes never captured for background sessions
+%%
+%% SDK provides: query() async iterator, ResultMessage with structured data,
+%% natural completion signaling — no PID polling, no state file orphans.
+%%
+%% BUILD: Completed (7/7 tasks). TEST: Pending. UAT: Pending.
+%% =============================================================================
+%% PROFILE: Orchestration-migrate-sessions-to-sdk
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260226SD_migrate_sessions_to_sdk/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Phase 1 - SDK Foundation
+%%   P2: Phase 2 - Migrate planner_loop.py
+%%   P3: Phase 3 - Migrate session spawn
+%%   P4: Phase 4 - End-to-end verification
+%%   P5: Phase 1 - SDK Runner Unit Tests
+%%   P6: Phase 2 - Planner Loop Integration Tests
+%%   P7: Phase 3 - Session Spawn Integration Tests
+%%   P8: Phase 4 - Full Regression Suite
+%%   P9: Phase 5 - UAT Story Validation
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> test-runner, P5 -> test-runner, P6 -> test-runner, P7 -> test-runner, P8 -> test-runner, P9 -> test-runner
+%% STATUS: P1=completed, P2=completed, P3=completed, P4=completed, P5=pending, P6=pending, P7=pending, P8=pending, P9=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, UAT_FAILURE -> uat-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review Plan Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: SDK FOUNDATION (COMPLETED)
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: SDK_001, SDK_002, SDK_003
+
+    subgraph P1_SG ["Phase 1 - SDK Foundation [COMPLETED]"]
+        Phase1[Enter Phase 1 - SDK Foundation] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[SDK_001: Add claude-agent-sdk dependency]
+        Task_P1_1 --> Task_P1_2[SDK_002: Create sdk_runner.py module]
+        Task_P1_2 --> Task_P1_3[SDK_003: Write SDK runner unit tests]
+        Task_P1_3 --> Phase1Complete[Phase 1 Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: MIGRATE PLANNER_LOOP.PY (COMPLETED)
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: SDK_004, SDK_005
+
+    subgraph P2_SG ["Phase 2 - Migrate planner_loop.py [COMPLETED]"]
+        Phase2[Enter Phase 2 - Migrate planner_loop.py] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[SDK_004: Replace spawn methods with SDK runner calls]
+        Task_P2_1 --> Task_P2_2[SDK_005: Update planner_loop tests]
+        Task_P2_2 --> Phase2Complete[Phase 2 Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: MIGRATE SESSION SPAWN (COMPLETED)
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: SDK_006
+
+    subgraph P3_SG ["Phase 3 - Migrate session spawn [COMPLETED]"]
+        Phase3[Enter Phase 3 - Migrate session spawn] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[SDK_006: Add SDK path to cmd_spawn for background sessions]
+        Task_P3_1 --> Phase3Complete[Phase 3 Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: END-TO-END VERIFICATION (COMPLETED)
+    %% ========================================
+    %% AGENT_ROUTING: test-runner agent
+    %% Tasks: SDK_007
+
+    subgraph P4_SG ["Phase 4 - End-to-end verification [COMPLETED]"]
+        Phase4[Enter Phase 4 - End-to-end verification] --> SpawnAgent4[Spawn test-runner Agent]
+        SpawnAgent4 --> Task_P4_1[SDK_007: Run planning orchestration with SDK]
+        Task_P4_1 --> Phase4Complete[Phase 4 Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: SDK RUNNER UNIT TESTS (PENDING)
+    %% ========================================
+    %% AGENT_ROUTING: test-runner agent
+    %% Tasks: TST_001, TST_002
+    %% Loop: test-fix-loop-unit (max 5 iterations)
+
+    subgraph P5_SG ["Phase 1 - SDK Runner Unit Tests [PENDING]"]
+        Phase5[Enter Phase 1 - SDK Runner Unit Tests] --> SpawnAgent5[Spawn test-runner Agent]
+        SpawnAgent5 --> Task_P5_1[TST_001: Run sdk_runner unit tests]
+        Task_P5_1 --> Task_P5_2[TST_002: Verify sdk_runner fallback behavior]
+        Task_P5_2 --> UnitTestsPass{Tests Pass?}
+        UnitTestsPass -- "Yes" --> Phase5Complete[Phase 1 Complete]
+        UnitTestsPass -- "No: Fix and retry" --> SpawnAgent5
+    end
+
+    Phase5Complete --> Phase6
+
+    %% ========================================
+    %% PHASE 6: PLANNER LOOP INTEGRATION TESTS (PENDING)
+    %% ========================================
+    %% AGENT_ROUTING: test-runner agent
+    %% Tasks: TST_003, TST_004
+    %% Loop: test-fix-loop-integration (max 5 iterations)
+
+    subgraph P6_SG ["Phase 2 - Planner Loop Integration Tests [PENDING]"]
+        Phase6[Enter Phase 2 - Planner Loop Integration Tests] --> SpawnAgent6[Spawn test-runner Agent]
+        SpawnAgent6 --> Task_P6_1[TST_003: Run planner_loop SDK integration tests]
+        Task_P6_1 --> Task_P6_2[TST_004: Run full planner_loop test suite]
+        Task_P6_2 --> PlannerTestsPass{Tests Pass?}
+        PlannerTestsPass -- "Yes" --> Phase6Complete[Phase 2 Complete]
+        PlannerTestsPass -- "No: Fix and retry" --> SpawnAgent6
+    end
+
+    Phase6Complete --> Phase7
+
+    %% ========================================
+    %% PHASE 7: SESSION SPAWN INTEGRATION TESTS (PENDING)
+    %% ========================================
+    %% AGENT_ROUTING: test-runner agent
+    %% Tasks: TST_005, TST_006
+    %% Loop: test-fix-loop-integration (max 5 iterations)
+
+    subgraph P7_SG ["Phase 3 - Session Spawn Integration Tests [PENDING]"]
+        Phase7[Enter Phase 3 - Session Spawn Integration Tests] --> SpawnAgent7[Spawn test-runner Agent]
+        SpawnAgent7 --> Task_P7_1[TST_005: Run session command tests]
+        Task_P7_1 --> Task_P7_2[TST_006: Verify stop idempotency with SDK sessions]
+        Task_P7_2 --> SessionTestsPass{Tests Pass?}
+        SessionTestsPass -- "Yes" --> Phase7Complete[Phase 3 Complete]
+        SessionTestsPass -- "No: Fix and retry" --> SpawnAgent7
+    end
+
+    Phase7Complete --> Phase8
+
+    %% ========================================
+    %% PHASE 8: FULL REGRESSION SUITE (PENDING)
+    %% ========================================
+    %% AGENT_ROUTING: test-runner agent
+    %% Tasks: TST_007, TST_008
+    %% Loop: test-fix-loop-regression (max 3 iterations)
+
+    subgraph P8_SG ["Phase 4 - Full Regression Suite [PENDING]"]
+        Phase8[Enter Phase 4 - Full Regression Suite] --> SpawnAgent8[Spawn test-runner Agent]
+        SpawnAgent8 --> Task_P8_1[TST_007: Run full AgenticCLI test suite]
+        Task_P8_1 --> Task_P8_2[TST_008: Run AgenticGuidance regression tests]
+        Task_P8_2 --> RegressionPass{All Tests Pass?}
+        RegressionPass -- "Yes" --> Phase8Complete[Phase 4 Complete]
+        RegressionPass -- "No: Fix regression" --> SpawnAgent8
+    end
+
+    Phase8Complete --> Phase9
+
+    %% ========================================
+    %% PHASE 9: UAT STORY VALIDATION (PENDING)
+    %% ========================================
+    %% AGENT_ROUTING: test-runner agent (UAT_001-004), build-python (UAT_005)
+    %% Tasks: UAT_001, UAT_002, UAT_003, UAT_004, UAT_005
+    %% Loop: uat-validation-loop (max 3 iterations)
+
+    subgraph P9_SG ["Phase 5 - UAT Story Validation [PENDING]"]
+        Phase9[Enter Phase 5 - UAT Story Validation] --> SpawnAgent9T[Spawn test-runner Agent]
+        SpawnAgent9T --> Task_P9_1[UAT_001: Validate US-CLI-030 Spawn Session]
+        Task_P9_1 --> Task_P9_2[UAT_002: Validate US-CLI-031 List Sessions]
+        Task_P9_2 --> Task_P9_3[UAT_003: Validate US-ORCH-011 Agent Routing]
+        Task_P9_3 --> Task_P9_4[UAT_004: Validate US-ORCH-014 Persistent State]
+        Task_P9_4 --> UATCriteriaPass{All Stories Pass?}
+        UATCriteriaPass -- "No: Fix gap" --> SpawnAgent9T
+        UATCriteriaPass -- "Yes" --> SpawnAgent9B[Spawn build-python Agent]
+        SpawnAgent9B --> Task_P9_5[UAT_005: Update story test_status fields]
+        Task_P9_5 --> Phase9Complete[Phase 5 Complete]
+    end
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase9Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    classDef completed fill:#D3D3D3,stroke:#808080
+    class Start entrypoint
+    class End exitpoint
+    class AskUser userpoint
+    class P1_SG,P2_SG,P3_SG,P4_SG completed

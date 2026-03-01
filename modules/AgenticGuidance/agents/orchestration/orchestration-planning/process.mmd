@@ -15,15 +15,15 @@
 %%
 %% CLI SESSION/LOOP COMMANDS (for executor handoff):
 %% When plans require iterative workflows, specify CLI loop commands:
-%%   agentic loop start --prompt <text> --max-iterations <n> --dangerously-skip-permissions -j
-%%   agentic loop start --entrypoint <name> --completion-promise <text> -b
-%%   agentic loop status <loop-id> -j
-%%   agentic loop history --active -j
+%%   agentic session orchestrate ralph start --prompt <text> --max-iterations <n> --dangerously-skip-permissions -j
+%%   agentic session orchestrate ralph start --entrypoint <name> --completion-promise <text> -b
+%%   agentic session orchestrate ralph status <loop-id> -j
+%%   agentic session orchestrate ralph history --active -j
 %%
 %% When spawning parallel sessions is needed:
 %%   agentic session spawn --prompt <p> --dangerously-skip-permissions -j
 %%   agentic session list -j
-%%   agentic session status <session-id> -j
+%%   agentic session healthcheck <session-id> -j
 %%
 %% MANDATE: Reference CLI commands in generated orchestration MMDs for executor.
 %%
@@ -234,8 +234,20 @@ flowchart LR
     %%   Check{Phase}Required? --No--> Check{NextPhase}Required?
     %%
     %% AGENT_MAPPING (phase -> planner agent):
-    %%   teach -> planner-guidance | build -> planner-build | test -> planner-test
-    %%   cleanup -> planner-cleaning | audit -> planner-audit | uat -> planner-test
+    %%   teach -> planner-guidance | build -> planner-build | sdk -> planner-sdk
+    %%   test -> planner-test | cleanup -> planner-cleaning | audit -> planner-audit
+    %%   uat -> planner-test
+    %%
+    %% SDK ROUTING: When build phase is required AND objective is SDK-related,
+    %% route to planner-sdk instead of planner-build. Detection uses keyword
+    %% matching on the objective text and plan context fields.
+    %% SDK KEYWORD DETECTION CRITERIA:
+    %%   - "claude-agent-sdk", "claude_code_sdk", "SDK migration"
+    %%   - "subprocess replacement", "session spawn"
+    %%   - "query()", "async iterator", "streaming messages"
+    %%   - "MCP server", "tool allow-list", "bypassPermissions"
+    %%   - Source: plan_build.yml context field OR user objective text
+    %%   - Implementation: PlannerLoopRunner.detect_sdk_objective() in planner_loop.py
     %% NOTE: PlanningLoops now receives flow from GuidanceRouting_SG (see above)
 
     subgraph PlanningLoops_SG ["Planning Loops Subgraph"]
@@ -253,8 +265,25 @@ flowchart LR
         TeachPlanApproved -- "Yes: Ready" --> CheckBuild{Build Phase Required?}
         CheckTeach -- "No" --> CheckBuild
 
-        %% BUILD LOOP (planner-build)
-        CheckBuild -- "Yes" --> BuildPlanLoop{Build Planning Loop}
+        %% BUILD / SDK LOOP
+        %% When build phase is required, check if the objective is SDK-related.
+        %% SDK objectives route to planner-sdk (which has SDK docs pre-loaded).
+        %% Non-SDK objectives route to planner-build (standard build planner).
+        CheckBuild -- "Yes" --> CheckSDKObjective{SDK-Related Objective?}
+
+        %% SDK PATH (planner-sdk)
+        %% Detection: objective or plan context contains SDK keywords
+        %% (see SDK KEYWORD DETECTION CRITERIA in AGENT_MAPPING above)
+        CheckSDKObjective -- "Yes: SDK Keywords Detected" --> SDKPlanLoop{SDK Planning Loop}
+        SDKPlanLoop --> SpawnPlannerSDK[Spawn planner-sdk Agent]
+        SpawnPlannerSDK --> SpawnSDKReviewer[Spawn planner-reviewer Agent]
+        SpawnSDKReviewer --> SDKPlanApproved{SDK Plan Approved?}
+        SDKPlanApproved -- "No: Refine" --> SpawnPlannerSDKFix[Spawn planner-sdk Agent]
+        SpawnPlannerSDKFix --> SpawnSDKReviewer
+        SDKPlanApproved -- "Yes: Ready" --> CheckTest{Test Phase Required?}
+
+        %% STANDARD BUILD PATH (planner-build)
+        CheckSDKObjective -- "No: Standard Build" --> BuildPlanLoop{Build Planning Loop}
         BuildPlanLoop --> SpawnPlannerBuild[Spawn planner-build Agent]
         SpawnPlannerBuild --> SpawnBuildReviewer[Spawn planner-reviewer Agent]
         SpawnBuildReviewer --> BuildPlanApproved{Build Plan Approved?}

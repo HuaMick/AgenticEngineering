@@ -1,0 +1,187 @@
+%% =============================================================================
+%% GOAL: Validate that the session CLI restructuring correctly:
+1. Removes loop subcommand group entirely
+2. Moves ralph under orchestrate
+3. Removes status command
+4. Renames health to healthcheck with opt-in --diagnose flag
+
+Tests verify both the positive paths (new commands work) and negative
+paths (old commands are properly removed/unreachable).
+
+%% =============================================================================
+%% PROFILE: Orchestration-session-cli-cleanup
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260224SC_session_cli_cleanup/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Phase 1 - Remove loop subcommand group
+%%   P2: Phase 2 - Move ralph under orchestrate
+%%   P3: Phase 3 - Remove status command
+%%   P4: Phase 4 - Rename health to healthcheck with --diagnose flag
+%%   P5: Phase 5 - Verification and cleanup
+%%   P6: Phase 1 - Removal Verification
+%%   P7: Phase 2 - New Command Structure Verification
+%%   P8: Phase 3 - Full Regression Suite
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> build-python, P5 -> planner-cleaning, P6 -> build-python, P7 -> build-python, P8 -> build-python
+%% STATUS: P1=completed, P2=completed, P3=completed, P4=completed, P5=completed, P6=completed, P7=completed, P8=completed
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: PHASE 1 - REMOVE LOOP SUBCOMMAND GROUP
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: SC_001, SC_002, SC_003
+
+    subgraph P1_SG ["Phase 1 - Remove loop subcommand group"]
+        Phase1[Enter Phase 1 - Remove loop subcommand group] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[SC_001: Delete loop.py module]
+        Task_P1_1 --> Task_P1_2[SC_002: Remove loop_app registration from cli.py]
+        Task_P1_2 --> Task_P1_3[SC_003: Delete loop-specific tests]
+        Task_P1_3 --> Phase1Complete[Phase 1 - Remove loop subcommand group Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: PHASE 2 - MOVE RALPH UNDER ORCHESTRATE
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: SC_004, SC_005, SC_006
+
+    subgraph P2_SG ["Phase 2 - Move ralph under orchestrate"]
+        Phase2[Enter Phase 2 - Move ralph under orchestrate] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[SC_004: Re-parent ralph_app under orchestrate_app in cli.py]
+        Task_P2_1 --> Task_P2_2[SC_005: Update ralph.py help text and references]
+        Task_P2_2 --> Task_P2_3[SC_006: Update ralph test expectations]
+        Task_P2_3 --> Phase2Complete[Phase 2 - Move ralph under orchestrate Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: PHASE 3 - REMOVE STATUS COMMAND
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: SC_007, SC_008, SC_009
+
+    subgraph P3_SG ["Phase 3 - Remove status command"]
+        Phase3[Enter Phase 3 - Remove status command] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[SC_007: Remove cmd_status from session.py]
+        Task_P3_1 --> Task_P3_2[SC_008: Remove status command registration from cli.py]
+        Task_P3_2 --> Task_P3_3[SC_009: Remove status-related test cases]
+        Task_P3_3 --> Phase3Complete[Phase 3 - Remove status command Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: PHASE 4 - RENAME HEALTH TO HEALTHCHECK WITH --DIAGNOSE FLAG
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: SC_010, SC_011, SC_012
+
+    subgraph P4_SG ["Phase 4 - Rename health to healthcheck with --diagnose flag"]
+        Phase4[Enter Phase 4 - Rename health to healthcheck with --diagnose flag] --> SpawnAgent4[Spawn build-python Agent]
+        SpawnAgent4 --> Task_P4_1[SC_010: Rename cmd_health to cmd_healthcheck in session.py]
+        Task_P4_1 --> Task_P4_2[SC_011: Rename health command to healthcheck in cli.py]
+        Task_P4_2 --> Task_P4_3[SC_012: Update healthcheck-related tests]
+        Task_P4_3 --> Phase4Complete[Phase 4 - Rename health to healthcheck with --diagnose flag Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: PHASE 5 - VERIFICATION AND CLEANUP
+    %% ========================================
+    %% AGENT_ROUTING: planner-cleaning agent
+    %% Tasks: SC_013, SC_014
+
+    subgraph P5_SG ["Phase 5 - Verification and cleanup"]
+        Phase5[Enter Phase 5 - Verification and cleanup] --> SpawnAgent5[Spawn planner-cleaning Agent]
+        SpawnAgent5 --> Task_P5_1[SC_013: Run full CLI test suite]
+        Task_P5_1 --> Task_P5_2[SC_014: Search for stale command references]
+        Task_P5_2 --> Phase5Complete[Phase 5 - Verification and cleanup Complete]
+    end
+
+    Phase5Complete --> Phase6
+
+    %% ========================================
+    %% PHASE 6: PHASE 1 - REMOVAL VERIFICATION
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: TSC_001, TSC_002
+
+    subgraph P6_SG ["Phase 1 - Removal Verification"]
+        Phase6[Enter Phase 1 - Removal Verification] --> SpawnAgent6[Spawn build-python Agent]
+        SpawnAgent6 --> Task_P6_1[TSC_001: Verify loop commands are removed]
+        Task_P6_1 --> Task_P6_2[TSC_002: Verify status command is removed]
+        Task_P6_2 --> Phase6Complete[Phase 1 - Removal Verification Complete]
+    end
+
+    Phase6Complete --> Phase7
+
+    %% ========================================
+    %% PHASE 7: PHASE 2 - NEW COMMAND STRUCTURE VERIFICATION
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: TSC_003, TSC_004
+
+    subgraph P7_SG ["Phase 2 - New Command Structure Verification"]
+        Phase7[Enter Phase 2 - New Command Structure Verification] --> SpawnAgent7[Spawn build-python Agent]
+        SpawnAgent7 --> Task_P7_1[TSC_003: Verify ralph is under orchestrate]
+        Task_P7_1 --> Task_P7_2[TSC_004: Verify healthcheck command with --diagnose]
+        Task_P7_2 --> Phase7Complete[Phase 2 - New Command Structure Verification Complete]
+    end
+
+    Phase7Complete --> Phase8
+
+    %% ========================================
+    %% PHASE 8: PHASE 3 - FULL REGRESSION SUITE
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: TSC_005, TSC_006
+
+    subgraph P8_SG ["Phase 3 - Full Regression Suite"]
+        Phase8[Enter Phase 3 - Full Regression Suite] --> SpawnAgent8[Spawn build-python Agent]
+        SpawnAgent8 --> Task_P8_1[TSC_005: Run full AgenticCLI test suite]
+        Task_P8_1 --> Task_P8_2[TSC_006: Run AgenticGuidance test suite (regression check)]
+        Task_P8_2 --> Phase8Complete[Phase 3 - Full Regression Suite Complete]
+    end
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase8Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic plan move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser userpoint

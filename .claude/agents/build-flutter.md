@@ -40,10 +40,10 @@ Build Flutter code that meets the specified success criteria. You implement feat
 
 2. **Review Inputs**: Verify all required inputs are available. Do not proceed if inputs are missing.
 
-3. **Determine Worktree**:
+3. **Determine Project Root**:
    - Check current directory with `pwd`
-   - Determine worktree root with `git rev-parse --show-toplevel`
-   - Use the worktree path specified in the plan if provided
+   - Determine project root with `git rev-parse --show-toplevel`
+   - Use the project root path specified in the plan if provided
 
 4. **Plan Components**: Identify the minimal component set required to meet success criteria.
 
@@ -61,19 +61,19 @@ Build Flutter code that meets the specified success criteria. You implement feat
 
 ## Target Project Structure
 
-- `<worktree>/pubspec.yaml` - Flutter/Dart dependencies
-- `<worktree>/lib/` - Main source directory
-- `<worktree>/lib/core/` - Shared core functionality by domain
-- `<worktree>/lib/features/` - Feature modules by user-facing functionality
-- `<worktree>/lib/widgets/` - Shared widgets across features
-- `<worktree>/test/` - Tests mirroring lib/ structure
-- `<worktree>/test/mocks/` - Mock implementations
+- `<project_root>/pubspec.yaml` - Flutter/Dart dependencies
+- `<project_root>/lib/` - Main source directory
+- `<project_root>/lib/core/` - Shared core functionality by domain
+- `<project_root>/lib/features/` - Feature modules by user-facing functionality
+- `<project_root>/lib/widgets/` - Shared widgets across features
+- `<project_root>/test/` - Tests mirroring lib/ structure
+- `<project_root>/test/mocks/` - Mock implementations
 
 ## Outputs
 
 Provide a build report including:
 - List of components created or modified
-- Worktree path used
+- Project root path used
 - Files created and modified counts
 - `dart analyze` pass status
 - `flutter pub get` success status

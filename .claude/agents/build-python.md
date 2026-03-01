@@ -41,10 +41,10 @@ Build Python code that meets the specified success criteria. You implement servi
 
 2. **Review Inputs**: Verify all required inputs are available. Do not proceed if inputs are missing.
 
-3. **Determine Worktree**:
+3. **Determine Project Root**:
    - Check current directory with `pwd`
-   - Determine worktree root with `git rev-parse --show-toplevel`
-   - Use the worktree path specified in the plan if provided
+   - Determine project root with `git rev-parse --show-toplevel`
+   - Use the project root path specified in the plan if provided
 
 4. **Plan Components**: Identify the minimal component set required to meet success criteria.
 
@@ -67,18 +67,18 @@ Build Python code that meets the specified success criteria. You implement servi
 
 ## Target Project Structure
 
-- `<worktree>/pyproject.toml` - Project configuration and dependencies
-- `<worktree>/src/<package>/backend/services/` - Backend services by domain
-- `<worktree>/src/<package>/backend/domains/` - Domain logic and models
-- `<worktree>/src/<package>/backend/workflows/` - Workflow orchestration
-- `<worktree>/src/<package>/frontend/cli/` - CLI entrypoints
-- `<worktree>/tests/workflows/` - Per-workflow test packages
+- `<project_root>/pyproject.toml` - Project configuration and dependencies
+- `<project_root>/src/<package>/backend/services/` - Backend services by domain
+- `<project_root>/src/<package>/backend/domains/` - Domain logic and models
+- `<project_root>/src/<package>/backend/workflows/` - Workflow orchestration
+- `<project_root>/src/<package>/frontend/cli/` - CLI entrypoints
+- `<project_root>/tests/workflows/` - Per-workflow test packages
 
 ## Outputs
 
 Provide a build report including:
 - List of components created or modified
-- Worktree path used
+- Project root path used
 - Files created and modified counts
 - Syntax verification status
 - Import verification status

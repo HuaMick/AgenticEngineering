@@ -43,20 +43,6 @@ def get_worktree_id(worktree_path: Path, branch: str | None = None) -> str:
         if branch_match:
             return branch_match.group(1).upper()
 
-    # Try registry lookup if branch is provided
-    if branch:
-        try:
-            from agenticcli.commands.worktree import load_worktree_registry, lookup_abbreviation
-            # Try loading registry from worktree_path or its parent paths
-            for candidate in [worktree_path, worktree_path.parent]:
-                registry = load_worktree_registry(candidate)
-                if registry:
-                    abbr = lookup_abbreviation(registry, branch)
-                    if abbr:
-                        return abbr[:2].upper()
-        except ImportError:
-            pass
-
     dir_name = worktree_path.name
 
     if "-" in dir_name:

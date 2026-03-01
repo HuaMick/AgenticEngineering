@@ -37,12 +37,15 @@ def create_worktree_for_test(temp_repo: Path, branch: str, base: str = "main") -
 
 @pytest.fixture(autouse=True)
 def mock_claude_subprocess():
-    """Mock subprocess.run in plan.py so claude calls don't hang.
+    """Mock subprocess.run and SDK path in plan.py so claude calls don't hang.
 
     Git calls pass through to the real subprocess.run.
-    Claude calls return a mock result and create plan_build.yml.
+    Claude subprocess calls and SDK calls return mock results and create plan_build.yml.
     """
     real_subprocess_run = subprocess.run
+
+    # Track the plan folder so the SDK path can also create plan_build.yml
+    _last_plan_dir = {}
 
     def patched_run(cmd, *args, **kwargs):
         if isinstance(cmd, list) and cmd and cmd[0] == "claude":
@@ -50,6 +53,7 @@ def mock_claude_subprocess():
             cwd = kwargs.get("cwd")
             if cwd:
                 plan_build = Path(cwd) / "plan_build.yml"
+                _last_plan_dir["cwd"] = Path(cwd)
                 plan_build.write_text("""name: Mock Plan
 objective: Mock objective
 affected_stories:
@@ -70,8 +74,33 @@ phases:
             return mock_result
         return real_subprocess_run(cmd, *args, **kwargs)
 
+    def mock_sdk_run(prompt, options=None, timeout_seconds=1800):
+        """Mock SDK path - creates plan_build.yml when plan.py calls run_agent_sync."""
+        from agenticcli.utils.sdk_runner import SessionResult
+        # Extract cwd from options if available
+        cwd = getattr(options, "cwd", None)
+        if cwd:
+            plan_build = Path(cwd) / "plan_build.yml"
+            # Always write plan_build.yml (overwriting init's placeholder)
+            # so the planner output is simulated correctly
+            plan_build.write_text("""name: Mock Plan
+objective: Mock objective
+affected_stories:
+  - US-ORCH-001
+  - US-ORCH-002
+phases:
+  - name: Build
+    tasks:
+      - id: MOCK_001
+        name: Mock task
+        status: pending
+        agent: build-python
+""")
+        return SessionResult(status="completed", result="Mock SDK planner output")
+
     with patch("agenticcli.commands.plan.subprocess.run", side_effect=patched_run):
-        yield
+        with patch("agenticcli.utils.sdk_runner.run_agent_sync", side_effect=mock_sdk_run):
+            yield
 
 
 # ---------------------------------------------------------------------------
@@ -219,27 +248,20 @@ class TestUSORCH001InitiatePlanning:
 # ---------------------------------------------------------------------------
 
 
-class TestUSORCH002MainFirstPlanning:
-    """UAT for US-ORCH-002: Main-First Planning Workflow.
+class TestUSORCH002PlanCreation:
+    """UAT for plan creation workflow.
 
     Acceptance criteria:
-    - Plan folders are created in the main worktree's docs/plans/live/
-    - Feature worktrees are created for code implementation
-    - Plan creation happens on main branch, execution on feature branch
-    - agentic plan init creates both worktree and plan folder atomically
-    - Plan status is viewable from the main worktree
-    - Merging happens via staging to main
+    - Plan folders are created in docs/plans/live/
+    - Plan creation via agentic plan new works end-to-end
     """
 
-    def test_plan_folder_in_main_worktree(self, cli_runner, temp_repo):
-        """Verify plan folder is created in main worktree's docs/plans/live/."""
+    def test_plan_folder_in_docs_plans_live(self, cli_runner, temp_repo):
+        """Verify plan folder is created in docs/plans/live/."""
         branch = "feature-main-first"
 
-        # Create feature worktree
-        create_worktree_for_test(temp_repo, branch)
-
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "Main-first test", "--branch", branch]
+            ["-j", "agent", "plan", "new", "Plan creation test", "--branch", branch]
         )
 
         assert code == 0
@@ -247,61 +269,11 @@ class TestUSORCH002MainFirstPlanning:
 
         plan_folder = Path(result["plan_folder"])
 
-        # Verify plan folder is in main worktree, not feature worktree
-        # Plan folder should be under temp_repo (main), not worktree path
-        assert temp_repo in plan_folder.parents, "Plan should be in main worktree"
+        # Verify plan folder is under repo root
+        assert temp_repo in plan_folder.parents, "Plan should be in repo root"
 
         # Verify it's in docs/plans/live/
         assert "docs/plans/live" in str(plan_folder), "Plan should be in docs/plans/live/"
-
-    def test_execution_worktree_created(self, cli_runner, temp_repo):
-        """Verify execution worktree is created for the branch."""
-        branch = "feature-execution-wt"
-        objective = "Test execution worktree"
-
-        # Don't pre-create worktree - let plan new create it
-        stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", objective, "--branch", branch]
-        )
-
-        # cmd_init creates worktree automatically if missing
-        assert code == 0, "Should succeed even without pre-existing worktree"
-
-        # Verify worktree was created
-        worktree_path = temp_repo.parent / f"repo-{branch}"
-        assert worktree_path.exists(), "Worktree should be created"
-
-        # Verify it's a git worktree
-        result = subprocess.run(
-            ["git", "worktree", "list"],
-            cwd=temp_repo,
-            capture_output=True,
-            text=True,
-        )
-        assert branch in result.stdout, "Branch should appear in worktree list"
-
-    def test_plan_folder_and_worktree_atomic_creation(self, cli_runner, temp_repo):
-        """Verify plan folder and worktree are created atomically."""
-        branch = "atomic-creation-test"
-        objective = "Atomic test"
-
-        # Start with no worktree
-        stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", objective, "--branch", branch]
-        )
-
-        assert code == 0
-        result = json.loads(stdout)
-
-        # Both should exist after single command
-        plan_folder = Path(result["plan_folder"])
-        assert plan_folder.exists(), "Plan folder should be created"
-
-        worktree_path = temp_repo.parent / f"repo-{branch}"
-        assert worktree_path.exists(), "Worktree should be created"
-
-        # Verify plan folder has plan_build.yml
-        assert (plan_folder / "plan_build.yml").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -403,92 +375,6 @@ class TestUSORCH005OrchestrationMMD:
 
 
 # ---------------------------------------------------------------------------
-# US-CLI-010: Initialize Plan with Worktree (implicit in plan new)
-# ---------------------------------------------------------------------------
-
-
-class TestUSCLI010PlanWithWorktree:
-    """UAT for implicit US-CLI-010 behavior in plan new.
-
-    While US-CLI-090 refers to 'agentic worktree create', plan new
-    integrates this via plan init. Testing the integration.
-
-    Acceptance criteria (adapted):
-    - Worktree and plan folder created atomically
-    - --description flag customizes folder suffix
-    """
-
-    def test_description_customizes_folder_suffix(self, cli_runner, temp_repo):
-        """Verify --description flag customizes folder suffix."""
-        branch = "test-desc-custom"
-        objective = "This is a very long objective that should be truncated"
-        custom_desc = "short"
-
-        create_worktree_for_test(temp_repo, branch)
-
-        stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", objective, "--branch", branch,
-             "--description", custom_desc]
-        )
-
-        assert code == 0
-        result = json.loads(stdout)
-
-        plan_folder = Path(result["plan_folder"])
-
-        # Folder name should contain custom description, not full objective
-        assert "short" in plan_folder.name.lower(), \
-            "Custom description should be in folder name"
-        assert "very_long_objective" not in plan_folder.name.lower(), \
-            "Long objective should not be in folder name when description provided"
-
-    def test_branch_auto_generation_from_objective(self, cli_runner, temp_repo):
-        """Verify branch name is auto-generated from objective when not provided."""
-        objective = "Add phone notifications"
-
-        # Don't provide --branch, let it auto-generate
-        stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", objective]
-        )
-
-        assert code == 0
-        result = json.loads(stdout)
-
-        # Branch should be auto-generated as plan-add-phone-notifications
-        assert "branch" in result
-        assert result["branch"] == "plan-add-phone-notifications"
-
-        # Verify worktree was created with auto-generated branch
-        worktree_path = temp_repo.parent / f"repo-{result['branch']}"
-        assert worktree_path.exists(), "Worktree should exist with auto-generated branch"
-
-    def test_base_branch_parameter(self, cli_runner, temp_repo):
-        """Verify --base parameter sets the base branch for worktree creation."""
-        branch = "feature-from-staging"
-
-        # Create staging branch first
-        subprocess.run(
-            ["git", "checkout", "-b", "staging"],
-            cwd=temp_repo,
-            capture_output=True,
-            check=True,
-        )
-        subprocess.run(
-            ["git", "checkout", "main"],
-            cwd=temp_repo,
-            capture_output=True,
-            check=True,
-        )
-
-        stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", "Base branch test", "--branch", branch, "--base", "staging"]
-        )
-
-        # Should succeed (worktree created from staging)
-        assert code == 0
-
-
-# ---------------------------------------------------------------------------
 # Integration: Full workflow validation
 # ---------------------------------------------------------------------------
 
@@ -511,25 +397,21 @@ class TestFullWorkflowIntegration:
         # Verify all artifacts exist
         plan_folder = Path(result["plan_folder"])
 
-        # 1. Plan folder exists in main worktree
+        # 1. Plan folder exists in repo
         assert plan_folder.exists()
         assert temp_repo in plan_folder.parents
 
-        # 2. Worktree created
-        worktree_path = temp_repo.parent / f"repo-{branch}"
-        assert worktree_path.exists()
-
-        # 3. plan_build.yml created by planner
+        # 2. plan_build.yml created by planner
         assert (plan_folder / "plan_build.yml").exists()
 
-        # 4. Orchestration MMD generated
+        # 3. Orchestration MMD generated
         mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
         assert len(mmd_files) >= 1
 
-        # 5. Objective captured
+        # 4. Objective captured
         assert result["objective"] == objective
 
-        # 6. Branch captured
+        # 5. Branch captured
         assert result["branch"] == branch
 
     def test_error_recovery_missing_objective(self, cli_runner, temp_repo):

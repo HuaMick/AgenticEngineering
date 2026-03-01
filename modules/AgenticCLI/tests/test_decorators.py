@@ -56,7 +56,6 @@ class TestGetCommandStability:
     def test_get_stable_command_unlisted(self):
         """Verify unlisted command defaults to STABLE."""
         assert get_command_stability("plan") == StabilityLevel.STABLE
-        assert get_command_stability("worktree") == StabilityLevel.STABLE
 
     def test_get_unknown_command(self):
         """Verify unknown command defaults to STABLE."""

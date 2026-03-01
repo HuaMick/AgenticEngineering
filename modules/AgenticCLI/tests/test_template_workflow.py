@@ -81,12 +81,13 @@ class TestTemplateWorkflow:
     def test_render_build_template(self):
         """Test rendering the build_plan template."""
         from agenticcli.workflows.template_workflow import TemplateContext, TemplateWorkflow
+        from pathlib import Path
 
         workflow = TemplateWorkflow(
             context=TemplateContext(
                 plan_name="FeatureX",
                 branch="feature-x",
-                worktree="/path/to/worktree",
+                project_root=Path("/path/to/project"),
             )
         )
         result = workflow.render("build_plan.yml.j2")

@@ -57,12 +57,9 @@ def temp_git_repo(tmp_path):
 def mock_git_context(temp_git_repo, monkeypatch):
     """Mock all external dependencies used by cmd_init.
 
-    cmd_init uses subprocess.run for git operations (rev-parse, worktree list,
-    worktree add), plus helper functions for idle worktrees, workspace files,
-    and plan folder naming. All must be mocked to isolate tests.
+    cmd_init uses subprocess.run for git rev-parse to find repo root.
+    Mock that to return the temp repo path.
     """
-    from agenticcli.commands import plan as plan_mod
-
     repo = temp_git_repo
 
     # Mock subprocess.run to intercept git commands while allowing others
@@ -76,50 +73,10 @@ def mock_git_context(temp_git_repo, monkeypatch):
                 result.stdout = str(repo) + "\n"
                 result.returncode = 0
                 return result
-            elif "worktree list --porcelain" in joined:
-                result = MagicMock()
-                result.stdout = f"worktree {repo}\nbranch refs/heads/main\n\n"
-                result.returncode = 0
-                return result
-            elif "worktree add" in joined:
-                # Simulate worktree creation by making the directory
-                # Find the path argument (after -b <branch>)
-                try:
-                    b_idx = cmd.index("-b")
-                    wt_path = Path(cmd[b_idx + 2])
-                except (ValueError, IndexError):
-                    wt_path = Path(cmd[-2]) if len(cmd) > 2 else None
-                if wt_path:
-                    wt_path.mkdir(parents=True, exist_ok=True)
-                result = MagicMock()
-                result.returncode = 0
-                return result
-            elif "branch" in joined and "checkout" not in joined:
-                # git branch <name> <base> - just succeed
-                result = MagicMock()
-                result.returncode = 0
-                return result
-            elif "checkout" in joined:
-                result = MagicMock()
-                result.returncode = 0
-                return result
         # Non-git commands: pass through
         return original_subprocess_run(cmd, *args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", mock_subprocess_run)
-
-    # Mock find_main_worktree to return the temp repo (it's the "main" worktree)
-    monkeypatch.setattr(plan_mod, "find_main_worktree", lambda root: repo)
-
-    # Mock find_idle_worktrees to return [] (no idle worktrees to reuse)
-    monkeypatch.setattr(
-        "agenticcli.commands.worktree.find_idle_worktrees", lambda root: []
-    )
-
-    # Mock find_workspace_file to return None (no workspace file)
-    monkeypatch.setattr(
-        "agenticcli.commands.worktree.find_workspace_file", lambda root: None
-    )
 
     return repo
 
@@ -274,7 +231,6 @@ class TestPlanBootstrap:
         assert "plan_folder" in output
         assert "objective" in output
         assert output["objective"] == "Implement new feature"
-        assert "worktree" in output
         assert "branch" in output
         assert output["branch"] == "test-branch"
 
@@ -321,32 +277,6 @@ class TestPlanBootstrap:
         assert ":" not in plan_folder.name
         assert "#" not in plan_folder.name
         assert "!" not in plan_folder.name
-
-    def test_bootstrap_includes_worktree_path(self, mock_git_context):
-        """Test bootstrap includes worktree_path in plan_build.yml."""
-        from agenticcli.commands import plan
-
-        args = SimpleNamespace(
-            branch="test-branch",
-            objective="Test objective",
-            description="test",
-        )
-
-        with patch("agenticcli.console.is_json_output", return_value=False):
-            with patch("builtins.print"):
-                plan.cmd_bootstrap(args)
-
-        plans_dir = mock_git_context / "docs" / "plans" / "live"
-        plan_folders = list(plans_dir.glob("*_test"))
-        plan_folder = plan_folders[0]
-
-        # Flat structure: plan_build.yml directly in plan folder
-        plan_build_file = plan_folder / "plan_build.yml"
-        with open(plan_build_file) as f:
-            data = yaml.safe_load(f)
-
-        assert "worktree_path" in data
-        assert "test-branch" in data["worktree_path"]
 
     def test_bootstrap_creates_tasks_in_phases(self, mock_git_context):
         """Test bootstrap creates initial tasks in phases."""

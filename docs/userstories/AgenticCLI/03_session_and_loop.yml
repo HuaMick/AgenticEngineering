@@ -20,10 +20,13 @@ stories:
   related_agents:
   - orchestration-executor
   - orchestration-planning
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  last_tested: '2026-02-27'
+  test_status: passing
+  test_notes: 'Validated by 260226SD SDK migration plan. Background sessions now use
+    run_agent_sync() via SDK when available, recording transport=sdk, sdk_session_id,
+    ended_at, and exit_code in session state. All 109 session command tests pass.
+    Fallback to subprocess path when SDK unavailable also verified.'
+  tested_by_plan: 260226SD_migrate_sessions_to_sdk
 - id: US-CLI-031
   title: List and Monitor Sessions
   category: session_management
@@ -40,10 +43,12 @@ stories:
   related_commands:
   - agentic session list
   - agentic session list --active
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  last_tested: '2026-02-27'
+  test_status: passing
+  test_notes: 'Validated by 260226SD SDK migration plan. Session list, status, and
+    monitoring all continue to work correctly after SDK migration. State is persisted
+    to TinyDB/YAML via StateStore. All 109 session command tests pass.'
+  tested_by_plan: 260226SD_migrate_sessions_to_sdk
 - id: US-CLI-032
   title: Stop Running Session
   category: session_management
@@ -65,24 +70,29 @@ stories:
   test_notes: ''
   tested_by_plan: null
 - id: US-CLI-033
-  title: View Session Details
+  title: Inspect Session Health and Logs
   category: session_management
   priority: medium
   as_a: developer debugging a session
-  i_want: to see detailed information about a specific session including output
+  i_want: to check the health of a specific session and view its logs
   so_that: I can understand what the session did and diagnose issues
   acceptance_criteria:
-  - agentic session status <id> shows session metadata and timing
-  - The --show-output flag includes stdout and stderr log contents
-  - Status includes PID, start time, duration, prompt, and exit code
+  - agentic session healthcheck <id> shows health signals and verdict
+  - The --diagnose flag auto-spawns a diagnostic planner for unhealthy sessions
+  - Without --diagnose, healthcheck is purely read-only
+  - agentic session logs <id> shows stdout log output
+  - The --stderr flag shows stderr instead
+  - The -n flag limits the number of lines shown
   - JSON output includes all fields for programmatic access
   related_commands:
-  - agentic session status <id>
-  - agentic session status <id> --show-output
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  - agentic session healthcheck <id>
+  - agentic session healthcheck <id> --diagnose
+  - agentic session logs <id>
+  - agentic session logs <id> --stderr -n 100
+  last_tested: '2026-02-26'
+  test_status: passing
+  test_notes: 'Validated via 260224SC_session_cli_cleanup plan - health renamed to healthcheck, --diagnose flag gates auto-spawn. 1553 tests passing.'
+  tested_by_plan: 260224SC_session_cli_cleanup
 - id: US-CLI-034
   title: Start Ralph Loop
   category: loop_management
@@ -91,21 +101,21 @@ stories:
   i_want: to start an iterative execution loop that runs until completion
   so_that: multi-step plans are executed without manual intervention
   acceptance_criteria:
-  - agentic loop start --prompt <text> begins a Ralph Loop
+  - agentic session orchestrate ralph start --prompt <text> begins a Ralph Loop
   - The --entrypoint flag loads prompt from an entrypoint file
   - The --prompt-file flag reads prompt from a file
   - 'The --max-iterations flag limits total iterations (default: 10)'
   - The --completion-promise flag defines a text pattern that signals completion
   - The --background flag runs the loop asynchronously
-  - Loop metadata is persisted to ~/.agentic/loops/
+  - Loop metadata is persisted to ~/.agentic/sessions/
   related_commands:
-  - agentic loop start --prompt 'Run and fix tests' --max-iterations 20
-  - agentic loop start --entrypoint _orchestrate
-  - agentic loop start -f prompt.txt -b -c 'All tasks complete'
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  - agentic session orchestrate ralph start --prompt 'Run and fix tests' --max-iterations 20
+  - agentic session orchestrate ralph start --entrypoint _orchestrate
+  - agentic session orchestrate ralph start -f prompt.txt -b -c 'All tasks complete'
+  last_tested: '2026-02-26'
+  test_status: passing
+  test_notes: 'Validated via 260224SC_session_cli_cleanup plan - ralph moved under session orchestrate ralph. All references updated. 1553 tests passing.'
+  tested_by_plan: 260224SC_session_cli_cleanup
 - id: US-CLI-035
   title: Stop Running Loop
   category: loop_management
@@ -114,17 +124,17 @@ stories:
   i_want: to stop a running Ralph Loop gracefully or forcefully
   so_that: I can intervene when a loop is stuck or no longer needed
   acceptance_criteria:
-  - agentic loop stop <id> sends SIGTERM allowing current iteration to complete
+  - agentic session orchestrate ralph stop <id> sends SIGTERM allowing current iteration to complete
   - The --force flag sends SIGKILL for immediate termination
   - Partial loop ID matching is supported
   - Stop is idempotent (stopping an already stopped loop does not error)
   related_commands:
-  - agentic loop stop <id>
-  - agentic loop stop <id> --force
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  - agentic session orchestrate ralph stop <id>
+  - agentic session orchestrate ralph stop <id> --force
+  last_tested: '2026-02-26'
+  test_status: passing
+  test_notes: 'Validated via 260224SC_session_cli_cleanup plan - ralph stop moved under session orchestrate ralph stop. 1553 tests passing.'
+  tested_by_plan: 260224SC_session_cli_cleanup
 - id: US-CLI-036
   title: Monitor Loop Progress
   category: loop_management
@@ -133,17 +143,14 @@ stories:
   i_want: to see the current iteration, status, and history of a Ralph Loop
   so_that: I know if the loop is progressing toward completion
   acceptance_criteria:
-  - agentic loop status <id> shows iteration count, runtime, and completion state
+  - agentic session orchestrate ralph status shows iteration count, runtime, and completion state
   - Status information includes the prompt source and completion promise
   - Iteration history table shows timing for each iteration
-  - agentic loop history lists all past loops sorted by most recent
-  - The --active flag filters to running loops only
-  - The --status flag filters by status (running, completed, failed, stopped)
+  - agentic session orchestrate ralph history lists all past loops sorted by most recent
   related_commands:
-  - agentic loop status <id>
-  - agentic loop history
-  - agentic loop history --active
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  - agentic session orchestrate ralph status
+  - agentic session orchestrate ralph history
+  last_tested: '2026-02-26'
+  test_status: passing
+  test_notes: 'Validated via 260224SC_session_cli_cleanup plan - ralph status/history moved under session orchestrate ralph. 1553 tests passing.'
+  tested_by_plan: 260224SC_session_cli_cleanup

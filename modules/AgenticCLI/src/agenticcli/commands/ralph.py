@@ -133,22 +133,10 @@ def start(
         console.print("[red]Error:[/red] Ralph loop already running")
         console.print(f"[dim]Loop ID: {existing.loop_id}[/dim]")
         console.print(f"[dim]Iteration: {existing.current_iteration}[/dim]")
-        console.print("\nUse 'agentic session ralph stop' to stop it first.")
+        console.print("\nUse 'agentic session orchestrate ralph stop' to stop it first.")
         raise typer.Exit(1)
 
-    # Check tmux is available
-    if not shutil.which("tmux"):
-        console.print("[red]Error:[/red] tmux not found")
-        console.print("Ralph loop requires tmux. Install with: apt install tmux")
-        raise typer.Exit(1)
-
-    # Check claude is available
-    if not shutil.which("claude"):
-        console.print("[red]Error:[/red] claude CLI not found")
-        console.print("Ralph loop requires Claude Code CLI.")
-        raise typer.Exit(1)
-
-    # Determine prompt file
+    # Determine prompt file first (needed for both SDK and tmux paths)
     prompt_path = None
     if prompt_file:
         prompt_path = Path(prompt_file)
@@ -167,18 +155,65 @@ def start(
         max_iterations=max_iterations
     )
 
+    # SDK-first path: use run_agent_sync for background loops (no tmux needed).
+    # Foreground mode always uses tmux so the user can attach and watch interactively.
+    from agenticcli.utils.sdk_runner import SDK_AVAILABLE as _RALPH_SDK_AVAILABLE
+    if _RALPH_SDK_AVAILABLE and background:
+        # Load prompt content using Python file I/O (not shell substitution)
+        if prompt_path and prompt_path.exists():
+            prompt_content = prompt_path.read_text()
+        else:
+            prompt_content = (
+                "Run: agentic session orchestrate ralph next -j and execute the returned action"
+            )
+
+        from agenticcli.utils.sdk_runner import run_agent_sync as _ralph_sdk_run
+        try:
+            from claude_agent_sdk import ClaudeAgentOptions as _RalphOptions
+            sdk_options = _RalphOptions(permission_mode="bypassPermissions")
+        except ImportError:
+            sdk_options = None
+
+        state.transport = "sdk"
+        service._save_state(state)
+
+        console.print("[green]Ralph loop started (SDK)[/green]")
+        console.print(f"[cyan]Loop ID:[/cyan] {state.loop_id}")
+        console.print(f"[cyan]Max iterations:[/cyan] {max_iterations}")
+        console.print("\n[dim]Running in background via SDK...[/dim]")
+        console.print(f"  [cyan]Status:[/cyan] agentic session orchestrate ralph status")
+        console.print(f"  [cyan]Stop:[/cyan] agentic session orchestrate ralph stop")
+
+        # Run agent synchronously (blocks until loop completes or fails)
+        sdk_result = _ralph_sdk_run(prompt_content, sdk_options, timeout_seconds=3600)
+        service.stop_loop("completed" if sdk_result.status == "completed" else "failed")
+        return
+
+    # tmux path: required for foreground (interactive) mode and SDK-unavailable fallback
+    if not shutil.which("tmux"):
+        console.print("[red]Error:[/red] tmux not found")
+        console.print("Ralph loop requires tmux. Install with: apt install tmux")
+        service.stop_loop("failed")
+        raise typer.Exit(1)
+
+    # Check claude is available (tmux path only)
+    if not shutil.which("claude"):
+        console.print("[red]Error:[/red] claude CLI not found")
+        console.print("Ralph loop requires Claude Code CLI.")
+        service.stop_loop("failed")
+        raise typer.Exit(1)
+
     # Create tmux session name
     session_name = f"ralph-{state.loop_id[:8]}"
 
-    # Build claude command
-    # Use --dangerously-skip-permissions for non-interactive execution in tmux
-    # Use shell command substitution to load prompt file content
-    if prompt_path:
-        # Use cat to load file content, properly quoted for shell
+    # Build claude command for tmux session
+    # Use --dangerously-skip-permissions for non-interactive execution
+    if prompt_path and prompt_path.exists():
+        # Pass prompt content via stdin-safe method to avoid shell injection
         claude_cmd = f'claude --dangerously-skip-permissions -p "$(cat {prompt_path})"'
     else:
         # Inline minimal prompt
-        claude_cmd = 'claude --dangerously-skip-permissions -p "Run: agentic session ralph next -j and execute the returned action"'
+        claude_cmd = 'claude --dangerously-skip-permissions -p "Run: agentic session orchestrate ralph next -j and execute the returned action"'
 
     # Spawn tmux session
     from agenticcli.utils.subprocess_utils import get_clean_env
@@ -191,7 +226,7 @@ def start(
     )
 
     if result.returncode != 0:
-        console.print(f"[red]Error:[/red] Failed to create tmux session")
+        console.print("[red]Error:[/red] Failed to create tmux session")
         console.print(f"[dim]{result.stderr}[/dim]")
         service.stop_loop("failed")
         raise typer.Exit(1)
@@ -203,7 +238,7 @@ def start(
         capture_output=True
     )
     if verify_result.returncode != 0:
-        console.print(f"[red]Error:[/red] tmux session exited immediately")
+        console.print("[red]Error:[/red] tmux session exited immediately")
         console.print("[dim]This usually means the claude command failed to start.[/dim]")
         console.print("[dim]Check that 'claude' CLI is properly installed and configured.[/dim]")
         service.stop_loop("failed")
@@ -213,7 +248,7 @@ def start(
     state.tmux_session = session_name
     service._save_state(state)
 
-    console.print(f"[green]Ralph loop started[/green]")
+    console.print("[green]Ralph loop started[/green]")
     console.print(f"[cyan]Loop ID:[/cyan] {state.loop_id}")
     console.print(f"[cyan]Session:[/cyan] {session_name}")
     console.print(f"[cyan]Max iterations:[/cyan] {max_iterations}")
@@ -221,8 +256,8 @@ def start(
     if background:
         console.print("\n[dim]Running in background. Use these commands:[/dim]")
         console.print(f"  [cyan]Attach:[/cyan] tmux attach -t {session_name}")
-        console.print(f"  [cyan]Status:[/cyan] agentic session ralph status")
-        console.print(f"  [cyan]Stop:[/cyan] agentic session ralph stop")
+        console.print(f"  [cyan]Status:[/cyan] agentic session orchestrate ralph status")
+        console.print(f"  [cyan]Stop:[/cyan] agentic session orchestrate ralph stop")
     else:
         console.print("\n[dim]Attaching to session (Ctrl+B, D to detach)...[/dim]")
         subprocess.run(["tmux", "attach", "-t", session_name])
@@ -518,7 +553,7 @@ def history(
             print(json.dumps({"iterations": [], "total": 0}))
         else:
             console.print("[dim]No iteration history available[/dim]")
-            console.print("[dim]Start a Ralph loop with: agentic session ralph start[/dim]")
+            console.print("[dim]Start a Ralph loop with: agentic session orchestrate ralph start[/dim]")
         raise typer.Exit(0)
 
     # Get iterations (most recent first, limited)

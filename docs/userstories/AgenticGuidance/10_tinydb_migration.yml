@@ -9,17 +9,20 @@ stories:
   acceptance_criteria:
   - PlanRepository provides create, read, update, delete operations via TinyDB
   - All plan data (name, worktree_path, branch, status, objective, phases, tasks) stored in TinyDB
+  - FileLock wraps ALL write operations to ensure safe multi-agent concurrent access
+  - Phase CRUD operations implemented: add_phase, update_phase, list_phases, get_phase
+  - Plan lifecycle operations implemented: archive_plan, unarchive_plan, cancel_plan
+  - Helper queries implemented: check_all_tasks_complete, get_task_counts, get_plan_branch
   - Query by plan_id, status, branch, or folder name returns correct results
-  - Insert/update operations are atomic using TinyDB transactions
-  - PlanRepository replaces direct YAML file reads in PlanService
   related_services:
   - PlanRepository
   - PlanService
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
   - modules/AgenticGuidance/src/agenticguidance/services/plan.py
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 
 - id: US-GD-201
   title: TinyDB Task Storage and Queries
@@ -30,118 +33,121 @@ stories:
   so_that: task queries (by status, phase, plan_id) are O(1) instead of O(n) YAML parsing
   acceptance_criteria:
   - Tasks stored as TinyDB documents with plan_id, phase_id, task_id, status fields
-  - Query tasks by plan_id and status (e.g., all pending tasks for a plan)
+  - get_task_counts returns a dict with keys pending, in_progress, completed, and total
+  - check_all_tasks_complete returns a boolean indicating whether all tasks are done
+  - get_current_task resolves to the first in_progress task, then the first pending task
+  - TaskData dataclass expanded with inputs, target_files, guidance, completed_date, and success_criteria fields
   - Update task status atomically in TinyDB
-  - Task CRUD operations return typed TaskData dataclasses
-  - Current task resolution (first in_progress, then first pending) works via TinyDB query
   related_services:
   - PlanRepository
   - TaskService
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
   - modules/AgenticGuidance/src/agenticguidance/services/task.py
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 
 - id: US-GD-202
   title: YAML Import/Export for Human Readability
   category: services
   priority: high
   as_a: developer reading plan files
-  i_want: to export TinyDB plan data back to YAML files
-  so_that: plans remain human-readable and git-trackable
+  i_want: plan data to round-trip between TinyDB and YAML without loss
+  so_that: plans remain human-readable and git-trackable while TinyDB is the runtime store
   acceptance_criteria:
-  - Export plan from TinyDB to plan_build.yml format preserving current YAML structure
-  - Import existing YAML plan files into TinyDB (migration path)
-  - Sync command writes TinyDB state to YAML for git commits
-  - YAML export matches existing format (phases, tasks, metadata)
-  - Round-trip (YAML -> TinyDB -> YAML) preserves all fields
+  - sync_to_yaml() method writes current TinyDB plan state back to YAML format
+  - Auto-import from YAML occurs on TinyDB cache miss (read-through pattern)
+  - When TinyDB has no record for a plan, it imports from the YAML file on first access
+  - Round-trip (YAML -> TinyDB -> YAML) preserves all fields without data loss
   related_services:
   - PlanRepository
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 
 - id: US-GD-203
   title: CLI Plan Commands Use PlanRepository
   category: services
   priority: critical
   as_a: CLI user running plan commands
-  i_want: all plan CLI commands to use PlanRepository instead of direct YAML I/O
+  i_want: plan CLI commands to use PlanRepository as the primary data source with YAML fallback
   so_that: data access is consistent and goes through a single service layer
   acceptance_criteria:
-  - plan list reads from TinyDB (not directory scanning)
-  - plan status reads from TinyDB
-  - plan task list/current/start/complete use TinyDB
-  - plan task add/update use TinyDB
-  - plan validate uses TinyDB data
-  - All 37+ direct yaml.safe_load/dump calls in plan.py replaced with PlanRepository calls
-  - No behavioral regression from user's perspective
+  - _get_repo() helper provides a PlanRepository instance to CLI command handlers
+  - TinyDB-first with YAML fallback pattern applied throughout plan command handlers
+  - folder_matches guard prevents cross-plan data leaks when loading by folder name
+  - 30 plan-data YAML calls replaced with PlanRepository calls
+  - 6 non-plan YAML calls intentionally retained (config, context, and non-plan files)
+  - No behavioral regression from the user's perspective
   related_services:
   - PlanRepository
   related_files:
   - modules/AgenticCLI/src/agenticcli/commands/plan.py
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 
 - id: US-GD-204
   title: Data Migration from YAML to TinyDB
   category: services
   priority: high
   as_a: system administrator upgrading to TinyDB
-  i_want: an automated migration that imports existing YAML plans into TinyDB
-  so_that: no plan data is lost during the migration
+  i_want: existing YAML plans to become available in TinyDB without a manual migration step
+  so_that: no plan data is lost and no explicit migration command is required
   acceptance_criteria:
-  - Migration command scans docs/plans/{live,completed,deferred}/ for YAML plans
-  - Each plan_*.yml file is parsed and inserted into TinyDB
-  - Migration handles both modern and legacy YAML structures
-  - Migration is idempotent (running twice does not duplicate data)
-  - Migration reports success/failure for each plan processed
-  - Migration preserves all plan metadata, phases, tasks, and questions
+  - Read-through auto-import replaces any explicit migration script
+  - When TinyDB has no record for a plan, it automatically imports from the YAML file on first access
+  - Auto-import is idempotent (repeated access does not duplicate data)
+  - No manual migration step or command is needed to begin using TinyDB
   related_services:
   - PlanRepository
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 
 - id: US-GD-205
   title: TinyDB Database Location and Lifecycle
   category: services
   priority: high
   as_a: developer configuring the system
-  i_want: TinyDB database stored at a predictable location with proper lifecycle management
-  so_that: the database is discoverable, backed up, and doesn't conflict with git
+  i_want: TinyDB database stored at a predictable repo-local location
+  so_that: each repository has its own isolated plans database that does not conflict with git
   acceptance_criteria:
-  - TinyDB database stored at ~/.agentic/plans.db (user-level, not repo-level)
+  - TinyDB database stored at .agentic/plans.db within the repository root (not ~/.agentic/)
+  - Each repository gets its own independent plans.db file
   - Database created automatically on first use
-  - Database location configurable via environment variable or config
-  - Database file excluded from git tracking
-  - Graceful handling when database is missing (auto-rebuild from YAML files)
+  - .agentic/ directory is listed in .gitignore so the database is not tracked by git
+  - Graceful handling when database is missing (auto-rebuild from YAML via read-through import)
   related_services:
   - PlanRepository
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 
 - id: US-GD-206
   title: Backward Compatibility During Migration
   category: services
   priority: high
   as_a: agent or CLI user during transition period
-  i_want: the system to work even if TinyDB is not populated
-  so_that: existing workflows don't break during incremental migration
+  i_want: the system to work correctly even when TinyDB state diverges from disk state
+  so_that: existing workflows don't break and resurrection or disk-only plans are handled safely
   acceptance_criteria:
-  - PlanRepository falls back to YAML file reading when TinyDB record not found
-  - Write operations update both TinyDB and YAML files (dual-write)
-  - YAML files remain the git-committed source of truth
-  - TinyDB acts as a fast read cache that can be rebuilt from YAML
-  - Clear error messages when fallback occurs
+  - PlanRepository falls back to YAML file reading when TinyDB record is not found
+  - Resurrection detection re-imports a plan when it is in completed/ in TinyDB but present in live/ on disk
+  - folder_matches guard ensures data isolation between plans that share a similar name
+  - yaml_sync_enabled flag on TaskService enables dual-write to both TinyDB and YAML during transition
+  - YAML files remain git-committable source of truth; TinyDB acts as a fast read cache
   related_services:
   - PlanRepository
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-  last_tested: null
-  test_status: untested
+  last_tested: "2026-02-24"
+  test_status: passing
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb

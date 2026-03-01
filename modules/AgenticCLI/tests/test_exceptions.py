@@ -9,7 +9,6 @@ from agenticcli.exceptions import (
     PlanError,
     TemplateError,
     ValidationError,
-    WorktreeError,
 )
 
 
@@ -101,42 +100,6 @@ class TestAgenticError:
         assert data["message"] == "Simple error"
         assert "recovery_hint" not in data
         assert "file_path" not in data
-
-
-class TestWorktreeError:
-    """Tests for WorktreeError class."""
-
-    def test_default_exit_code(self):
-        """Test default exit code is 10."""
-        err = WorktreeError("Worktree error")
-        assert err.exit_code == 10
-
-    def test_branch_exists(self):
-        """Test branch_exists factory method."""
-        err = WorktreeError.branch_exists("feature-x")
-        assert "feature-x" in err.message
-        assert "already exists" in err.message
-        assert "git branch -d" in err.recovery_hint
-        assert err.context.operation == "worktree_create"
-        assert err.context.details["branch"] == "feature-x"
-
-    def test_worktree_exists(self):
-        """Test worktree_exists factory method."""
-        err = WorktreeError.worktree_exists("/path/to/worktree")
-        assert "/path/to/worktree" in err.message
-        assert "Remove" in err.recovery_hint
-
-    def test_not_in_repo(self):
-        """Test not_in_repo factory method."""
-        err = WorktreeError.not_in_repo()
-        assert "Not in a git repository" in err.message
-        assert "git init" in err.recovery_hint
-
-    def test_invalid_base_branch(self):
-        """Test invalid_base_branch factory method."""
-        err = WorktreeError.invalid_base_branch("nonexistent")
-        assert "nonexistent" in err.message
-        assert "--base" in err.recovery_hint
 
 
 class TestPlanError:

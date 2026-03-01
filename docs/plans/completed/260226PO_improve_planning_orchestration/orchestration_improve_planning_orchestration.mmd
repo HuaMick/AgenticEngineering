@@ -1,0 +1,120 @@
+%% =============================================================================
+%% GOAL: Complete planner-sdk integration with intelligent SDK routing in planner_loop.py,
+%%       planner-sdk agent refinement, end-to-end validation, and UAT against
+%%       orchestration planning workflow stories.
+%% =============================================================================
+%% PROFILE: Orchestration-improve-planning-orchestration
+%% INPUT_PATH: /home/code/AgenticEngineering/docs/plans/live/260226PO_improve_planning_orchestration/plan_build.yml
+%%
+%% PHASES:
+%%   P1: Phase 1 - Intelligent plan routing        [PO_001, PO_002] - COMPLETED
+%%   P2: Phase 2 - Planner-SDK agent refinement    [PO_003, PO_004] - PENDING
+%%   P3: Phase 3 - End-to-end validation           [PO_005] - PENDING
+%%   P4: Phase 4 - UAT                             [PO_006, PO_007] - PENDING
+%%
+%% AGENT_ROUTING:
+%%   P1 -> build-python (completed)
+%%   P2 -> build-python (build-loop, max 5 iterations)
+%%   P3 -> test-runner  (test-loop, max 5 iterations)
+%%   P4 -> test-user-simulator (uat-loop, max 3 iterations)
+%%
+%% AFFECTED_STORIES: US-ORCH-003, US-ORCH-004, US-ORCH-005
+%% STATUS: P1=completed, P2=pending, P3=pending, P4=pending
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> CheckP1Status{Phase 1\nCompleted?}
+
+    %% Phase 1 already done - skip to Phase 2
+    CheckP1Status -- "Yes: PO_001+PO_002 done" --> Phase2
+    CheckP1Status -- "No: Resume" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: INTELLIGENT PLAN ROUTING (COMPLETED)
+    %% ========================================
+    %% AGENT_ROUTING: build-python
+    %% Tasks: PO_001, PO_002 - COMPLETED
+
+    subgraph P1_SG ["Phase 1 - Intelligent plan routing (COMPLETED)"]
+        Phase1[Spawn build-python] --> P1BuildLoop[Build Loop\nPO_001 + PO_002]
+        P1BuildLoop --> Phase1Complete[Phase 1 Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: PLANNER-SDK AGENT REFINEMENT
+    %% ========================================
+    %% AGENT_ROUTING: build-python
+    %% LOOP: build-loop, max 5 iterations
+    %% Tasks: PO_003, PO_004
+
+    subgraph P2_SG ["Phase 2 - Planner-SDK agent refinement"]
+        Phase2[Spawn build-python] --> P2BuildLoop[Build Loop\nPO_003 + PO_004]
+        P2BuildLoop --> P2Pass{Success\nCriteria Met?}
+        P2Pass -- "No: Fix" --> P2BuildLoop
+        P2Pass -- "Yes" --> Phase2Complete[Phase 2 Complete]
+    end
+
+    P2MaxExceeded((Ask User:\nBuild Failures Persist))
+    Phase2 -- "Max 5 iterations\nexceeded" --> P2MaxExceeded
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: END-TO-END VALIDATION
+    %% ========================================
+    %% AGENT_ROUTING: test-runner
+    %% LOOP: test-loop, max 5 iterations
+    %% Tasks: PO_005
+
+    subgraph P3_SG ["Phase 3 - End-to-end validation"]
+        Phase3[Spawn test-runner] --> P3TestLoop[Test Loop\nPO_005]
+        P3TestLoop --> P3Pass{Validation\nPassed?}
+        P3Pass -- "No: Fix" --> SpawnFix3[Spawn build-python\nfor Fixes]
+        SpawnFix3 --> P3TestLoop
+        P3Pass -- "Yes" --> Phase3Complete[Phase 3 Complete]
+    end
+
+    P3MaxExceeded((Ask User:\nTest Failures Persist))
+    Phase3 -- "Max 5 iterations\nexceeded" --> P3MaxExceeded
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: UAT
+    %% ========================================
+    %% AGENT_ROUTING: test-user-simulator
+    %% LOOP: uat-loop, max 3 iterations
+    %% Tasks: PO_006 (US-ORCH-003), PO_007 (US-ORCH-004)
+
+    subgraph P4_SG ["Phase 4 - UAT (Stories: US-ORCH-003, US-ORCH-004)"]
+        Phase4[Spawn test-user-simulator] --> P4UATLoop[UAT Loop\nPO_006 + PO_007]
+        P4UATLoop --> P4Pass{Stories\nPassed?}
+        P4Pass -- "No: Fix" --> SpawnFix4[Spawn build-python\nfor UAT Fixes]
+        SpawnFix4 --> P4UATLoop
+        P4Pass -- "Yes" --> Phase4Complete[Phase 4 UAT Complete]
+    end
+
+    P4StoriesMissing((Ask User:\nStories Missing))
+    P4MaxExceeded((Ask User:\nUAT Failures Persist))
+    Phase4 -- "Stories not found" --> P4StoriesMissing
+    Phase4 -- "Max 3 iterations\nexceeded" --> P4MaxExceeded
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase4Complete --> ArchivePlan[Archive to docs/plans/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef completed fill:#D3D3D3,stroke:#808080
+    class Start entrypoint
+    class End exitpoint
+    class P2MaxExceeded,P3MaxExceeded,P4MaxExceeded,P4StoriesMissing userpoint
+    class Phase1Complete,P1_SG completed

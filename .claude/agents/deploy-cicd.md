@@ -27,7 +27,6 @@ Audit CI/CD configuration files to prevent deployment failures caused by drift b
 - Does NOT create or modify test code (see test agents)
 - Does NOT deploy to production environments
 - Does NOT manage application configuration (only CI/CD config)
-- Does NOT create worktrees or plan folders (see deploy-worktree)
 - Does NOT execute actual CI/CD pipelines (validation only)
 
 ## Process

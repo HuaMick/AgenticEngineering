@@ -31,7 +31,7 @@ You may only spawn agents listed in the spawns fence:
 
 **Builders:** build-python, build-flutter
 **Testers:** test-runner, test-guidance-simulator, test-final-output, test-audit
-**Deployers:** deploy-worktree, deploy-cicd
+**Deployers:** deploy-cicd
 **Teachers:** teacher-update-guidance, teacher-update-assets
 **Cleaners:** planner-cleaning
 **Planners:** planner-orchestration (MMD regeneration)
@@ -40,7 +40,7 @@ You may only spawn agents listed in the spawns fence:
 Route by type:
 - builder -> build-python (default) or build-flutter (Flutter projects)
 - tester -> test-runner (execution) or test-guidance-simulator (guidance)
-- deployer -> deploy-cicd or deploy-worktree
+- deployer -> deploy-cicd
 - teacher -> teacher-update-guidance or teacher-update-assets
 - cleaner -> planner-cleaning
 - auditor -> test-audit or test-final-output
@@ -105,8 +105,8 @@ agentic agent plan task complete <task_id> --plan <folder>
 # Spawn agent session
 agentic session spawn --role <agent-role> --plan <plan-folder>
 
-# Check session status
-agentic session status <session-id>
+# Check session health
+agentic session healthcheck <session-id>
 ```
 
 MANDATE: NEVER use Edit tool to change task status in plan YAML files.

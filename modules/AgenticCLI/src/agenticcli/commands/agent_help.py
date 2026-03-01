@@ -44,9 +44,8 @@ KNOWN_AGENTS = [
     # Build agents (2)
     "build-flutter",
     "build-python",
-    # Deploy agents (2)
+    # Deploy agents (1)
     "deploy-cicd",
-    "deploy-worktree",
 ]
 
 # Agent category mapping
@@ -74,7 +73,6 @@ AGENT_CATEGORIES = {
     "build-flutter": "build",
     "build-python": "build",
     "deploy-cicd": "deploy",
-    "deploy-worktree": "deploy",
 }
 
 

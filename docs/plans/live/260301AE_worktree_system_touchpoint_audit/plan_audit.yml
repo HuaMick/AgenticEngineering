@@ -1,0 +1,500 @@
+# Worktree System Touchpoint Audit
+# Type: Inventory-only (no actions, no tasks to execute)
+# Created: 2026-03-01
+#
+# PURPOSE: Comprehensive map of every worktree-related touchpoint in the
+# AgenticEngineering monorepo. Reference document, not an action plan.
+
+name: Worktree System Touchpoint Audit
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: touchpoint_audit
+type: inventory
+created_date: "2026-03-01"
+
+objective: |
+  Map every touchpoint in the worktree system across all layers of the monorepo:
+  CLI commands, utilities, state/persistence, agent guidance, tests, user stories,
+  and cross-cutting data flows. Identify gaps. No actions required.
+
+# =============================================================================
+# GROUP 1: CLI COMMANDS LAYER
+# =============================================================================
+
+groups:
+- name: CLI Commands Layer
+  id: GROUP_1
+  status: touchpoint_audit
+  description: |
+    6 subcommands under 'agentic devops worktree' (alias: 'agentic devops wt').
+    Routed through handle() in worktree.py. Typer registration in cli.py.
+
+  touchpoints:
+  - id: TP-CLI-001
+    name: "worktree.py - Command Module"
+    file: modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    line_count: 1384
+    functions:
+      router:
+        - "handle(args, ctx=None) - line 31"
+      commands:
+        - "cmd_create(args) - line 660"
+        - "cmd_list(args) - line 818"
+        - "cmd_remove(args) - line 909"
+        - "cmd_status(args) - line 975"
+        - "cmd_validate(args) - line 1136"
+        - "cmd_sync(args) - line 1280"
+      helpers:
+        - "get_repo_root() - line 55"
+        - "load_worktree_registry(repo_root) - line 70 - NO FileLock"
+        - "save_worktree_registry(repo_root, entries) - line 107 - NO FileLock"
+        - "lookup_abbreviation(registry, branch) - line 134"
+        - "find_workspace_file(repo_root) - line 167"
+        - "update_workspace_add() - line 180 - FileLock 5s"
+        - "update_workspace_remove() - line 244 - FileLock 5s"
+        - "create_planning_folder(plan_path) - line 295"
+        - "get_actual_worktrees(repo_root) - line 468"
+        - "find_idle_worktrees(repo_root) - line 506"
+        - "cleanup_worktree_if_idle() - line 592"
+
+  - id: TP-CLI-002
+    name: "cli.py - Typer Registration"
+    file: modules/AgenticCLI/src/agenticcli/cli.py
+    lines: "534-603"
+    details:
+      - "devops_group = typer.Typer() - line 537"
+      - "worktree_app = typer.Typer() - line 540"
+      - "name='worktree' + name='wt' hidden alias - lines 541-542"
+    registered_commands:
+      - "worktree_create - line 549 - Params: branch, --base, --no-plan, --abbreviation, --description"
+      - "worktree_list - line 566"
+      - "worktree_remove - line 572 - Params: branch, --force"
+      - "worktree_status - line 585"
+      - "worktree_validate - line 591"
+      - "worktree_sync - line 597"
+
+  - id: TP-CLI-003
+    name: "plan.py - Worktree Integration"
+    file: modules/AgenticCLI/src/agenticcli/commands/plan.py
+    integration_points:
+      archive_cleanup:
+        lines: "335-375"
+        imports: ["cleanup_worktree_if_idle", "cmd_sync"]
+      plan_init_worktree:
+        lines: "1255-1320"
+        imports: ["find_idle_worktrees", "update_workspace_add"]
+        strategy: "3-tier: existing branch > idle worktree > new creation"
+
+# =============================================================================
+# GROUP 2: UTILITIES LAYER
+# =============================================================================
+
+- name: Utilities Layer
+  id: GROUP_2
+  status: touchpoint_audit
+
+  touchpoints:
+  - id: TP-UTIL-001
+    name: "naming.py - Plan Folder Naming"
+    file: modules/AgenticCLI/src/agenticcli/utils/naming.py
+    line_count: 213
+    functions:
+      - "get_worktree_id(worktree_path, branch) - line 12 - 2-char ID extraction"
+      - "sanitize_description(description) - line 82"
+      - "generate_plan_folder_name(path, desc, date, branch) - line 127"
+      - "validate_plan_folder_name(name) - line 167 - regex: ^\\d{6}[A-Z]{2}_[a-z0-9_]+$"
+      - "parse_plan_folder_name(name) - line 192"
+
+  - id: TP-UTIL-002
+    name: "exceptions.py - WorktreeError"
+    file: modules/AgenticCLI/src/agenticcli/exceptions.py
+    lines: "75-115"
+    factory_methods:
+      - "branch_exists(branch) - line 81"
+      - "worktree_exists(path) - line 90"
+      - "not_in_repo() - line 99"
+      - "invalid_base_branch(branch) - line 108"
+
+# =============================================================================
+# GROUP 3: STATE & PERSISTENCE LAYER
+# =============================================================================
+
+- name: State and Persistence Layer
+  id: GROUP_3
+  status: touchpoint_audit
+
+  touchpoints:
+  - id: TP-STATE-001
+    name: "docs/worktrees.yml - Registry"
+    file: docs/worktrees.yml
+    schema_root_key: worktrees
+    entry_fields: [branch, abbreviation, description, path]
+    concurrency_protection: NONE
+    gap: "GAP-002 - No FileLock, race condition risk"
+
+  - id: TP-STATE-002
+    name: "*.code-workspace - VS Code Workspace"
+    file: agenticengineering.code-workspace
+    concurrency_protection: "FileLock (timeout=5.0s)"
+
+  - id: TP-STATE-003
+    name: "git worktree list --porcelain - Ground Truth"
+    description: "Git's own worktree tracking is the canonical source of truth"
+
+  - id: TP-STATE-004
+    name: "docs/plans/live/ - Plan Folders"
+    file: docs/plans/live/
+    naming_pattern: "YYMMDDXX_description"
+    linkage: "2-letter abbreviation (XX) maps to registry branch"
+
+  - id: TP-STATE-005
+    name: "FileLock from agenticguidance.services.state"
+    file: modules/AgenticGuidance/src/agenticguidance/services/state.py
+    protects: [workspace_file]
+    does_not_protect: [registry]
+
+# =============================================================================
+# GROUP 4: AGENT GUIDANCE LAYER
+# =============================================================================
+
+- name: Agent Guidance Layer
+  id: GROUP_4
+  status: touchpoint_audit
+
+  touchpoints:
+  - id: TP-AGENT-001
+    name: "deploy-worktree - manifest.yml"
+    file: modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml
+    version: "2.1"
+    outputs: [worktree_path, plan_folder_path, main_worktree_path, workspace_updated, validation_status]
+
+  - id: TP-AGENT-002
+    name: "deploy-worktree - process.yml"
+    file: modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    steps: ["CCI Bootstrap", "agentic agent plan init", "Report outputs"]
+
+  - id: TP-AGENT-003
+    name: "deploy-worktree - inputs.yml"
+    file: modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml
+    required_inputs: [REPO_ROOT, branch_name, base_branch]
+
+  - id: TP-AGENT-004
+    name: "Claude Code Agent Definition"
+    file: .claude/agents/deploy-worktree.md
+    model: sonnet
+
+  - id: TP-AGENT-005
+    name: "worktree-and-branching.yml - Guidelines"
+    file: modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+    rules:
+      - "Main branch as source of truth"
+      - "Staging-first merge strategy"
+      - "Environment-worktree alignment"
+      - "Centralized Plan Visibility (Main-First Planning)"
+
+  - id: TP-AGENT-006
+    name: "plans.yml - Naming Convention"
+    file: modules/AgenticGuidance/assets/definitions/plans.yml
+
+  - id: TP-AGENT-007
+    name: "cli-commands.yml - Command Docs"
+    file: modules/AgenticGuidance/assets/definitions/cli-commands.yml
+
+  - id: TP-AGENT-008
+    name: "agent-categories.yml - Deploy Category"
+    file: modules/AgenticGuidance/assets/definitions/agent-categories.yml
+
+  - id: TP-AGENT-009
+    name: "deploy-minimal.yml - Input Layer"
+    file: modules/AgenticGuidance/assets/inputs/deploy-minimal.yml
+
+  - id: TP-AGENT-010
+    name: "plan-schema.yml - worktree_path Field"
+    file: modules/AgenticGuidance/assets/specifications/plan-schema.yml
+
+  - id: TP-AGENT-011
+    name: "planner-build - worktree_path Required"
+    file: modules/AgenticGuidance/agents/planner/planner-build/process.yml
+
+  - id: TP-AGENT-012
+    name: "orchestration-executor - Commit & Merge Step"
+    file: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    lines: "418-451"
+    step_id: worktree_commit_merge
+
+# =============================================================================
+# GROUP 5: TEST LAYER
+# =============================================================================
+
+- name: Test Layer
+  id: GROUP_5
+  status: touchpoint_audit
+
+  touchpoints:
+  - id: TP-TEST-001
+    name: "test_worktree.py - Core Tests"
+    file: modules/AgenticCLI/tests/test_worktree.py
+    line_count: 721
+
+  - id: TP-TEST-002
+    name: "test_worktree_reuse.py - Reuse Strategy"
+    file: modules/AgenticCLI/tests/test_worktree_reuse.py
+    line_count: 472
+
+  - id: TP-TEST-003
+    name: "test_worktree_registry.py - Registry Ops"
+    file: modules/AgenticCLI/tests/test_worktree_registry.py
+    line_count: 379
+
+  - id: TP-TEST-004
+    name: "test_workspace_sync.py - Workspace Sync"
+    file: modules/AgenticCLI/tests/commands/test_workspace_sync.py
+    line_count: 323
+
+  - id: TP-TEST-005
+    name: "test_deploy_worktree_guidance.py - Agent Fitness"
+    file: modules/AgenticGuidance/tests/test_deploy_worktree_guidance.py
+    line_count: 133
+
+  - id: TP-TEST-006
+    name: "Related Test Files"
+    files:
+      - modules/AgenticCLI/tests/test_plan_init.py
+      - modules/AgenticCLI/tests/test_plan_new_uat.py
+      - modules/AgenticCLI/tests/test_session_commands.py
+
+# =============================================================================
+# GROUP 6: USER STORIES LAYER
+# =============================================================================
+
+- name: User Stories Layer
+  id: GROUP_6
+  status: touchpoint_audit
+
+  touchpoints:
+  - id: TP-US-001
+    name: "09_worktree.yml - CLI Stories"
+    file: docs/userstories/AgenticCLI/09_worktree.yml
+    stories: [US-CLI-090, US-CLI-091, US-CLI-092, US-CLI-093]
+    all_test_status: untested
+
+  - id: TP-US-002
+    name: "01_worktree_management.yml - Workflow Stories"
+    file: docs/userstories/DeveloperWorkflows/01_worktree_management.yml
+    stories: [US-DEV-001, US-DEV-002, US-DEV-003, US-DEV-004]
+    all_test_status: untested
+
+# =============================================================================
+# GROUP 7: DATA FLOW CROSS-REFERENCES
+# =============================================================================
+
+- name: Data Flow Cross-References
+  id: GROUP_7
+  status: touchpoint_audit
+
+  touchpoints:
+  - id: TP-FLOW-001
+    name: "Plan Creation Flow"
+    steps:
+      - "plan init -> naming.py -> registry lookup -> worktree create/reuse -> workspace update -> scaffold"
+
+  - id: TP-FLOW-002
+    name: "Plan Archival Flow"
+    steps:
+      - "archive -> cleanup_worktree_if_idle -> workspace update -> cmd_sync"
+
+  - id: TP-FLOW-003
+    name: "Validation Flow"
+    steps:
+      - "git state + registry + plan folders -> cross-reference -> report discrepancies"
+
+  - id: TP-FLOW-004
+    name: "Sync Flow"
+    steps:
+      - "git state + workspace -> reconcile -> update workspace + clean registry"
+
+  - id: TP-FLOW-005
+    name: "Orchestration Merge Flow"
+    steps:
+      - "read plan metadata -> detect worktree -> git commit in worktree -> git merge in main"
+
+# =============================================================================
+# GAPS IDENTIFIED
+# =============================================================================
+
+gaps:
+- id: GAP-001
+  name: "No E2E Tests for cmd_create and cmd_remove"
+  severity: medium
+  affected: [TP-CLI-001, TP-TEST-001, US-CLI-090, US-CLI-092]
+
+- id: GAP-002
+  name: "Registry Has NO FileLock Protection"
+  severity: high
+  affected: [TP-STATE-001, TP-STATE-005]
+  evidence: "save_worktree_registry() at line 107 - direct write_text(), no lock"
+
+- id: GAP-003
+  name: "Plan-Branch Linkage Relies Solely on Naming Convention"
+  severity: medium
+  affected: [TP-UTIL-001, TP-STATE-001, TP-STATE-004]
+  detail: "2-letter abbreviation could collide across branches"
+
+- id: GAP-004
+  name: "No Audit Trail of Sync Operations"
+  severity: low
+  affected: [TP-CLI-001, TP-STATE-001, TP-STATE-002]
+
+- id: GAP-005
+  name: "No Concurrent Access Tests"
+  severity: medium
+  affected: [TP-TEST-001, TP-TEST-003, TP-STATE-001]
+
+- id: GAP-006
+  name: "All 8 User Stories Have test_status: untested"
+  severity: medium
+  affected: [TP-US-001, TP-US-002]
+
+# =============================================================================
+# HISTORICAL TRACE ANALYSIS (Feb 15 - Mar 1, 2026)
+# =============================================================================
+
+historical_trace_analysis:
+  methodology: |
+    6 agents reviewed the last 2 weeks of git history, plan execution records,
+    and worktree usage patterns. Each agent independently traced commits, branch
+    activity, plan metadata, and registry state across the analysis period.
+  analysis_period: "2026-02-15 to 2026-03-01"
+  agent_count: 6
+
+  periods:
+  - id: PERIOD_1
+    dates: "Feb 15-16"
+    verdict: zero_worktree_usage
+    findings:
+      - "All commits directly on main branch"
+      - "Workspace file RESET to main-only on Feb 16 (worktree refs explicitly removed)"
+      - "One plan created (260216WT) with no worktree_path field"
+
+  - id: PERIOD_2
+    dates: "Feb 17-19"
+    verdict: complete_gap
+    findings:
+      - "ZERO commits in the entire repo during this period"
+      - "Plans created with these dates were actually executed on Feb 20+"
+
+  - id: PERIOD_3
+    dates: "Feb 20-21"
+    verdict: genuine_but_short_lived
+    label: "PEAK USAGE - only period worktrees were genuinely used"
+    findings:
+      - "Two worktrees created: AgenticEngineering-cli-nesting and AgenticEngineering-plan-tinydb-migration"
+      - "3 plans used feature worktree paths, 5 plans used main"
+      - "plan-tinydb-migration branch merged to main on Feb 22 (commit 1ae30e3)"
+      - "Some parallel execution detected across main + 2 worktrees"
+    duration_days: 2-3
+
+  - id: PERIOD_4
+    dates: "Feb 22-23"
+    verdict: mixed_usage_transitioning_to_main
+    findings:
+      - "TinyDB migration merged to main (1ae30e3)"
+      - "Multiple plans declared worktree paths but most work landed on main"
+      - "cli-nesting worktree last commit: Feb 23 (f10f5e8)"
+      - "Registry (docs/worktrees.yml) does NOT track either active worktree"
+
+  - id: PERIOD_5
+    dates: "Feb 24-26"
+    verdict: zero_worktree_usage
+    findings:
+      - "ALL work committed directly to main branch (linear history)"
+      - "No new worktrees created for 3 plans (260224SC, 260226PO, 260226SD)"
+      - "Plans 260226PO and 260226SD explicitly have worktree: null"
+      - "Both existing worktrees abandoned (no new commits after Feb 22-23)"
+
+  - id: PERIOD_6
+    dates: "Feb 27 - Mar 1"
+    verdict: zero_worktree_usage
+    findings:
+      - "Zero commits in repo"
+      - "Both worktrees remain stale (cli-nesting: Feb 23, plan-tinydb-migration: Feb 22)"
+      - "Registry still only tracks 2 entries (main + one from Feb 12)"
+      - "All 8 user stories remain test_status: untested"
+
+  aggregate_statistics:
+    plans_with_worktree_path:
+      count: 61
+      total: 587
+      percentage: 10.4
+      note: "historical total, mostly from older plans"
+    days_parallel_development: 2-3
+    days_main_only_development: 11
+    worktrees_currently_stale: 2
+    registry_tracking_active_worktrees: "0 of 2"
+    infrastructure_exercised: "5-10%"
+    infrastructure_cost:
+      code_lines: ~4000
+      guidance_files: 12
+      test_lines: ~2000
+    user_stories_tested: "0 of 8"
+
+  hypothesis_confirmation:
+    user_hypothesis: "Plans are executed sequentially, not in parallel"
+    confirmed: true
+    evidence:
+      - "Plans ARE executed sequentially in main, not in parallel across worktrees"
+      - "Worktree system used briefly Feb 20-22 then abandoned"
+      - "System represents significant overhead (~6000 lines) for minimal actual benefit"
+      - "Agents are NOT using the worktree system - they default to main"
+
+  recommendation_options:
+  - id: OPTION_1
+    name: DEPRECATE
+    description: "Remove worktree system entirely, simplify to main-branch development"
+    effort: medium
+    risk: low
+    rationale: "System is unused. Removing it eliminates ~6000 lines of dead weight."
+
+  - id: OPTION_2
+    name: MOTHBALL
+    description: "Keep code but remove from agent guidance. Reactivate if parallel need arises."
+    effort: low
+    risk: low
+    rationale: "Lowest disruption. Agents stop referencing it, code stays dormant."
+
+  - id: OPTION_3
+    name: SLIM_DOWN
+    description: "Keep minimal worktree support (create/list/remove) but strip reuse, validation, sync, registry subsystems"
+    effort: medium
+    risk: low
+    rationale: "Retains escape hatch for manual use without the automation overhead."
+
+  - id: OPTION_4
+    name: INVEST
+    description: "Enforce worktree usage via agent guidance changes"
+    effort: high
+    risk: medium
+    rationale: "Unclear ROI given sequential execution pattern and single-developer workflow."
+
+# =============================================================================
+# SUMMARY
+# =============================================================================
+
+summary:
+  total_touchpoints: 30
+  total_gaps: 6
+  groups: 7
+  files_inventoried: 22
+  user_stories: 8
+  test_files: 8
+  agent_guidance_files: 12
+  data_flows: 5
+  concurrency:
+    filelock_protected: 1
+    unprotected: 1
+  historical_trace:
+    analysis_periods: 6
+    days_analyzed: 15
+    actual_worktree_usage_days: 2-3
+    hypothesis_confirmed: true
+    recommendation_options: 4

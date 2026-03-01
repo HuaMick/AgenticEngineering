@@ -1,0 +1,129 @@
+%% =============================================================================
+%% ORCHESTRATION MMD - Remap Plan/Task to Epic/Ticket
+%% =============================================================================
+%% GOAL: Migrate all plan/task terminology to epic/ticket across the codebase
+%% PROFILE: orchestration-executor
+%% PHASES: teach, build, test, cleanup, uat, audit
+%%
+%% AGENT_ROUTING:
+%%   teach -> teacher-update-assets, teacher-update-guidance
+%%   build -> build-python
+%%   test  -> test-builder, test-runner
+%%   cleanup -> build-python
+%%   uat   -> test-user-simulator
+%%   audit -> test-audit
+%%
+%% STATUS:
+%%   teach:   pending
+%%   build:   pending (depends on teach)
+%%   test:    pending (depends on build)
+%%   cleanup: pending (depends on test)
+%%   uat:     pending (depends on cleanup)
+%%   audit:   pending
+%%
+%% CLI TASK MANAGEMENT MANDATE:
+%%   - NEVER use Edit tool to change task status in ticket YAML files
+%%   - ALWAYS use `agentic agent plan task start/complete <task_id>` for status updates
+%%   - ALWAYS use `agentic agent plan move folder --plan <plan_folder>` for archiving
+%%   NOTE: After migration these commands become agentic agent epic ticket start/complete
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadContext[Load Epic Context via CCI Bootstrap]
+    LoadContext --> ValidateInputs{All Inputs Present?}
+    ValidateInputs -- No --> AskUser((Ask User))
+    ValidateInputs -- Yes --> TeachPhase
+
+    %% ===================================================
+    %% PHASE 1: TEACH
+    %% ===================================================
+    subgraph TeachPhase_SG ["Phase 1: Teach - Update Guidance and Documentation"]
+        TeachPhase --> SpawnTeachAssets[Spawn teacher-update-assets]
+        SpawnTeachAssets --> SpawnTeachGuidance[Spawn teacher-update-guidance]
+        SpawnTeachGuidance --> TeachReview{Teach Review Loop}
+        TeachReview --> SpawnPlannerReviewer[Spawn planner-reviewer]
+        SpawnPlannerReviewer --> TeachApproved{Teach Approved?}
+        TeachApproved -- No --> SpawnTeachFix[Spawn teacher-update-assets Fix]
+        SpawnTeachFix --> SpawnPlannerReviewer
+        TeachApproved -- Yes --> TeachComplete[Teach Phase Complete]
+    end
+
+    TeachComplete --> BuildPhase
+
+    %% ===================================================
+    %% PHASE 2: BUILD
+    %% ===================================================
+    subgraph BuildPhase_SG ["Phase 2: Build - Core Implementation"]
+        BuildPhase --> SpawnBuildServices[Spawn build-python: Services Layer]
+        SpawnBuildServices --> SpawnBuildCLI[Spawn build-python: CLI Layer]
+        SpawnBuildCLI --> SpawnBuildFilesystem[Spawn build-python: Filesystem Migration]
+        SpawnBuildFilesystem --> BuildTestLoop{Test-Fix Loop}
+        BuildTestLoop --> SpawnTestRunner1[Spawn test-runner: Unit Tests]
+        SpawnTestRunner1 --> BuildPassing{Tests Passing?}
+        BuildPassing -- No --> SpawnBuildFix[Spawn build-python: Fix]
+        SpawnBuildFix --> SpawnTestRunner1
+        BuildPassing -- Yes --> BuildComplete[Build Phase Complete]
+    end
+
+    BuildComplete --> TestPhase
+
+    %% ===================================================
+    %% PHASE 3: TEST
+    %% ===================================================
+    subgraph TestPhase_SG ["Phase 3: Test - Update and Run Test Suite"]
+        TestPhase --> SpawnTestBuilder[Spawn test-builder: Update Tests]
+        SpawnTestBuilder --> SpawnTestRunnerFull[Spawn test-runner: Full Suite]
+        SpawnTestRunnerFull --> TestPassing{All Tests Passing?}
+        TestPassing -- No --> SpawnBuildPatch[Spawn build-python: Patch]
+        SpawnBuildPatch --> SpawnTestRunnerFull
+        TestPassing -- Yes --> TestComplete[Test Phase Complete]
+    end
+
+    TestComplete --> CleanupPhase
+
+    %% ===================================================
+    %% PHASE 4: CLEANUP
+    %% ===================================================
+    subgraph CleanupPhase_SG ["Phase 4: Cleanup - Remove Compatibility Shims"]
+        CleanupPhase --> SpawnBuildClean[Spawn build-python: Remove Shims]
+        SpawnBuildClean --> SpawnTestRunnerClean[Spawn test-runner: Verify Clean]
+        SpawnTestRunnerClean --> CleanPassing{Tests Still Passing?}
+        CleanPassing -- No --> SpawnBuildCleanFix[Spawn build-python: Fix]
+        SpawnBuildCleanFix --> SpawnTestRunnerClean
+        CleanPassing -- Yes --> CleanupComplete[Cleanup Phase Complete]
+    end
+
+    CleanupComplete --> UATPhase
+
+    %% ===================================================
+    %% PHASE 5: UAT
+    %% ===================================================
+    subgraph UATPhase_SG ["Phase 5: UAT - User Acceptance Testing"]
+        UATPhase --> SpawnUserSim[Spawn test-user-simulator: Epic Lifecycle]
+        SpawnUserSim --> SpawnUserSimAgent[Spawn test-user-simulator: Agent Integration]
+        SpawnUserSimAgent --> SpawnUserSimBackCompat[Spawn test-user-simulator: Backward Compat]
+        SpawnUserSimBackCompat --> UATReview{UAT Review}
+        UATReview --> SpawnUATReviewer[Spawn planner-reviewer]
+        SpawnUATReviewer --> UATApproved{UAT Approved?}
+        UATApproved -- No --> SpawnBuildUATFix[Spawn build-python: UAT Fix]
+        SpawnBuildUATFix --> SpawnUserSim
+        UATApproved -- Yes --> UATComplete[UAT Phase Complete]
+    end
+
+    UATComplete --> AuditPhase
+
+    %% ===================================================
+    %% PHASE 6: AUDIT
+    %% ===================================================
+    subgraph AuditPhase_SG ["Phase 6: Audit - Plan Folder Compliance"]
+        AuditPhase --> SpawnAudit[Spawn test-audit: Epic Folder Compliance]
+        SpawnAudit --> AuditPassed{Audit Passed?}
+        AuditPassed -- No --> SpawnBuildAuditFix[Spawn build-python: Fix Compliance]
+        SpawnBuildAuditFix --> SpawnAudit
+        AuditPassed -- Yes --> AuditComplete[Audit Phase Complete]
+    end
+
+    AuditComplete --> ArchiveEpic[Archive Epic via CLI]
+    ArchiveEpic --> End((End: Migration Complete))
+
+    classDef dashedstroke stroke-dasharray: 5 5;

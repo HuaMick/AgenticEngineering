@@ -388,9 +388,6 @@ class TestErrorRecoverySequence:
 
     def test_missing_required_args(self, cli_runner):
         """Test that missing required args show usage."""
-        stdout, stderr, code = cli_runner("devops", "worktree", "create")
-        assert code == 2
-
         stdout, stderr, code = cli_runner("agent", "plan", "scaffold")
         assert code == 2
 
@@ -667,11 +664,7 @@ class TestCrossCommandIntegration:
         # Step 2: Check health
         stdout, stderr, code = full_cli("setup", "health")
 
-        # Step 3: Check worktree status
-        stdout, stderr, code = full_cli("devops", "worktree", "status")
-        assert code == 0
-
-        # Step 4: Scaffold a plan
+        # Step 3: Scaffold a plan
         stdout, stderr, code = full_cli("agent", "plan", "scaffold", "feature-integration")
         assert code == 0
 
@@ -686,7 +679,6 @@ class TestCrossCommandIntegration:
     def test_json_mode_consistency(self, full_cli):
         """Test that JSON mode works consistently across commands."""
         json_commands = [
-            ["--json", "devops", "worktree", "status"],
             ["--json", "plan", "status"],
             ["--json", "configure", "preferences", "list"],
             ["--json", "configure", "state", "list"],

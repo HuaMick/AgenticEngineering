@@ -99,7 +99,6 @@ def cmd_bootstrap(args, ctx=None):
         "objective": plan_info.get("objective") if plan_info else None,
         "plan_folder": plan_info.get("plan_folder_name") if plan_info else None,
         "plan_path": str(plan_info.get("plan_folder")) if plan_info else None,
-        "main_worktree": str(plan_info.get("main_worktree")) if plan_info else None,
         "current_task": current_task,
         "process": role_process,
         "essential_inputs": inputs_manifest.get("inputs", [])[:10] if inputs_manifest else [],
@@ -171,7 +170,7 @@ def cmd_role(args, ctx=None):
 def cmd_task(args, ctx=None):
     """Get active task from Main-First plan.
 
-    Crawls the main worktree's docs/plans/live/ to find and extract
+    Crawls the repo's docs/plans/live/ to find and extract
     the active task for the current branch.
 
     Args:

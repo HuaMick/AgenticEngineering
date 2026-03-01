@@ -20,14 +20,6 @@ def sessions_dir(tmp_path):
 
 
 @pytest.fixture
-def loops_dir(tmp_path):
-    """Create a temporary loops directory."""
-    loops_dir = tmp_path / ".agentic" / "loops"
-    loops_dir.mkdir(parents=True)
-    return loops_dir
-
-
-@pytest.fixture
 def mock_sessions_dir(sessions_dir, monkeypatch):
     """Patch StateStore, _get_context_dir, and _get_logs_dir to use temp directories."""
     from agenticcli.commands import session
@@ -39,16 +31,14 @@ def mock_sessions_dir(sessions_dir, monkeypatch):
     context_dir = sessions_dir / "context"
     context_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
+
+    # Disable SDK path so subprocess-based tests exercise the subprocess code path
+    import agenticcli.utils.sdk_runner as _sdk_mod
+    monkeypatch.setattr(_sdk_mod, "SDK_AVAILABLE", False)
+
     return sessions_dir
 
 
-@pytest.fixture
-def mock_loops_dir(loops_dir, monkeypatch):
-    """Patch StateStore to use temp directory."""
-    from agenticcli.commands import loop
-
-    monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
-    return loops_dir
 
 
 class TestSessionSpawnPermissionFlag:
@@ -152,131 +142,6 @@ class TestSessionSpawnPermissionFlag:
         )
 
         session.cmd_spawn(args)
-
-        # Verify Popen was called with the flag
-        mock_popen.assert_called_once()
-        call_args = mock_popen.call_args
-        cmd = call_args[0][0]
-
-        assert "claude" in cmd
-        assert "--dangerously-skip-permissions" in cmd
-
-
-class TestLoopStartPermissionFlag:
-    """Tests for --dangerously-skip-permissions flag in loop start."""
-
-    def test_loop_start_accepts_flag(self, mock_loops_dir):
-        """Test that loop start accepts the flag in arguments."""
-        from agenticcli.commands import loop
-
-        args = SimpleNamespace(
-            prompt="Test loop task",
-            prompt_file=None,
-            entrypoint=None,
-            max_iterations=10,
-            completion_promise=None,
-            background=False,
-            directory=None,
-            output=None,
-            dangerously_skip_permissions=True,
-        )
-
-        # Verify the flag is present in args
-        assert hasattr(args, "dangerously_skip_permissions")
-        assert args.dangerously_skip_permissions is True
-
-    @patch("agenticcli.commands.loop.subprocess.run")
-    def test_loop_start_passes_flag_to_claude(
-        self, mock_run, mock_loops_dir
-    ):
-        """Test that loop start passes flag to claude subprocess."""
-        from agenticcli.commands import loop
-
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Success"
-        mock_result.stderr = ""
-        mock_run.return_value = mock_result
-
-        args = SimpleNamespace(
-            prompt="Test loop task",
-            prompt_file=None,
-            entrypoint=None,
-            max_iterations=10,
-            completion_promise=None,
-            background=False,
-            directory=None,
-            output=None,
-            dangerously_skip_permissions=True,
-        )
-
-        loop.cmd_start(args)
-
-        # Verify run was called with the flag
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args
-        cmd = call_args[0][0]
-
-        assert "claude" in cmd
-        assert "--dangerously-skip-permissions" in cmd
-
-    @patch("agenticcli.commands.loop.subprocess.run")
-    def test_loop_start_without_flag(self, mock_run, mock_loops_dir):
-        """Test that loop start does not pass flag when not set."""
-        from agenticcli.commands import loop
-
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "Success"
-        mock_result.stderr = ""
-        mock_run.return_value = mock_result
-
-        args = SimpleNamespace(
-            prompt="Test loop task",
-            prompt_file=None,
-            entrypoint=None,
-            max_iterations=10,
-            completion_promise=None,
-            background=False,
-            directory=None,
-            output=None,
-            dangerously_skip_permissions=False,
-        )
-
-        loop.cmd_start(args)
-
-        # Verify run was called without the flag
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args
-        cmd = call_args[0][0]
-
-        assert "claude" in cmd
-        assert "--dangerously-skip-permissions" not in cmd
-
-    @patch("agenticcli.commands.loop.subprocess.Popen")
-    def test_loop_start_background_with_flag(
-        self, mock_popen, mock_loops_dir
-    ):
-        """Test that background loop start passes flag correctly."""
-        from agenticcli.commands import loop
-
-        mock_process = MagicMock()
-        mock_process.pid = 12345
-        mock_popen.return_value = mock_process
-
-        args = SimpleNamespace(
-            prompt="Test loop task",
-            prompt_file=None,
-            entrypoint=None,
-            max_iterations=10,
-            completion_promise=None,
-            background=True,
-            directory=None,
-            output=None,
-            dangerously_skip_permissions=True,
-        )
-
-        loop.cmd_start(args)
 
         # Verify Popen was called with the flag
         mock_popen.assert_called_once()

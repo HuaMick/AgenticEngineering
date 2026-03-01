@@ -195,9 +195,6 @@ def cli_runner(temp_repo):
 def sample_prefs(temp_config_dir):
     """Create sample preferences file."""
     prefs = {
-        "worktree": {
-            "default_base": "main",
-        },
         "plan": {
             "auto_scaffold": True,
         },

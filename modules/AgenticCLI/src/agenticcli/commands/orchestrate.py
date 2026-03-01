@@ -76,7 +76,10 @@ def _run_planning_loop(args, ctx=None):
     }
 
     if background:
-        # Re-invoke in foreground as a subprocess
+        # Re-invoke in foreground as a subprocess to detach from the terminal.
+        # NOTE: The actual Claude agent invocations inside the loop use the SDK
+        # (via PlannerLoopWorkflow._run_role_agent). This subprocess is just
+        # the process-control wrapper that allows background detachment.
         cmd = [sys.executable, "-m", "agenticcli.entry", "session", "orchestrate", "planning"]
         cmd.extend(["--max-iterations", str(max_iterations)])
         if completion_promise:
@@ -98,6 +101,10 @@ def _run_planning_loop(args, ctx=None):
         from agenticcli.utils.subprocess_utils import get_clean_env
         env = get_clean_env()
         env["AGENTIC_ORCH_LOOP_ID"] = loop_id
+
+        # Record SDK transport metadata so consumers know agent calls use the SDK
+        from agenticcli.utils.sdk_runner import SDK_AVAILABLE as _ORCH_SDK_AVAILABLE
+        state["transport"] = "sdk" if _ORCH_SDK_AVAILABLE else "subprocess"
 
         try:
             process = subprocess.Popen(
@@ -125,10 +132,13 @@ def _run_planning_loop(args, ctx=None):
                 "status": "running",
                 "background": True,
                 "max_iterations": max_iterations,
+                "transport": state["transport"],
             })
         else:
             print_success(f"Orchestration loop {loop_id} started in background (PID: {process.pid})")
             console.print(f"[dim]Max iterations: {max_iterations}[/dim]")
+            if state["transport"] == "sdk":
+                console.print("[dim]Agent invocations use Claude Agent SDK[/dim]")
         return
 
     # Foreground execution
@@ -294,6 +304,10 @@ def _run_executing_loop(args, ctx=None):
     }
 
     if background:
+        # Re-invoke in foreground as a subprocess to detach from the terminal.
+        # NOTE: The actual Claude agent invocations inside the loop use the SDK
+        # (via OrchestrationWorkflow). This subprocess is just the process-control
+        # wrapper that allows background detachment.
         cmd = [sys.executable, "-m", "agenticcli.entry", "session", "orchestrate", "executing"]
         cmd.extend(["--max-iterations", str(max_iterations)])
         if completion_promise:
@@ -315,6 +329,10 @@ def _run_executing_loop(args, ctx=None):
         from agenticcli.utils.subprocess_utils import get_clean_env
         env = get_clean_env()
         env["AGENTIC_EXEC_LOOP_ID"] = loop_id
+
+        # Record SDK transport metadata so consumers know agent calls use the SDK
+        from agenticcli.utils.sdk_runner import SDK_AVAILABLE as _EXEC_SDK_AVAILABLE
+        state["transport"] = "sdk" if _EXEC_SDK_AVAILABLE else "subprocess"
 
         try:
             process = subprocess.Popen(
@@ -342,10 +360,13 @@ def _run_executing_loop(args, ctx=None):
                 "status": "running",
                 "background": True,
                 "max_iterations": max_iterations,
+                "transport": state["transport"],
             })
         else:
             print_success(f"Execution loop {loop_id} started in background (PID: {process.pid})")
             console.print(f"[dim]Max iterations: {max_iterations}[/dim]")
+            if state["transport"] == "sdk":
+                console.print("[dim]Agent invocations use Claude Agent SDK[/dim]")
         return
 
     # Foreground execution

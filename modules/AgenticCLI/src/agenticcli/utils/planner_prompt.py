@@ -49,7 +49,7 @@ def build_planner_prompt(objective: str, plan_folder: Path, context: str | None 
         "",
         "3. WRITE plan_build.yml:",
         "   Create plan_build.yml following planning-standard.yml format with:",
-        "   - Plan-level metadata (name, worktree_path, status, affected_stories)",
+        "   - Plan-level metadata (name, branch, status, affected_stories)",
         "   - Phases with tasks (each task must have: id, name, guidance, target_files, inputs)",
         "   - Success criteria defined at plan level",
         "   - Each task MUST declare target_files for parallelization decisions",

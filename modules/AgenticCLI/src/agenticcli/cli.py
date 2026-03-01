@@ -531,88 +531,31 @@ def manifest_validate(path: str = typer.Argument(..., help="Path to manifest fil
 
 
 # ===========================================================================
-# DEVOPS GROUP (devops worktree)
+# DEVOPS GROUP
 # ===========================================================================
 
-devops_group = typer.Typer(help="DevOps tools: git worktrees", no_args_is_help=True)
+devops_group = typer.Typer(help="DevOps tools", no_args_is_help=True)
 app.add_typer(devops_group, name="devops")
 
-worktree_app = typer.Typer(help="Manage git worktrees with planning folder integration", no_args_is_help=True)
-devops_group.add_typer(worktree_app, name="worktree")
-devops_group.add_typer(worktree_app, name="wt", hidden=True)
+@devops_group.command("worktree", context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def worktree_deprecated(ctx: typer.Context):
+    """[DEPRECATED] The worktree system has been removed."""
+    _dispatch("worktree", _ns(command="worktree", worktree_command="deprecated"), require_project=False)
 
 
-def _worktree_handle(args):
-    _dispatch("worktree", args, require_project=True)
-
-
-@worktree_app.command("create")
-def worktree_create(
-    branch: str = typer.Argument(..., help="Branch name for the new worktree"),
-    base: Annotated[str, typer.Option("--base", "-b", help="Base branch")] = "main",
-    no_plan: Annotated[bool, typer.Option("--no-plan", help="Skip planning folder creation")] = False,
-    abbreviation: Annotated[Optional[str], typer.Option("--abbreviation", "-a", help="2-letter abbreviation")] = None,
-    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Human-readable description")] = None,
-):
-    """Create a new worktree with planning folder."""
-    _worktree_handle(_ns(
-        command="worktree", worktree_command="create",
-        json=_global["json"], debug=_global["debug"],
-        branch=branch, base=base, no_plan=no_plan,
-        abbreviation=abbreviation, description=description,
-    ))
-
-
-@worktree_app.command("list")
-def worktree_list():
-    """List all worktrees with their planning folders."""
-    _worktree_handle(_ns(command="worktree", worktree_command="list", json=_global["json"], debug=_global["debug"]))
-
-
-@worktree_app.command("remove")
-def worktree_remove(
-    branch: str = typer.Argument(..., help="Branch name of the worktree to remove"),
-    force: Annotated[bool, typer.Option("--force", "-f", help="Force removal")] = False,
-):
-    """Remove a worktree."""
-    _worktree_handle(_ns(
-        command="worktree", worktree_command="remove",
-        json=_global["json"], debug=_global["debug"],
-        branch=branch, force=force,
-    ))
-
-
-@worktree_app.command("status")
-def worktree_status():
-    """Show detailed status of current worktree."""
-    _worktree_handle(_ns(command="worktree", worktree_command="status", json=_global["json"], debug=_global["debug"]))
-
-
-@worktree_app.command("validate")
-def worktree_validate():
-    """Validate worktree-plan synchronization."""
-    _worktree_handle(_ns(command="worktree", worktree_command="validate", json=_global["json"], debug=_global["debug"]))
-
-
-@worktree_app.command("sync")
-def worktree_sync():
-    """Synchronize workspace file with actual worktrees."""
-    _worktree_handle(_ns(
-        command="worktree", worktree_command="sync",
-        json=_global["json"], debug=_global["debug"],
-    ))
+@devops_group.command("wt", hidden=True, context_settings={"allow_extra_args": True, "allow_interspersed_args": False})
+def worktree_deprecated_alias(ctx: typer.Context):
+    """[DEPRECATED] The worktree system has been removed."""
+    _dispatch("worktree", _ns(command="worktree", worktree_command="deprecated"), require_project=False)
 
 
 # ===========================================================================
 # SESSION
 # ===========================================================================
 
-session_app = typer.Typer(help="Manage Claude Code sessions, orchestration, loops, and agents", no_args_is_help=True)
+session_app = typer.Typer(help="Manage Claude Code sessions, orchestration, and agents", no_args_is_help=True)
 app.add_typer(session_app, name="session")
 
-# --- Ralph (nested under session) ---
-from agenticcli.commands.ralph import app as ralph_app
-session_app.add_typer(ralph_app, name="ralph")
 
 
 def _session_handle(args):
@@ -628,9 +571,10 @@ def session_spawn(
     max_turns: Annotated[Optional[int], typer.Option("--max-turns", "-m", help="Maximum agentic turns")] = None,
     background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
-    worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path (alias for --directory)")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option(
         "--dangerously-skip-permissions", help="Skip permission prompts")] = False,
+    no_sdk: Annotated[bool, typer.Option(
+        "--no-sdk", help="Force subprocess mode (skip SDK)")] = False,
 ):
     """Spawn a new Claude Code session with a prompt."""
     # Mutual exclusion check (--role and --task cannot both be set)
@@ -639,20 +583,14 @@ def session_spawn(
         print_error("--role and --task are mutually exclusive.")
         raise typer.Exit(1)
 
-    # Mutual exclusion check (--worktree and --directory cannot both be set)
-    if worktree and directory:
-        from agenticcli.console import print_error
-        print_error("--worktree and --directory are mutually exclusive.")
-        raise typer.Exit(1)
-    effective_directory = worktree or directory
-
     _session_handle(_ns(
         command="session", session_command="spawn",
         json=_global["json"], debug=_global["debug"],
         prompt=prompt, role=role, task=task, plan=plan,
         max_turns=max_turns, background=background,
-        directory=effective_directory,
+        directory=directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
+        no_sdk=no_sdk,
     ))
 
 
@@ -678,29 +616,18 @@ def session_stop(
     ))
 
 
-@session_app.command("status")
-def session_status(
-    session_id: str = typer.Argument(..., help="Session ID to check"),
-    show_output: Annotated[bool, typer.Option("--show-output", "-o", help="Display captured output")] = False,
-):
-    """Get detailed status of a session."""
-    _session_handle(_ns(
-        command="session", session_command="status",
-        json=_global["json"], debug=_global["debug"],
-        session_id=session_id, show_output=show_output,
-    ))
-
-
-@session_app.command("health")
-def session_health(
+@session_app.command("healthcheck")
+def session_healthcheck(
     session_id: Annotated[str, typer.Argument(help="Session ID (or prefix)")],
     json_output: Annotated[bool, typer.Option("-j", "--json", help="JSON output")] = False,
+    diagnose: Annotated[bool, typer.Option("--diagnose", help="Auto-spawn diagnostic planner for unhealthy sessions")] = False,
 ):
     """Check health and vitality of a session."""
     _session_handle(_ns(
-        command="session", session_command="health",
+        command="session", session_command="healthcheck",
         json=_global["json"], debug=_global["debug"],
         session_id=session_id, json_output=json_output,
+        diagnose=diagnose,
     ))
 
 
@@ -722,6 +649,10 @@ def session_logs(
 
 orchestrate_app = typer.Typer(help="Run automated orchestration commands", no_args_is_help=True)
 session_app.add_typer(orchestrate_app, name="orchestrate")
+
+# --- Ralph (nested under orchestrate) ---
+from agenticcli.commands.ralph import app as ralph_app
+orchestrate_app.add_typer(ralph_app, name="ralph")
 
 
 @orchestrate_app.command("planning")
@@ -768,80 +699,6 @@ def session_orchestrate_executing(
         project=project, directory=directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
         dry_run=False,
-    ))
-
-
-# ===========================================================================
-# LOOP
-# ===========================================================================
-
-loop_app = typer.Typer(help="Manage Ralph Loops (iterative agent execution)", no_args_is_help=True)
-session_app.add_typer(loop_app, name="loop")
-
-
-
-def _loop_handle(args):
-    _dispatch("loop", args)
-
-
-@loop_app.command("start")
-def loop_start(
-    prompt: Annotated[Optional[str], typer.Option("--prompt", "-p", help="Direct prompt string")] = None,
-    prompt_file: Annotated[Optional[str], typer.Option("--prompt-file", "-f", help="Read prompt from file")] = None,
-    entrypoint: Annotated[Optional[str], typer.Option("--entrypoint", "-e", help="Entrypoint reference")] = None,
-    max_iterations: Annotated[int, typer.Option("--max-iterations", "-m", help="Max iterations")] = 10,
-    completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
-    background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
-    directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
-    worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path (alias for --directory)")] = None,
-    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output file path")] = None,
-    dangerously_skip_permissions: Annotated[bool, typer.Option(
-        "--dangerously-skip-permissions", help="Skip permission prompts")] = False,
-):
-    """Start a Ralph Loop with a prompt."""
-    # Mutual exclusion check (--worktree and --directory cannot both be set)
-    if worktree and directory:
-        from agenticcli.console import print_error
-        print_error("--worktree and --directory are mutually exclusive.")
-        raise typer.Exit(1)
-    effective_directory = worktree or directory
-
-    _loop_handle(_ns(
-        command="loop", loop_command="start",
-        json=_global["json"], debug=_global["debug"],
-        prompt=prompt, prompt_file=prompt_file, entrypoint=entrypoint,
-        max_iterations=max_iterations, completion_promise=completion_promise,
-        background=background, directory=effective_directory, output=output,
-        dangerously_skip_permissions=dangerously_skip_permissions,
-    ))
-
-
-@loop_app.command("stop")
-def loop_stop(
-    loop_id: str = typer.Argument(..., help="Loop ID to stop"),
-    force: Annotated[bool, typer.Option("--force", "-f", help="Force kill")] = False,
-):
-    """Stop a running loop."""
-    _loop_handle(_ns(command="loop", loop_command="stop", json=_global["json"], debug=_global["debug"], loop_id=loop_id, force=force))
-
-
-@loop_app.command("status")
-def loop_status(loop_id: str = typer.Argument(..., help="Loop ID to check")):
-    """Display detailed status of a loop."""
-    _loop_handle(_ns(command="loop", loop_command="status", json=_global["json"], debug=_global["debug"], loop_id=loop_id))
-
-
-@loop_app.command("history")
-def loop_history(
-    active: Annotated[bool, typer.Option("--active", "-a", help="Show only active loops")] = False,
-    status: Annotated[Optional[str], typer.Option("--status", "-s", help="Filter by status")] = None,
-    limit: Annotated[int, typer.Option("--limit", "-l", help="Max loops to show")] = 20,
-):
-    """Show past loop executions."""
-    _loop_handle(_ns(
-        command="loop", loop_command="history",
-        json=_global["json"], debug=_global["debug"],
-        active=active, status=status, limit=limit,
     ))
 
 
@@ -2043,24 +1900,23 @@ def agent_plan_validate(
 @agent_plan_app.command("scaffold")
 def agent_plan_scaffold(
     name: str = typer.Argument(..., help="Folder name"),
-    worktree: Annotated[Optional[str], typer.Option("--worktree", "-w", help="Worktree path")] = None,
 ):
     """Create planning folder structure."""
     _plan_handle(_ns(
         command="plan", plan_command="scaffold",
         json=_global["json"], debug=_global["debug"],
-        name=name, worktree=worktree,
+        name=name,
     ))
 
 
 @agent_plan_app.command("init")
 def agent_plan_init(
-    branch: str = typer.Argument(..., help="Branch name for worktree"),
+    branch: str = typer.Argument(..., help="Branch name for the plan"),
     description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan description")] = None,
     base: Annotated[str, typer.Option("--base", "-b", help="Base branch")] = "main",
     objective: Annotated[Optional[str], typer.Option("--objective", "-o", help="Plan objective")] = None,
 ):
-    """Initialize worktree and plan folder with proper naming."""
+    """Initialize a plan folder with proper naming convention."""
     _plan_handle(_ns(
         command="plan", plan_command="init",
         json=_global["json"], debug=_global["debug"],
@@ -2087,7 +1943,7 @@ def agent_plan_new(
     objective: Annotated[Optional[str], typer.Argument(help="Planning objective description")] = None,
     branch: Annotated[Optional[str], typer.Option("--branch", "-b", help="Git branch name (auto-generated from objective if omitted)")] = None,
     description: Annotated[Optional[str], typer.Option("--description", "-d", help="Plan folder description suffix")] = None,
-    base: Annotated[str, typer.Option("--base", help="Base branch for worktree")] = "main",
+    base: Annotated[str, typer.Option("--base", help="Base branch for the plan")] = "main",
     execute: Annotated[bool, typer.Option("--execute", "-x", help="Auto-execute after planning completes")] = False,
     max_turns: Annotated[int, typer.Option("--max-turns", help="Max turns for planner agent")] = 25,
     dangerously_skip_permissions: Annotated[bool, typer.Option(

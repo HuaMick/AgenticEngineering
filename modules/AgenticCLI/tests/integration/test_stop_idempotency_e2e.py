@@ -1,12 +1,10 @@
 """End-to-end integration tests for stop command idempotency.
 
-Tests that multiple consecutive stop calls on the same session/loop
+Tests that multiple consecutive stop calls on the same session
 return success without errors.
 """
 
 import json
-import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -18,14 +16,6 @@ def sessions_dir(tmp_path):
     sessions_dir = tmp_path / ".agentic" / "sessions"
     sessions_dir.mkdir(parents=True)
     return sessions_dir
-
-
-@pytest.fixture
-def loops_dir(tmp_path):
-    """Create a temporary sessions directory (unified store for loops)."""
-    loops_dir = tmp_path / ".agentic" / "sessions"
-    loops_dir.mkdir(parents=True)
-    return loops_dir
 
 
 class TestSessionStopIdempotencyE2E:
@@ -130,89 +120,6 @@ class TestSessionStopIdempotencyE2E:
         session.cmd_stop(args2)
         captured2 = capsys.readouterr()
         assert "terminal state" in captured2.out
-
-
-class TestLoopStopIdempotencyE2E:
-    """End-to-end tests for loop stop idempotency."""
-
-    def test_loop_stop_twice_returns_success(self, loops_dir, monkeypatch):
-        """Test that calling loop stop twice on same loop returns success."""
-        from agenticcli.commands import loop
-
-        monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
-
-        loop_data = {
-            "session_id": "test-loop-12345678",
-            "type": "loop",
-            "pid": 99999,
-            "prompt": "Test loop",
-            "prompt_source": "string",
-            "max_iterations": 10,
-            "current_iteration": 10,
-            "status": "completed",
-            "started_at": "2024-01-15T10:00:00",
-            "ended_at": "2024-01-15T10:30:00",
-            "background": False,
-            "working_dir": "/tmp",
-            "command": "claude --print --max-turns 10 --prompt Test loop",
-            "iterations": [],
-        }
-        loop._store.save(loop_data)
-
-        from types import SimpleNamespace
-
-        # First stop call
-        args1 = SimpleNamespace(loop_id="test-loop", force=False)
-        loop.cmd_stop(args1)  # Should succeed
-
-        # Second stop call
-        args2 = SimpleNamespace(loop_id="test-loop", force=False)
-        loop.cmd_stop(args2)  # Should also succeed
-
-    def test_loop_stop_multiple_times_json_output(
-        self, loops_dir, monkeypatch, capsys
-    ):
-        """Test multiple stop calls with JSON output."""
-        from agenticcli.commands import loop
-        from unittest.mock import patch
-
-        monkeypatch.setattr(loop._store, "get_dir", lambda override=None: loops_dir)
-
-        loop_data = {
-            "session_id": "json-loop-87654321",
-            "type": "loop",
-            "pid": 99998,
-            "prompt": "Test loop",
-            "prompt_source": "string",
-            "max_iterations": 5,
-            "current_iteration": 5,
-            "status": "stopped",
-            "started_at": "2024-01-15T10:00:00",
-            "ended_at": "2024-01-15T10:15:00",
-            "background": False,
-            "working_dir": "/tmp",
-            "command": "claude --print Test loop",
-            "iterations": [],
-        }
-        loop._store.save(loop_data)
-
-        from types import SimpleNamespace
-
-        # Call stop twice with JSON output
-        with patch("agenticcli.console.is_json_output", return_value=True):
-            # First stop
-            args1 = SimpleNamespace(loop_id="json-loop", force=False)
-            loop.cmd_stop(args1)
-            captured1 = capsys.readouterr()
-            output1 = json.loads(captured1.out)
-            assert output1["success"] is True
-
-            # Second stop
-            args2 = SimpleNamespace(loop_id="json-loop", force=False)
-            loop.cmd_stop(args2)
-            captured2 = capsys.readouterr()
-            output2 = json.loads(captured2.out)
-            assert output2["success"] is True
 
 
 class TestCrossCommandIdempotency:

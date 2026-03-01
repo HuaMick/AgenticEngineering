@@ -3,7 +3,7 @@ _template_status: active
 name: TinyDB-First Migration - User Story Validation & Testing
 worktree_path: /home/code/AgenticEngineering
 branch: main
-status: pending
+status: completed
 
 objective: |
   Validate the TinyDB-first migration against user stories US-GD-200 through
@@ -31,7 +31,8 @@ affected_stories:
 
 phases:
 - name: Phase 1 - Update User Stories
-  status: pending
+  status: completed
+  completed_date: '2026-02-24'
   execution: sequential
   description: |
     Update user stories to reflect actual implementation. Key corrections:
@@ -42,24 +43,19 @@ phases:
   tasks:
   - id: USU_001
     name: Update US-GD-200 through US-GD-206 to match implementation
-    status: pending
+    status: completed
+    completed_date: '2026-02-24'
     agent: build-python
     description: |
       Read each story in docs/userstories/AgenticGuidance/10_tinydb_migration.yml
-      and update acceptance criteria to match what was actually built:
-      - US-GD-200: Add FileLock on all writes, add phase CRUD, add archive/unarchive/cancel
-      - US-GD-201: Add get_task_counts, check_all_tasks_complete, get_plan_branch
-      - US-GD-202: sync_to_yaml() method, auto-import on read miss
-      - US-GD-203: TinyDB-first with YAML fallback pattern, folder_matches guard
-      - US-GD-204: Read-through auto-import replaces explicit migration
-      - US-GD-205: Change to repo-local .agentic/plans.db, not ~/.agentic/
-      - US-GD-206: Add resurrection detection (completed/ vs live/ mismatch)
+      and update acceptance criteria to match what was actually built.
     target_files:
     - docs/userstories/AgenticGuidance/10_tinydb_migration.yml
 
   - id: USU_002
     name: Verify CLI plan management stories still accurate
-    status: pending
+    status: completed
+    completed_date: '2026-02-24'
     agent: build-python
     description: |
       Check docs/userstories/AgenticCLI/02_plan_management.yml stories
@@ -69,89 +65,69 @@ phases:
     - docs/userstories/AgenticCLI/02_plan_management.yml
 
 - name: Phase 2 - User Story Acceptance Testing
-  status: pending
+  status: completed
+  completed_date: '2026-02-24'
   execution: sequential
   description: |
-    Run acceptance tests for each user story. For each story:
-    1. Read acceptance criteria
-    2. Write or verify test that exercises each criterion
-    3. Run tests and confirm pass
-    4. Update test_status and last_tested fields
+    Run acceptance tests for each user story. 129 total UAT tests created and passed.
+    Defect found: .agentic/ missing from .gitignore (fixed).
   tasks:
   - id: UAT_001
     name: Test US-GD-200 - PlanRepository CRUD Operations
-    status: pending
+    status: completed
+    completed_date: '2026-02-24'
     agent: test-builder
     description: |
-      Verify PlanRepository CRUD:
-      - create_plan, get_plan, update_plan, delete_plan
-      - All operations via TinyDB
-      - Atomic writes with FileLock
-      - Phase CRUD: add_phase, update_phase, list_phases, get_phase
-      - Lifecycle: archive_plan, unarchive_plan, cancel_plan
-      Check existing tests in test_plan_repository_filelock.py and
-      test_services_plan_service_integration.py.
-    target_files:
-    - modules/AgenticGuidance/tests/test_plan_repository_filelock.py
-    - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
+      101 tests in test_uat_tinydb_crud.py covering all CRUD, phase CRUD,
+      lifecycle operations, helper queries, and FileLock verification.
 
   - id: UAT_002
     name: Test US-GD-201 - Task Storage and Queries
-    status: pending
+    status: completed
+    completed_date: '2026-02-24'
     agent: test-builder
     description: |
-      Verify task operations via TinyDB:
-      - add_task, get_task, update_task_status, get_tasks (with status filter)
-      - get_current_task (first in_progress, then first pending)
-      - get_task_counts returns correct totals
-      - check_all_tasks_complete returns correct boolean
+      Covered in test_uat_tinydb_crud.py - task add/get/update/filter,
+      get_current_task priority, task counts, expanded fields.
 
   - id: UAT_003
     name: Test US-GD-202 - YAML Import/Export
-    status: pending
+    status: completed
+    completed_date: '2026-02-24'
     agent: test-builder
     description: |
-      Verify round-trip YAML fidelity:
-      - sync_to_yaml() writes plan data to plan_build.yml format
-      - Auto-import from YAML on TinyDB cache miss
-      - YAML -> TinyDB -> YAML preserves all fields
-      - Phases, tasks, metadata all survive round-trip
+      11 tests in test_uat_tinydb_yaml_compat.py covering sync_to_yaml,
+      read-through auto-import, and round-trip preservation.
 
   - id: UAT_004
     name: Test US-GD-203 - CLI Commands Use PlanRepository
-    status: pending
+    status: completed
+    completed_date: '2026-02-24'
     agent: test-runner
     description: |
-      Run the full CLI test suite and verify TinyDB-first paths work:
-      - python3 -m pytest modules/AgenticCLI/tests/ --tb=short -q
-      - Verify 0 failures
-      - Spot-check that plan task list, task add, phase add, etc. all
-        hit TinyDB-first with YAML fallback
+      Full CLI test suite: 1616 passed, 0 failed, 8 skipped.
 
   - id: UAT_005
     name: Test US-GD-205 - Database Location (repo-local)
-    status: pending
+    status: completed
+    completed_date: '2026-02-24'
     agent: test-builder
     description: |
-      Verify DB is created at .agentic/plans.db in the repo root,
-      NOT at ~/.agentic/plans.db. Test that:
-      - PlanRepository() creates DB in repo-local .agentic/ dir
-      - .agentic/ is in .gitignore
-      - Multiple repos each get their own plans.db
+      7 tests in test_uat_tinydb_yaml_compat.py. Defect found and fixed:
+      .agentic/ was missing from .gitignore.
 
   - id: UAT_006
     name: Test US-GD-206 - Backward Compatibility
-    status: pending
+    status: completed
+    completed_date: '2026-02-24'
     agent: test-builder
     description: |
-      Verify fallback behavior:
-      - When TinyDB has no record, CLI falls back to YAML reads
-      - When TinyDB path fails (exception), CLI falls back to YAML
-      - folder_matches guard prevents cross-plan data leaks
-      - Tests using tmp_path get proper isolation from global DB
+      10 tests in test_uat_tinydb_yaml_compat.py covering YAML fallback,
+      folder_matches guard, resurrection detection, yaml_sync_enabled flag.
 
 - name: Phase 3 - Update Story Status
-  status: pending
+  status: completed
+  completed_date: '2026-02-24'
   execution: sequential
   description: |
     After all acceptance tests pass, update the test_status and
@@ -159,16 +135,12 @@ phases:
   tasks:
   - id: STS_001
     name: Mark tested stories as passing
-    status: pending
+    status: completed
+    completed_date: '2026-02-24'
     agent: build-python
     description: |
-      For each story that passed acceptance testing:
-      - Set test_status: passing
-      - Set last_tested: "2026-02-24"
-      - Set tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
-      Update both:
-      - docs/userstories/AgenticGuidance/10_tinydb_migration.yml
-      - docs/userstories/AgenticCLI/02_plan_management.yml
+      Updated test_status: passing, last_tested: 2026-02-24, and
+      tested_by_plan fields in both user story files.
     target_files:
     - docs/userstories/AgenticGuidance/10_tinydb_migration.yml
     - docs/userstories/AgenticCLI/02_plan_management.yml
