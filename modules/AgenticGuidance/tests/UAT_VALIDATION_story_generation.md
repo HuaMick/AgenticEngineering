@@ -12,9 +12,9 @@
 1. User invokes: agentic entrypoint _plan_build.yml
 2. orchestration-planning discovers affected user stories via `agentic stories find`
 3. planner-build generates NEW user stories from objective (if stories missing)
-4. planner-build creates plan_live_build.yml with affected_stories field populated
-5. planner-build creates plan_live_build.yml with story generation tasks if new stories needed
-6. planner-build creates plan_live_build.yml with task inputs reference story files for context
+4. planner-build creates ticket_build.yml with affected_stories field populated
+5. planner-build creates ticket_build.yml with story generation tasks if new stories needed
+6. planner-build creates ticket_build.yml with ticket inputs reference story files for context
 7. planner-test creates test plan with UAT phase targeting the generated stories
 8. planner-test creates test plan with acceptance criteria from story success_criteria
 9. orchestration-executor validates stories exist before UAT execution

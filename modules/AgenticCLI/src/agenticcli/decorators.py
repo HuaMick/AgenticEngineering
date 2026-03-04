@@ -21,11 +21,11 @@ class StabilityLevel(str, Enum):
 # All commands are now STABLE as of iteration-28
 COMMAND_STABILITY: dict[str, StabilityLevel] = {
     # "manifest": StabilityLevel.STABLE,  # Matured in iteration-28
-    # Task subcommands - new in Phase 5
-    "plan.task.prefill": StabilityLevel.EXPERIMENTAL,
-    "plan.task.list": StabilityLevel.EXPERIMENTAL,
-    "plan.task.status": StabilityLevel.EXPERIMENTAL,
-    "plan.task.add": StabilityLevel.EXPERIMENTAL,
+    # Ticket subcommands - renamed from plan.task.* in epic/ticket remap
+    "epic.ticket.prefill": StabilityLevel.EXPERIMENTAL,
+    "epic.ticket.list": StabilityLevel.EXPERIMENTAL,
+    "epic.ticket.status": StabilityLevel.EXPERIMENTAL,
+    "epic.ticket.add": StabilityLevel.EXPERIMENTAL,
 }
 
 

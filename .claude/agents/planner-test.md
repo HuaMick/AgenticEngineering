@@ -66,12 +66,12 @@ US-INSTALL-* user stories MANDATORY when changes touch:
 1. Run CCI bootstrap first:
    ```bash
    agentic agent context bootstrap --role planner-test -j
-   agentic agent plan task current -j
+   agentic agent epic ticket current -j
    ```
 
 2. Validate required inputs:
-   - planning_folder: Absolute path to planning folder
-   - build_phases: List of build phase plan files to test
+   - epic_folder_name: Epic folder name in YYMMDDXX_description format
+   - build_phases: List of build phase ticket files to test
 
 3. Read all phase .yml files in live/ to understand what was built
 
@@ -81,8 +81,8 @@ US-INSTALL-* user stories MANDATORY when changes touch:
 
 ## Outputs
 
-- **plan_test.yml**: Test phases plan with test-fix-loop and audit patterns
-- Location: docs/plans/live/{planning_folder}/live/
+- **ticket_test.yml**: Test phases plan with test-fix-loop and audit patterns
+- Location: docs/epics/live/{epic_folder_name}/live/
 
 ## Boundaries
 

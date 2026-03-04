@@ -1,0 +1,211 @@
+name: remap-plan-task-to-epic-ticket-uat
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: planning
+objective: 'User acceptance testing for the epic/ticket terminology migration.
+
+  Validates complete end-to-end user workflows work correctly with the new
+
+  epic/ticket commands, and that the migration is transparent to users
+
+  familiar with Jira/Agile conventions.
+
+
+  DEPENDENCY: plan_cleaning.yml must be fully completed.
+
+
+  UAT SCOPE:
+
+  - Complete epic lifecycle workflow (create, work on, archive)
+
+  - Agent spawning via epic context (agentic session spawn --epic)
+
+  - Orchestration planning workflow (orchestration-planning creates epics)
+
+  - Ralph loop discovering and acting on epics
+
+  - Worktree integration with epic folders
+
+  '
+phases:
+- name: Core Epic Lifecycle UAT
+  description: 'Validate the complete epic management workflow via CLI.
+
+    '
+  execution: sequential
+  tasks:
+  - id: uat_01
+    name: Validate epic creation workflow
+    description: "Test the complete epic creation workflow:\n1. agentic agent epic\
+      \ init test-branch --description test_epic_uat\n   Verify: exits 0, creates\
+      \ docs/epics/live/YYMMDDTT_test_epic_uat/\n   Verify: JSON output includes epic_folder,\
+      \ epic_folder_name\n2. agentic epic list\n   Verify: Shows the newly created\
+      \ epic\n3. agentic epic status <epic_folder>\n   Verify: Shows ticket counts\
+      \ and status\n4. agentic agent epic validate <epic_folder>\n   Verify: Validates\
+      \ epic structure\n5. Verify epic folder has correct structure:\n   - README.md\
+      \ at root\n   - ticket_build.yml scaffold at root (or no files - empty epic)\n\
+      \   - No docs/plans/ directories created accidentally\n"
+    status: completed
+    agent: test-user-simulator
+    inputs: []
+    target_files: []
+    success_criteria:
+    - agentic agent epic init exits 0
+    - docs/epics/live/YYMMDDTT_test_epic_uat/ created
+    - agentic epic list shows the new epic
+    - Epic structure is flat (ticket files at root)
+    completed_date: '2026-03-03'
+  - id: uat_02
+    name: Validate ticket management workflow
+    description: "Given an epic with a ticket_build.yml containing tasks:\n1. agentic\
+      \ agent epic ticket list --epic <epic_folder>\n   Verify: Lists all tickets\n\
+      2. agentic agent epic ticket current --epic <epic_folder>\n   Verify: Returns\
+      \ first pending ticket\n3. agentic agent epic ticket start <ticket_id> --epic\
+      \ <epic_folder>\n   Verify: Marks ticket as in_progress\n4. agentic agent epic\
+      \ ticket complete <ticket_id> --epic <epic_folder>\n   Verify: Marks ticket\
+      \ as completed, triggers auto-archive if last ticket\n5. agentic epic status\
+      \ <epic_folder>\n   Verify: Shows updated ticket counts\n\nAlso verify the OLD\
+      \ commands show errors:\n6. agentic plan task start <task_id> --plan <epic_folder>\n\
+      \   Verify: Shows \"Removed: use agentic epic ticket start\" error (exit 1)\n"
+    status: completed
+    agent: test-user-simulator
+    inputs: []
+    target_files: []
+    success_criteria:
+    - Ticket CRUD operations all work via agentic agent epic ticket
+    - Auto-archive triggered when all tickets complete
+    - Old agentic plan task commands show removal error
+    completed_date: '2026-03-03'
+  - id: uat_03
+    name: Validate epic archival and listing workflow
+    description: "Test the complete epic archival workflow:\n1. agentic agent epic\
+      \ archive <epic_folder>\n   Verify: Copies to docs/epics/completed/\n   Verify:\
+      \ TinyDB updated with completed status\n2. agentic epic list\n   Verify: Shows\
+      \ all epics (live and completed)\n3. agentic agent epic unarchive <epic_name>\n\
+      \   Verify: Moves back to docs/epics/live/\n4. agentic epic cancel <epic_folder>\n\
+      \   Verify: Marks epic as cancelled\n5. Verify docs/plans/ directory does NOT\
+      \ exist\n"
+    status: completed
+    agent: test-user-simulator
+    inputs: []
+    target_files: []
+    success_criteria:
+    - Archive/unarchive workflow works
+    - docs/epics/completed/ used (not docs/plans/completed/)
+    - No docs/plans/ directory present
+    completed_date: '2026-03-03'
+- name: Agent Integration UAT
+  description: 'Validate that agents correctly use epic terminology when spawned.
+
+    '
+  execution: sequential
+  tasks:
+  - id: uat_04
+    name: Validate agent spawning with epic context
+    description: "Test agent spawn with epic context:\n1. agentic session spawn --role\
+      \ build-python --epic <epic_folder> --dry-run\n   Verify: Prompt includes epic_folder\
+      \ reference, not plan_folder\n   Verify: Prompt uses \"epic\" and \"ticket\"\
+      \ vocabulary\n2. agentic session spawn --role orchestration-planning --epic\
+      \ <epic_folder> --dry-run\n   Verify: Orchestration planning agent receives\
+      \ epic context\n3. agentic agent context bootstrap --role build-python -j\n\
+      \   Verify: Returns epic_folder in JSON (not plan_folder)\nNote: --dry-run mode\
+      \ should show the prompt without actually spawning.\n"
+    status: completed
+    agent: test-user-simulator
+    inputs: []
+    target_files: []
+    success_criteria:
+    - Agent prompts reference epic_folder
+    - Context bootstrap returns epic vocabulary
+    - No "plan_folder" in generated prompts
+    completed_date: '2026-03-03'
+  - id: uat_05
+    name: Validate Ralph loop discovers epics
+    description: "Test Ralph loop integration:\n1. Verify docs/epics/live/ is scanned\
+      \ (not docs/plans/live/)\n2. agentic session orchestrate ralph status -j\n \
+      \  Verify: Shows EpicInfo objects with correct paths\n3. Verify Ralph prioritizes\
+      \ epics correctly based on new paths\n4. Create an epic with no MMD, verify\
+      \ Ralph detects it as needs_planning\n"
+    status: completed
+    agent: test-user-simulator
+    inputs: []
+    target_files: []
+    success_criteria:
+    - Ralph discovers epics from docs/epics/live/
+    - EpicInfo objects have correct paths
+    - needs_planning detection works for new epics
+    completed_date: '2026-03-03'
+  - id: uat_06
+    name: Validate orchestration planning creates epics with ticket files
+    description: 'Verify the orchestration-planning agent correctly creates epics:
+
+      1. Spawn orchestration-planning with a test objective
+
+      2. Verify it creates docs/epics/live/YYMMDDXX_description/
+
+      3. Verify ticket files are created as ticket_build.yml (not plan_build.yml)
+
+      4. Verify the orchestration MMD is created correctly
+
+      5. Verify planner-reviewer approves the epic structure
+
+      This is a live agent spawn test - verify from output only, do not
+
+      run actual implementation. Use --dry-run if available.
+
+      '
+    status: completed
+    agent: test-user-simulator
+    inputs: []
+    target_files: []
+    success_criteria:
+    - orchestration-planning creates docs/epics/live/ folders
+    - Ticket files named ticket_*.yml
+    - Epic structure validates successfully
+    - Planner-reviewer recognizes ticket files
+    completed_date: '2026-03-03'
+- name: Backward Compatibility UAT
+  description: 'Verify that old commands fail gracefully with clear error messages,
+
+    not silently or confusingly.
+
+    '
+  execution: sequential
+  tasks:
+  - id: uat_07
+    name: Validate backward compatibility error messages
+    description: "Test that old plan/task commands give clear, actionable errors:\n\
+      1. agentic plan list\n   Verify: Error message \"Command removed. Use: agentic\
+      \ epic list\"\n   Verify: Exit code 1\n2. agentic plan task start t01 --plan\
+      \ myfolder\n   Verify: Error message pointing to agentic epic ticket start\n\
+      3. agentic agent plan task current --plan myfolder\n   Verify: Clear redirect\
+      \ message\n4. agentic plan status\n   Verify: Redirect to agentic epic status\n\
+      \nAll error messages must be user-friendly and include the\nexact new command\
+      \ to use as a replacement.\n"
+    status: completed
+    agent: test-user-simulator
+    inputs: []
+    target_files: []
+    success_criteria:
+    - All old commands exit 1 with actionable error message
+    - Error messages include exact new command syntax
+    - No silent failures or cryptic error messages
+    completed_date: '2026-03-03'
+loop_structure:
+  type: user-story-validation-loop
+  trigger: UAT phase begins after cleanup completes
+  exit_criteria:
+    success: All user acceptance scenarios pass without errors
+    max_iterations: 3
+    escalation: escalate_to_human
+  participants:
+  - agent: test-user-simulator
+    role: executor
+  - agent: planner-reviewer
+    role: validator
+affected_stories:
+- CLM-002
+- CLM-003
+- CLM-004
+- ORH-001
+- ORH-002

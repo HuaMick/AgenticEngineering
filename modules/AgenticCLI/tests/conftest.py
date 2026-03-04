@@ -25,6 +25,40 @@ def _block_real_ntfy():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _isolate_tinydb(tmp_path):
+    """Safety net: redirect all TinyDB writes to a per-test temp directory.
+
+    Prevents tests from polluting the repo-local (.agentic/epics.db) or
+    home-directory (~/.agentic/epics.db) TinyDB databases.
+
+    Patches the two entry points that determine the DB file path:
+    - agenticcli.commands.epic._get_repo_db_path: used by cmd_init, cmd_list,
+      cmd_db_sync, cmd_db_status, and helpers like _get_repo().
+    - agenticguidance.services.epic.EpicService._find_repo_root: used by
+      EpicService.__init__ to derive the repo-local db_path.
+
+    The temp DB is placed at tmp_path/.agentic/epics.db so that path resolution
+    helpers that walk up looking for .git can also be satisfied when a test has
+    set up a real git repo inside tmp_path.
+    """
+    isolated_db_path = tmp_path / ".agentic" / "epics.db"
+    isolated_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Patch _find_repo_root at class level so all EpicService instances use tmp_path
+    from agenticguidance.services.epic import EpicService
+
+    def _isolated_find_repo_root(start=None):
+        return tmp_path
+
+    with patch(
+        "agenticcli.commands.epic._get_repo_db_path",
+        return_value=isolated_db_path,
+    ):
+        with patch.object(EpicService, "_find_repo_root", staticmethod(_isolated_find_repo_root)):
+            yield isolated_db_path
+
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for tests."""
@@ -47,15 +81,15 @@ def temp_repo(temp_dir):
     repo_dir = temp_dir / "repo"
     repo_dir.mkdir()
 
-    # Create docs/plans/live structure
-    plans_live = repo_dir / "docs" / "plans" / "live"
-    plans_live.mkdir(parents=True)
+    # Create docs/epics/live structure
+    epics_live = repo_dir / "docs" / "epics" / "live"
+    epics_live.mkdir(parents=True)
 
-    # Create a sample plan folder (flattened structure: plan files directly in folder)
-    plan_folder = plans_live / "260103AE_test"
-    plan_folder.mkdir(parents=True)
+    # Create a sample epic folder (flattened structure: plan files directly in folder)
+    epic_folder = epics_live / "260103AE_test"
+    epic_folder.mkdir(parents=True)
 
-    # Create sample plan file (flattened: directly in plan_folder)
+    # Create sample plan file (flattened: directly in epic_folder)
     sample_plan = {
         "plan": {
             "name": "Test Plan",
@@ -66,11 +100,11 @@ def temp_repo(temp_dir):
             ],
         }
     }
-    with open(plan_folder / "plan_test.yml", "w") as f:
+    with open(epic_folder / "plan_test.yml", "w") as f:
         yaml.dump(sample_plan, f)
 
     # Create a minimal orchestration MMD file (EN-006 requires it for task start)
-    (plan_folder / "orchestration_test.mmd").write_text(
+    (epic_folder / "orchestration_test.mmd").write_text(
         "flowchart TD\n  P01[Phase 1] --> P02[Phase 2]\n"
     )
 

@@ -15,14 +15,14 @@ process:
 
   outputs:
     # FENCE: Output must match declared schema before marking complete
-    - name: "plan_test.yml"
-      path_template: "docs/plans/live/{planning_folder}/plan_test.yml"
-      description: "Test phases plan file with test-fix-loop and audit-test-fix-loop patterns"
+    - name: "ticket_test.yml"
+      path_template: "docs/epics/live/{planning_folder}/ticket_test.yml"
+      description: "Test phases ticket file with test-fix-loop and audit-test-fix-loop patterns"
       required_fields:
         - "name"
         - "status"
         - "phases"         # Test phases with test-fix-loop patterns
-      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
+      schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/ticket_example.yml"
       note: "planning_folder is absolute path provided by orchestration (used in path_template)"
 
   steps:
@@ -34,8 +34,8 @@ process:
       # Get seed context (objective, process summary, inputs)
       agentic agent context bootstrap --role planner-test -j
 
-      # Get current task if working from a plan
-      agentic agent plan task current -j
+      # Get current ticket if working from an epic
+      agentic agent epic ticket current -j
       ```
 
       CLI output provides:
@@ -61,23 +61,23 @@ process:
       If ANY required input is missing, report the specific error and STOP.
       If an input is found in a different location, update the path and flag the discrepancy.
     - |
-      FENCE: PLAN FOLDER MUST EXIST BEFORE PLANNING
-      The plan folder MUST already exist at the provided planning_folder path.
+      FENCE: EPIC FOLDER MUST EXIST BEFORE PLANNING
+      The epic folder MUST already exist at the provided planning_folder path.
 
       VALIDATION STEP:
-      Before proceeding, verify the plan folder exists:
+      Before proceeding, verify the epic folder exists:
       1. Check if the provided planning_folder path exists on disk
       2. If the folder does NOT exist, STOP immediately with this message:
 
-         "FENCE VIOLATION: Plan folder not found at {planning_folder}
+         "FENCE VIOLATION: Epic folder not found at {planning_folder}
 
-          The plan folder must be created via CLI before planning can begin.
+          The epic folder must be created via CLI before planning can begin.
 
           REQUIRED ACTION:
-          Run: agentic agent plan init <branch> --description <description>
+          Run: agentic agent epic init <branch> --description <description>
 
-          The CLI creates the plan folder structure.
-          Do NOT create the plan folder directly with the Write tool.
+          The CLI creates the epic folder structure.
+          Do NOT create the epic folder directly with the Write tool.
 
           After running the CLI command, retry the planning operation."
 
@@ -117,11 +117,11 @@ process:
       If any story lacks these fields, STOP with:
       "FENCE VIOLATION: Story <id> has incomplete content (missing <field>)"
     - |
-      PLAN FOLDER STRUCTURE:
-      See modules/AgenticGuidance/assets/definitions/plans.yml for folder structure and lifecycle.
-      - Read all phase .yml files in plan folder root to understand what was built (your test targets)
-      - Create/update `plan_test.yml` with your test phases
-      - Output ONLY to `plan_test.yml` (do not modify other phase plans)
+      EPIC FOLDER STRUCTURE:
+      See modules/AgenticGuidance/assets/definitions/epics.yml for folder structure and lifecycle.
+      - Read all phase .yml files in epic folder root to understand what was built (your test targets)
+      - Create/update `ticket_test.yml` with your test phases
+      - Output ONLY to `ticket_test.yml` (do not modify other phase tickets)
     - |
       Create test plan phases following the patterns defined in inputs.yml.
       Reference user story integration guidelines from inputs.yml for:
@@ -146,7 +146,7 @@ process:
       - Use this to determine what needs to be tested and which files to include in test inputs
 
       OUTPUT TARGET (where you write):
-      - Write your test phases to `plan_test.yml` in the same planning folder
+      - Write your test phases to `ticket_test.yml` in the same planning folder
       - This file contains ONLY test phases, not build or cleanup phases
 
       DUMPING GROUND: Use additional subfolders (e.g., `analysis/`, `test-results/`) to store agent artifacts

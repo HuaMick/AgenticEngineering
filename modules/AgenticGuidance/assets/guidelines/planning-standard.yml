@@ -1,12 +1,12 @@
 guideline:
   name: "Planning Standards"
   description: |
-    Standards for plan structure and required phases. Ensures consistency across all
-    orchestration plans and mandates critical validation phases.
+    Standards for epic structure and required phases. Ensures consistency across all
+    orchestration epics and mandates critical validation phases.
 
   inputs:
     - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
-      description: "Plan status values, completion patterns, and structure definitions"
+      description: "Epic status values, completion patterns, and structure definitions"
     - location: "docs/userstories/"
       description: "User stories location - UAT must reference stories from here"
 
@@ -19,34 +19,34 @@ guideline:
       fence: |
         FENCE: STORY-FIRST PLANNING
         Story discovery MUST occur BEFORE phase determination in any planning workflow.
-        Every plan MUST identify affected user stories using `agentic stories find`
-        before creating phase plans. Stories provide the acceptance criteria that
+        Every epic MUST identify affected user stories using `agentic agent stories find`
+        before creating phase epics. Stories provide the acceptance criteria that
         drive UAT and define success.
       justification: |
-        Without early story discovery, plans risk building features that don't map
+        Without early story discovery, epics risk building features that don't map
         to user needs, and UAT phases lack concrete acceptance criteria. Story-first
         planning ensures every implementation is anchored to verifiable user outcomes.
       execution_pattern:
-        - "Run `agentic stories find [--project <project>]` to discover affected stories"
-        - "Record affected_stories in plan metadata (list of story IDs)"
+        - "Run `agentic agent stories find [--project <project>]` to discover affected stories"
+        - "Record affected_stories in epic metadata (list of story IDs)"
         - "Pass story context to downstream planner agents"
-        - "If no stories found: require no_stories_rationale field in plan metadata"
+        - "If no stories found: require no_stories_rationale field in epic metadata"
       characteristics:
         - "Story discovery runs before phase determination"
         - "Stories location: docs/userstories/"
-        - "affected_stories field is mandatory in plan metadata (or no_stories_rationale)"
+        - "affected_stories field is mandatory in epic metadata (or no_stories_rationale)"
         - "Story IDs follow US-<PROJECT>-NNN format (e.g., US-CLI-001)"
       story_lifecycle:
         discovery:
           description: "Find existing story IDs that map to the objective"
-          command: "agentic stories find [--project <name>]"
+          command: "agentic agent stories find [--project <name>]"
           output: "List of story IDs (US-PROJECT-NNN)"
           when: "ALWAYS - first step in planning workflow"
         generation:
           description: "Create new story content files when discovery finds no stories"
-          responsibility: "planner-build (for build plans), planner-guidance (for teach plans)"
+          responsibility: "planner-build (for build epics), planner-guidance (for teach epics)"
           output: "Story YAML files with journey, success_criteria, testing fields"
-          when: "When discovery returns empty AND plan type is build/test"
+          when: "When discovery returns empty AND epic type is build/test"
           escape_hatch: "Infrastructure, guidance, internal_tooling may skip with rationale"
         validation:
           description: "Verify story files exist and have complete content"
@@ -66,16 +66,16 @@ guideline:
           - "build"
           - "test"
         rules:
-          - "Plans in allowed_plan_types may proceed without stories IF no_stories_rationale is provided"
-          - "Plans in blocked_plan_types MUST have affected_stories — no escape hatch available"
+          - "Epics in allowed_plan_types may proceed without stories IF no_stories_rationale is provided"
+          - "Epics in blocked_plan_types MUST have affected_stories — no escape hatch available"
           - "Vague rationales (e.g., 'not applicable') are rejected; rationale must explain user-impact absence"
         required_field: "no_stories_rationale"
         example: |
-          # Allowed (infrastructure plan):
+          # Allowed (infrastructure epic):
           no_stories_rationale: "Internal guidance refactoring with no user-facing behavior change"
 
-          # Blocked (build plan without stories):
-          # ERROR: Build plans are blocked_plan_types — cannot skip story discovery
+          # Blocked (build epic without stories):
+          # ERROR: Build epics are blocked_plan_types — cannot skip story discovery
 
     # ========================================
     # FENCE: UAT IS MANDATORY
@@ -83,17 +83,17 @@ guideline:
     - rule: "UAT Phase Mandatory"
       mandatory: true
       fence: |
-        FENCE: UAT is MANDATORY for all plans.
-        Every orchestration plan MUST include a User Acceptance Testing (UAT) phase.
-        Plans without UAT are incomplete and must not be marked fully_completed.
+        FENCE: UAT is MANDATORY for all epics.
+        Every orchestration epic MUST include a User Acceptance Testing (UAT) phase.
+        Epics without UAT are incomplete and must not be marked fully_completed.
       justification: |
         Automated tests alone do not prove the system works for users. UAT validates
         the complete user experience against acceptance criteria defined in user stories.
         Without UAT, there is no evidence that deliverables satisfy user needs.
       characteristics:
-        - "UAT phase required regardless of plan complexity"
+        - "UAT phase required regardless of epic complexity"
         - "UAT must occur after implementation phases complete"
-        - "UAT failure blocks plan completion"
+        - "UAT failure blocks epic completion"
         - "UAT success measured against user story acceptance criteria"
 
     # ========================================
@@ -112,12 +112,12 @@ guideline:
         without story anchoring risks validating the wrong things or missing
         critical user requirements.
       execution_pattern:
-        - "Identify relevant user stories: `agentic stories find`"
+        - "Identify relevant user stories: `agentic agent stories find`"
         - "Map each story to implementation artifacts"
         - "Execute UAT against story acceptance criteria"
         - "Document pass/fail per story ID (e.g., US-CLI-001)"
       characteristics:
-        - "Stories discovered via: agentic stories find [--project <project>]"
+        - "Stories discovered via: agentic agent stories find [--project <project>]"
         - "Stories location: docs/userstories/"
         - "Each UAT test traces to specific story ID"
         - "Acceptance criteria from stories define UAT success"
@@ -130,10 +130,10 @@ guideline:
       fence: |
         FENCE: CLI SMOKE TEST REQUIREMENT
         UAT for CLI commands MUST execute the actual installed binary, not mocks.
-        Plans that modify CLI commands MUST include smoke tests that run the real
+        Epics that modify CLI commands MUST include smoke tests that run the real
         `agentic` command to verify it works as users will invoke it.
       justification: |
-        Mocking subprocess calls provides false confidence. Three plans (260214PF,
+        Mocking subprocess calls provides false confidence. Three epics (260214PF,
         260214TG, 260214US) passed UAT with mocked tests but the actual command
         execution failed. Mocked tests validate test code, not production behavior.
         Real CLI execution catches:
@@ -145,10 +145,10 @@ guideline:
         description: |
           This fence applies when ANY of the following are true:
         conditions:
-          - "Plan modifies files in modules/AgenticCLI/src/agenticcli/commands/"
-          - "Plan's impacted_files include *.py files under agenticcli/commands/"
-          - "Plan objective mentions 'CLI command' or 'agentic <command>'"
-          - "Plan has affected_stories matching US-CLI-* pattern"
+          - "Epic modifies files in modules/AgenticCLI/src/agenticcli/commands/"
+          - "Epic's impacted_files include *.py files under agenticcli/commands/"
+          - "Epic objective mentions 'CLI command' or 'agentic <command>'"
+          - "Epic has affected_stories matching US-CLI-* pattern"
       requirements:
         - "UAT MUST execute installed CLI binary (not mocked subprocess)"
         - "Smoke test MUST run at minimum: agentic <command> --help"
@@ -201,9 +201,9 @@ guideline:
     - rule: "UAT Implementation Flexibility"
       description: |
         UAT is mandatory but implementation strategy is at the planner's discretion.
-        Planners select the approach most appropriate to the plan's context.
+        Planners select the approach most appropriate to the epic's context.
       justification: |
-        Different plans have different validation needs. A CLI tool benefits from
+        Different epics have different validation needs. A CLI tool benefits from
         user simulation, while a guidance update benefits from blind testing. Rigid
         mandates on strategy would reduce effectiveness.
       implementation_options:
@@ -254,11 +254,11 @@ guideline:
   uat_phase_component:
     location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/uat_phase.mmd"
     description: |
-      Reusable UAT phase component for orchestration plans. Provides flow diagram
+      Reusable UAT phase component for orchestration epics. Provides flow diagram
       showing strategy selection, story validation fence, iteration loop, and
       exit conditions. Planners should reference this component for UAT structure.
     usage: |
-      Include in orchestration plans as the final validation phase. The component
+      Include in orchestration epics as the final validation phase. The component
       handles:
       - User story existence validation (fence)
       - Strategy selection (simulator, blind-test, doc-loop, manual)
@@ -268,11 +268,11 @@ guideline:
 
   examples:
     good:
-      - description: "Plan with properly anchored UAT"
+      - description: "Epic with properly anchored UAT"
         example: |
           phases:
             - name: "Implementation"
-              # ... implementation tasks ...
+              # ... implementation tickets ...
             - name: "UAT"
               user_stories:
                 - "US-CLI-001: User can install CLI tool"
@@ -284,7 +284,7 @@ guideline:
 
       - description: "Strategy selection based on context"
         example: |
-          # For a guidance update plan:
+          # For a guidance update epic:
           uat:
             strategy: "guidance-blind-test"
             rationale: "Testing guidance completeness - blind agent should succeed with docs alone"
@@ -292,15 +292,15 @@ guideline:
               - "US-GUIDE-001: Agent can follow process without prior context"
 
     bad:
-      - description: "Plan without UAT phase"
+      - description: "Epic without UAT phase"
         example: |
-          # WRONG: Plan ends at implementation
+          # WRONG: Epic ends at implementation
           phases:
             - name: "Build"
-              tasks: [...]
+              tickets: [...]
             - name: "Test"  # This is automated testing, NOT UAT
-              tasks: [...]
-          # Missing UAT phase - plan cannot be marked complete
+              tickets: [...]
+          # Missing UAT phase - epic cannot be marked complete
 
       - description: "UAT without user story anchoring"
         example: |

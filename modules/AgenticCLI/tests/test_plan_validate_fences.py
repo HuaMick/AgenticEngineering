@@ -1,4 +1,8 @@
-"""Tests for agentic plan validate --check-fences."""
+"""Tests for agentic plan validate --check-fences.
+
+NOTE: _check_fences has been removed from plan.py as part of the plan->epic migration.
+These tests are kept for reference but are skipped.
+"""
 
 import textwrap
 from pathlib import Path
@@ -8,7 +12,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from agenticcli.commands.plan import _check_fences
+pytest.skip("_check_fences removed from plan.py - plan commands migrated to epic commands", allow_module_level=True)
 
 
 def _write_plan_yaml(plan_dir: Path, content: dict) -> Path:

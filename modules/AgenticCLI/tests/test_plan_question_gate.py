@@ -75,8 +75,8 @@ class TestSpawnWarningOnPendingQuestions:
         plan_dir = tmp_path / "260210QP_test_plan"
         plan_dir.mkdir()
 
-        # Mock _resolve_plan_folder to return our test dir
-        monkeypatch.setattr(session_mod, "_resolve_plan_folder", lambda name: plan_dir)
+        # Mock _resolve_epic_folder to return our test dir
+        monkeypatch.setattr(session_mod, "_resolve_epic_folder", lambda name: plan_dir)
 
         # Mock has_pending_questions to return True
         monkeypatch.setattr(

@@ -1,4 +1,4 @@
-"""Orchestrate command - run automated orchestration planning and execution for plans.
+"""Orchestrate command - run automated orchestration planning and execution for epics.
 
 Provides `planning` and `executing` actions for the orchestration lifecycle.
 Supports --dry-run mode for testable tmux layout verification.
@@ -149,8 +149,8 @@ def _run_planning_loop(args, ctx=None):
     from agenticcli.workflows.orchestration import PlanningRunner
     from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-    plans_dir = Path(working_dir) / "docs" / "plans" / "live"
-    workflow = PlannerLoopWorkflow(plans_dir=plans_dir, working_dir=working_dir)
+    epics_dir = Path(working_dir) / "docs" / "epics" / "live"
+    workflow = PlannerLoopWorkflow(epics_dir=epics_dir, working_dir=working_dir)
     runner = PlanningRunner(
         workflow=workflow, project=project, plan_folder=plan_folder
     )
@@ -376,8 +376,8 @@ def _run_executing_loop(args, ctx=None):
 
     from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
 
-    plans_dir = Path(working_dir) / "docs" / "plans" / "live"
-    workflow = OrchestrationWorkflow(plans_dir=plans_dir, working_dir=working_dir)
+    epics_dir = Path(working_dir) / "docs" / "epics" / "live"
+    workflow = OrchestrationWorkflow(epics_dir=epics_dir, working_dir=working_dir)
     runner = ExecutionRunner(
         workflow=workflow,
         project=project,
@@ -431,10 +431,10 @@ def _run_executing_loop(args, ctx=None):
 
 
 def cmd_orchestrate(args, ctx=None):
-    """Run automated orchestration planning or execution.
+    """Run automated orchestration planning or execution for epics.
 
     Args:
-        args: Parsed arguments with action, plan, background, max_iterations, etc.
+        args: Parsed arguments with action, epic, background, max_iterations, etc.
         ctx: Optional CLIContext.
     """
     from agenticcli.console import print_error

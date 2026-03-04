@@ -1,5 +1,6 @@
 # CLI Commands Definition
 # Created: 2026-01-09
+# Updated: 2026-03-02 - Renamed plan->epic, task->ticket per remap plan
 # Purpose: Single source of truth for all agentic-cli commands
 # Referenced by: orchestration-executor/inputs.yml, orchestration-planning/inputs.yml
 
@@ -14,25 +15,25 @@ cli_commands:
     3. Reference from inputs.yml files that need the command
     4. Document usage in command description
 
-  plan:
+  epic:
     init:
-      command: "agentic agent plan init <branch> [--description <desc>]"
+      command: "agentic agent epic init <branch> [--description <desc>]"
       description: |
-        Initialize a plan folder with enforced naming convention.
-        Creates plan folder scaffolding in docs/plans/live/.
+        Initialize an epic folder with enforced naming convention.
+        Creates epic folder scaffolding in docs/epics/live/.
         Naming convention (YYMMDDXX_description) is enforced programmatically.
       parameters:
-        branch: "Branch name for the plan (required)"
-        --description/-d: "Plan description for folder name (optional, defaults to branch)"
+        branch: "Branch name for the epic (required)"
+        --description/-d: "Epic description for folder name (optional, defaults to branch)"
       exit_codes:
-        0: "Success - plan folder created"
+        0: "Success - epic folder created"
         1: "Not in git repository"
-        2: "Plan folder already exists (use different description)"
+        2: "Epic folder already exists (use different description)"
         3: "Invalid branch name or description"
       json_output:
         branch: "Branch name"
-        plan_folder: "Absolute path to plan folder"
-        plan_folder_name: "Generated folder name (YYMMDDXX_description format)"
+        epic_folder: "Absolute path to epic folder"
+        epic_folder_name: "Generated folder name (YYMMDDXX_description format)"
       naming_convention:
         pattern: "YYMMDDXX_description"
         components:
@@ -41,127 +42,169 @@ cli_commands:
           description: "Sanitized description (lowercase, underscores, max 50 chars)"
         regex: "^\\d{6}[A-Z]{2}_[a-z0-9_]+$"
       examples:
-        - "agentic agent plan init feature-auth --description user_authentication"
-        - "agentic -j agent plan init my-feature --description api_refactor"
+        - "agentic agent epic init feature-auth --description user_authentication"
+        - "agentic -j agent epic init my-feature --description api_refactor"
 
     validate:
-      command: "agentic agent plan validate <plan_folder_path>"
-      description: "Validate plan folder structure and required files"
+      command: "agentic agent epic validate <epic_folder_path>"
+      description: "Validate epic folder structure and required files"
       parameters:
-        plan_folder_path: "Path to plan folder (e.g., docs/plans/live/260115AG_feature)"
+        epic_folder_path: "Path to epic folder (e.g., docs/epics/live/260115AG_feature)"
 
     status:
-      command: "agentic plan status --path <plan_folder>"
-      description: "Show status of plan including phase completion"
+      command: "agentic epic status --path <epic_folder>"
+      description: "Show status of epic including phase completion"
       parameters:
-        plan_folder: "Path to plan folder"
+        epic_folder: "Path to epic folder"
 
     list:
-      command: "agentic plan list"
-      description: "List all plans in docs/plans/live/"
+      command: "agentic epic list"
+      description: "List all epics in docs/epics/live/"
 
     scaffold:
-      command: "agentic agent plan scaffold <name>"
-      description: "Create plan folder structure from template (low-level, prefer plan init)"
+      command: "agentic agent epic scaffold <name>"
+      description: "Create epic folder structure from template (low-level, prefer epic init)"
       parameters:
-        name: "Plan name in YYMMDDXX_description format (e.g., 260115AG_feature_auth)"
-      note: "Prefer 'agentic agent plan init' which generates correct naming automatically"
+        name: "Epic name in YYMMDDXX_description format (e.g., 260115AG_feature_auth)"
+      note: "Prefer 'agentic agent epic init' which generates correct naming automatically"
 
-    task_start:
-      command: "agentic agent plan task start <task_id> --plan <plan_folder>"
+    ticket_start:
+      command: "agentic agent epic ticket start <ticket_id> --epic <epic_folder>"
       description: |
-        Mark task as in_progress. Supports nested task structure (phases[].tasks[]).
-        Searches both 'id' and 'task_id' field names.
+        Mark ticket as in_progress. Supports nested ticket structure (phases[].tickets[]).
+        Searches both 'id' and 'ticket_id' field names.
       parameters:
-        task_id: "Task ID from plan file (e.g., FI-001, CL-002)"
-        plan_folder: "Path to plan folder"
+        ticket_id: "Ticket ID from epic file (e.g., FI-001, CL-002)"
+        epic_folder: "Path to epic folder"
       nested_structure: |
-        Works with tasks nested under phases:
+        Works with tickets nested under phases:
           phases:
             - phase_id: "P1"
-              tasks:
-                - id: "FI-001"  # Can use 'id' or 'task_id'
+              tickets:
+                - id: "FI-001"  # Can use 'id' or 'ticket_id'
                   status: "pending"
-      example: "agentic agent plan task start FI-001 --plan docs/plans/live/260127FI_feature"
+      example: "agentic agent epic ticket start FI-001 --epic docs/epics/live/260127FI_feature"
 
-    task_complete:
-      command: "agentic agent plan task complete <task_id> --plan <plan_folder>"
+    ticket_complete:
+      command: "agentic agent epic ticket complete <ticket_id> --epic <epic_folder>"
       description: |
-        Mark task as completed. Supports nested task structure (phases[].tasks[]).
-        Searches both 'id' and 'task_id' field names.
+        Mark ticket as completed. Supports nested ticket structure (phases[].tickets[]).
+        Searches both 'id' and 'ticket_id' field names.
       parameters:
-        task_id: "Task ID from plan file (e.g., FI-001, CL-002)"
-        plan_folder: "Path to plan folder"
-      example: "agentic agent plan task complete FI-001 --plan docs/plans/live/260127FI_feature"
+        ticket_id: "Ticket ID from epic file (e.g., FI-001, CL-002)"
+        epic_folder: "Path to epic folder"
+      example: "agentic agent epic ticket complete FI-001 --epic docs/epics/live/260127FI_feature"
 
-    task_list:
-      command: "agentic agent plan task list --plan <plan_folder> [--status <filter>] [--verbose]"
+    ticket_list:
+      command: "agentic agent epic ticket list --epic <epic_folder> [--status <filter>] [--verbose]"
       description: |
-        List all tasks in plan folder. Supports nested task structure (phases[].tasks[]).
-        Shows task ID, description, status, and phase information.
+        List all tickets in epic folder. Supports nested ticket structure (phases[].tickets[]).
+        Shows ticket ID, description, status, and phase information.
       parameters:
-        plan_folder: "Path to plan folder"
+        epic_folder: "Path to epic folder"
         --status/-s: "Filter by status: all, pending, in_progress, completed (default: all)"
-        --verbose/-v: "Show full task details including guidance"
+        --verbose/-v: "Show full ticket details including guidance"
       examples:
-        - "agentic agent plan task list --plan docs/plans/live/260127FI_feature"
-        - "agentic agent plan task list --plan docs/plans/live/260127FI_feature --status pending"
-        - "agentic agent plan task list -p docs/plans/live/260127FI_feature -v"
+        - "agentic agent epic ticket list --epic docs/epics/live/260127FI_feature"
+        - "agentic agent epic ticket list --epic docs/epics/live/260127FI_feature --status pending"
+        - "agentic agent epic ticket list -p docs/epics/live/260127FI_feature -v"
 
-    task_current:
-      command: "agentic agent plan task current --plan <plan_folder>"
+    ticket_current:
+      command: "agentic agent epic ticket current --epic <epic_folder>"
       description: |
-        Get current/next task to work on. Returns first in_progress task,
-        or first pending if none in progress. Supports nested task structure.
+        Get current/next ticket to work on. Returns first in_progress ticket,
+        or first pending if none in progress. Supports nested ticket structure.
         This is the primary "what should I do next?" query for agents.
       parameters:
-        plan_folder: "Path to plan folder"
+        epic_folder: "Path to epic folder"
       json_output:
-        plan_folder: "Plan folder name"
-        task: "Full task object with id, name, description, status, phase, guidance, inputs, target_files"
-        all_complete: "Boolean - true if all tasks are completed"
-      example: "agentic agent plan task current --plan docs/plans/live/260127FI_feature"
+        epic_folder: "Epic folder name"
+        ticket: "Full ticket object with id, name, description, status, phase, guidance, inputs, target_files"
+        all_complete: "Boolean - true if all tickets are completed"
+      example: "agentic agent epic ticket current --epic docs/epics/live/260127FI_feature"
 
-    task_status:
-      command: "agentic agent plan task status <task_id> --plan <plan_folder>"
+    ticket_status:
+      command: "agentic agent epic ticket status <ticket_id> --epic <epic_folder>"
       description: |
-        Show detailed status for a specific task. Includes guidance, inputs,
-        target files, and phase information. Supports nested task structure.
+        Show detailed status for a specific ticket. Includes guidance, inputs,
+        target files, and phase information. Supports nested ticket structure.
       parameters:
-        task_id: "Task ID to query"
-        plan_folder: "Path to plan folder"
-      example: "agentic agent plan task status FI-001 --plan docs/plans/live/260127FI_feature"
+        ticket_id: "Ticket ID to query"
+        epic_folder: "Path to epic folder"
+      example: "agentic agent epic ticket status FI-001 --epic docs/epics/live/260127FI_feature"
 
-    task_update:
-      command: "agentic agent plan task update <task_id> --status <new_status> --plan <plan_folder> [--note <note>]"
+    ticket_update:
+      command: "agentic agent epic ticket update <ticket_id> --status <new_status> --epic <epic_folder> [--note <note>]"
       description: |
-        Update task status with optional note. Supports nested task structure.
+        Update ticket status with optional note. Supports nested ticket structure.
         More flexible than start/complete for arbitrary status changes.
       parameters:
-        task_id: "Task ID to update"
+        ticket_id: "Ticket ID to update"
         --status/-s: "New status value"
-        plan_folder: "Path to plan folder"
-        --note/-n: "Optional note to add to task"
-      example: "agentic agent plan task update FI-001 --status blocked --plan docs/plans/live/260127FI_feature"
+        epic_folder: "Path to epic folder"
+        --note/-n: "Optional note to add to ticket"
+      example: "agentic agent epic ticket update FI-001 --status blocked --epic docs/epics/live/260127FI_feature"
 
-    move_task:
-      command: "agentic agent plan move task <task_id> --plan <plan_folder>"
-      description: "Move single task to completed folder"
+    move_ticket:
+      command: "agentic agent epic move ticket <ticket_id> --epic <epic_folder>"
+      description: "Move single ticket to completed folder"
       parameters:
-        task_id: "Task ID to move"
-        plan_folder: "Path to plan folder"
+        ticket_id: "Ticket ID to move"
+        epic_folder: "Path to epic folder"
 
-    move_tasks:
-      command: "agentic agent plan move tasks --plan <plan_folder>"
-      description: "Move all completed tasks to plan_completed.yml"
+    move_tickets:
+      command: "agentic agent epic move tickets --epic <epic_folder>"
+      description: "Move all completed tickets to epic_completed.yml"
       parameters:
-        plan_folder: "Path to plan folder"
+        epic_folder: "Path to epic folder"
 
     move_folder:
-      command: "agentic agent plan move folder --plan <plan_folder>"
-      description: "Archive entire plan folder to completed/"
+      command: "agentic agent epic move folder --epic <epic_folder>"
+      description: "Archive entire epic folder to completed/"
       parameters:
-        plan_folder: "Path to plan folder"
+        epic_folder: "Path to epic folder"
+
+  deprecated_aliases:
+    # These aliases existed prior to 2026-03-02. They map old plan/task commands
+    # to the current epic/ticket equivalents. Do not use these in new agent code.
+    description: |
+      The following agentic plan ... and agentic agent plan task ... commands are
+      deprecated as of 2026-03-02. Use the epic/ticket equivalents instead.
+      Aliases may still work during a transition period but will be removed.
+    commands:
+      - old: "agentic plan list"
+        new: "agentic epic list"
+      - old: "agentic plan status --path <plan_folder>"
+        new: "agentic epic status --path <epic_folder>"
+      - old: "agentic agent plan init <branch>"
+        new: "agentic agent epic init <branch>"
+      - old: "agentic agent plan validate <plan_folder_path>"
+        new: "agentic agent epic validate <epic_folder_path>"
+      - old: "agentic agent plan scaffold <name>"
+        new: "agentic agent epic scaffold <name>"
+      - old: "agentic agent plan task start <task_id> --plan <plan_folder>"
+        new: "agentic agent epic ticket start <ticket_id> --epic <epic_folder>"
+      - old: "agentic agent plan task complete <task_id> --plan <plan_folder>"
+        new: "agentic agent epic ticket complete <ticket_id> --epic <epic_folder>"
+      - old: "agentic agent plan task list --plan <plan_folder>"
+        new: "agentic agent epic ticket list --epic <epic_folder>"
+      - old: "agentic agent plan task current --plan <plan_folder>"
+        new: "agentic agent epic ticket current --epic <epic_folder>"
+      - old: "agentic agent plan task status <task_id> --plan <plan_folder>"
+        new: "agentic agent epic ticket status <ticket_id> --epic <epic_folder>"
+      - old: "agentic agent plan task update <task_id> --plan <plan_folder>"
+        new: "agentic agent epic ticket update <ticket_id> --epic <epic_folder>"
+      - old: "agentic agent plan move task <task_id> --plan <plan_folder>"
+        new: "agentic agent epic move ticket <ticket_id> --epic <epic_folder>"
+      - old: "agentic agent plan move tasks --plan <plan_folder>"
+        new: "agentic agent epic move tickets --epic <epic_folder>"
+      - old: "agentic agent plan move folder --plan <plan_folder>"
+        new: "agentic agent epic move folder --epic <epic_folder>"
+    json_output_renames:
+      - old_field: "plan_folder"
+        new_field: "epic_folder"
+      - old_field: "plan_folder_name"
+        new_field: "epic_folder_name"
 
   context:
     # CCI (CLI Context Injection) pattern commands
@@ -206,7 +249,7 @@ cli_commands:
 
     task:
       command: "agentic agent context task [-j]"
-      description: "Get current task from the active plan"
+      description: "Get current ticket from the active epic"
       parameters:
         -j: "Output in JSON format"
       note: "NOTE: Old path 'agentic context task ...' has been removed. Use 'agentic agent context task ...'."
@@ -223,18 +266,18 @@ cli_commands:
     # Session management commands for spawning and managing Claude Code sessions
     # Sessions enable parallel execution across multiple directories/contexts
     spawn:
-      command: "agentic session spawn --role <agent-role> [--directory <path>] [--plan <plan-folder>] [--task <task-id>] [-b] [-j]"
+      command: "agentic session spawn --role <agent-role> [--directory <path>] [--epic <epic-folder>] [--ticket <ticket-id>] [-b] [-j]"
       description: |
         Spawn a new Claude Code session for parallel agent execution.
         Sessions run in isolated contexts and can target specific directories.
 
         Returns session ID and connection details for monitoring.
-        Note: --role and --task are mutually exclusive.
+        Note: --role and --ticket are mutually exclusive.
       parameters:
         --prompt/-p: "Direct prompt string for the session"
         --role: "Agent role identifier for the session (e.g., build-python, test-runner)"
-        --task: "Task ID to spawn agent for (mutually exclusive with --role)"
-        --plan: "Plan folder name for task context (optional)"
+        --ticket: "Ticket ID to spawn agent for (mutually exclusive with --role)"
+        --epic: "Epic folder name for ticket context (optional)"
         --max-turns/-m: "Maximum agentic turns"
         --background/-b: "Run session in background"
         --directory/-d: "Working directory for session execution (optional)"
@@ -244,7 +287,7 @@ cli_commands:
         session_id: "Unique identifier for the spawned session"
         role: "Agent role assigned to session"
         directory: "Working directory if specified"
-        plan: "Plan folder path if specified"
+        epic: "Epic folder path if specified"
         status: "Session status (running, pending)"
         pid: "Process ID of the session"
       exit_codes:
@@ -255,7 +298,7 @@ cli_commands:
       examples:
         - "agentic session spawn --role build-python -j"
         - "agentic session spawn --role test-runner --directory /home/code/MyProject -b"
-        - "agentic session spawn --role orchestration-executor --plan 260127XX_feature --dangerously-skip-permissions"
+        - "agentic session spawn --role orchestration-executor --epic 260127XX_feature --dangerously-skip-permissions"
 
     list:
       command: "agentic session list [-j]"
@@ -447,10 +490,10 @@ cli_commands:
         3: "Invalid variable format"
       examples:
         - "agentic agent entrypoint execute builder-session"
-        - "agentic agent entrypoint execute plan-executor --vars PLAN_PATH=docs/plans/live/260127XX_feature"
+        - "agentic agent entrypoint execute epic-executor --vars EPIC_PATH=docs/epics/live/260127XX_feature"
         - "agentic agent entrypoint execute orchestration-planning --vars OBJECTIVE='Implement auth' --vars SCOPE=backend -j"
-        - "agentic agent entrypoint execute _plan_teach --compile"
-        - "agentic agent entrypoint execute _plan_build --compile"
+        - "agentic agent entrypoint execute _epic_teach --compile"
+        - "agentic agent entrypoint execute _epic_build --compile"
         - "agentic -j agent entrypoint execute _orchestrate --compile"
       note: "NOTE: Old path 'agentic entrypoint execute ...' has been removed. Use 'agentic agent entrypoint execute ...'."
 
@@ -463,7 +506,7 @@ usage_notes:
     implementation:
       - "Use 'agentic agent entrypoint execute <name> --compile' for complete context bundles"
       - "Use 'agentic agent context bootstrap --role <role>' for role-specific context"
-      - "Use 'agentic agent plan task current' for task context"
+      - "Use 'agentic agent epic ticket current' for ticket context"
     benefits:
       - "Eliminates repetitive file reading across agent sessions"
       - "Ensures consistent context delivery"
@@ -475,7 +518,7 @@ usage_notes:
     - "Prefer CLI over manual file operations for consistency"
     - "CLI validates inputs and enforces naming conventions programmatically"
     - "Errors are returned with actionable messages and exit codes"
-    - "Use 'agentic agent plan init' as primary entry point for new plans"
+    - "Use 'agentic agent epic init' as primary entry point for new epics"
     - "JSON output (-j flag) available for machine-parseable responses"
     - "CCI context commands (agent context bootstrap, agent context role, etc.) provide deterministic context retrieval"
     - "Session commands enable parallel Claude Code execution across different directories"

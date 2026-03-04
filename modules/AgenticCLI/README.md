@@ -21,9 +21,9 @@ agentic -d <command>        # Debug mode
 
 ## Commands
 
-### plan - Planning Folder Management
+### plan - Epic Folder Management
 
-Initialize, scaffold, and manage planning folders for tracking implementation tasks.
+Initialize, scaffold, and manage epic folders for tracking implementation tickets.
 
 **User-facing commands** (under `agentic plan`):
 
@@ -44,10 +44,10 @@ agentic plan new
 # Initialize worktree + plan folder (Main-First Planning)
 agentic agent plan init <branch> [--description <desc>] [--base <base-branch>]
 
-# Example: Create worktree and plan folder for feature branch
+# Example: Create worktree and epic folder for feature branch
 agentic agent plan init feature-auth --description "user_authentication"
 # Creates: /path/to/repo-feature-auth (worktree)
-# Creates: docs/plans/live/260119AE_user_authentication/ (plan folder)
+# Creates: docs/epics/live/260119AE_user_authentication/ (epic folder)
 
 # Scaffold plan folder only (without worktree)
 agentic agent plan scaffold <name> [--worktree <path>]
@@ -95,106 +95,106 @@ agentic agent plan stories test [--plan <path>] [--output <file>] [--format yaml
 The `agentic agent plan init` command enforces the Main-First Planning workflow:
 
 1. **Creates worktree** (if not exists) at `../repo-<branch>`
-2. **Generates plan folder name** using `YYMMDDXX_description` convention
-3. **Scaffolds plan folder** with `live/` and `completed/` subdirectories
+2. **Generates epic folder name** using `YYMMDDXX_description` convention
+3. **Scaffolds epic folder** with `live/` and `completed/` subdirectories
 
 This eliminates naming convention errors by generating the folder name programmatically rather than relying on agent interpretation.
 
-#### Task Management
+#### Ticket Management
 
-Manage individual tasks within a plan's phases:
+Manage individual tickets within an epic's phases:
 
 ```bash
-# List all tasks in the current plan folder
+# List all tickets in the current epic folder
 agentic agent plan task list
 agentic agent plan task list --status pending        # Filter by status
-agentic agent plan task list --verbose               # Show full task details
+agentic agent plan task list --verbose               # Show full ticket details
 
-# Get the current task to work on (first in_progress, or first pending)
+# Get the current ticket to work on (first in_progress, or first pending)
 agentic agent plan task current
-agentic agent plan task current --plan docs/plans/live/260128AB_feature
+agentic agent plan task current --plan docs/epics/live/260128AB_feature
 
-# Mark a task as in_progress (requires orchestration_*.mmd to exist)
+# Mark a ticket as in_progress (requires orchestration_*.mmd to exist)
 agentic agent plan task start build_01_001
-agentic agent plan task start build_01_001 --plan docs/plans/live/260128AB_feature
+agentic agent plan task start build_01_001 --plan docs/epics/live/260128AB_feature
 
-# Mark a task as completed
+# Mark a ticket as completed
 agentic agent plan task complete build_01_001
 
-# Show detailed status for a specific task
+# Show detailed status for a specific ticket
 agentic agent plan task status build_01_001
-agentic agent plan task status build_01_001 --plan docs/plans/live/260128AB_feature
+agentic agent plan task status build_01_001 --plan docs/epics/live/260128AB_feature
 
-# Add a new task to the plan
+# Add a new ticket to the epic
 agentic agent plan task add "Implement user login endpoint"
 agentic agent plan task add "Add unit tests" --phase P2 --priority high
 agentic agent plan task add "Fix bug" --id hotfix_001 --phase P1
 
-# Update task status with optional note
+# Update ticket status with optional note
 agentic agent plan task update build_01_001 --status completed
 agentic agent plan task update build_01_001 --status blocked --note "Waiting for API spec"
 
-# Prefill tasks from a preset template
+# Prefill tickets from a preset template
 agentic agent plan task prefill --preset planner-build
 agentic agent plan task prefill --preset builder --dry-run  # Preview without changes
 ```
 
 **Options for `agent plan task list`:**
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
 - `--status`, `-s`: Filter by status (pending, in_progress, completed, or all)
-- `--verbose`, `-v`: Show full task details including guidance and success criteria
+- `--verbose`, `-v`: Show full ticket details including guidance and success criteria
 
 **Options for `agent plan task current`:**
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
 
-Returns the first `in_progress` task, or the first `pending` task if none are in progress. This is the primary "what should I do next?" query for agents.
+Returns the first `in_progress` ticket, or the first `pending` ticket if none are in progress. This is the primary "what should I do next?" query for agents.
 
 **Options for `agent plan task start`:**
-- `task_id` (required): Task ID to mark as in_progress
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
+- `task_id` (required): Ticket ID to mark as in_progress
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
 
-Note: Requires an `orchestration_*.mmd` file to exist in the plan folder. Plans must be orchestrated before task execution begins.
+Note: Requires an `orchestration_*.mmd` file to exist in the epic folder. Epics must be orchestrated before ticket execution begins.
 
 **Options for `agent plan task complete`:**
-- `task_id` (required): Task ID to mark as completed
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
+- `task_id` (required): Ticket ID to mark as completed
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
 
 **Options for `agent plan task status`:**
-- `task_id` (required): Task ID to display details for
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
+- `task_id` (required): Ticket ID to display details for
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
 
-Displays comprehensive task information including description, status, phase, inputs, target files, guidance, and success criteria.
+Displays comprehensive ticket information including description, status, phase, inputs, target files, guidance, and success criteria.
 
 **Options for `agent plan task add`:**
-- `description` (required): Description of the new task
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
-- `--phase`: Phase ID to add the task to (default: last phase)
-- `--id`: Custom task ID (default: auto-generated from phase ID)
-- `--priority`: Task priority - low, medium, high (default: medium)
+- `description` (required): Description of the new ticket
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
+- `--phase`: Phase ID to add the ticket to (default: last phase)
+- `--id`: Custom ticket ID (default: auto-generated from phase ID)
+- `--priority`: Ticket priority - low, medium, high (default: medium)
 
 **Options for `agent plan task update`:**
-- `task_id` (required): Task ID to update
+- `task_id` (required): Ticket ID to update
 - `--status`, `-s` (required): New status (pending, in_progress, completed, blocked)
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
-- `--note`, `-n`: Add a completion note to the task
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
+- `--note`, `-n`: Add a completion note to the ticket
 
-Status transitions are validated. When marking a task as `completed`, a timestamp is automatically recorded.
+Status transitions are validated. When marking a ticket as `completed`, a timestamp is automatically recorded.
 
 **Options for `agent plan task prefill`:**
 - `--preset` (required): Name of the preset template to load (e.g., planner-build, builder)
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
-- `--dry-run`: Show tasks that would be added without making changes
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
+- `--dry-run`: Show tickets that would be added without making changes
 
 #### Phase Management
 
-Manage phases within a plan's `plan_build.yml` file:
+Manage phases within an epic's `plan_build.yml` file:
 
 ```bash
-# Add a new phase to the plan
+# Add a new phase to the epic
 agentic agent plan phase add --id P1 --name "Core Implementation" --description "Build the main features"
 
-# List all phases with their status and task counts
-agentic agent plan phase list --plan docs/plans/live/260128AB_feature
+# List all phases with their status and ticket counts
+agentic agent plan phase list --plan docs/epics/live/260128AB_feature
 
 # Update a phase's status or name
 agentic agent plan phase update P1 --status in_progress
@@ -205,39 +205,39 @@ agentic agent plan phase update P1 --name "Updated Phase Name" --status complete
 - `--id` (required): Phase identifier (e.g., P1, build_01)
 - `--name` (required): Human-readable phase name
 - `--description`: Optional description of the phase scope
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
 
 **Options for `agent plan phase update`:**
 - `phase_id`: The ID of the phase to update
 - `--status`, `-s`: New status (pending, in_progress, completed, blocked)
 - `--name`, `-n`: New name for the phase
-- `--plan`, `-p`: Path to plan folder
+- `--plan`, `-p`: Path to epic folder
 
 #### Orchestration Management
 
-Generate and validate Mermaid flowchart diagrams that define the execution order of plan phases:
+Generate and validate Mermaid flowchart diagrams that define the execution order of epic phases:
 
 ```bash
-# Generate orchestration MMD from plan YAML files
-agentic agent plan orchestration generate --plan docs/plans/live/260128AB_feature
+# Generate orchestration MMD from epic YAML files
+agentic agent plan orchestration generate --plan docs/epics/live/260128AB_feature
 
 # Generate with custom output filename
 agentic agent plan orchestration generate --output orchestration_custom.mmd --force
 
-# Validate that MMD matches plan YAML structure
-agentic agent plan orchestration validate --plan docs/plans/live/260128AB_feature
+# Validate that MMD matches epic YAML structure
+agentic agent plan orchestration validate --plan docs/epics/live/260128AB_feature
 
 # Strict validation: treat warnings as errors
 agentic agent plan orchestration validate --strict
 ```
 
 **Options for `agent plan orchestration generate`:**
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
 - `--output`, `-o`: Output filename (default: `orchestration_<plan_name>.mmd`)
 - `--force`, `-f`: Overwrite existing MMD file if present
 
 **Options for `agent plan orchestration validate`:**
-- `--plan`, `-p`: Path to plan folder
+- `--plan`, `-p`: Path to epic folder
 - `--strict`: Treat warnings as errors (exit code 1 on warnings)
 
 The generated MMD includes:
@@ -248,14 +248,14 @@ The generated MMD includes:
 
 #### User Stories Management
 
-List and test user stories defined in plan YAML files:
+List and test user stories defined in epic YAML files:
 
 ```bash
-# List all user stories in a plan
-agentic agent plan stories list --plan docs/plans/live/260128AB_feature
+# List all user stories in an epic
+agentic agent plan stories list --plan docs/epics/live/260128AB_feature
 
 # Generate blind test scenarios from user stories
-agentic agent plan stories test --plan docs/plans/live/260128AB_feature
+agentic agent plan stories test --plan docs/epics/live/260128AB_feature
 
 # Output test cases to a file
 agentic agent plan stories test --output tests/story_tests.yml --format yaml
@@ -263,10 +263,10 @@ agentic agent plan stories test --output tests/story_tests.json --format json
 ```
 
 **Options for `agent plan stories list`:**
-- `--plan`, `-p`: Path to plan folder (auto-detected if omitted)
+- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
 
 **Options for `agent plan stories test`:**
-- `--plan`, `-p`: Path to plan folder
+- `--plan`, `-p`: Path to epic folder
 - `--output`, `-o`: Output file path (default: stdout)
 - `--format`, `-f`: Output format - `yaml` (default) or `json`
 
@@ -347,7 +347,7 @@ uv pip install -e .
 
 ### question - Question Queue Management
 
-Manage questions that arise during agent workflows. Questions are stored in a plan's `questions/` directory with pending and answered status tracking.
+Manage questions that arise during agent workflows. Questions are stored in an epic's `questions/` directory with pending and answered status tracking.
 
 All question commands are under `agentic agent question`:
 
@@ -384,7 +384,7 @@ agentic agent question defer Q-20260203-143022-a1b2
 
 **Directory Structure:**
 ```
-plan_folder/
+epic_folder/
   questions/
     pending/          # Unanswered questions
       Q-20260203-143022-a1b2.yml
@@ -399,10 +399,10 @@ plan_folder/
 - `medium` - Normal priority (default)
 - `low` - Can be deferred
 
-**Plan Path Detection:**
-- Auto-detects from Main-First plan resolver (current branch's active plan)
+**Epic Path Detection:**
+- Auto-detects from Main-First plan resolver (current branch's active epic)
 - Override with `--plan <path>` flag
-- Useful for working across multiple plans
+- Useful for working across multiple epics
 
 **JSON Output:**
 All commands support `--json` flag for structured output:
@@ -412,14 +412,14 @@ agentic --json agent question show Q-20260203-143022-a1b2
 ```
 
 **Tmux Integration:**
-For remote/SSH scenarios, see the [Tmux HITL Workflow Guide](../../docs/plans/live/260203QT_question_tmux/WORKFLOW.md) for setting up automatic question notifications in tmux panes.
+For remote/SSH scenarios, see the [Tmux HITL Workflow Guide](../../docs/epics/live/260203QT_question_tmux/WORKFLOW.md) for setting up automatic question notifications in tmux panes.
 
 ### worktree (wt) - Git Worktree Management
 
-Manage git worktrees with integrated planning folder support.
+Manage git worktrees with integrated epic folder support.
 
 ```bash
-# Create worktree with planning folder
+# Create worktree with epic folder
 agentic worktree create <branch> [--base <base-branch>] [--no-plan]
 agentic wt create feature-auth --base main
 
@@ -448,7 +448,7 @@ agentic agent context role <role-id> [--format yaml|json]
 agentic agent ctx role planner-build
 agentic agent ctx role build-python --format json
 
-# Get active task from Main-First plan (crawls docs/plans/live/)
+# Get active ticket from Main-First epic (crawls docs/epics/live/)
 agentic agent context task [--all]
 agentic agent ctx task
 agentic agent ctx task --all
@@ -469,7 +469,7 @@ agentic agent ctx generate-agent planner-build --output agent.md
 **bootstrap** - Primary entrypoint for agents to self-initialize
 
 Returns a combined context bundle containing:
-- Active Task from the current plan (from docs/plans/live/)
+- Active Ticket from the current epic (from docs/epics/live/)
 - Role-specific process guidance (process.yml)
 - Essential input file references
 
@@ -496,9 +496,9 @@ agentic agent ctx role planner-build
 agentic agent ctx role build-python --format json
 ```
 
-**task** - Crawls docs/plans/live/ to find active task
+**task** - Crawls docs/epics/live/ to find active ticket
 
-Searches plan YAML files for the first in_progress task, or the first pending task if none are in progress. Returns task details including ID, description, and guidance.
+Searches epic YAML files for the first in_progress ticket, or the first pending ticket if none are in progress. Returns ticket details including ID, description, and guidance.
 
 ```bash
 # Get current/next task to work on
@@ -971,15 +971,15 @@ agentic env export [--format shell|json]
 agentic env run <command> [args...]
 ```
 
-### template (tpl) - Plan Template Generation
+### template (tpl) - Epic Template Generation
 
-Generate plan YAML files from templates with optional customization:
+Generate epic YAML files from templates with optional customization:
 
 ```bash
 # List available template types
 agentic template list
 
-# Generate a build plan to stdout
+# Generate a build epic to stdout
 agentic template generate build
 
 # Generate to file with objective
@@ -1002,10 +1002,10 @@ agentic template generate build \
 **Template Types:**
 | Type | Description |
 |------|-------------|
-| `build` | Implementation plan for building new features with phased tasks |
-| `test` | Test plan with unit, integration, and e2e test phases |
-| `cleanup` | Audit and cleanup plan for code review and documentation |
-| `guidance` | Guidance improvement plan for agent friction analysis |
+| `build` | Implementation epic for building new features with phased tickets |
+| `test` | Test epic with unit, integration, and e2e test phases |
+| `cleanup` | Audit and cleanup epic for code review and documentation |
+| `guidance` | Guidance improvement epic for agent friction analysis |
 
 **Options for `template generate`:**
 - `type` (required): Template type (build, test, cleanup, guidance)
@@ -1132,7 +1132,7 @@ Established Convention   Document the pattern, design CLI interface
 CLI Implementation       Offload to CLI, agent invokes tool
 ```
 
-**Example: Plan Folder Naming**
+**Example: Epic Folder Naming**
 
 1. Initially, agents interpreted naming conventions from documentation
 2. LangSmith traces showed naming drift and verification loops

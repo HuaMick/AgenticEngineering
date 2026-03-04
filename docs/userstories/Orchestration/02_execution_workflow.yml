@@ -1,10 +1,10 @@
 stories:
 - id: US-ORCH-010
-  title: Execute Approved Plan via MMD
+  title: Execute Approved Epic via MMD
   category: execution_workflow
   priority: critical
-  as_a: developer with an approved plan
-  i_want: to execute the plan by routing work to appropriate agents
+  as_a: developer with an approved epic
+  i_want: to execute the epic by routing work to appropriate agents
   so_that: implementation proceeds automatically with the right specialists
   acceptance_criteria:
   - Execution is initiated via _orchestrate.yml entrypoint
@@ -12,10 +12,10 @@ stories:
   - AGENT_ROUTING metadata determines which agent handles each phase
   - Phases execute in the order defined by the MMD flowchart
   - 'Phase status transitions: pending -> in_progress -> completed'
-  - State is persisted to plan YAML and MMD STATUS headers
+  - State is persisted to epic YAML and MMD STATUS headers
   related_commands:
   - agentic ep execute orchestrate
-  - agentic plan task current
+  - agentic epic ticket current
   related_agents:
   - orchestration-executor
   last_tested: null
@@ -50,23 +50,23 @@ stories:
     restrictions per agent type. All 1622 AgenticCLI tests pass.'
   tested_by_plan: 260226SD_migrate_sessions_to_sdk
 - id: US-ORCH-012
-  title: Phase-Level Task Execution
+  title: Phase-Level Ticket Execution
   category: execution_workflow
   priority: critical
   as_a: specialist agent spawned by the executor
-  i_want: to receive my current task, execute it, and report completion
-  so_that: plan progress is tracked at the task level
+  i_want: to receive my current ticket, execute it, and report completion
+  so_that: epic progress is tracked at the ticket level
   acceptance_criteria:
-  - Agent bootstraps via agentic ctx bootstrap to get role context and current task
-  - Agent starts the task via agentic plan task start <id>
-  - Agent performs the work defined in the task description and guidance
-  - Agent marks the task complete via agentic plan task complete <id>
-  - Task completion triggers status update in the plan YAML
-  - When all tasks in a phase complete, the phase status updates
+  - Agent bootstraps via agentic ctx bootstrap to get role context and current ticket
+  - Agent starts the ticket via agentic epic ticket start <id>
+  - Agent performs the work defined in the ticket description and guidance
+  - Agent marks the ticket complete via agentic epic ticket complete <id>
+  - Ticket completion triggers status update in the epic YAML
+  - When all tickets in a phase complete, the phase status updates
   related_commands:
   - agentic ctx bootstrap --role build-python
-  - agentic plan task start <id>
-  - agentic plan task complete <id>
+  - agentic epic ticket start <id>
+  - agentic epic ticket complete <id>
   related_agents:
   - build-python
   - test-runner
@@ -103,42 +103,42 @@ stories:
   i_want: to pick up execution where it left off using persistent state
   so_that: interruptions do not cause work to be repeated
   acceptance_criteria:
-  - Task statuses are persisted to plan YAML files via atomic file operations
+  - Ticket statuses are persisted to epic YAML files via atomic file operations
   - FileLock ensures concurrent agents cannot corrupt state
-  - An interrupted executor can resume by reading current task status
-  - Completed tasks are not re-executed
-  - In-progress tasks are re-attempted on resume
-  - agentic plan task current returns the correct next task after resume
+  - An interrupted executor can resume by reading current ticket status
+  - Completed tickets are not re-executed
+  - In-progress tickets are re-attempted on resume
+  - agentic epic ticket current returns the correct next ticket after resume
   related_commands:
-  - agentic plan task current
-  - agentic plan task list --status in_progress
+  - agentic epic ticket current
+  - agentic epic ticket list --status in_progress
   related_agents:
   - orchestration-executor
   last_tested: '2026-02-27'
   test_status: passing
-  test_notes: 'Validated by 260226SD SDK migration plan. TinyDB-backed PlanRepository
-    with FileLock confirmed working for concurrent task state writes. SDK migration
-    plan itself demonstrates resumable execution - tasks started/completed via agentic
-    plan task start/complete CLI throughout all 6 build phases and 5 test/UAT phases.
+  test_notes: 'Validated by 260226SD SDK migration plan. TinyDB-backed EpicRepository
+    with FileLock confirmed working for concurrent ticket state writes. SDK migration
+    plan itself demonstrates resumable execution - tickets started/completed via agentic
+    epic ticket start/complete CLI throughout all 6 build phases and 5 test/UAT phases.
     All 1622 AgenticCLI tests pass including TinyDB migration tests.'
   tested_by_plan: 260226SD_migrate_sessions_to_sdk
 - id: US-ORCH-015
-  title: Plan Explicit Archival
+  title: Epic Explicit Archival
   category: state_management
   priority: high
   as_a: developer cleaning up after feature completion
-  i_want: to explicitly archive completed plans when the orchestration-loop confirms completion
-  so_that: the live plans folder only shows active work and archiving is deliberate
+  i_want: to explicitly archive completed epics when the orchestration-loop confirms completion
+  so_that: the live epics folder only shows active work and archiving is deliberate
   acceptance_criteria:
-  - Task completion does NOT auto-archive; plan stays in live/ until explicitly archived
-  - Plan status JSON shows action_required "archive" when all tasks are completed
-  - The orchestration-loop archives via agentic plan move folder --force
-  - The plan folder moves from docs/plans/live/ to docs/plans/completed/ on explicit command
-  - Archival preserves all plan files and history
-  - Unarchival is available via agentic plan unarchive for reactivation
+  - Ticket completion does NOT auto-archive; epic stays in live/ until explicitly archived
+  - Epic status JSON shows action_required "archive" when all tickets are completed
+  - The orchestration-loop archives via agentic epic move folder --force
+  - The epic folder moves from docs/epics/live/ to docs/epics/completed/ on explicit command
+  - Archival preserves all epic files and history
+  - Unarchival is available via agentic epic unarchive for reactivation
   related_commands:
-  - agentic plan move folder --plan <name> --force
-  - agentic plan unarchive --plan <name>
+  - agentic epic move folder --epic <name> --force
+  - agentic epic unarchive --epic <name>
   last_tested: '2026-02-23'
   test_status: passed
   test_notes: 'Validated by plan 260222RA: auto-archive removed, explicit archive model confirmed working'

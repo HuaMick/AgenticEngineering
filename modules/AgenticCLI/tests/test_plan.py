@@ -1,124 +1,107 @@
-"""Tests for plan commands."""
+"""Tests for plan commands.
+
+NOTE: The 'agentic plan' command has been removed. All plan functionality
+has been migrated to 'agentic epic'. These tests verify that the old plan
+commands correctly print an error message and exit with code 1.
+"""
 
 import yaml
 
 
 class TestPlanStatus:
-    """Tests for 'agentic plan status' command."""
+    """Tests for 'agentic plan status' command - now removed."""
 
     def test_status_with_path(self, cli_runner, temp_repo):
-        """Test status with explicit path."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
+        """Test plan status now returns command-removed error."""
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260103AE_test"
         stdout, stderr, code = cli_runner(["plan", "status", str(plan_path)])
-        assert "Plan Status: 260103AE_test" in stdout
-        assert "Completed: 1" in stdout or "completed" in stdout.lower()
-        assert code == 0
+        assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr
 
     def test_status_auto_detect(self, cli_runner, mock_cwd):
-        """Test status with auto-detection."""
+        """Test plan status auto-detect now returns command-removed error."""
         stdout, stderr, code = cli_runner(["plan", "status"])
-        assert "Plan Status:" in stdout
-        assert code == 0
+        assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr
 
 
 class TestPlanValidate:
-    """Tests for 'agentic plan validate' command."""
+    """Tests for 'agentic plan validate' command - now removed."""
 
     def test_validate_valid_plan(self, cli_runner, temp_repo):
-        """Test validating a valid plan folder."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
+        """Test plan validate now returns command-removed error."""
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260103AE_test"
         stdout, stderr, code = cli_runner(["agent", "plan", "validate", str(plan_path)])
-        assert "Validating:" in stdout
-        assert code == 0
+        assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr
 
     def test_validate_missing_path(self, cli_runner, temp_dir):
-        """Test validating a non-existent path."""
+        """Test plan validate with non-existent path now returns command-removed error."""
         stdout, stderr, code = cli_runner(["agent", "plan", "validate", str(temp_dir / "nonexistent")])
-        assert "does not exist" in stderr or code == 1
+        assert code == 1
 
     def test_validate_missing_plan_files(self, cli_runner, temp_dir):
-        """Test validating a plan without plan_*.yml files (flattened structure)."""
+        """Test plan validate without plan files now returns command-removed error."""
         plan_path = temp_dir / "invalid_plan"
         plan_path.mkdir()
         stdout, stderr, code = cli_runner(["agent", "plan", "validate", str(plan_path)])
-        assert "No plan_*.yml" in stdout or code == 1
+        assert code == 1
 
 
 class TestPlanList:
-    """Tests for 'agentic plan list' command."""
+    """Tests for 'agentic plan list' command - now removed."""
 
     def test_list_plans(self, cli_runner, mock_cwd):
-        """Test listing all plans."""
+        """Test plan list now returns command-removed error."""
         stdout, stderr, code = cli_runner(["plan", "list"])
-        assert "Plans in Repository" in stdout
-        assert "260103A" in stdout  # Rich table may truncate long names
-        assert code == 0
+        assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr
 
     def test_list_empty_repo(self, cli_runner, temp_repo):
-        """Test listing plans in empty repo."""
-        # cli_runner already sets up a git repo and changes to temp_repo
-        # temp_repo doesn't have 260103AE_test by default in cli_runner (only temp_repo from conftest)
-        # The cli_runner fixture already creates a plans structure with 260103AE_test
-        # So we test that it lists the existing plan
+        """Test plan list in empty repo now returns command-removed error."""
         stdout, stderr, code = cli_runner(["plan", "list"])
-        assert "Plans in Repository" in stdout or "No plan folders" in stdout
-        assert code == 0
+        assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr
 
 
 class TestPlanScaffold:
-    """Tests for 'agentic plan scaffold' command."""
+    """Tests for 'agentic plan scaffold' command - now removed."""
 
     def test_scaffold_creates_structure(self, cli_runner, temp_repo):
-        """Test scaffold creates proper folder structure (flattened)."""
-        # cli_runner already runs in temp_repo which is a git repo
+        """Test plan scaffold now returns command-removed error."""
         stdout, stderr, code = cli_runner(["agent", "plan", "scaffold", "260103AE_new_feature"])
-
-        # Check output
-        assert "Created planning folder" in stdout
-        assert code == 0
-
-        # Verify flattened structure - plan_*.yml files directly in folder
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_new_feature"
-        assert plan_path.exists()
-        # Should have plan_*.yml files directly in plan_path (flattened)
-        assert list(plan_path.glob("plan_*.yml")), "Should have plan_*.yml files"
+        assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr
 
     def test_scaffold_existing_folder(self, cli_runner, mock_cwd, temp_repo):
-        """Test scaffold fails if folder exists."""
+        """Test plan scaffold for existing folder now returns command-removed error."""
         stdout, stderr, code = cli_runner(["agent", "plan", "scaffold", "260103AE_test"])
-        assert "already exists" in stderr
         assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr
 
 
 class TestPlanTask:
-    """Tests for 'agentic plan task start/complete' commands."""
+    """Tests for 'agentic plan task start/complete' commands - now removed."""
 
     def test_task_start(self, cli_runner, temp_repo):
-        """Test starting a task (flattened structure)."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
+        """Test plan task start now returns command-removed error."""
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260103AE_test"
         stdout, stderr, code = cli_runner(["agent", "plan", "task", "start", "02", "--plan", str(plan_path)])
-        assert "in_progress" in stdout
-        assert code == 0
-
-        # Verify the file was updated (flattened: directly in plan_path)
-        plan_file = plan_path / "plan_test.yml"
-        content = yaml.safe_load(plan_file.read_text())
-        phases = content["plan"]["phases"]
-        phase_02 = next(p for p in phases if p["id"] == "02")
-        assert phase_02["status"] == "in_progress"
+        assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr
 
     def test_task_complete(self, cli_runner, temp_repo):
-        """Test completing a task."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
+        """Test plan task complete now returns command-removed error."""
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260103AE_test"
         stdout, stderr, code = cli_runner(
             ["agent", "plan", "task", "complete", "02", "--plan", str(plan_path)]
         )
-        assert "completed" in stdout
-        assert code == 0
+        assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr
 
     def test_task_not_found(self, cli_runner, temp_repo):
-        """Test starting a non-existent task."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260103AE_test"
+        """Test plan task with nonexistent task now returns command-removed error."""
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260103AE_test"
         stdout, stderr, code = cli_runner(["agent", "plan", "task", "start", "99", "--plan", str(plan_path)])
-        assert "not found" in stderr
         assert code == 1
+        assert "Command removed" in stderr or "agentic epic" in stderr

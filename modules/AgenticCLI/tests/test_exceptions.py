@@ -6,6 +6,7 @@ from agenticcli.exceptions import (
     ConfigError,
     EnvironmentError,
     ErrorContext,
+    EpicFileError,
     PlanError,
     TemplateError,
     ValidationError,
@@ -137,6 +138,46 @@ class TestPlanError:
         assert "plan status" in err.recovery_hint
 
 
+class TestEpicFileError:
+    """Tests for EpicFileError class."""
+
+    def test_default_exit_code(self):
+        """Test default exit code is 20."""
+        err = EpicFileError("Epic file error")
+        assert err.exit_code == 20
+
+    def test_not_found(self):
+        """Test not_found factory method."""
+        err = EpicFileError.not_found("/path/epic.yml")
+        assert "/path/epic.yml" in err.message
+        assert "epic scaffold" in err.recovery_hint
+        assert err.context.file_path == "/path/epic.yml"
+
+    def test_invalid_yaml(self):
+        """Test invalid_yaml factory method."""
+        err = EpicFileError.invalid_yaml("/epic.yml", "unexpected key", line=15)
+        assert "Invalid YAML" in err.message
+        assert err.context.line_number == 15
+        assert err.context.details["parse_error"] == "unexpected key"
+
+    def test_invalid_structure(self):
+        """Test invalid_structure factory method."""
+        err = EpicFileError.invalid_structure("/epic.yml", "phases")
+        assert "phases" in err.message
+        assert "phases" in err.recovery_hint
+
+    def test_ticket_not_found(self):
+        """Test ticket_not_found factory method."""
+        err = EpicFileError.ticket_not_found("ticket-01", "/epic.yml")
+        assert "ticket-01" in err.message
+        assert "epic status" in err.recovery_hint
+
+    def test_plan_file_error_is_alias(self):
+        """Test that PlanFileError is a backward compatibility alias for EpicFileError."""
+        from agenticcli.exceptions import PlanFileError
+        assert PlanFileError is EpicFileError
+
+
 class TestConfigError:
     """Tests for ConfigError class."""
 
@@ -179,11 +220,17 @@ class TestValidationError:
         assert "consecutive dots" in err.message
         assert "alphanumeric" in err.recovery_hint
 
-    def test_invalid_plan_folder(self):
-        """Test invalid_plan_folder factory method."""
+    def test_invalid_epic_folder(self):
+        """Test invalid_epic_folder factory method."""
+        err = ValidationError.invalid_epic_folder("/epics/bad", "missing live directory")
+        assert "missing live directory" in err.message
+        assert "epic scaffold" in err.recovery_hint
+
+    def test_invalid_plan_folder_delegates_to_epic(self):
+        """Test invalid_plan_folder delegates to invalid_epic_folder (backward compat)."""
         err = ValidationError.invalid_plan_folder("/plans/bad", "missing live directory")
         assert "missing live directory" in err.message
-        assert "plan scaffold" in err.recovery_hint
+        assert "epic scaffold" in err.recovery_hint
 
     def test_schema_violation(self):
         """Test schema_violation factory method."""

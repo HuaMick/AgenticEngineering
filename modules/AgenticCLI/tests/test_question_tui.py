@@ -40,7 +40,7 @@ def _create_pending_question(
     **kwargs,
 ) -> Path:
     """Create a pending question YAML file under the standard plan directory layout."""
-    pending_dir = tmp_path / "docs" / "plans" / "live" / plan_name / "questions" / "pending"
+    pending_dir = tmp_path / "docs" / "epics" / "live" / plan_name / "questions" / "pending"
     pending_dir.mkdir(parents=True, exist_ok=True)
     question_file = pending_dir / filename
     question_file.write_text(_make_question_yaml(**kwargs), encoding="utf-8")
@@ -62,7 +62,7 @@ class TestBuildQuestionsTable:
 
     def test_build_table_empty_plans(self, tmp_path: Path):
         """No live plans dir -> table has one row with 'No pending questions' message."""
-        # tmp_path has no docs/plans/live directory at all
+        # tmp_path has no docs/epics/live directory at all
         tui = QuestionTUI(repo_root=tmp_path)
         tui._refresh_questions()
 
@@ -82,7 +82,7 @@ class TestBuildQuestionsTable:
     def test_build_table_no_pending_questions(self, tmp_path: Path):
         """Live plan dir exists but no questions/pending/*.yml files -> 'No pending questions' row."""
         # Create the plan directory but no question files inside it
-        plan_dir = tmp_path / "docs" / "plans" / "live" / "260220XX_my_plan"
+        plan_dir = tmp_path / "docs" / "epics" / "live" / "260220XX_my_plan"
         plan_dir.mkdir(parents=True)
 
         tui = QuestionTUI(repo_root=tmp_path)
@@ -238,7 +238,7 @@ class TestRefreshQuestionsNoPending:
 
     def test_build_table_no_pending_questions(self, tmp_path: Path):
         """Live plan dir exists but no questions/pending/*.yml files -> empty list."""
-        plan_dir = tmp_path / "docs" / "plans" / "live" / "260220XX_my_plan"
+        plan_dir = tmp_path / "docs" / "epics" / "live" / "260220XX_my_plan"
         plan_dir.mkdir(parents=True)
 
         tui = QuestionTUI(repo_root=tmp_path)
@@ -449,7 +449,7 @@ class TestCursorPreservation:
         assert len(tui.questions) == 1
 
         # Now remove all questions
-        pending_dir = tmp_path / "docs" / "plans" / "live" / "260220XX_plan" / "questions" / "pending"
+        pending_dir = tmp_path / "docs" / "epics" / "live" / "260220XX_plan" / "questions" / "pending"
         for f in pending_dir.glob("*.yml"):
             f.unlink()
 
@@ -539,7 +539,7 @@ class TestMalformedYaml:
 
     def test_invalid_yaml_skipped(self, tmp_path: Path):
         """Malformed YAML files are silently skipped."""
-        pending_dir = tmp_path / "docs" / "plans" / "live" / "260220XX_plan" / "questions" / "pending"
+        pending_dir = tmp_path / "docs" / "epics" / "live" / "260220XX_plan" / "questions" / "pending"
         pending_dir.mkdir(parents=True)
         (pending_dir / "bad.yml").write_text(":::invalid yaml{{{", encoding="utf-8")
 
@@ -550,7 +550,7 @@ class TestMalformedYaml:
 
     def test_empty_yaml_skipped(self, tmp_path: Path):
         """Empty YAML files are silently skipped."""
-        pending_dir = tmp_path / "docs" / "plans" / "live" / "260220XX_plan" / "questions" / "pending"
+        pending_dir = tmp_path / "docs" / "epics" / "live" / "260220XX_plan" / "questions" / "pending"
         pending_dir.mkdir(parents=True)
         (pending_dir / "empty.yml").write_text("", encoding="utf-8")
 

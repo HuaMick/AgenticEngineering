@@ -15,7 +15,7 @@ Verify that planner-build automatically generates user stories when none exist f
 #### Step 1: Create New Test Plan
 ```bash
 # Create a plan with an objective that has no existing stories
-agentic entrypoint _plan_build.yml --input "Add health check endpoint to API"
+agentic entrypoint _ticket_build.yml --input "Add health check endpoint to API"
 ```
 
 Expected output:
@@ -55,10 +55,10 @@ cat docs/userstories/AgenticBackend/NN_health.yml
 Check the generated build plan:
 ```bash
 # Find the plan folder
-ls docs/plans/live/
+ls docs/epics/live/
 
 # Read the build plan
-cat docs/plans/live/260214XX_add_health_check_endpoint/plan_build.yml
+cat docs/epics/live/260214XX_add_health_check_endpoint/ticket_build.yml
 ```
 
 **Verification checklist:**
@@ -79,7 +79,7 @@ Allow orchestration to proceed to test planning:
 #### Step 6: Verify Test Plan UAT Phase
 Check the test plan:
 ```bash
-cat docs/plans/live/260214XX_add_health_check_endpoint/plan_test.yml
+cat docs/epics/live/260214XX_add_health_check_endpoint/ticket_test.yml
 ```
 
 **Verification checklist:**
@@ -144,7 +144,7 @@ EOF
 Create a test build plan that references this story:
 
 ```bash
-cat > /tmp/test_plan_build.yml << EOF
+cat > /tmp/test_ticket_build.yml << EOF
 name: test-incomplete-story-validation
 affected_stories:
   - US-CLI-TEST-INCOMPLETE-001

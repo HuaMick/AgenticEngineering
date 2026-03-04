@@ -4,10 +4,17 @@
 # SCOPE: Structural definitions for .mmd files used by orchestration agents.
 # Plan-MMD files define agent workflows with phases, decisions, loops, and agent spawns.
 
+deprecation_note: |
+  TERMINOLOGY RENAME (2026-03-01): Orchestration flowcharts that previously referenced
+  "plan folders" (docs/plans/) and "plan_*.yml" files now use "epic folders" (docs/epics/)
+  and "ticket_*.yml" files. The MMD schema structure is unchanged; only path references
+  and descriptive text have been updated to use epic/ticket vocabulary.
+
 plan_mmd:
   definition: |
-    A Plan-MMD file is a Mermaid flowchart (.mmd) that defines an orchestration workflow.
-    It serves as the executable process definition for orchestration agents, specifying:
+    A Plan-MMD file is a Mermaid flowchart (.mmd) that defines an orchestration workflow
+    for executing epics. It serves as the executable process definition for orchestration
+    agents, specifying:
     - The sequence of phases and decision points
     - Which agents to spawn and when
     - Loop structures with iteration limits
@@ -44,7 +51,7 @@ header_comments:
     OUTPUT:
       description: "Description of expected outputs from the orchestrator."
       pattern: "^%% OUTPUT: .+$"
-      example: "%% OUTPUT: Implemented code, tests, and completed plans in docs/plans/completed/"
+      example: "%% OUTPUT: Implemented code, tests, and completed epics in docs/epics/completed/"
 
     GUIDELINE:
       description: "Policy or behavioral constraint reference. Multiple allowed."
@@ -63,8 +70,8 @@ header_comments:
         ^%% - .+$
       example: |
         %% OUTPUTS (FENCE: Output must match declared schema before marking complete):
-        %% - Plan folder: docs/plans/live/{plan_id}/ with required structure
-        %% - README.md: Plan overview and folder structure
+        %% - Epic folder: docs/epics/live/{epic_id}/ with required structure
+        %% - README.md: Epic overview and folder structure
 
     ENTRYPOINT_AWARENESS:
       description: |
@@ -76,7 +83,7 @@ header_comments:
       example: |
         %% ENTRYPOINT AWARENESS:
         %% This orchestrator is invoked via entrypoints that signal planning intent:
-        %% - _plan_build.yml: Build/implementation planning (prioritize planner-build)
+        %% - _ticket_build.yml: Build/implementation planning (prioritize planner-build)
 
     LOOP_DEFINITION:
       description: "Reference to loop definition in agent-loops.yml with fragment."
@@ -174,9 +181,9 @@ node_naming:
     pattern: "^[A-Z][a-zA-Z]+Loop\\{.+ Loop\\}$"
     convention: "Loop suffix on identifier, 'Loop' in label."
     examples:
-      - "TeachPlanLoop{Teach Planning Loop}"
-      - "BuildPlanLoop{Build Planning Loop}"
-      - "TestPlanLoop{Test Planning Loop}"
+      - "TeachEpicLoop{Teach Epic Loop}"
+      - "BuildEpicLoop{Build Epic Loop}"
+      - "TestEpicLoop{Test Epic Loop}"
 
 # =============================================================================
 # SUBGRAPH STRUCTURE
@@ -215,11 +222,11 @@ subgraph_structure:
         - "SearchInputs (self-healing)"
 
     planning_delegation:
-      purpose: "Handle plan loading or delegation to orchestration-planning."
+      purpose: "Handle epic loading or delegation to orchestration-planning."
       typical_nodes:
-        - "CheckPlanInput decision"
-        - "LoadApprovedPlan"
-        - "ValidatePlan decision"
+        - "CheckEpicInput decision"
+        - "LoadApprovedEpic"
+        - "ValidateEpic decision"
         - "DelegatePlanning (spawn)"
 
     planning_loops:
@@ -248,7 +255,7 @@ subgraph_structure:
       purpose: "Generate final outputs and report."
       typical_nodes:
         - "Report nodes"
-        - "Archive/move completed work"
+        - "Archive/move completed epics"
 
 # =============================================================================
 # EDGE PATTERNS
@@ -273,9 +280,9 @@ edge_patterns:
     pattern: "NodeA -.->|Label| NodeB"
     note: "Used for loops back to earlier phases, especially re-planning."
     examples:
-      - "UpdatePlanTests -.->|Re-plan with TEST_FAILURE| DelegatePlanning"
+      - "UpdateTicketTests -.->|Re-plan with TEST_FAILURE| DelegatePlanning"
       - "IdentifyAffectedPhases -.->|Return to Planning Loops| PlanningLoops"
-      - "UpdatePlanGaps -.->|Return to Planning| SpawnOrchestrationPlanning"
+      - "UpdateEpicGaps -.->|Return to Planning| SpawnOrchestrationPlanning"
 
   decision_branches:
     description: "Standard patterns for decision node outputs."
@@ -435,7 +442,7 @@ phase_comments:
 
   common_phases:
     - "INPUT VALIDATION PHASE"
-    - "PLAN FOLDER SETUP"
+    - "EPIC FOLDER SETUP"
     - "PLANNING DELEGATION SUBGRAPH"
     - "PHASE DETERMINATION"
     - "PLANNING LOOPS PHASE"
@@ -609,7 +616,7 @@ agent_routing:
       # AGENT_ROUTING: Setup -> deploy-cicd, Implementation -> build-python, Testing -> test-runner, Audit -> test-final-output
     teaching_orchestrator: |
       # AGENT_ROUTING: Planning -> planner-guidance, Review -> planner-reviewer, Teaching -> teacher-update-guidance
-    planning_orchestrator: |
+    epic_orchestrator: |
       # AGENT_ROUTING: BuildPlanning -> planner-build, TestPlanning -> planner-test, Review -> planner-reviewer
 
   validation:
@@ -621,7 +628,7 @@ agent_routing:
     rule: "Validation and Audit subgraphs MUST have AGENT_ROUTING entries"
     enforcement: "EXPECTED - executor should refuse to start if validation phases lack routing"
     cli_validation: |
-      `agentic plan validate` checks AGENT_ROUTING format and agent type validity
+      `agentic epic validate` checks AGENT_ROUTING format and agent type validity
       but does not yet enforce the validation-subgraph routing requirement.
       Enforcement relies on executor runtime behavior.
     description: |
@@ -831,15 +838,15 @@ status_management:
   relationship_to_plan_yaml:
     description: |
       STATUS comments in MMD files track workflow-level phase state.
-      This differs from plan YAML phase status which tracks task completion.
+      This differs from ticket YAML phase status which tracks ticket completion.
     mapping:
       mmd_status: "Workflow execution state (pending/in_progress/completed/failed/blocked)"
-      yaml_status: "Plan task completion state (pending/in_progress/completed)"
+      yaml_status: "Epic ticket completion state (pending/in_progress/completed)"
     synchronization: |
       When MMD phase completes:
-      - Check all corresponding YAML tasks for that phase
-      - Phase can only be 'completed' if all its YAML tasks are completed
-      - If any YAML task failed, MMD phase should be 'failed'
+      - Check all corresponding YAML tickets for that phase
+      - Phase can only be 'completed' if all its YAML tickets are completed
+      - If any YAML ticket failed, MMD phase should be 'failed'
 
   initial_state_template: |
     # STATUS: InputValidation=pending, Planning=pending, Implementation=pending, Testing=pending, Audit=pending

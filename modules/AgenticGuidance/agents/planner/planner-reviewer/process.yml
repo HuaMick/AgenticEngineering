@@ -1,5 +1,5 @@
 process:
-  goal: "Review and approve/reject implementation plans."
+  goal: "Review and approve/reject implementation tickets."
 
   loop_context:
     participates_in: ['planner-loop']
@@ -11,7 +11,7 @@ process:
     - location: "modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml"
       description: "Core reviewer planner agent inputs and guidelines"
       # Required runtime inputs (see inputs.yml#required_inputs):
-      #   - plan_folder_path: Path to plan folder to review
+      #   - epic_folder_path: Path to epic folder to review
       #   - target_project_path: Absolute path to target project root
 
   outputs:
@@ -33,8 +33,8 @@ process:
       # Get seed context (objective, process summary, inputs)
       agentic agent context bootstrap --role planner-reviewer -j
 
-      # Get current task if working from a plan
-      agentic agent plan task current -j
+      # Get current ticket if working from an epic
+      agentic agent epic ticket current -j
       ```
 
       CLI output provides:
@@ -45,7 +45,7 @@ process:
       ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
       DO NOT explore the codebase before running these commands.
 
-    - "Review all inputs. Locate the plan files in the provided live plan folder (`live/`)."
+    - "Review all inputs. Locate the ticket files in the provided live epic folder (`live/`)."
     - |
       INFRASTRUCTURE VERIFICATION (BLOCKING - must pass before structural review):
 
@@ -53,12 +53,12 @@ process:
       - modules/AgenticGuidance/README.md (Implementation Status section)
       - modules/AgenticGuidance/assets/definitions/agent-categories.yml (IMPLEMENTATION STATUS NOTE)
 
-      For each agent/infrastructure referenced in the plan:
+      For each agent/infrastructure referenced in the ticket:
       1. Verify the agent is listed as IMPLEMENTED (not "Not Migrated" or "NOT YET IMPLEMENTED")
       2. Verify the infrastructure exists (e.g., don't approve CICD tasks if deploy-cicd is placeholder)
       3. Verify referenced features are actually available
 
-      REJECT if plan includes:
+      REJECT if ticket includes:
       - Tasks targeting `deploy-cicd` (CICD pipeline not yet implemented)
       - Tasks targeting `deploy-packaging` (packaging infrastructure not implemented)
       - Tasks targeting `cleaner/*` agents (cleaner category not migrated)
@@ -67,14 +67,14 @@ process:
       - Tasks targeting `test-flutter-*` agents (Flutter test agents not implemented)
       - Any agent that lacks actual guidance files (process.yml, inputs.yml)
 
-      Flag plans that assume infrastructure marked as "Not Implemented" in the README.
+      Flag tickets that assume infrastructure marked as "Not Implemented" in the README.
 
     - |
-      Verify plan structure using checklists from:
+      Verify ticket structure using checklists from:
       modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml
 
       Apply in order:
-      1. checklists.plan_structure - Validate root plan fields
+      1. checklists.plan_structure - Validate root ticket fields
       2. checklists.inputs - Validate context references
       3. checklists.success_criteria - Validate verifiable outcomes
       4. checklists.task_structure - Validate task definitions
@@ -87,12 +87,12 @@ process:
       - Confirm layer references use transitive loading
 
       Apply fences (BLOCKING):
-      - fences.rlm_usage - Only if plan references RLM patterns
-      - fences.mmd_presence - For orchestrated plans
-      - fences.file_placement - All plans
+      - fences.rlm_usage - Only if ticket references RLM patterns
+      - fences.mmd_presence - For orchestrated tickets
+      - fences.file_placement - All tickets
       - fences.codebase_verification - Spawn explore agents to verify
-      - fences.self_review_validation - ALL plans (new SSR-004)
-      - fences.infrastructure_implementation - ALL plans (verify targets implemented infrastructure)
+      - fences.self_review_validation - ALL tickets (new SSR-004)
+      - fences.infrastructure_implementation - ALL tickets (verify targets implemented infrastructure)
       - fences.open_questions_validation - Validate open_questions section if present (see OPEN_QUESTIONS_VALIDATION below)
 
     - |
@@ -163,32 +163,32 @@ process:
       STORY VALIDATION (FENCE - Story-First Planning):
       Reference: modules/AgenticGuidance/assets/guidelines/planning-standard.yml#Story-First Planning
 
-      Validate that plans properly integrate user stories:
+      Validate that tickets properly integrate user stories:
 
       VALIDATION CHECKLIST:
-      1. Build plans MUST have affected_stories list OR no_stories_rationale field
-         - REJECT if neither is present in plan metadata
+      1. Build tickets MUST have affected_stories list OR no_stories_rationale field
+         - REJECT if neither is present in ticket metadata
          - affected_stories should contain valid story IDs (US-<PROJECT>-NNN format)
-      2. Test plans with UAT phase MUST reference specific story IDs
+      2. Test tickets with UAT phase MUST reference specific story IDs
          - UAT tasks must map to story acceptance criteria
-      3. Plans modifying user-facing features MUST identify affected stories
+      3. Tickets modifying user-facing features MUST identify affected stories
          - Check target_files: if any are user-facing (CLI, API, UI), stories are expected
-      4. Plans with affected_stories MUST have corresponding UAT tasks
+      4. Tickets with affected_stories MUST have corresponding UAT tasks
          - REJECT if stories listed but no UAT phase planned
 
       ESCAPE HATCH RULES (canonical source: planning-standard.yml#escape_hatch_rules):
       - allowed_plan_types: [infrastructure, guidance, internal_tooling] — may use no_stories_rationale
       - blocked_plan_types: [build, test] — MUST have affected_stories, no escape hatch
       - Vague rationales (e.g., "not applicable") should trigger NEEDS_REVISION
-      - REJECT build/test plans that attempt to skip stories regardless of rationale
+      - REJECT build/test tickets that attempt to skip stories regardless of rationale
 
       FEEDBACK EXAMPLES:
-      - "Plan lacks affected_stories and no_stories_rationale - add story discovery results"
+      - "Ticket lacks affected_stories and no_stories_rationale - add story discovery results"
       - "affected_stories lists US-CLI-001 but no UAT phase validates it"
       - "no_stories_rationale is too vague - explain why guidance changes don't impact users"
     - |
       Decision:
-      - APPROVE: All checklist items pass AND all fences pass, plan ready for execution.
+      - APPROVE: All checklist items pass AND all fences pass, ticket ready for execution.
       - REJECT: Any checklist item fails OR any fence fails. Cite failed items with specific feedback.
 
       FENCE: PASS requires ALL criteria met (conjunction rule).
@@ -199,15 +199,15 @@ process:
     - "Report decision and feedback."
     - |
       POST-APPROVAL CLEANUP (on APPROVE only):
-      1. Report to orchestrator: "APPROVED: Merge tasks from [plan_name] into authoritative phase plan"
+      1. Report to orchestrator: "APPROVED: Merge tasks from [ticket_name] into authoritative phase ticket"
       2. Archive artifacts: audit_*.yml -> audit/, review_*.yml -> analysis/
-      3. After merge: DELETE remediation plan from live/ (tasks preserved in merged plan)
-      Note: REJECT decisions leave plans in live/ for next planner-loop iteration.
+      3. After merge: DELETE remediation ticket from live/ (tasks preserved in merged ticket)
+      Note: REJECT decisions leave tickets in live/ for next planner-loop iteration.
 
   guidelines:
-    - "Reject plans with structural issues, missing critical information, OR misplaced files in live/."
+    - "Reject tickets with structural issues, missing critical information, OR misplaced files in live/."
     - "Ensure context routing is specific (file-level or directory-level references are both acceptable)."
     - "Validate that all mandatory loops (like audit-test-fix) are included where required."
-    - "Reject plans that reference unimplemented agents or infrastructure (check README Implementation Status)."
-    - "Reject plans that assume CICD infrastructure until deploy-cicd is fully implemented."
-    - "Flag plans targeting placeholder agents that exist only in taxonomy but lack guidance files."
+    - "Reject tickets that reference unimplemented agents or infrastructure (check README Implementation Status)."
+    - "Reject tickets that assume CICD infrastructure until deploy-cicd is fully implemented."
+    - "Flag tickets targeting placeholder agents that exist only in taxonomy but lack guidance files."

@@ -25,15 +25,18 @@ class QuestionWatcherHandler(FileSystemEventHandler):
     Includes debouncing to limit callback frequency to at most once per 2 seconds.
     """
 
-    def __init__(self, plan_folder: Path, callback: Callable[[], None]):
+    def __init__(self, epic_folder: Path, callback: Callable[[], None], plan_folder: Path | None = None):
         """Initialize the question watcher handler.
 
         Args:
-            plan_folder: Path to the plan folder containing questions/ directory.
+            epic_folder: Path to the epic folder containing questions/ directory.
             callback: Function to call when questions change (no arguments).
+            plan_folder: Deprecated alias for epic_folder. Ignored if epic_folder provided.
         """
         super().__init__()
-        self.plan_folder = plan_folder
+        self.epic_folder = epic_folder
+        # Backward compatibility alias
+        self.plan_folder = epic_folder
         self.callback = callback
 
         # Debouncing: Track last notification time and use a lock for thread safety
@@ -44,7 +47,7 @@ class QuestionWatcherHandler(FileSystemEventHandler):
         self._timer: Optional[threading.Timer] = None
 
         logger.debug(
-            f"QuestionWatcherHandler initialized for {plan_folder} "
+            f"QuestionWatcherHandler initialized for {epic_folder} "
             f"(debounce={self._debounce_seconds}s)"
         )
 
@@ -170,48 +173,53 @@ class QuestionWatcherHandler(FileSystemEventHandler):
 
 
 def start_question_watcher(
-    plan_folder: Path,
+    epic_folder: Path,
     callback: Callable[[], None],
-    daemon: bool = True
+    daemon: bool = True,
+    plan_folder: Path | None = None,
 ) -> Observer:
-    """Start watching a plan's question folders for changes.
+    """Start watching an epic's question folders for changes.
 
     Creates and starts an Observer thread that monitors the questions/pending/
     and questions/answered/ directories for file changes.
 
     Args:
-        plan_folder: Path to plan folder (e.g., docs/plans/live/260203QT_question_tmux).
+        epic_folder: Path to epic folder (e.g., docs/epics/live/260203QT_question_tmux).
         callback: Function to call when questions change. Should reload questions
                  and update notifications.
         daemon: If True, run observer as daemon thread (default: True).
+        plan_folder: Deprecated alias for epic_folder. Used as fallback if provided.
 
     Returns:
         Observer instance. Caller should keep reference and call stop_question_watcher()
         when done.
 
     Raises:
-        ValueError: If plan_folder doesn't exist or doesn't contain questions/ directory.
+        ValueError: If epic_folder doesn't exist or doesn't contain questions/ directory.
 
     Example:
         >>> from pathlib import Path
         >>> def on_questions_changed():
         ...     print("Questions changed!")
         >>> observer = start_question_watcher(
-        ...     Path("docs/plans/live/260203QT_question_tmux"),
+        ...     Path("docs/epics/live/260203QT_question_tmux"),
         ...     on_questions_changed
         ... )
         >>> # ... do work ...
         >>> stop_question_watcher(observer)
     """
-    # Validate plan_folder exists
-    if not plan_folder.exists():
-        raise ValueError(f"Plan folder does not exist: {plan_folder}")
+    # Support deprecated plan_folder alias
+    folder = epic_folder if epic_folder is not None else plan_folder
 
-    if not plan_folder.is_dir():
-        raise ValueError(f"Plan folder is not a directory: {plan_folder}")
+    # Validate folder exists
+    if not folder.exists():
+        raise ValueError(f"Epic folder does not exist: {folder}")
+
+    if not folder.is_dir():
+        raise ValueError(f"Epic folder is not a directory: {folder}")
 
     # Create questions directory if it doesn't exist
-    questions_dir = plan_folder / "questions"
+    questions_dir = folder / "questions"
     questions_dir.mkdir(parents=True, exist_ok=True)
 
     # Create pending and answered directories if they don't exist
@@ -221,7 +229,7 @@ def start_question_watcher(
     answered_dir.mkdir(exist_ok=True)
 
     # Create event handler
-    handler = QuestionWatcherHandler(plan_folder, callback)
+    handler = QuestionWatcherHandler(folder, callback)
 
     # Create observer
     observer = Observer()
@@ -235,7 +243,7 @@ def start_question_watcher(
     observer.start()
 
     logger.info(
-        f"Question watcher started for {plan_folder} "
+        f"Question watcher started for {folder} "
         f"(pending={pending_dir}, answered={answered_dir})"
     )
 

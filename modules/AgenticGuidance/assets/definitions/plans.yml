@@ -1,4 +1,4 @@
-Plans are living documents that help agents track the current state of the project.
+Epics are living documents that help agents track the current state of the project.
 
 # Naming Convention
 naming_convention:
@@ -9,29 +9,29 @@ naming_convention:
     - "260104CL_agentic_cli_feature"
   components:
     YYMMDD: "Date of creation (year/month/day)"
-    XX: "2 uppercase letters (e.g., derived from branch name or plan type)"
+    XX: "2 uppercase letters (e.g., derived from branch name or epic type)"
     description: "Sanitized description (lowercase, underscores only, max 50 chars)"
   cli_enforcement: |
-    Use 'agentic plan init <branch> --description <desc>' to generate names automatically.
+    Use 'agentic epic init <branch> --description <desc>' to generate names automatically.
     The CLI enforces this convention programmatically - agents should NOT attempt manual naming.
 
-There are 3 types of plans:
-- plans_live: Live plans in docs/plans/live/YYMMDDXX_description/ folders (e.g., 260115AG_naming_audit).
+There are 3 types of epics:
+- epics_live: Live epics in docs/epics/live/YYMMDDXX_description/ folders (e.g., 260115AG_naming_audit).
   See naming_convention above for pattern details.
-  Use 'agentic plan init' command to create - CLI enforces naming programmatically.
+  Use 'agentic epic init' command to create - CLI enforces naming programmatically.
 
   FLAT STRUCTURE REQUIREMENT:
-  Plan files (plan_*.yml, orchestration_*.mmd, README.md) MUST be in the folder root.
-  Do NOT create live/ or completed/ subdirectories within plan folders.
+  Epic files (ticket_*.yml, orchestration_*.mmd, README.md) MUST be in the folder root.
+  Do NOT create live/ or completed/ subdirectories within epic folders.
 
   Standard folder structure:
     YYMMDDXX_description/
-    ├── README.md              # Plan overview and status
+    ├── README.md              # Epic overview and status
     ├── orchestration_*.mmd    # Process diagram(s)
-    ├── plan_*.yml             # Phase files (directly in root)
+    ├── ticket_*.yml           # Phase files (directly in root)
     └── reference/             # Optional: reference materials
 
-  Optional subfolders for artifacts (NOT for plan files):
+  Optional subfolders for artifacts (NOT for epic files):
   - reference/: Reference materials and research (optional)
   - analysis/: Iteration logs and analysis artifacts (optional)
   - audit/: Audit reports and findings (optional)
@@ -40,161 +40,161 @@ There are 3 types of plans:
   (e.g., .md analysis files) to avoid polluting the project root.
   This structure reduces context window usage and keeps implementation artifacts organized.
 
-- plans_backlog: Backlog plans organized by category in docs/plans/backlog/backlog_*.yml.
+- epics_backlog: Backlog epics organized by category in docs/epics/backlog/backlog_*.yml.
   Files include backlog_cicd.yml, backlog_core.yml, backlog_maintenance.yml, backlog_testing.yml.
-  Contains all future plans organized by category. Items are moved from the backlog to the appropriate live plan.
+  Contains all future epics organized by category. Items are moved from the backlog to the appropriate live epic.
 
-- plans_completed: Completed plans in docs/plans/completed/YYMMDDXX_description/.
-  Each plan folder is copied (not moved) when fully completed. Completed plans should be minimised.
+- epics_completed: Completed epics in docs/epics/completed/YYMMDDXX_description/.
+  Each epic folder is copied (not moved) when fully completed. Completed epics should be minimised.
   Implementation details should be moved to README or be discoverable from the codebase.
 
-# CLI Plan Command Usage
+# CLI Epic Command Usage
 cli_usage:
   path_requirements:
     description: |
-      Plan commands accept full paths or short names. The CLI supports
+      Epic commands accept full paths or short names. The CLI supports
       short-name resolution: partial folder names are matched against
-      docs/plans/live/ using prefix matching (startswith).
+      docs/epics/live/ using prefix matching (startswith).
 
       Resolution order:
       1. If path exists as-is (full or relative path), use it directly
-      2. If not found, search docs/plans/live/ for exact folder name match
+      2. If not found, search docs/epics/live/ for exact folder name match
       3. If no exact match, find folders starting with the given prefix
       4. If multiple prefix matches, first alphabetically is used
     correct_usage:
-      - "agentic plan task complete build_01 --plan docs/plans/live/260128AG_example"
-      - "agentic plan task complete build_01 --plan 260128AG_example"
-      - "agentic plan task complete build_01 --plan 260128AG"
-      - "agentic plan status --plan docs/plans/live/260128AG_example"
+      - "agentic epic ticket complete build_01 --epic docs/epics/live/260128AG_example"
+      - "agentic epic ticket complete build_01 --epic 260128AG_example"
+      - "agentic epic ticket complete build_01 --epic 260128AG"
+      - "agentic epic status --epic docs/epics/live/260128AG_example"
     short_name_examples:
       - input: "260128AG"
-        resolves_to: "docs/plans/live/260128AG_example"
-        note: "Prefix match against folder names in docs/plans/live/"
+        resolves_to: "docs/epics/live/260128AG_example"
+        note: "Prefix match against folder names in docs/epics/live/"
       - input: "260128AG_example"
-        resolves_to: "docs/plans/live/260128AG_example"
+        resolves_to: "docs/epics/live/260128AG_example"
         note: "Exact folder name match"
 
   archival_commands:
     archive:
-      command: "agentic plan archive <plan_path>"
+      command: "agentic epic archive <epic_path>"
       behavior: |
-        Copies the plan folder from live/ to completed/.
+        Copies the epic folder from live/ to completed/.
         IMPORTANT: Does NOT remove the source folder from live/.
         Manual cleanup of the live/ folder may be needed if desired.
-      example: "agentic plan archive docs/plans/live/260128AG_example"
+      example: "agentic epic archive docs/epics/live/260128AG_example"
 
     unarchive:
-      command: "agentic plan unarchive <plan_name>"
+      command: "agentic epic unarchive <epic_name>"
       behavior: |
-        Moves a plan folder from completed/ back to live/.
-        Useful when a plan was archived prematurely or needs to be resumed.
+        Moves an epic folder from completed/ back to live/.
+        Useful when an epic was archived prematurely or needs to be resumed.
         Supports partial matching of folder names.
-      example: "agentic plan unarchive 260128AG_example"
+      example: "agentic epic unarchive 260128AG_example"
       notes:
         - "Will fail if destination already exists in live/"
         - "Prompts for confirmation unless --force is used"
 
   auto_archival:
     description: |
-      When marking the last task in a plan as completed, the CLI automatically
-      triggers archival to docs/plans/completed/. This can be suppressed.
-    trigger: "All tasks in all plan_*.yml files have status: completed"
+      When marking the last ticket in an epic as completed, the CLI automatically
+      triggers archival to docs/epics/completed/. This can be suppressed.
+    trigger: "All tickets in all ticket_*.yml files have status: completed"
     suppress_flag: "--no-archive"
-    example: "agentic plan task complete final_task_01 --plan docs/plans/live/260128AG_example --no-archive"
+    example: "agentic epic ticket complete final_ticket_01 --epic docs/epics/live/260128AG_example --no-archive"
     notes:
       - "Auto-archival copies but does not remove source folder"
-      - "Task update succeeds even if auto-archive fails"
+      - "Ticket update succeeds even if auto-archive fails"
 
   known_limitations:
     - "Archive command copies but does not remove source folder"
-    - "Task move does not remove from source file (copy-not-move pattern)"
+    - "Ticket move does not remove from source file (copy-not-move pattern)"
 
   # ==============================================
-  # FENCE: CLI-ONLY PLAN OPERATIONS
+  # FENCE: CLI-ONLY EPIC OPERATIONS
   # ==============================================
   cli_only_fence:
     description: |
-      FENCE: All plan status updates and archival MUST use CLI commands.
+      FENCE: All epic status updates and archival MUST use CLI commands.
       Manual file operations bypass data consistency checks and auto-archival.
     prohibited_operations:
       bash_commands:
-        - "rm docs/plans/live/<folder>"
-        - "rm -rf docs/plans/live/<folder>"
-        - "mv docs/plans/live/<folder> docs/plans/completed/"
-        - "cp -r docs/plans/live/<folder> docs/plans/completed/"
+        - "rm docs/epics/live/<folder>"
+        - "rm -rf docs/epics/live/<folder>"
+        - "mv docs/epics/live/<folder> docs/epics/completed/"
+        - "cp -r docs/epics/live/<folder> docs/epics/completed/"
       edit_operations:
-        - "Edit tool to modify status: field in plan YAML files"
-        - "Direct YAML manipulation of task status values"
+        - "Edit tool to modify status: field in epic YAML files"
+        - "Direct YAML manipulation of ticket status values"
     required_alternatives:
-      task_status:
+      ticket_status:
         instead_of: "Edit tool on status: field"
-        use: "agentic plan task start/complete <task_id> --plan <folder>"
-      plan_archival:
+        use: "agentic epic ticket start/complete <ticket_id> --epic <folder>"
+      epic_archival:
         instead_of: "mv or cp commands"
-        use: "agentic plan archive <folder> (or let auto-archive handle it)"
-      plan_cleanup:
+        use: "agentic epic archive <folder> (or let auto-archive handle it)"
+      epic_cleanup:
         instead_of: "rm commands"
         use: "Manual cleanup is user-only operation after archival"
     auto_archival_behavior: |
-      When `agentic plan task complete` marks the last task as completed,
+      When `agentic epic ticket complete` marks the last ticket as completed,
       the CLI automatically:
-      1. Copies the plan folder to docs/plans/completed/
+      1. Copies the epic folder to docs/epics/completed/
       2. Preserves the live/ copy for potential follow-on work
       3. Logs the archival action
 
       Use --no-archive flag ONLY if follow-on work is planned.
 
-plan_lifecycle:
-  Four distinct stages govern how plans move through their lifecycle:
+epic_lifecycle:
+  Four distinct stages govern how epics move through their lifecycle:
 
   1. planning:
-     - Plan is being developed
-     - Initial phases and tasks are being defined
-     - Folder exists in docs/plans/live/
+     - Epic is being developed
+     - Initial phases and tickets are being defined
+     - Folder exists in docs/epics/live/
 
   2. active:
-     - Plan execution is in progress
+     - Epic execution is in progress
      - One or more phases are being worked on
-     - Folder exists in docs/plans/live/
-     - Phase files (plan_*.yml) are in folder root
+     - Folder exists in docs/epics/live/
+     - Phase files (ticket_*.yml) are in folder root
 
   3. partially_completed:
      - Some phases completed, follow-on work continues
-     - Folder exists in BOTH docs/plans/live/ AND docs/plans/completed/
-     - completed/ copy in docs/plans/completed/ contains snapshot of finished phases
-     - live/ copy in docs/plans/live/ contains ongoing work
+     - Folder exists in BOTH docs/epics/live/ AND docs/epics/completed/
+     - completed/ copy in docs/epics/completed/ contains snapshot of finished phases
+     - live/ copy in docs/epics/live/ contains ongoing work
 
   4. fully_completed:
      - All phases done, no active work remaining
-     - Folder copied to docs/plans/completed/
-     - May or may not remain in docs/plans/live/ (user decision)
+     - Folder copied to docs/epics/completed/
+     - May or may not remain in docs/epics/live/ (user decision)
 
 file_taxonomy:
-  CRITICAL: Plan files (plan_*.yml) MUST be in the plan folder root, NOT in subdirectories.
+  CRITICAL: Epic files (ticket_*.yml) MUST be in the epic folder root, NOT in subdirectories.
 
   Correct structure:
     YYMMDDXX_description/
     ├── README.md
     ├── orchestration_*.mmd
-    ├── plan_build.yml       # <-- Directly in folder root
-    ├── plan_teach.yml       # <-- Directly in folder root
-    └── reference/           # Optional subfolder for reference materials
+    ├── ticket_build.yml       # <-- Directly in folder root
+    ├── ticket_teach.yml       # <-- Directly in folder root
+    └── reference/             # Optional subfolder for reference materials
 
   WRONG structure (do NOT use):
     YYMMDDXX_description/
     ├── live/
-    │   └── plan_*.yml       # WRONG: nested in subdirectory
+    │   └── ticket_*.yml       # WRONG: nested in subdirectory
     └── completed/
-        └── plan_*.yml       # WRONG: nested in subdirectory
+        └── ticket_*.yml       # WRONG: nested in subdirectory
 
   File naming conventions:
-    - plan_*.yml: Phase files (build, teach, test, audit, cleanup, uat)
+    - ticket_*.yml: Phase files (build, teach, test, audit, cleanup, uat)
     - orchestration_*.mmd: Process diagrams
-    - README.md: Plan overview and status
+    - README.md: Epic overview and status
 
-  Optional subfolders (for artifacts only, NOT for plan files):
+  Optional subfolders (for artifacts only, NOT for epic files):
     - reference/: Reference materials and research
-    - analysis/: Iteration logs and analysis artifacts (plan_iteration_*.yml, .md documents)
+    - analysis/: Iteration logs and analysis artifacts (ticket_iteration_*.yml, .md documents)
     - audit/: Audit reports and findings
 
   # ==============================================
@@ -202,42 +202,42 @@ file_taxonomy:
   # ==============================================
   flat_structure_fence:
     description: |
-      FENCE: Plan files (plan_*.yml, orchestration_*.mmd, README.md) MUST be at folder root.
-      NEVER create nested live/, completed/, analysis/, or audit/ subdirectories for plan files.
+      FENCE: Epic files (ticket_*.yml, orchestration_*.mmd, README.md) MUST be at folder root.
+      NEVER create nested live/, completed/, analysis/, or audit/ subdirectories for epic files.
 
     prohibited_patterns:
-      - "docs/plans/live/YYMMDDXX_description/live/plan_*.yml"
-      - "docs/plans/live/YYMMDDXX_description/completed/plan_*.yml"
-      - "plan_live_*.yml" (outdated naming - use plan_*.yml)
-      - "live/plan_build.yml" (nested - should be plan_build.yml at root)
+      - "docs/epics/live/YYMMDDXX_description/live/ticket_*.yml"
+      - "docs/epics/live/YYMMDDXX_description/completed/ticket_*.yml"
+      - "ticket_live_*.yml" (outdated naming - use ticket_*.yml)
+      - "live/ticket_build.yml" (nested - should be ticket_build.yml at root)
 
     correct_patterns:
-      - "docs/plans/live/YYMMDDXX_description/plan_build.yml"
-      - "docs/plans/live/YYMMDDXX_description/plan_test.yml"
-      - "docs/plans/live/YYMMDDXX_description/orchestration_*.mmd"
+      - "docs/epics/live/YYMMDDXX_description/ticket_build.yml"
+      - "docs/epics/live/YYMMDDXX_description/ticket_test.yml"
+      - "docs/epics/live/YYMMDDXX_description/orchestration_*.mmd"
 
     cli_enforcement: |
-      The CLI creates plan folders with flat structure via 'agentic plan init'.
-      CLI commands expect plan files at folder root, NOT in subdirectories.
+      The CLI creates epic folders with flat structure via 'agentic epic init'.
+      CLI commands expect epic files at folder root, NOT in subdirectories.
       Nested structure will cause CLI errors and auto-archival failures.
 
     migration_note: |
-      Legacy plans may have nested live/ folders or plan_live_*.yml files.
+      Legacy epics may have nested live/ folders or ticket_live_*.yml files.
       These are DEPRECATED and should be migrated to flat structure:
-      1. Move plan_*.yml files from nested live/ to folder root
-      2. Remove plan_live_ prefix from filenames
+      1. Move ticket_*.yml files from nested live/ to folder root
+      2. Remove ticket_live_ prefix from filenames
       3. Delete empty nested live/ directory
       4. Update README to reflect flat structure
 
     rationale: |
       Flat structure ensures:
       - CLI compatibility (commands locate files correctly)
-      - Auto-archival works (scans folder root for plan files)
-      - Consistency across all plans
+      - Auto-archival works (scans folder root for epic files)
+      - Consistency across all epics
       - Reduced confusion about file locations
 
 scrap_file_taxonomy:
-  description: "Transient artifacts from planning loops with different lifecycle than phase plans"
+  description: "Transient artifacts from planning loops with different lifecycle than phase epics"
 
   audit_files:
     pattern: "audit_*.yml"
@@ -247,98 +247,98 @@ scrap_file_taxonomy:
 
   review_files:
     pattern: "review_*.yml"
-    purpose: "Plan approval/rejection decisions from planner-reviewer"
+    purpose: "Epic approval/rejection decisions from planner-reviewer"
     lifecycle: "Move to analysis/ subfolder after decision is processed"
     retention: "Archive for decision audit trail, do not delete"
 
   remediation_plans:
-    pattern: "plan_*_remediation*.yml"
+    pattern: "ticket_*_remediation*.yml"
     purpose: "Intermediate fix plans generated from audits"
-    lifecycle: "Merge approved tasks into authoritative phase plan, then delete from live/"
-    retention: "Tasks preserved in phase plan; original file deleted (not archived)"
+    lifecycle: "Merge approved tickets into authoritative phase epic, then delete from live/"
+    retention: "Tickets preserved in phase epic; original file deleted (not archived)"
 
 two_level_completion_pattern:
-  Plans use a two-level completion model: task-level status updates and folder-level copy.
+  Epics use a two-level completion model: ticket-level status updates and folder-level copy.
 
-  Note: This pattern refers to docs/plans/live/ and docs/plans/completed/ directories,
-  NOT to subdirectories within plan folders. Plan files remain in their folder root.
+  Note: This pattern refers to docs/epics/live/ and docs/epics/completed/ directories,
+  NOT to subdirectories within epic folders. Epic files remain in their folder root.
 
   SCRAP FILE FENCE:
-  The Copy-and-Sync pattern applies to PHASE PLANS (plan_*.yml).
-  SCRAP FILES (audit_*.yml, review_*.yml, plan_*_remediation*.yml) have different rules:
+  The Copy-and-Sync pattern applies to PHASE EPICS (ticket_*.yml).
+  SCRAP FILES (audit_*.yml, review_*.yml, ticket_*_remediation*.yml) have different rules:
   - They do NOT use Copy-and-Sync
   - They MOVE to analysis/ or audit/ subfolders after processing
-  - remediation_plans are DELETED (not moved) after task merge
+  - remediation_plans are DELETED (not moved) after ticket merge
   - Cleanup is triggered by APPROVAL, not by completion of all items
 
-  TASK-LEVEL COMPLETION:
-  Tasks are marked completed within their plan_*.yml files in the folder root.
-  Status updates happen in-place within the plan files.
+  TICKET-LEVEL COMPLETION:
+  Tickets are marked completed within their ticket_*.yml files in the folder root.
+  Status updates happen in-place within the epic files.
 
-  INCREMENTAL COMPLETION (partial plan completion):
-  - Plan folder remains in docs/plans/live/ while any tasks are pending/in-progress
-  - Update task statuses within plan_*.yml files as work progresses
+  INCREMENTAL COMPLETION (partial epic completion):
+  - Epic folder remains in docs/epics/live/ while any tickets are pending/in-progress
+  - Update ticket statuses within ticket_*.yml files as work progresses
   Example:
-    docs/plans/live/260115AG_example/
-    ├── plan_build.yml    # 5 tasks: 3 completed, 2 pending
-    └── plan_test.yml     # All tasks pending
+    docs/epics/live/260115AG_example/
+    ├── ticket_build.yml    # 5 tickets: 3 completed, 2 pending
+    └── ticket_test.yml     # All tickets pending
 
-  FULL COMPLETION (all tasks done):
-  - When ALL tasks in ALL plan files have status: completed
-  - Copy entire folder to docs/plans/completed/
-  - Original may remain in docs/plans/live/ for follow-on work
+  FULL COMPLETION (all tickets done):
+  - When ALL tickets in ALL epic files have status: completed
+  - Copy entire folder to docs/epics/completed/
+  - Original may remain in docs/epics/live/ for follow-on work
   Example:
-    agentic plan move folder --plan <plan_folder>  # Copy to completed
-    docs/plans/completed/260115AG_example/         # Archived version
+    agentic epic move folder --epic <epic_folder>  # Copy to completed
+    docs/epics/completed/260115AG_example/         # Archived version
 
   REACTIVATION (issues found post-completion):
-  - Update plan files in docs/plans/live/ copy
-  - Update affected tasks' status to reflect the issue
-  - docs/plans/completed/ copy remains as historical record
+  - Update epic files in docs/epics/live/ copy
+  - Update affected tickets' status to reflect the issue
+  - docs/epics/completed/ copy remains as historical record
 
   FOLDER-LEVEL COMPLETION (COPY-NOT-MOVE pattern):
-  - When ALL tasks in a plan folder are completed (status: 'fully_completed')
-  - The ENTIRE plan folder is COPIED (not moved) to docs/plans/completed/
-    Command: agentic plan move folder --plan <plan_folder>
-  - The original docs/plans/live/ folder remains in place to support follow-on work
-  - Only users manually move old plan folders from live/ to an archived/ subdirectory
+  - When ALL tickets in an epic folder are completed (status: 'fully_completed')
+  - The ENTIRE epic folder is COPIED (not moved) to docs/epics/completed/
+    Command: agentic epic move folder --epic <epic_folder>
+  - The original docs/epics/live/ folder remains in place to support follow-on work
+  - Only users manually move old epic folders from live/ to an archived/ subdirectory
 
   Why this pattern works:
-  - Agents can add missed items to files in docs/plans/live/ without disrupting completed/ archive
-  - Completed tasks are preserved even while work continues
-  - Reactivation is clean: update docs/plans/live/ copy, sync to completed later
+  - Agents can add missed items to files in docs/epics/live/ without disrupting completed/ archive
+  - Completed tickets are preserved even while work continues
+  - Reactivation is clean: update docs/epics/live/ copy, sync to completed later
 
 follow_on_work_pattern:
   DO:
-  - Keep the existing folder in docs/plans/live/ for follow-on work
-  - Add new plan files (plan_*.yml) for new phases in the folder root
-  - Reference the original work in metadata (e.g., original_plan_date, previous_phases)
-  - Copy the folder to docs/plans/completed/ when initial phases complete
-  - Update the docs/plans/completed/ copy when new phases complete
+  - Keep the existing folder in docs/epics/live/ for follow-on work
+  - Add new epic files (ticket_*.yml) for new phases in the folder root
+  - Reference the original work in metadata (e.g., original_epic_date, previous_phases)
+  - Copy the folder to docs/epics/completed/ when initial phases complete
+  - Update the docs/epics/completed/ copy when new phases complete
 
   DON'T:
   - Create a new folder for related follow-on work (reuse the existing folder)
-  - Move the folder out of docs/plans/live/ while work continues
+  - Move the folder out of docs/epics/live/ while work continues
   - Archive the folder without explicit user confirmation
-  - Create live/ or completed/ subdirectories within plan folders
+  - Create live/ or completed/ subdirectories within epic folders
 
 archived_vs_completed:
   Critical distinction between completed and archived storage:
 
   completed/:
-  - Location: docs/plans/completed/
+  - Location: docs/epics/completed/
   - Purpose: Snapshot of completed work
-  - May have an active counterpart in docs/plans/live/
-  - Updated when new phases of the same plan complete
+  - May have an active counterpart in docs/epics/live/
+  - Updated when new phases of the same epic complete
   - Accessible for reference and follow-on planning
 
   archived/:
-  - Location: docs/plans/archived/
-  - Purpose: Historical storage for plans 6+ months old
-  - No active counterpart in docs/plans/live/
+  - Location: docs/epics/archived/
+  - Purpose: Historical storage for epics 6+ months old
+  - No active counterpart in docs/epics/live/
   - Infrequently accessed
 
-  FENCE: Agents must NEVER move, copy, or modify folders to or within docs/plans/archived/.
+  FENCE: Agents must NEVER move, copy, or modify folders to or within docs/epics/archived/.
   Only users may perform archival operations.
 
 phase_types:
@@ -360,19 +360,19 @@ phase_types:
       order_priority: 2
 
     test:
-      purpose: "Test strategy and validation tasks"
+      purpose: "Test strategy and validation tickets"
       planner: "planner-test"
       executor: "test-runner, test-guidance-simulator"
       order_priority: 3
 
     cleanup:
-      purpose: "Code cleanup or removal tasks"
+      purpose: "Code cleanup or removal tickets"
       planner: "planner-cleaning"
       executor: "build-python (cleanup operations)"
       order_priority: 4
 
     audit:
-      purpose: "Plan folder compliance checks and file lifecycle validation"
+      purpose: "Epic folder compliance checks and file lifecycle validation"
       planner: "planner-audit (when it exists), planner-test"
       executor: "test-audit, test-final-output"
       order_priority: 5
@@ -382,11 +382,11 @@ phase_types:
       planner: "planner-test (handles UAT as testing domain)"
       executor: "test-user-simulator"
       order_priority: 6
-      note: "PRIMARY SUCCESS CRITERIA - mandatory for build plans"
+      note: "PRIMARY SUCCESS CRITERIA - mandatory for build epics"
 
   execution_order: |
     Standard execution order: teach -> build -> test -> cleanup -> audit -> uat
-    Note: Not all phases are required for every plan. Orchestration determines
+    Note: Not all phases are required for every epic. Orchestration determines
     which phases are needed based on the objective.
 
   naming_convention: |
@@ -394,11 +394,11 @@ phase_types:
     Use Title Case in comments and documentation (e.g., "Teach Phase", "UAT Phase").
     Avoid uppercase abbreviations (e.g., "UAT" should be "uat" in code).
 
-# Plan Structure Requirements (for planner-reviewer validation)
+# Epic Structure Requirements (for planner-reviewer validation)
 # Merged from plan-structure-requirements.yml
 required_fields:
-  plan_level:
-    - plan_name: "string - unique descriptive name"
+  epic_level:
+    - epic_name: "string - unique descriptive name"
     - branch: "string - git branch name"
     - status: "enum - planning|active|partially_completed|fully_completed"
     - phases: "list - ordered phase definitions"
@@ -407,10 +407,10 @@ required_fields:
     - phase_id: "string - unique identifier"
     - name: "string - human-readable name"
     - status: "enum - pending|in_progress|completed"
-    - tasks: "list - ordered task definitions"
+    - tickets: "list - ordered ticket definitions"
 
-  task_level:
-    - task_id: "string - unique identifier"
+  ticket_level:
+    - ticket_id: "string - unique identifier"
     - description: "string - actionable (starts with verb)"
     - status: "enum - pending|in_progress|completed|blocked"
     - success_criteria: "list - verifiable conditions"
@@ -418,37 +418,37 @@ required_fields:
 validation_checklist:
   structure:
     - "All required_fields present at each level"
-    - "Phase/task IDs unique within their scope"
+    - "Phase/ticket IDs unique within their scope"
     - "Status values match valid enum options"
-    - "loop_structure present for non-trivial plans"
+    - "loop_structure present for non-trivial epics"
   naming:
     - "Folder matches YYMMDDXX_description pattern (see naming_convention.regex)"
-    - "Phase files (plan_*.yml) in folder root, NOT in subdirectories"
-    - "Naming validated by CLI during plan init (do not validate manually)"
+    - "Phase files (ticket_*.yml) in folder root, NOT in subdirectories"
+    - "Naming validated by CLI during epic init (do not validate manually)"
   quality:
     - "Success criteria are specific and verifiable"
-    - "Task descriptions start with action verb"
+    - "Ticket descriptions start with action verb"
     - "Phase ordering reflects dependencies"
     - "loop_structure exit_criteria are measurable"
 
 # Loop Structure Requirements
-# Defines how plans declare their execution loop patterns
+# Defines how epics declare their execution loop patterns
 # Reference: modules/AgenticGuidance/assets/definitions/agent-loops.yml
 loop_structure:
   description: |
-    Plans must declare their loop structure to enable planners to understand
+    Epics must declare their loop structure to enable planners to understand
     the iterative execution pattern, exit conditions, and participant roles.
     This ensures consistent loop handling across the planning system.
 
   requirement_level:
-    non_trivial_plans: "REQUIRED - Any plan with multiple phases or agent coordination"
-    single_task_plans: "OPTIONAL - Simple plans may omit if no iteration needed"
+    non_trivial_epics: "REQUIRED - Any epic with multiple phases or agent coordination"
+    single_ticket_epics: "OPTIONAL - Simple epics may omit if no iteration needed"
     trivial_threshold: |
-      A plan is considered trivial if:
-      - Single phase with 3 or fewer tasks
+      An epic is considered trivial if:
+      - Single phase with 3 or fewer tickets
       - No agent coordination required
       - No iteration or feedback loops
-      All other plans MUST include loop_structure.
+      All other epics MUST include loop_structure.
 
   schema:
     type:
@@ -475,7 +475,7 @@ loop_structure:
       examples:
         - "Phase enters 'in_progress' status"
         - "All prerequisite phases completed"
-        - "User approves plan for execution"
+        - "User approves epic for execution"
         - "Test failures detected in previous iteration"
 
     exit_criteria:
@@ -487,7 +487,7 @@ loop_structure:
           description: "Condition for successful loop completion"
           examples:
             - "All tests pass with zero failures"
-            - "Reviewer approves plan structure"
+            - "Reviewer approves epic structure"
             - "No guidance gaps identified"
             - "All user stories validated"
         max_iterations:
@@ -525,7 +525,7 @@ loop_structure:
             - "observer"      # Monitors without modifying
 
   examples:
-    build_plan_with_test_fix_loop:
+    build_epic_with_test_fix_loop:
       loop_structure:
         type: "test-fix-loop"
         trigger: "Build phase enters 'in_progress' status"
@@ -541,7 +541,7 @@ loop_structure:
           - agent: "build-python"
             role: "fixer"
 
-    guidance_plan_with_self_review:
+    guidance_epic_with_self_review:
       loop_structure:
         type: "guidance-self-review-loop"
         trigger: "Guidance files created or modified"
@@ -555,7 +555,7 @@ loop_structure:
           - agent: "teacher-update-guidance"
             role: "fixer"
 
-    cleanup_plan_with_dependency_check:
+    cleanup_epic_with_dependency_check:
       loop_structure:
         type: "cleaner-dependency-loop"
         trigger: "Cleanup phase starts"
@@ -574,7 +574,7 @@ loop_structure:
     planner_review_loop:
       loop_structure:
         type: "planner-loop"
-        trigger: "Plan creation initiated"
+        trigger: "Epic creation initiated"
         exit_criteria:
           success: "Reviewer approves AND explore verification passes"
           max_iterations: 5
@@ -611,10 +611,10 @@ path_conventions:
         - '/home/code/somerepo/assets/definitions/path.yml' (INCORRECT - absolute)
     rationale: "Relative paths are portable across environments and repositories"
 
-  plan_folder_references:
+  epic_folder_references:
     standard: "relative"
     description: |
-      Plan folder paths are relative to project root.
+      Epic folder paths are relative to project root.
       Agents receive specific folder paths as input from orchestration.
 
 # Agent Logs (future - not yet systematically collected)

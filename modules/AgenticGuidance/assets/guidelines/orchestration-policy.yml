@@ -1,7 +1,7 @@
 guideline:
   name: "Orchestration Policy"
   description: |
-    Defines agent-task alignment verification, escalation policies, plan status management,
+    Defines agent-ticket alignment verification, escalation policies, epic status management,
     and success criteria communication patterns for orchestration workflows.
 
     This guideline ensures orchestrators correctly validate agent capabilities before spawning,
@@ -10,20 +10,20 @@ guideline:
   inputs:
     - location: "docs/agent-role-scope-matrix.md"
       description: "Matrix defining each agent's scope and capabilities"
-    - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
-      description: "Plan status values and completion patterns (TWO-LEVEL, COPY-NOT-MOVE)"
+    - location: "modules/AgenticGuidance/assets/definitions/epics.yml"
+      description: "Epic status values and completion patterns (TWO-LEVEL, COPY-NOT-MOVE)"
 
   rules:
-    - rule: "Agent-Task Alignment Verification"
+    - rule: "Agent-Ticket Alignment Verification"
       description: |
-        Before spawning any agent, verify the agent's documented scope covers the specific task.
+        Before spawning any agent, verify the agent's documented scope covers the specific ticket.
       justification: |
-        Spawning an agent for a task outside its scope leads to poor results, wasted tokens,
+        Spawning an agent for a ticket outside its scope leads to poor results, wasted tokens,
         and potential errors. The agent-role-scope-matrix.md is the authoritative source.
       execution_pattern:
-        - "Identify the agent specified in the plan for a given task"
+        - "Identify the agent specified in the epic for a given ticket"
         - "Consult docs/agent-role-scope-matrix.md for that agent's scope"
-        - "Compare: Does the documented scope cover this specific task?"
+        - "Compare: Does the documented scope cover this specific ticket?"
         - "If match → Proceed with spawn"
         - "If mismatch → FENCE: Do NOT spawn, trigger escalation policy"
       characteristics:
@@ -45,31 +45,31 @@ guideline:
       characteristics:
         - "Bugs and investigations → Delegate to diagnostics or build agents"
         - "Specialized work → Delegate to agents with domain expertise"
-        - "Scope mismatches (detected per Agent-Task Alignment Verification rule) → Update plan and re-plan with correct agent"
+        - "Scope mismatches (detected per Agent-Ticket Alignment Verification rule) → Update epic and re-plan with correct agent"
         - "Unknown issues → Investigate to determine agent type, then delegate"
 
-    - rule: "Plan Status Management"
+    - rule: "Epic Status Management"
       description: |
-        Update plan status and summary counts as work progresses using CLI commands.
+        Update epic status and summary counts as work progresses using CLI commands.
       justification: |
         Accurate status tracking enables progress visibility, identifies blockers early,
         and ensures completion patterns are followed correctly. CLI commands ensure
-        data consistency and trigger auto-archival when all tasks complete.
+        data consistency and trigger auto-archival when all tickets complete.
       execution_pattern:
-        - "Use `agentic plan task start <task_id> --plan <folder>` when starting a task"
-        - "Use `agentic plan task complete <task_id> --plan <folder>` when completing a task"
-        - "CLI auto-archives to completed/ when the last task is marked complete"
+        - "Use `agentic epic ticket start <ticket_id> --epic <folder>` when starting a ticket"
+        - "Use `agentic epic ticket complete <ticket_id> --epic <folder>` when completing a ticket"
+        - "CLI auto-archives to completed/ when the last ticket is marked complete"
         - "Use --no-archive flag only if follow-on work is planned"
       characteristics:
-        - "NEVER use Edit tool to modify task status in plan YAML files directly"
-        - "NEVER use rm or mv commands on plan folders - CLI handles archival"
+        - "NEVER use Edit tool to modify ticket status in epic YAML files directly"
+        - "NEVER use rm or mv commands on epic folders - CLI handles archival"
         - "CLI enforces TWO-LEVEL COMPLETION and COPY-NOT-MOVE patterns automatically"
         - "Status values: planning, active, partially_completed, fully_completed"
       cli_workflow:
-        get_task: "agentic plan task current --plan <folder>"
-        start_task: "agentic plan task start <task_id> --plan <folder>"
-        complete_task: "agentic plan task complete <task_id> --plan <folder>"
-        archive_plan: "Automatic when last task completes (or: agentic plan archive <folder>)"
+        get_ticket: "agentic epic ticket current --epic <folder>"
+        start_ticket: "agentic epic ticket start <ticket_id> --epic <folder>"
+        complete_ticket: "agentic epic ticket complete <ticket_id> --epic <folder>"
+        archive_epic: "Automatic when last ticket completes (or: agentic epic archive <folder>)"
 
     - rule: "Success Criteria Communication"
       description: |
@@ -78,7 +78,7 @@ guideline:
         Clear, structured criteria enable agents to self-verify. Minimal reporting reduces noise
         and allows orchestrators to focus on exceptions.
       execution_pattern:
-        - "Extract acceptance criteria from plan task definition"
+        - "Extract acceptance criteria from epic ticket definition"
         - "Format as clear bullet points in agent spawn prompt"
         - "Expect: Success/failure status from agent"
         - "Only request details on failure"
@@ -91,7 +91,7 @@ guideline:
     - rule: "Validation-Before-Commit Fence"
       description: |
         FENCE: All validation phases defined in the orchestration MMD MUST execute
-        and PASS before any git commit or plan status update to "completed".
+        and PASS before any git commit or epic status update to "completed".
       justification: |
         Commits are irreversible state changes. Validation after commit defeats the
         purpose of validation - errors are already persisted. The audit/validation
@@ -99,7 +99,7 @@ guideline:
       execution_pattern:
         - "Identify all validation/audit subgraphs in the MMD"
         - "Verify each validation subgraph has AGENT_ROUTING entry"
-        - "Execute all validation phases before marking plan complete"
+        - "Execute all validation phases before marking epic complete"
         - "Only proceed to git commit after ALL validation phases PASS"
         - "If validation fails → Do NOT commit → Trigger feedback loop"
       fence: |
@@ -119,32 +119,32 @@ guideline:
         - "Missing AGENT_ROUTING for validation = blocked workflow, not skipped validation"
         - "Exception: Documentation-only changes may skip with explicit notation"
 
-    - rule: "Exhaustive Task Completion Policy"
+    - rule: "Exhaustive Ticket Completion Policy"
       description: |
-        FENCE: Orchestration loops MUST continue until ALL tasks in the plan are completed,
-        including minor, LOW priority, and optional items. Do NOT mark a plan complete
-        while any pending tasks remain.
+        FENCE: Orchestration loops MUST continue until ALL tickets in the epic are completed,
+        including minor, LOW priority, and optional items. Do NOT mark an epic complete
+        while any pending tickets remain.
       justification: |
-        Users expect the full plan to be executed. Stopping after major items leaves work
+        Users expect the full epic to be executed. Stopping after major items leaves work
         incomplete and forces users to repeatedly push agents to finish. Minor improvements
         are still improvements - they were included for a reason.
       execution_pattern:
-        - "Before shutdown, scan ALL tasks in the plan YAML"
-        - "Count tasks by status: pending, in_progress, completed, blocked"
-        - "If ANY task has status: pending or in_progress → DO NOT proceed to shutdown"
-        - "Continue executing phases until all tasks reach completed or blocked"
-        - "Only stop when: (a) all tasks completed, (b) blocked awaiting user, or (c) user explicitly requests stopping"
+        - "Before shutdown, scan ALL tickets in the epic YAML"
+        - "Count tickets by status: pending, in_progress, completed, blocked"
+        - "If ANY ticket has status: pending or in_progress → DO NOT proceed to shutdown"
+        - "Continue executing phases until all tickets reach completed or blocked"
+        - "Only stop when: (a) all tickets completed, (b) blocked awaiting user, or (c) user explicitly requests stopping"
       fence: |
         FENCE: NO EARLY EXIT
         Orchestration shutdown is PROHIBITED while:
-        1. Any task has status: pending
-        2. Any task has status: in_progress
-        3. Any phase has unexecuted tasks
+        1. Any ticket has status: pending
+        2. Any ticket has status: in_progress
+        3. Any phase has unexecuted tickets
 
         Violation indicators:
-        - "All major items done" while minor tasks remain
-        - Skipping tasks because they are LOW priority
-        - Plan marked completed with pending tasks
+        - "All major items done" while minor tickets remain
+        - Skipping tickets because they are LOW priority
+        - Epic marked completed with pending tickets
       characteristics:
         - "Priority level (HIGH/MEDIUM/LOW) does NOT determine whether to complete"
         - "ALL priority levels MUST be completed before shutdown"
@@ -153,16 +153,16 @@ guideline:
 
   examples:
     good:
-      - description: "Agent-task alignment check before spawning"
+      - description: "Agent-ticket alignment check before spawning"
         example: |
-          # Plan specifies teacher-update-assets for updating modules/AgenticGuidance/agents/foo/inputs.yml
+          # Epic specifies teacher-update-assets for updating modules/AgenticGuidance/agents/foo/inputs.yml
           # Step 1: Check agent-role-scope-matrix.md
           #   - teacher-update-assets scope: "shared assets in modules/AgenticGuidance/assets/ folder"
-          # Step 2: Compare task location
-          #   - Task location: modules/AgenticGuidance/agents/foo/inputs.yml (NOT in modules/AgenticGuidance/assets/)
+          # Step 2: Compare epic ticket location
+          #   - Ticket location: modules/AgenticGuidance/agents/foo/inputs.yml (NOT in modules/AgenticGuidance/assets/)
           # Step 3: Mismatch detected
           # Action: Do NOT spawn teacher-update-assets
-          # Escalation: Update plan to use teacher-update-guidance instead
+          # Escalation: Update epic to use teacher-update-guidance instead
 
       - description: "Escalation policy - offloading to appropriate agent"
         example: |
@@ -187,9 +187,9 @@ guideline:
               - "File remains valid YAML syntax"
 
     bad:
-      - description: "Skipping agent-task alignment check"
+      - description: "Skipping agent-ticket alignment check"
         example: |
-          # Plan says spawn teacher-update-assets
+          # Epic says spawn teacher-update-assets
           # Wrong: Immediately spawn without checking scope
           spawn:
             agent_type: "teacher-update-assets"
@@ -207,7 +207,7 @@ guideline:
   related_guidelines:
     - location: "modules/AgenticGuidance/assets/guidelines/validation-strategy.yml"
       description: "Defines when to use bash vs agent delegation for validation"
-    - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
-      description: "Plan status values and completion patterns referenced by this guideline"
+    - location: "modules/AgenticGuidance/assets/definitions/epics.yml"
+      description: "Epic status values and completion patterns referenced by this guideline"
     - location: "modules/AgenticGuidance/assets/guidelines/response-audit.yml"
       description: "Audit requirements that complement this validation fence"

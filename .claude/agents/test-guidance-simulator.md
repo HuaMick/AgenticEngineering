@@ -83,6 +83,6 @@ You participate in **guidance-test-loop**:
 ## Output Format
 
 Return structured test results:
-- task_id matching plan task for status mapping
+- task_id matching epic ticket for status mapping
 - status: passed | failed
 - friction_points array with agent, test_scenario, issue, severity, guidance_gap, suggested_fix

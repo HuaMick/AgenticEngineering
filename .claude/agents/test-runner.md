@@ -50,7 +50,7 @@ You participate in **test-fix-loop** as the executor:
    - For SKIPs: Extract skip reason and validate against acceptable-skips.yml
 
 6. **Report Results**:
-   - If in test-fix-loop context: Update live plan file with structured failure entries
+   - If in test-fix-loop context: Update live epic ticket file with structured failure entries
    - Always report summary to orchestration agent
    - STRICTLY ADHERE: DO NOT FIX ANYTHING
 

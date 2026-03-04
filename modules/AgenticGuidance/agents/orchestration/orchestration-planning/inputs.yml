@@ -4,8 +4,8 @@
 # All paths in this file are relative to the REPOSITORY ROOT.
 # (e.g., modules/AgenticGuidance/assets/...).
 #
-# EXCEPTION: docs/plans/ paths are relative to the TARGET PROJECT root.
-# When an agent references docs/plans/live/ or docs/plans/completed/,
+# EXCEPTION: docs/epics/ paths are relative to the TARGET PROJECT root.
+# When an agent references docs/epics/live/ or docs/epics/completed/,
 # these exist in the project being worked on, not in AgenticGuidance.
 # ==============================================
 
@@ -26,7 +26,7 @@ required_inputs:
 
   - name: "target_project_path"
     type: "string"
-    description: "Absolute path to the target project root where docs/plans/ will be created"
+    description: "Absolute path to the target project root where docs/epics/ will be created"
     required: true
     example: "/home/code/MyProject"
 
@@ -203,17 +203,17 @@ loop_validation:
 # Centralized CLI commands - see shared definition for full documentation
 cli_commands_reference: "modules/AgenticGuidance/assets/definitions/cli-commands.yml"
 # Key commands used by orchestration-planning:
-# - agentic agent plan init <branch> --description <desc>: Create plan folder (PREFERRED)
+# - agentic agent epic init <branch> --description <desc>: Create epic folder (PREFERRED)
 #   - Enforces YYMMDDXX_description naming convention programmatically
 #   - Exit codes: 0=success, 1=fail, 2=exists, 3=invalid input
-#   - For JSON output: agentic -j agent plan init <branch> --description <desc>
+#   - For JSON output: agentic -j agent epic init <branch> --description <desc>
 #
 #   JSON output fields:
 #   - branch: Branch name
-#   - plan_folder: Absolute path to plan folder
-#   - plan_folder_name: Generated folder name (YYMMDDXX_description format)
+#   - epic_folder: Absolute path to epic folder
+#   - epic_folder_name: Generated folder name (YYMMDDXX_description format)
 #
-# - agentic agent plan validate: Validate plan folder structure
+# - agentic agent epic validate: Validate epic folder structure
 # ==============================================
 
 # ==============================================
@@ -229,34 +229,34 @@ sub_agent_orchestration_workflow:
     on plan YAML files or rm/mv commands on plan folders.
 
   workflow_steps:
-    1_get_task:
-      command: "agentic agent plan task current --plan <folder>"
-      purpose: "Get the next task to execute"
-      output: "Task details including id, description, guidance, inputs"
+    1_get_ticket:
+      command: "agentic agent epic ticket current --epic <folder>"
+      purpose: "Get the next ticket to execute"
+      output: "Ticket details including id, description, guidance, inputs"
 
-    2_start_task:
-      command: "agentic agent plan task start <task_id> --plan <folder>"
-      purpose: "Mark task as in_progress before spawning agent"
+    2_start_ticket:
+      command: "agentic agent epic ticket start <ticket_id> --epic <folder>"
+      purpose: "Mark ticket as in_progress before spawning agent"
       timing: "BEFORE spawning the sub-agent"
 
     3_spawn_agent:
-      command: "agentic session spawn --role <agent-role> --plan <folder>"
-      purpose: "Spawn appropriate agent for the task"
-      note: "Agent role determined by task type and agent-task alignment check"
+      command: "agentic session spawn --role <agent-role> --epic <folder>"
+      purpose: "Spawn appropriate agent for the ticket"
+      note: "Agent role determined by ticket type and agent-ticket alignment check"
 
-    4_complete_task:
-      command: "agentic agent plan task complete <task_id> --plan <folder>"
-      purpose: "Mark task as completed after agent succeeds"
-      auto_archive: "Triggers auto-archival when this is the last task"
+    4_complete_ticket:
+      command: "agentic agent epic ticket complete <ticket_id> --epic <folder>"
+      purpose: "Mark ticket as completed after agent succeeds"
+      auto_archive: "Triggers auto-archival when this is the last ticket"
 
   prohibited_operations:
-    - "Edit tool to change status: field in plan YAML"
-    - "rm commands on docs/plans/ paths"
-    - "mv commands on docs/plans/ paths"
-    - "Manual YAML editing for task status"
+    - "Edit tool to change status: field in ticket YAML"
+    - "rm commands on docs/epics/ paths"
+    - "mv commands on docs/epics/ paths"
+    - "Manual YAML editing for ticket status"
 
   auto_archival_note: |
-    When completing the last task, CLI automatically archives the plan folder.
+    When completing the last ticket, CLI automatically archives the epic folder.
     Use --no-archive flag ONLY if follow-on work is explicitly planned.
 # ==============================================
 
@@ -264,12 +264,12 @@ sub_agent_orchestration_workflow:
 # PHASE FILE STRATEGY
 # ==============================================
 phase_file_strategy: |
-  For multi-phase plans, create SEPARATE phase files:
-  - One plan_<phase>.yml per phase type (teach, build, test, cleanup)
+  For multi-phase epics, create SEPARATE phase files:
+  - One ticket_<phase>.yml per phase type (teach, build, test, cleanup)
   - This enables Context Minimisation: agents read only their phase file
   - Do NOT attempt to consolidate all phases into a single "unified" file
 
-  The plan_example.yml is a STRUCTURE reference, not a file organization template.
+  The ticket_example.yml is a STRUCTURE reference, not a file organization template.
 # ==============================================
 
 # ==============================================

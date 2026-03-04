@@ -22,8 +22,8 @@ def _neutralize_ntfy():
 
 
 @pytest.fixture
-def plan_folder(tmp_path):
-    """Create a test plan folder."""
+def epic_folder(tmp_path):
+    """Create a test epic folder."""
     plan_path = tmp_path / "test_plan"
     plan_path.mkdir()
 
@@ -37,7 +37,7 @@ def plan_folder(tmp_path):
     return plan_path
 
 
-def test_ask_question_with_multiple_suggestions(plan_folder):
+def test_ask_question_with_multiple_suggestions(epic_folder):
     """Test creating a question with multiple --suggest options."""
     from agenticcli.commands import question
 
@@ -47,13 +47,13 @@ def test_ask_question_with_multiple_suggestions(plan_folder):
     args.severity = "medium"
     args.context = "Test framework selection"
     args.suggest = ["Use pytest", "Use unittest", "Use both"]
-    args.plan = str(plan_folder)
+    args.plan = str(epic_folder)
 
     # Run command
     question.cmd_ask(args)
 
     # Find the created question file
-    pending_dir = plan_folder / "questions" / "pending"
+    pending_dir = epic_folder / "questions" / "pending"
     question_files = list(pending_dir.glob("Q-*.yml"))
 
     assert len(question_files) == 1
@@ -69,7 +69,7 @@ def test_ask_question_with_multiple_suggestions(plan_folder):
     assert question_data["suggested_answers"] == ["Use pytest", "Use unittest", "Use both"]
 
 
-def test_ask_question_without_suggestions_backward_compatible(plan_folder):
+def test_ask_question_without_suggestions_backward_compatible(epic_folder):
     """Test that questions without --suggest still work (backward compatibility)."""
     from agenticcli.commands import question
 
@@ -79,13 +79,13 @@ def test_ask_question_without_suggestions_backward_compatible(plan_folder):
     args.severity = "low"
     args.context = "Code quality improvement"
     args.suggest = None
-    args.plan = str(plan_folder)
+    args.plan = str(epic_folder)
 
     # Run command
     question.cmd_ask(args)
 
     # Find the created question file
-    pending_dir = plan_folder / "questions" / "pending"
+    pending_dir = epic_folder / "questions" / "pending"
     question_files = list(pending_dir.glob("Q-*.yml"))
 
     assert len(question_files) == 1
@@ -100,7 +100,7 @@ def test_ask_question_without_suggestions_backward_compatible(plan_folder):
     assert "suggested_answers" not in question_data or question_data["suggested_answers"] is None
 
 
-def test_ask_question_single_suggestion(plan_folder):
+def test_ask_question_single_suggestion(epic_folder):
     """Test creating a question with a single --suggest option."""
     from agenticcli.commands import question
 
@@ -110,13 +110,13 @@ def test_ask_question_single_suggestion(plan_folder):
     args.severity = "high"
     args.context = "Architecture decision"
     args.suggest = ["Yes"]
-    args.plan = str(plan_folder)
+    args.plan = str(epic_folder)
 
     # Run command
     question.cmd_ask(args)
 
     # Find the created question file
-    pending_dir = plan_folder / "questions" / "pending"
+    pending_dir = epic_folder / "questions" / "pending"
     question_files = list(pending_dir.glob("Q-*.yml"))
 
     assert len(question_files) == 1
@@ -128,7 +128,7 @@ def test_ask_question_single_suggestion(plan_folder):
     assert question_data["suggested_answers"] == ["Yes"]
 
 
-def test_yaml_file_contains_suggested_answers_field(plan_folder):
+def test_yaml_file_contains_suggested_answers_field(epic_folder):
     """Test that the YAML file explicitly contains suggested_answers field."""
     from agenticcli.commands import question
 
@@ -138,13 +138,13 @@ def test_yaml_file_contains_suggested_answers_field(plan_folder):
     args.severity = "medium"
     args.context = "Database selection"
     args.suggest = ["PostgreSQL", "MySQL", "SQLite"]
-    args.plan = str(plan_folder)
+    args.plan = str(epic_folder)
 
     # Run command
     question.cmd_ask(args)
 
     # Find the created question file
-    pending_dir = plan_folder / "questions" / "pending"
+    pending_dir = epic_folder / "questions" / "pending"
     question_files = list(pending_dir.glob("Q-*.yml"))
 
     # Read raw YAML content
@@ -266,7 +266,7 @@ def test_validation_non_string_suggestion_rejected():
             )
 
 
-def test_suggested_answers_stored_as_list(plan_folder):
+def test_suggested_answers_stored_as_list(epic_folder):
     """Test that multiple --suggest values are stored as a list in YAML."""
     from agenticcli.commands import question
 
@@ -276,13 +276,13 @@ def test_suggested_answers_stored_as_list(plan_folder):
     args.severity = "medium"
     args.context = "Deployment planning"
     args.suggest = ["Blue-green", "Canary", "Rolling"]
-    args.plan = str(plan_folder)
+    args.plan = str(epic_folder)
 
     # Run command
     question.cmd_ask(args)
 
     # Find the created question file
-    pending_dir = plan_folder / "questions" / "pending"
+    pending_dir = epic_folder / "questions" / "pending"
     question_files = list(pending_dir.glob("Q-*.yml"))
 
     # Read and verify
@@ -294,7 +294,7 @@ def test_suggested_answers_stored_as_list(plan_folder):
     assert len(question_data["suggested_answers"]) == 3
 
 
-def test_question_without_suggestions_parses_correctly(plan_folder):
+def test_question_without_suggestions_parses_correctly(epic_folder):
     """Test that questions without suggestions parse correctly (backward compatibility)."""
     from agenticguidance.models.question import yaml_to_question
 
@@ -314,7 +314,7 @@ def test_question_without_suggestions_parses_correctly(plan_folder):
         # No suggested_answers field
     }
 
-    pending_dir = plan_folder / "questions" / "pending"
+    pending_dir = epic_folder / "questions" / "pending"
     question_file = pending_dir / f"{question_id}.yml"
     with open(question_file, 'w') as f:
         yaml.dump(question_data, f, default_flow_style=False, sort_keys=False)
@@ -331,7 +331,7 @@ def test_question_without_suggestions_parses_correctly(plan_folder):
     assert question.suggested_answers is None
 
 
-def test_cli_output_shows_suggestion_count(plan_folder, capsys):
+def test_cli_output_shows_suggestion_count(epic_folder, capsys):
     """Test that CLI output shows count of suggested answers."""
     from agenticcli.commands import question
 
@@ -341,7 +341,7 @@ def test_cli_output_shows_suggestion_count(plan_folder, capsys):
     args.severity = "medium"
     args.context = "Security architecture"
     args.suggest = ["OAuth2", "JWT", "Session-based"]
-    args.plan = str(plan_folder)
+    args.plan = str(epic_folder)
 
     # Run command
     question.cmd_ask(args)

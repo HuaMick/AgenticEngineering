@@ -6,8 +6,8 @@ Covers acceptance criteria for:
   US-GD-206 - Backward Compatibility
 
 Each test class maps directly to a user story criterion.  Tests use isolated
-tmp_path fixtures and real (non-mocked) PlanRepository instances wherever
-possible to avoid reward-hacking patterns.
+tmp_path fixtures and real (non-mocked) EpicRepository and EpicService instances
+wherever possible to avoid reward-hacking patterns.
 """
 
 from pathlib import Path
@@ -22,8 +22,20 @@ import yaml
 # ---------------------------------------------------------------------------
 
 
+def _write_ticket_yaml(folder: Path, data: dict) -> Path:
+    """Write a ticket_build.yml into folder and return the file path."""
+    folder.mkdir(parents=True, exist_ok=True)
+    ticket_file = folder / "ticket_build.yml"
+    with open(ticket_file, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+    return ticket_file
+
+
 def _write_plan_yaml(folder: Path, data: dict) -> Path:
-    """Write a plan_build.yml into folder and return the file path."""
+    """Write a plan_build.yml into folder and return the file path.
+
+    Used for EpicService tests that delegate to PlanRepository internally.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     plan_file = folder / "plan_build.yml"
     with open(plan_file, "w") as f:
@@ -31,8 +43,8 @@ def _write_plan_yaml(folder: Path, data: dict) -> Path:
     return plan_file
 
 
-def _minimal_plan_data(folder_name: str, status: str = "pending") -> dict:
-    """Return a complete plan dict suitable for round-trip tests."""
+def _minimal_epic_data(folder_name: str, status: str = "pending") -> dict:
+    """Return a complete epic dict suitable for round-trip tests."""
     return {
         "name": folder_name,
         "status": status,
@@ -84,22 +96,22 @@ def _minimal_plan_data(folder_name: str, status: str = "pending") -> dict:
 
 @pytest.fixture
 def isolated_repo(tmp_path):
-    """Provide a tmp directory structured like a git repo with plans layout."""
+    """Provide a tmp directory structured like a git repo with epics layout."""
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    (repo / "docs" / "plans" / "live").mkdir(parents=True)
-    (repo / "docs" / "plans" / "completed").mkdir(parents=True)
-    (repo / "docs" / "plans" / "deferred").mkdir(parents=True)
+    (repo / "docs" / "epics" / "live").mkdir(parents=True)
+    (repo / "docs" / "epics" / "completed").mkdir(parents=True)
+    (repo / "docs" / "epics" / "deferred").mkdir(parents=True)
     return repo
 
 
 @pytest.fixture
 def repo_db(isolated_repo):
-    """Return an isolated PlanRepository backed by the isolated_repo tmp dir."""
-    from agenticguidance.services.plan_repository import PlanRepository
+    """Return an isolated EpicRepository backed by the isolated_repo tmp dir."""
+    from agenticguidance.services.epic_repository import EpicRepository
 
-    db_path = isolated_repo / ".agentic" / "plans.db"
-    repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
+    db_path = isolated_repo / ".agentic" / "epics.db"
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
     yield repo
     repo.close()
 
@@ -110,51 +122,51 @@ def repo_db(isolated_repo):
 
 
 class TestUS_GD_202_SyncToYaml:
-    """US-GD-202 - Criterion 1: sync_to_yaml() writes plan data back to YAML."""
+    """US-GD-202 - Criterion 1: sync_to_yaml() writes epic data back to YAML."""
 
-    def test_sync_to_yaml_creates_plan_build_yml(self, tmp_path):
-        """sync_to_yaml() writes a plan_build.yml with current DB state."""
-        from agenticguidance.services.plan_repository import PlanRepository
+    def test_sync_to_yaml_creates_ticket_build_yml(self, tmp_path):
+        """sync_to_yaml() writes a ticket_build.yml with current DB state."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        plan_name = "260224TE_sync_test"
-        plan_dir = tmp_path / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name))
+        epic_name = "260224TE_sync_test"
+        epic_dir = tmp_path / "epics" / "live" / epic_name
+        _write_ticket_yaml(epic_dir, _minimal_epic_data(epic_name))
 
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
-        repo.import_from_yaml(plan_dir)
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.import_from_yaml(epic_dir)
 
-        # Remove plan_build.yml so we can confirm sync recreates it
-        (plan_dir / "plan_build.yml").unlink()
-        assert not (plan_dir / "plan_build.yml").exists()
+        # Remove ticket_build.yml so we can confirm sync recreates it
+        (epic_dir / "ticket_build.yml").unlink()
+        assert not (epic_dir / "ticket_build.yml").exists()
 
-        result = repo.sync_to_yaml(plan_name)
+        result = repo.sync_to_yaml(epic_name)
         repo.close()
 
         assert result is True, "sync_to_yaml should return True on success"
-        assert (plan_dir / "plan_build.yml").exists(), "plan_build.yml should be recreated"
+        assert (epic_dir / "ticket_build.yml").exists(), "ticket_build.yml should be recreated"
 
     def test_sync_to_yaml_content_matches_db_state(self, tmp_path):
-        """sync_to_yaml() writes plan fields that match what is stored in TinyDB."""
-        from agenticguidance.services.plan_repository import PlanRepository
+        """sync_to_yaml() writes epic fields that match what is stored in TinyDB."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        plan_name = "260224TE_content_check"
-        plan_dir = tmp_path / "plans" / "live" / plan_name
-        original_data = _minimal_plan_data(plan_name)
-        _write_plan_yaml(plan_dir, original_data)
+        epic_name = "260224TE_content_check"
+        epic_dir = tmp_path / "epics" / "live" / epic_name
+        original_data = _minimal_epic_data(epic_name)
+        _write_ticket_yaml(epic_dir, original_data)
 
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
-        repo.import_from_yaml(plan_dir)
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.import_from_yaml(epic_dir)
 
         # Mutate status in TinyDB
-        repo.update_plan(plan_name, {"status": "active"})
+        repo.update_epic(epic_name, {"status": "active"})
 
         # Sync back to YAML
-        repo.sync_to_yaml(plan_name)
+        repo.sync_to_yaml(epic_name)
         repo.close()
 
-        with open(plan_dir / "plan_build.yml") as f:
+        with open(epic_dir / "ticket_build.yml") as f:
             written = yaml.safe_load(f)
 
         assert written["status"] == "active", "sync_to_yaml should reflect DB status update"
@@ -162,34 +174,34 @@ class TestUS_GD_202_SyncToYaml:
         assert written["objective"] == original_data["objective"]
         assert written["priority"] == original_data["priority"]
 
-    def test_sync_to_yaml_returns_false_for_unknown_plan(self, tmp_path):
-        """sync_to_yaml() returns False when the plan does not exist in DB."""
-        from agenticguidance.services.plan_repository import PlanRepository
+    def test_sync_to_yaml_returns_false_for_unknown_epic(self, tmp_path):
+        """sync_to_yaml() returns False when the epic does not exist in DB."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
-        result = repo.sync_to_yaml("nonexistent_plan_xyz")
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        result = repo.sync_to_yaml("nonexistent_epic_xyz")
         repo.close()
 
         assert result is False
 
     def test_sync_to_yaml_returns_false_when_folder_missing(self, tmp_path):
-        """sync_to_yaml() returns False when the stored plan_folder doesn't exist."""
-        from agenticguidance.services.plan_repository import PlanRepository
+        """sync_to_yaml() returns False when the stored epic_folder doesn't exist."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        plan_name = "260224TE_missing_dir"
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
+        epic_name = "260224TE_missing_dir"
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
 
-        # Insert plan pointing to a non-existent directory
-        repo.create_plan({
-            "plan_folder_name": plan_name,
-            "plan_folder": str(tmp_path / "does_not_exist" / plan_name),
+        # Insert epic pointing to a non-existent directory
+        repo.create_epic({
+            "epic_folder_name": epic_name,
+            "epic_folder": str(tmp_path / "does_not_exist" / epic_name),
             "status": "pending",
             "objective": "Test",
         })
 
-        result = repo.sync_to_yaml(plan_name)
+        result = repo.sync_to_yaml(epic_name)
         repo.close()
 
         assert result is False
@@ -198,83 +210,83 @@ class TestUS_GD_202_SyncToYaml:
 class TestUS_GD_202_ReadThrough:
     """US-GD-202 - Criterion 2: Auto-import from YAML on TinyDB cache miss."""
 
-    def test_get_plan_imports_yaml_on_cache_miss(self, isolated_repo):
-        """PlanService.get_plan() imports from YAML when TinyDB has no record."""
-        from agenticguidance.services.plan import PlanService
+    def test_get_epic_imports_yaml_on_cache_miss(self, isolated_repo):
+        """EpicService.get_epic() imports from YAML when TinyDB has no record."""
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_cache_miss"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name))
+        epic_name = "260224TE_cache_miss"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_plan_yaml(epic_dir, _minimal_epic_data(epic_name))
 
         # Service starts with empty TinyDB (auto_bootstrap not triggered
         # because the live/ directory didn't exist at PlanRepository init time
         # - we use a fresh service pointed at isolated_repo)
-        service = PlanService(repo_path=isolated_repo)
+        service = EpicService(repo_path=isolated_repo)
 
-        # DB is empty; get_plan should trigger YAML import (read-through)
-        result = service.get_plan(plan_name)
+        # DB is empty; get_epic should trigger YAML import (read-through)
+        result = service.get_epic(epic_name)
 
-        assert result is not None, "get_plan should return data via read-through import"
-        assert result.plan_folder_name == plan_name
+        assert result is not None, "get_epic should return data via read-through import"
+        assert result.epic_folder_name == epic_name
         assert result.objective is not None
 
-    def test_get_plan_tasks_read_through_imports_yaml(self, isolated_repo):
-        """get_plan_tasks() triggers YAML import when plan is absent from TinyDB."""
-        from agenticguidance.services.plan import PlanService
+    def test_get_epic_tickets_read_through_imports_yaml(self, isolated_repo):
+        """get_epic_tickets() triggers YAML import when epic is absent from TinyDB."""
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_tasks_read_through"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name))
+        epic_name = "260224TE_tickets_read_through"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_plan_yaml(epic_dir, _minimal_epic_data(epic_name))
 
-        service = PlanService(repo_path=isolated_repo)
-        tasks = service.get_plan_tasks(plan_name)
+        service = EpicService(repo_path=isolated_repo)
+        tickets = service.get_epic_tickets(epic_name)
 
-        assert len(tasks) > 0, "Should import tasks from YAML on cache miss"
-        task_ids = {t.id for t in tasks}
-        assert "A001" in task_ids
-        assert "A002" in task_ids
-        assert "B001" in task_ids
+        assert len(tickets) > 0, "Should import tickets from YAML on cache miss"
+        ticket_ids = {t.id for t in tickets}
+        assert "A001" in ticket_ids
+        assert "A002" in ticket_ids
+        assert "B001" in ticket_ids
 
-    def test_list_plans_imports_disk_plans_not_in_tinydb(self, isolated_repo):
-        """list_plans() reconciles disk plans that TinyDB doesn't know about."""
-        from agenticguidance.services.plan import PlanService
+    def test_list_epics_imports_disk_epics_not_in_tinydb(self, isolated_repo):
+        """list_epics() reconciles disk epics that TinyDB doesn't know about."""
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_disk_only_plan"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name))
+        epic_name = "260224TE_disk_only_epic"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_plan_yaml(epic_dir, _minimal_epic_data(epic_name))
 
-        service = PlanService(repo_path=isolated_repo)
-        plans = service.list_plans(status="live")
+        service = EpicService(repo_path=isolated_repo)
+        epics = service.list_epics(status="live")
 
-        plan_names = {p.plan_folder_name for p in plans}
-        assert plan_name in plan_names, (
-            "list_plans() should discover plans on disk and import them into TinyDB"
+        epic_names = {p.epic_folder_name for p in epics}
+        assert epic_name in epic_names, (
+            "list_epics() should discover epics on disk and import them into TinyDB"
         )
 
 
 class TestUS_GD_202_RoundTrip:
     """US-GD-202 - Criteria 3 & 4: YAML -> TinyDB -> YAML round-trip."""
 
-    def test_round_trip_preserves_plan_fields(self, tmp_path):
-        """Importing YAML then exporting back preserves top-level plan fields."""
-        from agenticguidance.services.plan_repository import PlanRepository
+    def test_round_trip_preserves_epic_fields(self, tmp_path):
+        """Importing YAML then exporting back preserves top-level epic fields."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        plan_name = "260224TE_round_trip"
-        plan_dir = tmp_path / "plans" / plan_name
-        original = _minimal_plan_data(plan_name)
-        _write_plan_yaml(plan_dir, original)
+        epic_name = "260224TE_round_trip"
+        epic_dir = tmp_path / "epics" / epic_name
+        original = _minimal_epic_data(epic_name)
+        _write_ticket_yaml(epic_dir, original)
 
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
-        assert repo.import_from_yaml(plan_dir) is True
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        assert repo.import_from_yaml(epic_dir) is True
 
         # Export to a new folder to isolate the round-trip output
-        out_dir = tmp_path / "out" / plan_name
+        out_dir = tmp_path / "out" / epic_name
         out_dir.mkdir(parents=True)
-        assert repo.export_to_yaml(plan_name, out_dir) is True
+        assert repo.export_to_yaml(epic_name, out_dir) is True
         repo.close()
 
-        with open(out_dir / "plan_build.yml") as f:
+        with open(out_dir / "ticket_build.yml") as f:
             exported = yaml.safe_load(f)
 
         assert exported["name"] == original["name"]
@@ -286,23 +298,23 @@ class TestUS_GD_202_RoundTrip:
 
     def test_round_trip_preserves_phases(self, tmp_path):
         """Importing YAML then exporting back preserves phase structure."""
-        from agenticguidance.services.plan_repository import PlanRepository
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        plan_name = "260224TE_phase_round_trip"
-        plan_dir = tmp_path / "plans" / plan_name
-        original = _minimal_plan_data(plan_name)
-        _write_plan_yaml(plan_dir, original)
+        epic_name = "260224TE_phase_round_trip"
+        epic_dir = tmp_path / "epics" / epic_name
+        original = _minimal_epic_data(epic_name)
+        _write_ticket_yaml(epic_dir, original)
 
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
-        repo.import_from_yaml(plan_dir)
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.import_from_yaml(epic_dir)
 
-        out_dir = tmp_path / "out" / plan_name
+        out_dir = tmp_path / "out" / epic_name
         out_dir.mkdir(parents=True)
-        repo.export_to_yaml(plan_name, out_dir)
+        repo.export_to_yaml(epic_name, out_dir)
         repo.close()
 
-        with open(out_dir / "plan_build.yml") as f:
+        with open(out_dir / "ticket_build.yml") as f:
             exported = yaml.safe_load(f)
 
         assert len(exported["phases"]) == 2, "Both phases should survive round-trip"
@@ -310,53 +322,53 @@ class TestUS_GD_202_RoundTrip:
         assert "Alpha Phase" in phase_names
         assert "Beta Phase" in phase_names
 
-    def test_round_trip_preserves_tasks(self, tmp_path):
-        """Importing YAML then exporting back preserves all task fields."""
-        from agenticguidance.services.plan_repository import PlanRepository
+    def test_round_trip_preserves_tickets(self, tmp_path):
+        """Importing YAML then exporting back preserves all ticket fields."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        plan_name = "260224TE_task_round_trip"
-        plan_dir = tmp_path / "plans" / plan_name
-        original = _minimal_plan_data(plan_name)
-        _write_plan_yaml(plan_dir, original)
+        epic_name = "260224TE_ticket_round_trip"
+        epic_dir = tmp_path / "epics" / epic_name
+        original = _minimal_epic_data(epic_name)
+        _write_ticket_yaml(epic_dir, original)
 
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
-        repo.import_from_yaml(plan_dir)
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.import_from_yaml(epic_dir)
 
-        out_dir = tmp_path / "out" / plan_name
+        out_dir = tmp_path / "out" / epic_name
         out_dir.mkdir(parents=True)
-        repo.export_to_yaml(plan_name, out_dir)
+        repo.export_to_yaml(epic_name, out_dir)
         repo.close()
 
-        with open(out_dir / "plan_build.yml") as f:
+        with open(out_dir / "ticket_build.yml") as f:
             exported = yaml.safe_load(f)
 
-        all_tasks = []
+        all_tickets = []
         for phase in exported["phases"]:
-            all_tasks.extend(phase.get("tasks", []))
+            all_tickets.extend(phase.get("tasks", []))
 
-        task_ids = {t["id"] for t in all_tasks}
-        assert "A001" in task_ids, "Task A001 should survive round-trip"
-        assert "A002" in task_ids, "Task A002 should survive round-trip"
-        assert "B001" in task_ids, "Task B001 should survive round-trip"
+        ticket_ids = {t["id"] for t in all_tickets}
+        assert "A001" in ticket_ids, "Ticket A001 should survive round-trip"
+        assert "A002" in ticket_ids, "Ticket A002 should survive round-trip"
+        assert "B001" in ticket_ids, "Ticket B001 should survive round-trip"
 
-        # Verify key task fields
-        a001 = next(t for t in all_tasks if t["id"] == "A001")
+        # Verify key ticket fields
+        a001 = next(t for t in all_tickets if t["id"] == "A001")
         assert a001["name"] == "Task Alpha"
         assert a001["status"] == "pending"
         assert a001["agent"] == "builder"
 
-        a002 = next(t for t in all_tasks if t["id"] == "A002")
+        a002 = next(t for t in all_tickets if t["id"] == "A002")
         assert a002["status"] == "completed"
 
     def test_round_trip_metadata_preserved_with_context(self, tmp_path):
         """Optional metadata fields (context, branch, worktree_path) survive round-trip."""
-        from agenticguidance.services.plan_repository import PlanRepository
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        plan_name = "260224TE_metadata_trip"
-        plan_dir = tmp_path / "plans" / plan_name
+        epic_name = "260224TE_metadata_trip"
+        epic_dir = tmp_path / "epics" / epic_name
         original = {
-            "name": plan_name,
+            "name": epic_name,
             "status": "active",
             "objective": "Test metadata",
             "created": "2026-02-24",
@@ -366,18 +378,18 @@ class TestUS_GD_202_RoundTrip:
             "priority": "low",
             "phases": [],
         }
-        _write_plan_yaml(plan_dir, original)
+        _write_ticket_yaml(epic_dir, original)
 
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
-        repo.import_from_yaml(plan_dir)
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.import_from_yaml(epic_dir)
 
-        out_dir = tmp_path / "out" / plan_name
+        out_dir = tmp_path / "out" / epic_name
         out_dir.mkdir(parents=True)
-        repo.export_to_yaml(plan_name, out_dir)
+        repo.export_to_yaml(epic_name, out_dir)
         repo.close()
 
-        with open(out_dir / "plan_build.yml") as f:
+        with open(out_dir / "ticket_build.yml") as f:
             exported = yaml.safe_load(f)
 
         assert exported["branch"] == "feature/test-branch"
@@ -391,52 +403,52 @@ class TestUS_GD_202_RoundTrip:
 
 
 class TestUS_GD_205_DatabaseLocation:
-    """US-GD-205 - Criterion 1: PlanRepository creates DB at .agentic/plans.db."""
+    """US-GD-205 - Criterion 1: EpicRepository creates DB at .agentic/epics.db."""
 
-    def test_plan_service_creates_db_in_repo_local_agentic_dir(self, isolated_repo):
-        """PlanService creates DB at <repo>/.agentic/plans.db, not ~/.agentic/."""
-        from agenticguidance.services.plan import PlanService
+    def test_epic_service_creates_db_in_repo_local_agentic_dir(self, isolated_repo):
+        """EpicService creates DB at <repo>/.agentic/epics.db, not ~/.agentic/."""
+        from agenticguidance.services.epic import EpicService
 
-        service = PlanService(repo_path=isolated_repo)
+        service = EpicService(repo_path=isolated_repo)
 
         # The repository attribute holds the PlanRepository instance
-        assert service._repository is not None, "PlanService should have a repository"
+        assert service._repository is not None, "EpicService should have a repository"
 
         db_path = service._repository.db_path
-        expected_db = isolated_repo / ".agentic" / "plans.db"
+        expected_db = isolated_repo / ".agentic" / "epics.db"
 
         assert db_path == expected_db, (
             f"DB should be at {expected_db}, got {db_path}"
         )
 
         # Confirm it is NOT in the home directory
-        home_db = Path.home() / ".agentic" / "plans.db"
+        home_db = Path.home() / ".agentic" / "epics.db"
         assert db_path != home_db, "DB must not be created in the home directory"
 
-    def test_plan_service_db_file_is_created_on_disk(self, isolated_repo):
-        """The .agentic/plans.db file actually exists after PlanService init."""
-        from agenticguidance.services.plan import PlanService
+    def test_epic_service_db_file_is_created_on_disk(self, isolated_repo):
+        """The .agentic/epics.db file actually exists after EpicService init."""
+        from agenticguidance.services.epic import EpicService
 
-        PlanService(repo_path=isolated_repo)
+        EpicService(repo_path=isolated_repo)
 
-        expected_db = isolated_repo / ".agentic" / "plans.db"
-        assert expected_db.exists(), ".agentic/plans.db should exist after PlanService init"
+        expected_db = isolated_repo / ".agentic" / "epics.db"
+        assert expected_db.exists(), ".agentic/epics.db should exist after EpicService init"
 
-    def test_task_service_derives_db_from_plan_path(self, isolated_repo):
-        """TaskService derives the DB path from the plan folder's repo root."""
-        from agenticguidance.services.task import TaskService
+    def test_ticket_service_derives_db_from_epic_path(self, isolated_repo):
+        """TicketService derives the DB path from the epic folder's repo root."""
+        from agenticguidance.services.ticket import TicketService
 
-        plan_name = "260224TE_task_db_loc"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name))
+        epic_name = "260224TE_ticket_db_loc"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_ticket_yaml(epic_dir, _minimal_epic_data(epic_name))
 
-        service = TaskService(plan_path=plan_dir)
+        service = TicketService(epic_path=epic_dir)
 
         assert service._repository is not None
         db_path = service._repository.db_path
-        expected_db = isolated_repo / ".agentic" / "plans.db"
+        expected_db = isolated_repo / ".agentic" / "epics.db"
         assert db_path == expected_db, (
-            f"TaskService DB should be at {expected_db}, got {db_path}"
+            f"TicketService DB should be at {expected_db}, got {db_path}"
         )
 
 
@@ -460,7 +472,7 @@ class TestUS_GD_205_GitIgnore:
 
         assert has_entry, (
             "DEFECT US-GD-205: .agentic/ is NOT in .gitignore. "
-            "The plans.db file will be committed to git. "
+            "The epics.db file will be committed to git. "
             "Add '.agentic/' to .gitignore."
         )
 
@@ -469,53 +481,53 @@ class TestUS_GD_205_IsolatedDatabases:
     """US-GD-205 - Criterion 3: Each repo gets its own independent DB."""
 
     def test_two_repos_have_independent_databases(self, tmp_path):
-        """Plans created in repo A do not appear in repo B's database."""
-        from agenticguidance.services.plan_repository import PlanRepository
+        """Epics created in repo A do not appear in repo B's database."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
         repo_a = tmp_path / "repo_a"
         repo_b = tmp_path / "repo_b"
         repo_a.mkdir()
         repo_b.mkdir()
 
-        db_a = repo_a / ".agentic" / "plans.db"
-        db_b = repo_b / ".agentic" / "plans.db"
+        db_a = repo_a / ".agentic" / "epics.db"
+        db_b = repo_b / ".agentic" / "epics.db"
 
-        repo_a_db = PlanRepository(db_path=db_a, auto_bootstrap=False)
-        repo_b_db = PlanRepository(db_path=db_b, auto_bootstrap=False)
+        repo_a_db = EpicRepository(db_path=db_a, auto_bootstrap=False)
+        repo_b_db = EpicRepository(db_path=db_b, auto_bootstrap=False)
 
-        # Create a plan in repo A
-        repo_a_db.create_plan({
-            "plan_folder_name": "260224TE_repo_a_plan",
-            "plan_folder": str(repo_a / "docs" / "plans" / "live" / "260224TE_repo_a_plan"),
+        # Create an epic in repo A
+        repo_a_db.create_epic({
+            "epic_folder_name": "260224TE_repo_a_epic",
+            "epic_folder": str(repo_a / "docs" / "epics" / "live" / "260224TE_repo_a_epic"),
             "status": "pending",
-            "objective": "Repo A plan",
+            "objective": "Repo A epic",
         })
 
-        # Repo B should have no knowledge of repo A's plan
-        plan_in_b = repo_b_db.get_plan("260224TE_repo_a_plan")
+        # Repo B should have no knowledge of repo A's epic
+        epic_in_b = repo_b_db.get_epic("260224TE_repo_a_epic")
         repo_a_db.close()
         repo_b_db.close()
 
-        assert plan_in_b is None, (
-            "Plans from repo A must not appear in repo B's database"
+        assert epic_in_b is None, (
+            "Epics from repo A must not appear in repo B's database"
         )
 
     def test_databases_at_different_paths(self, tmp_path):
-        """Two PlanRepository instances at different paths are truly independent."""
-        from agenticguidance.services.plan_repository import PlanRepository
+        """Two EpicRepository instances at different paths are truly independent."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        db_1 = tmp_path / "proj1" / ".agentic" / "plans.db"
-        db_2 = tmp_path / "proj2" / ".agentic" / "plans.db"
+        db_1 = tmp_path / "proj1" / ".agentic" / "epics.db"
+        db_2 = tmp_path / "proj2" / ".agentic" / "epics.db"
 
-        r1 = PlanRepository(db_path=db_1, auto_bootstrap=False)
-        r2 = PlanRepository(db_path=db_2, auto_bootstrap=False)
+        r1 = EpicRepository(db_path=db_1, auto_bootstrap=False)
+        r2 = EpicRepository(db_path=db_2, auto_bootstrap=False)
 
-        r1.create_plan({"plan_folder_name": "unique_to_proj1", "plan_folder": "/tmp/p1", "status": "pending"})
-        r2.create_plan({"plan_folder_name": "unique_to_proj2", "plan_folder": "/tmp/p2", "status": "pending"})
+        r1.create_epic({"epic_folder_name": "unique_to_proj1", "epic_folder": "/tmp/e1", "status": "pending"})
+        r2.create_epic({"epic_folder_name": "unique_to_proj2", "epic_folder": "/tmp/e2", "status": "pending"})
 
-        # Cross-check: neither should see the other's plans
-        assert r1.get_plan("unique_to_proj2") is None
-        assert r2.get_plan("unique_to_proj1") is None
+        # Cross-check: neither should see the other's epics
+        assert r1.get_epic("unique_to_proj2") is None
+        assert r2.get_epic("unique_to_proj1") is None
 
         r1.close()
         r2.close()
@@ -529,248 +541,248 @@ class TestUS_GD_205_IsolatedDatabases:
 class TestUS_GD_206_YamlFallback:
     """US-GD-206 - Criterion 1: System falls back to YAML when TinyDB has no record."""
 
-    def test_get_plan_falls_through_to_yaml_when_tinydb_empty(self, isolated_repo):
-        """get_plan() reads from YAML when TinyDB has no record for the plan."""
-        from agenticguidance.services.plan import PlanService
+    def test_get_epic_falls_through_to_yaml_when_tinydb_empty(self, isolated_repo):
+        """get_epic() reads from YAML when TinyDB has no record for the epic."""
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_yaml_fallback"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name))
+        epic_name = "260224TE_yaml_fallback"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_plan_yaml(epic_dir, _minimal_epic_data(epic_name))
 
-        service = PlanService(repo_path=isolated_repo)
+        service = EpicService(repo_path=isolated_repo)
         # DB is empty here (fresh isolated repo); read-through should kick in
-        result = service.get_plan(plan_name)
+        result = service.get_epic(epic_name)
 
         assert result is not None, "Should fall through to YAML import when DB is empty"
-        assert result.plan_folder_name == plan_name
+        assert result.epic_folder_name == epic_name
 
-    def test_get_plan_yaml_only_mode_when_repository_is_none(self, isolated_repo):
-        """get_plan() uses pure YAML when _repository is None (import failure)."""
-        from agenticguidance.services.plan import PlanService
+    def test_get_epic_yaml_only_mode_when_repository_is_none(self, isolated_repo):
+        """get_epic() uses pure YAML when _repository is None (import failure)."""
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_repo_none_fallback"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name))
+        epic_name = "260224TE_repo_none_fallback"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_plan_yaml(epic_dir, _minimal_epic_data(epic_name))
 
-        service = PlanService(repo_path=isolated_repo)
+        service = EpicService(repo_path=isolated_repo)
         service._repository = None  # Simulate PlanRepository import failure
 
-        result = service.get_plan(plan_name)
+        result = service.get_epic(epic_name)
 
         assert result is not None, "YAML fallback must work when _repository is None"
-        assert result.plan_folder_name == plan_name
+        assert result.epic_folder_name == epic_name
         assert result.objective is not None
 
-    def test_list_plans_yaml_only_mode_when_repository_is_none(self, isolated_repo):
-        """list_plans() uses YAML scan when _repository is None."""
-        from agenticguidance.services.plan import PlanService
+    def test_list_epics_yaml_only_mode_when_repository_is_none(self, isolated_repo):
+        """list_epics() uses YAML scan when _repository is None."""
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_list_yaml_fallback"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name))
+        epic_name = "260224TE_list_yaml_fallback"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_plan_yaml(epic_dir, _minimal_epic_data(epic_name))
 
-        service = PlanService(repo_path=isolated_repo)
+        service = EpicService(repo_path=isolated_repo)
         service._repository = None  # Simulate PlanRepository import failure
 
-        plans = service.list_plans(status="live")
-        plan_names = {p.plan_folder_name for p in plans}
+        epics = service.list_epics(status="live")
+        epic_names = {p.epic_folder_name for p in epics}
 
-        assert plan_name in plan_names, "YAML fallback list_plans should find plan on disk"
+        assert epic_name in epic_names, "YAML fallback list_epics should find epic on disk"
 
 
 class TestUS_GD_206_FolderMatchesGuard:
-    """US-GD-206 - Criterion 2: folder_matches guard prevents cross-plan data leaks."""
+    """US-GD-206 - Criterion 2: folder_matches guard prevents cross-epic data leaks."""
 
-    def test_get_tasks_returns_only_matching_plan_tasks(self, tmp_path):
-        """get_tasks() never returns tasks belonging to a different plan."""
-        from agenticguidance.services.plan_repository import PlanRepository
+    def test_get_tickets_returns_only_matching_epic_tickets(self, tmp_path):
+        """get_tickets() never returns tickets belonging to a different epic."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
 
-        plan_a_dir = tmp_path / "plan_a"
-        plan_b_dir = tmp_path / "plan_b"
+        epic_a_dir = tmp_path / "epic_a"
+        epic_b_dir = tmp_path / "epic_b"
 
-        _write_plan_yaml(plan_a_dir, {
-            "name": "plan_a",
+        _write_ticket_yaml(epic_a_dir, {
+            "name": "epic_a",
             "status": "pending",
             "phases": [
                 {"name": "P1", "tasks": [
-                    {"id": "A001", "name": "Task from A", "status": "pending"},
+                    {"id": "A001", "name": "Ticket from A", "status": "pending"},
                 ]}
             ],
         })
-        _write_plan_yaml(plan_b_dir, {
-            "name": "plan_b",
+        _write_ticket_yaml(epic_b_dir, {
+            "name": "epic_b",
             "status": "pending",
             "phases": [
                 {"name": "P1", "tasks": [
-                    {"id": "B001", "name": "Task from B", "status": "pending"},
+                    {"id": "B001", "name": "Ticket from B", "status": "pending"},
                 ]}
             ],
         })
 
-        repo.import_from_yaml(plan_a_dir)
-        repo.import_from_yaml(plan_b_dir)
+        repo.import_from_yaml(epic_a_dir)
+        repo.import_from_yaml(epic_b_dir)
 
-        tasks_a = repo.get_tasks("plan_a")
-        tasks_b = repo.get_tasks("plan_b")
+        tickets_a = repo.get_tickets("epic_a")
+        tickets_b = repo.get_tickets("epic_b")
 
-        ids_a = {t.id for t in tasks_a}
-        ids_b = {t.id for t in tasks_b}
+        ids_a = {t.id for t in tickets_a}
+        ids_b = {t.id for t in tickets_b}
 
-        # Strict isolation: plan A tasks must not appear in plan B and vice versa
+        # Strict isolation: epic A tickets must not appear in epic B and vice versa
         assert "A001" in ids_a
-        assert "B001" not in ids_a, "Task from plan_b leaked into plan_a query"
+        assert "B001" not in ids_a, "Ticket from epic_b leaked into epic_a query"
         assert "B001" in ids_b
-        assert "A001" not in ids_b, "Task from plan_a leaked into plan_b query"
+        assert "A001" not in ids_b, "Ticket from epic_a leaked into epic_b query"
 
         repo.close()
 
-    def test_update_task_status_only_affects_correct_plan(self, tmp_path):
-        """update_task_status() only updates tasks in the specified plan."""
-        from agenticguidance.services.plan_repository import PlanRepository
+    def test_update_ticket_status_only_affects_correct_epic(self, tmp_path):
+        """update_ticket_status() only updates tickets in the specified epic."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        db_path = tmp_path / "plans.db"
-        repo = PlanRepository(db_path=db_path, auto_bootstrap=False)
+        db_path = tmp_path / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
 
-        for plan_name in ("plan_x", "plan_y"):
-            plan_dir = tmp_path / plan_name
-            _write_plan_yaml(plan_dir, {
-                "name": plan_name,
+        for epic_name in ("epic_x", "epic_y"):
+            epic_dir = tmp_path / epic_name
+            _write_ticket_yaml(epic_dir, {
+                "name": epic_name,
                 "status": "pending",
                 "phases": [
                     {"name": "P1", "tasks": [
-                        {"id": "SHARED_ID", "name": f"Task in {plan_name}", "status": "pending"},
+                        {"id": "SHARED_ID", "name": f"Ticket in {epic_name}", "status": "pending"},
                     ]}
                 ],
             })
-            repo.import_from_yaml(plan_dir)
+            repo.import_from_yaml(epic_dir)
 
-        # Update the task in plan_x only
-        ok = repo.update_task_status("plan_x", "SHARED_ID", "completed")
+        # Update the ticket in epic_x only
+        ok = repo.update_ticket_status("epic_x", "SHARED_ID", "completed")
         assert ok is True
 
-        task_x = repo.get_task("plan_x", "SHARED_ID")
-        task_y = repo.get_task("plan_y", "SHARED_ID")
+        ticket_x = repo.get_ticket("epic_x", "SHARED_ID")
+        ticket_y = repo.get_ticket("epic_y", "SHARED_ID")
 
-        assert task_x is not None and task_x.status == "completed"
-        assert task_y is not None and task_y.status == "pending", (
-            "Updating task in plan_x must not affect plan_y's task with same ID"
+        assert ticket_x is not None and ticket_x.status == "completed"
+        assert ticket_y is not None and ticket_y.status == "pending", (
+            "Updating ticket in epic_x must not affect epic_y's ticket with same ID"
         )
 
         repo.close()
 
 
 class TestUS_GD_206_ResurrectionDetection:
-    """US-GD-206 - Criterion 3: Resurrection detection re-imports live plan."""
+    """US-GD-206 - Criterion 3: Resurrection detection re-imports live epic."""
 
-    def test_get_plan_detects_resurrection_and_resyncs(self, isolated_repo):
-        """When TinyDB says completed/ but live/ exists, get_plan resyncs to live."""
-        from agenticguidance.services.plan import PlanService
+    def test_get_epic_detects_resurrection_and_resyncs(self, isolated_repo):
+        """When TinyDB says completed/ but live/ exists, get_epic resyncs to live."""
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_resurrection"
-        # Create plan in live/
-        live_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(live_dir, _minimal_plan_data(plan_name, status="in_progress"))
+        epic_name = "260224TE_resurrection"
+        # Create epic in live/
+        live_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_plan_yaml(live_dir, _minimal_epic_data(epic_name, status="in_progress"))
 
-        service = PlanService(repo_path=isolated_repo)
-        # Import plan so TinyDB knows about it
+        service = EpicService(repo_path=isolated_repo)
+        # Import epic so TinyDB knows about it
         service._repository.import_from_yaml(live_dir)
 
         # Simulate archiving: update DB to point to completed/ (stale path)
-        completed_dir = isolated_repo / "docs" / "plans" / "completed" / plan_name
+        completed_dir = isolated_repo / "docs" / "epics" / "completed" / epic_name
         completed_dir.mkdir(parents=True)
-        _write_plan_yaml(completed_dir, _minimal_plan_data(plan_name, status="completed"))
+        _write_plan_yaml(completed_dir, _minimal_epic_data(epic_name, status="completed"))
 
-        service._repository.update_plan(plan_name, {
+        service._repository.update_epic(epic_name, {
             "plan_folder": str(completed_dir),
             "status": "completed",
         })
 
-        # Plan still exists in live/ (resurrection scenario)
+        # Epic still exists in live/ (resurrection scenario)
         assert live_dir.exists()
 
-        # get_plan should detect stale completed/ path and resync to live/
-        result = service.get_plan(plan_name)
+        # get_epic should detect stale completed/ path and resync to live/
+        result = service.get_epic(epic_name)
 
-        assert result is not None, "Should find the plan after resurrection detection"
-        assert result.plan_folder == live_dir, (
-            f"Plan folder should be the live/ path {live_dir}, got {result.plan_folder}"
+        assert result is not None, "Should find the epic after resurrection detection"
+        assert result.epic_folder == live_dir, (
+            f"Epic folder should be the live/ path {live_dir}, got {result.epic_folder}"
         )
 
     def test_resurrection_detection_updates_tinydb_path(self, isolated_repo):
         """After resurrection detection, TinyDB stores the live/ path."""
-        from agenticguidance.services.plan import PlanService
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_resurrection_db_update"
-        live_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(live_dir, _minimal_plan_data(plan_name, status="in_progress"))
+        epic_name = "260224TE_resurrection_db_update"
+        live_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_plan_yaml(live_dir, _minimal_epic_data(epic_name, status="in_progress"))
 
-        service = PlanService(repo_path=isolated_repo)
+        service = EpicService(repo_path=isolated_repo)
         service._repository.import_from_yaml(live_dir)
 
         # Simulate stale TinyDB entry pointing to completed/
-        completed_dir = isolated_repo / "docs" / "plans" / "completed" / plan_name
+        completed_dir = isolated_repo / "docs" / "epics" / "completed" / epic_name
         completed_dir.mkdir(parents=True)
-        _write_plan_yaml(completed_dir, _minimal_plan_data(plan_name, status="completed"))
-        service._repository.update_plan(plan_name, {"plan_folder": str(completed_dir)})
+        _write_plan_yaml(completed_dir, _minimal_epic_data(epic_name, status="completed"))
+        service._repository.update_epic(epic_name, {"plan_folder": str(completed_dir)})
 
-        # Trigger resurrection detection via get_plan
-        service.get_plan(plan_name)
+        # Trigger resurrection detection via get_epic
+        service.get_epic(epic_name)
 
         # After detection, re-read from DB directly to confirm path was updated
-        db_entry = service._repository.get_plan(plan_name)
+        db_entry = service._repository.get_epic(epic_name)
         assert db_entry is not None
-        assert db_entry.plan_folder == live_dir, (
+        assert db_entry.epic_folder == live_dir, (
             "TinyDB should be updated to live/ path after resurrection detection"
         )
 
 
 class TestUS_GD_206_YamlSyncEnabled:
-    """US-GD-206 - Criterion 4: yaml_sync_enabled flag on TaskService for dual-write."""
+    """US-GD-206 - Criterion 4: yaml_sync_enabled flag on TicketService for dual-write."""
 
-    def test_task_service_has_yaml_sync_enabled_flag(self, isolated_repo):
-        """TaskService exposes a yaml_sync_enabled attribute."""
-        from agenticguidance.services.task import TaskService
+    def test_ticket_service_has_yaml_sync_enabled_flag(self, isolated_repo):
+        """TicketService exposes a yaml_sync_enabled attribute."""
+        from agenticguidance.services.ticket import TicketService
 
-        plan_name = "260224TE_yaml_sync_flag"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name))
+        epic_name = "260224TE_yaml_sync_flag"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_ticket_yaml(epic_dir, _minimal_epic_data(epic_name))
 
-        service_on = TaskService(plan_path=plan_dir, yaml_sync_enabled=True)
-        service_off = TaskService(plan_path=plan_dir, yaml_sync_enabled=False)
+        service_on = TicketService(epic_path=epic_dir, yaml_sync_enabled=True)
+        service_off = TicketService(epic_path=epic_dir, yaml_sync_enabled=False)
 
         assert service_on._yaml_sync_enabled is True
         assert service_off._yaml_sync_enabled is False
 
-    def test_plan_service_has_yaml_sync_enabled_flag(self, isolated_repo):
-        """PlanService exposes a yaml_sync_enabled attribute."""
-        from agenticguidance.services.plan import PlanService
+    def test_epic_service_has_yaml_sync_enabled_flag(self, isolated_repo):
+        """EpicService exposes a yaml_sync_enabled attribute."""
+        from agenticguidance.services.epic import EpicService
 
-        service_on = PlanService(repo_path=isolated_repo, yaml_sync_enabled=True)
-        service_off = PlanService(repo_path=isolated_repo, yaml_sync_enabled=False)
+        service_on = EpicService(repo_path=isolated_repo, yaml_sync_enabled=True)
+        service_off = EpicService(repo_path=isolated_repo, yaml_sync_enabled=False)
 
         assert service_on._yaml_sync_enabled is True
         assert service_off._yaml_sync_enabled is False
 
     def test_yaml_sync_disabled_skips_yaml_writes_on_status_update(self, isolated_repo):
-        """When yaml_sync_enabled=False, update_plan_status does not touch YAML files."""
-        from agenticguidance.services.plan import PlanService
+        """When yaml_sync_enabled=False, update_epic_status does not touch YAML files."""
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_nosync"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        original_data = _minimal_plan_data(plan_name, status="pending")
-        _write_plan_yaml(plan_dir, original_data)
+        epic_name = "260224TE_nosync"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        original_data = _minimal_epic_data(epic_name, status="pending")
+        _write_plan_yaml(epic_dir, original_data)
 
-        service = PlanService(repo_path=isolated_repo, yaml_sync_enabled=False)
-        # Ensure plan is in TinyDB
-        service._repository.import_from_yaml(plan_dir)
+        service = EpicService(repo_path=isolated_repo, yaml_sync_enabled=False)
+        # Ensure epic is in TinyDB
+        service._repository.import_from_yaml(epic_dir)
 
-        service.update_plan_status(plan_name, "active")
+        service.update_epic_status(epic_name, "active")
 
         # YAML on disk must NOT have been updated (yaml_sync disabled)
-        with open(plan_dir / "plan_build.yml") as f:
+        with open(epic_dir / "plan_build.yml") as f:
             on_disk = yaml.safe_load(f)
 
         assert on_disk["status"] == "pending", (
@@ -778,19 +790,19 @@ class TestUS_GD_206_YamlSyncEnabled:
         )
 
     def test_yaml_sync_enabled_updates_yaml_on_status_change(self, isolated_repo):
-        """When yaml_sync_enabled=True, update_plan_status also updates the YAML file."""
-        from agenticguidance.services.plan import PlanService
+        """When yaml_sync_enabled=True, update_epic_status also updates the YAML file."""
+        from agenticguidance.services.epic import EpicService
 
-        plan_name = "260224TE_withsync"
-        plan_dir = isolated_repo / "docs" / "plans" / "live" / plan_name
-        _write_plan_yaml(plan_dir, _minimal_plan_data(plan_name, status="pending"))
+        epic_name = "260224TE_withsync"
+        epic_dir = isolated_repo / "docs" / "epics" / "live" / epic_name
+        _write_plan_yaml(epic_dir, _minimal_epic_data(epic_name, status="pending"))
 
-        service = PlanService(repo_path=isolated_repo, yaml_sync_enabled=True)
-        service._repository.import_from_yaml(plan_dir)
+        service = EpicService(repo_path=isolated_repo, yaml_sync_enabled=True)
+        service._repository.import_from_yaml(epic_dir)
 
-        service.update_plan_status(plan_name, "active")
+        service.update_epic_status(epic_name, "active")
 
-        with open(plan_dir / "plan_build.yml") as f:
+        with open(epic_dir / "plan_build.yml") as f:
             on_disk = yaml.safe_load(f)
 
         assert on_disk["status"] == "active", (

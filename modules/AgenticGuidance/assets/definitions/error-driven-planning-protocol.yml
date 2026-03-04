@@ -1,21 +1,21 @@
 # Error-Driven Planning Protocol
-# Defines how agents handle errors discovered outside current plan scope.
+# Defines how agents handle errors discovered outside current epic scope.
 #
 # KEY PRINCIPLE: Non-planner agents do NOT classify or decide scope.
 # They capture context and hand off. PLANNERS decide everything.
 #
-# Reference: docs/plans/live/260208EP_error_driven_planning_handoff/
+# Reference: docs/epics/live/260208EP_error_driven_planning_handoff/
 
 error_driven_planning_protocol:
   definition: |
-    Protocol for handling errors discovered outside the scope of the current plan.
-    When any agent encounters an error it cannot resolve within its current plan,
+    Protocol for handling errors discovered outside the scope of the current epic.
+    When any agent encounters an error it cannot resolve within its current epic,
     it captures context and hands off to a planner agent. The planner — not the
     discovering agent — decides whether the error is in-scope or out-of-scope,
     and what action to take.
 
   scope: |
-    Applies to ALL agent types during plan execution.
+    Applies to ALL agent types during epic execution.
     Complements (does not replace) existing feedback triggers like TEST_FAILURE
     and BUILD_FAILURE, which handle in-scope re-planning.
 
@@ -29,7 +29,7 @@ error_driven_planning_protocol:
       strategy. They just capture context and hand off to a planner.
 
     when_to_hand_off: |
-      Any error the agent cannot fix inline within its current task's target_files.
+      Any error the agent cannot fix inline within its current ticket's target_files.
       When in doubt, hand off — planners can always dismiss if trivial.
 
     protocol:
@@ -43,9 +43,9 @@ error_driven_planning_protocol:
           affected_files:
             type: "array<string>"
             description: "Files involved in the error"
-          current_plan:
+          current_epic:
             type: "string"
-            description: "Plan folder being executed when error was found"
+            description: "Epic folder being executed when error was found"
           discovery_context:
             type: "string"
             description: "What the agent was doing when it found the error"
@@ -71,15 +71,15 @@ error_driven_planning_protocol:
         error_context:
           error_details: "<full error output>"
           affected_files: ["<files>"]
-          current_plan: "<plan folder path>"
+          current_epic: "<epic folder path>"
           discovery_context: "<what agent was doing>"
 
     fence: |
       FENCE: Non-planner agents MUST NOT:
       - Classify errors as in-scope vs out-of-scope
       - Assign priority levels (CRITICAL, HIGH, etc.)
-      - Decide whether to create a new plan or update the existing one
-      - Suggest plan names or remediation strategies
+      - Decide whether to create a new epic or update the existing one
+      - Suggest epic names or remediation strategies
       Just capture context and hand off. Planners decide everything.
 
   # ============================================================
@@ -93,53 +93,53 @@ error_driven_planning_protocol:
 
     triage_decisions:
       in_scope:
-        description: "Error is within the current plan's scope"
+        description: "Error is within the current epic's scope"
         conditions:
-          - "Error is in the current plan's target_files"
-          - "Error was caused by changes made during current plan execution"
+          - "Error is in the current epic's target_files"
+          - "Error was caused by changes made during current epic execution"
           - "Error is a known iteration scenario (test-fix-loop, build retry)"
         action: |
-          Update the existing plan: add tasks to address the error,
+          Update the existing epic: add tickets to address the error,
           adjust success criteria if needed, continue execution.
 
       out_of_scope:
-        description: "Error is outside the current plan's scope"
+        description: "Error is outside the current epic's scope"
         conditions:
-          - "Error is NOT in the current plan's target_files"
-          - "Error pre-dates the current plan (was already broken)"
-          - "Error affects modules/packages outside current plan scope"
+          - "Error is NOT in the current epic's target_files"
+          - "Error pre-dates the current epic (was already broken)"
+          - "Error affects modules/packages outside current epic scope"
           - "Error reveals systemic infrastructure issues"
-          - "Test failures exist for code not touched by current plan"
+          - "Test failures exist for code not touched by current epic"
           - "CI/CD configuration drift unrelated to current changes"
         action: |
           Create a new planning folder using standard naming convention.
-          Log the new plan reference in the current plan's execution report.
-          Continue current plan execution (unless CRITICAL).
+          Log the new epic reference in the current epic's execution report.
+          Continue current epic execution (unless CRITICAL).
 
     priority_classification:
       description: "Planner assigns priority based on impact assessment."
       levels:
         CRITICAL:
-          description: "Blocks current plan execution"
-          action: "Create plan immediately, may pause current execution"
+          description: "Blocks current epic execution"
+          action: "Create epic immediately, may pause current execution"
           examples:
             - "Import error prevents build from compiling at all"
             - "Shared fixture corruption breaks all tests"
         HIGH:
-          description: "Degrades plan quality but doesn't block"
-          action: "Create plan, continue current execution"
+          description: "Degrades epic quality but doesn't block"
+          action: "Create epic, continue current execution"
           examples:
             - "Pre-existing test failures inflate failure count"
             - "Dependency version conflict causes intermittent errors"
         MEDIUM:
           description: "Technical debt discovered during work"
-          action: "Create plan, continue current execution"
+          action: "Create epic, continue current execution"
           examples:
             - "Outdated configuration files found"
             - "Dead code or unused imports in related modules"
         LOW:
           description: "Minor issues worth tracking"
-          action: "Log in output, optionally create plan"
+          action: "Log in output, optionally create epic"
           examples:
             - "Style inconsistencies in files not being modified"
             - "Missing type hints in adjacent code"
@@ -162,24 +162,24 @@ error_driven_planning_protocol:
   # ============================================================
   branch_selection:
     principle: |
-      Branch and plan folder selection is enforced by the CLI, not by agent judgment.
+      Branch and epic folder selection is enforced by the CLI, not by agent judgment.
       Agents do not choose branches — the CLI gates selection based on
       active session status.
 
     hard_gate_rules:
-      rule_1_blocked_plans:
-        description: "CLI BLOCKS plans with active sessions"
-        detail: "Plans that have a running agent session are not available for selection."
+      rule_1_blocked_epics:
+        description: "CLI BLOCKS epics with active sessions"
+        detail: "Epics that have a running agent session are not available for selection."
 
-      rule_2_multiple_plans_allowed:
-        description: "Multiple plans per branch are allowed"
+      rule_2_multiple_epics_allowed:
+        description: "Multiple epics per branch are allowed"
         detail: |
           A branch can host multiple planning folders simultaneously.
-          Plans are independent — they share the branch but not state.
+          Epics are independent — they share the branch but not state.
 
     enforcement: |
       Selection is enforced programmatically by the CLI.
-      Agents MUST NOT attempt to evaluate plan availability themselves.
+      Agents MUST NOT attempt to evaluate epic availability themselves.
       Use CLI commands; the CLI will reject invalid selections.
 
   # ============================================================
@@ -187,13 +187,13 @@ error_driven_planning_protocol:
   # ============================================================
   naming_convention:
     principle: |
-      Error-driven plans use the SAME naming convention as all other plans.
+      Error-driven epics use the SAME naming convention as all other epics.
       There is NO special naming code for error remediation.
 
     pattern: "YYMMDDXX_description"
     description: |
-      Standard plan naming. XX is a 2-letter code,
-      enforced by the CLI via 'agentic plan init'.
+      Standard epic naming. XX is a 2-letter code,
+      enforced by the CLI via 'agentic epic init'.
 
     examples:
       - name: "260208CL_cli_test_failures"
@@ -207,13 +207,13 @@ error_driven_planning_protocol:
 
     anti_pattern: |
       DO NOT use a special "ER" (Error Remediation) naming code.
-      Error-driven plans are regular plans — they follow the same naming,
-      the same lifecycle, and the same archival rules as any other plan.
+      Error-driven epics are regular epics — they follow the same naming,
+      the same lifecycle, and the same archival rules as any other epic.
 
     cli_enforcement: |
-      Use 'agentic plan init <branch> --description <desc>' to generate names.
+      Use 'agentic epic init <branch> --description <desc>' to generate names.
       The CLI enforces naming programmatically — agents should NOT construct
-      plan names manually.
+      epic names manually.
 
   # ============================================================
   # INTEGRATION POINTS
@@ -222,8 +222,8 @@ error_driven_planning_protocol:
     with_feedback_triggers: |
       ERROR_REQUIRES_PLANNING is a feedback trigger type that complements
       TEST_FAILURE and BUILD_FAILURE. Unlike those triggers which cause
-      re-planning of the current plan, ERROR_REQUIRES_PLANNING spawns
-      a SEPARATE plan for future remediation.
+      re-planning of the current epic, ERROR_REQUIRES_PLANNING spawns
+      a SEPARATE epic for future remediation.
 
     with_agent_loops: |
       Out-of-scope errors discovered during loop iterations:
@@ -233,13 +233,13 @@ error_driven_planning_protocol:
       - Planner creates plans for HIGH+ priority errors after loop completes
 
     with_orchestrator: |
-      The orchestrator tracks all spawned remediation plans:
-      - Logs each in remediation_plans_spawned list
+      The orchestrator tracks all spawned remediation epics:
+      - Logs each in remediation_epics_spawned list
       - Reports all at shutdown
-      - CRITICAL priority plans may pause execution
-      - Plans are NOT automatically executed (require separate orchestration)
+      - CRITICAL priority epics may pause execution
+      - Epics are NOT automatically executed (require separate orchestration)
 
   related:
-    - "modules/AgenticGuidance/assets/definitions/plans.yml"
+    - "modules/AgenticGuidance/assets/definitions/epics.yml"
     - "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
     - "modules/AgenticGuidance/assets/definitions/role-separation.yml"

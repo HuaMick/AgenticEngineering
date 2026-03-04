@@ -11,8 +11,8 @@ cli_error_recovery_protocol:
 
   trigger_conditions:
     - "Session spawn fails (agentic session spawn returns error)"
-    - "Plan commands error (agentic plan task start/complete fails)"
-    - "Task resolution fails (task_id not found, wrong field names)"
+    - "Epic commands error (agentic epic ticket start/complete fails)"
+    - "Ticket resolution fails (ticket_id not found, wrong field names)"
     - "Import/syntax errors in CLI modules"
     - "Any agentic command exits non-zero"
 
@@ -25,25 +25,25 @@ cli_error_recovery_protocol:
         - "agentic --version          # Check basic health"
 
     step_2_create_remediation_plan:
-      name: "Create a remediation plan"
-      description: "Use agentic plan init with a descriptive name"
-      command: "agentic plan init <branch> --description 'fix: <describe the CLI issue>'"
+      name: "Create a remediation epic"
+      description: "Use agentic epic init with a descriptive name"
+      command: "agentic epic init <branch> --description 'fix: <describe the CLI issue>'"
 
     step_3_plan_the_fix:
       name: "Plan the fix"
       description: "Spawn a planner-build session to design the remediation"
-      command: "agentic session spawn --role planner-build --plan <new-plan-folder> -b --dangerously-skip-permissions"
+      command: "agentic session spawn --role planner-build --epic <new-epic-folder> -b --dangerously-skip-permissions"
 
     step_4_execute_the_fix:
       name: "Execute the fix"
       description: "Spawn build-python sessions to implement"
-      command: "agentic session spawn --role build-python --plan <new-plan-folder> -b --dangerously-skip-permissions"
+      command: "agentic session spawn --role build-python --epic <new-epic-folder> -b --dangerously-skip-permissions"
 
     step_5_verify:
       name: "Verify"
       description: "Confirm the CLI issue is resolved"
       commands:
-        - "agentic --version && agentic plan list"
+        - "agentic --version && agentic epic list"
         - "cd /home/code/AgenticEngineering/modules/AgenticCLI && python3 -m pytest tests/ -x -v"
 
     step_6_resume:
@@ -52,23 +52,23 @@ cli_error_recovery_protocol:
 
   common_pitfalls:
     - pitfall: "--json flag position"
-      wrong: "agentic plan list -j"
-      right: "agentic --json plan list"
-    - pitfall: "Plan file naming"
-      wrong: "plan.yml, build.yml"
-      right: "plan_build.yml, plan_test.yml, plan_teach.yml"
-    - pitfall: "Task ID field"
+      wrong: "agentic epic list -j"
+      right: "agentic --json epic list"
+    - pitfall: "Ticket file naming"
+      wrong: "ticket.yml, build.yml"
+      right: "ticket_build.yml, ticket_test.yml, ticket_teach.yml"
+    - pitfall: "Ticket ID field"
       wrong: "id: P1-T1 in some contexts"
-      right: "Use task_id — check plan YAML for actual field name"
-    - pitfall: "--role vs --task"
-      wrong: "--role build-python --task P1-T1"
-      right: "Use ONE: --role OR --task (mutually exclusive)"
-    - pitfall: "Plan folder path"
-      wrong: "260210OP_my_plan (bare name)"
-      right: "docs/plans/live/260210OP_my_plan (full path for ls, bare name for --plan)"
-    - pitfall: "Manual plan edits"
-      wrong: "Editing plan_build.yml status fields directly"
-      right: "agentic plan task start/complete <id> --plan <folder>"
+      right: "Use ticket_id — check epic YAML for actual field name"
+    - pitfall: "--role vs --ticket"
+      wrong: "--role build-python --ticket P1-T1"
+      right: "Use ONE: --role OR --ticket (mutually exclusive)"
+    - pitfall: "Epic folder path"
+      wrong: "260210OP_my_epic (bare name)"
+      right: "docs/epics/live/260210OP_my_epic (full path for ls, bare name for --epic)"
+    - pitfall: "Manual epic edits"
+      wrong: "Editing ticket_build.yml status fields directly"
+      right: "agentic epic ticket start/complete <id> --epic <folder>"
 
   fences:
     - "You MUST NOT skip any step in this protocol"

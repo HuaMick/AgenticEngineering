@@ -1,0 +1,139 @@
+# Worktree and Branching Guideline
+# Created: 2026-03-02
+# Purpose: Policies for maintaining consistency across git worktrees and enforcing
+#          safe merge flow, with Main-First Planning for epic folder management.
+
+guideline:
+  name: "Worktree Source of Truth and Branching"
+  description: |
+    Policies for maintaining consistency across git worktrees and
+    enforcing a safe merge flow through staging to main.
+    Includes Main-First Planning: the pattern for updating agent guidance
+    in main before executing epic work in feature branches.
+
+  inputs:
+    - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
+      description: "Epic/ticket status values, completion patterns, and structure definitions"
+
+  rules:
+    - rule: "Main Branch as Source of Truth"
+      description: |
+        The main branch is the authoritative source for all agent guidance,
+        processes, and architectural patterns.
+      justification: |
+        Divergent guidance across branches causes confusion and inconsistent
+        agent behavior. Centralizing truth in main ensures all worktrees
+        operate on the same standards.
+      characteristics:
+        - "Update guidance in main first"
+        - "Sync guidance from main to feature branches before execution"
+        - "Do not modify guidance locally in feature branches"
+
+    - rule: "Main-First Planning"
+      description: |
+        Teach phases MUST update guidance in main BEFORE feature branches
+        execute implementation work. This prevents guidance drift where
+        agents operating in feature branches follow outdated instructions.
+      justification: |
+        When agents spawn in feature branches to execute build, test, or deploy
+        tasks, they bootstrap their context from guidance files. If guidance
+        was not updated in main before branching, agents operate on stale
+        instructions throughout the epic lifecycle.
+      execution_pattern:
+        - "Teach phase updates guidance files in main branch"
+        - "Feature branches branch from updated main (or sync from main)"
+        - "Build/test agents in feature branches inherit current guidance"
+        - "Epic folder at docs/epics/live/{epic_folder}/ exists in the branch where work executes"
+      characteristics:
+        - "Teach phase must complete and merge to main before build phase starts"
+        - "Epic folder path: docs/epics/live/{epic_folder}/"
+        - "Use epic_folder (not plan_folder) in all parameter names"
+        - "Never modify shared guidance files in feature branches"
+      fence: |
+        FENCE: MAIN-FIRST PLANNING
+        Guidance updates MUST be merged to main before implementation agents spawn.
+        Feature branches MUST NOT contain guidance changes that have not been
+        reviewed and merged to main. Agents bootstrapping from stale guidance
+        will produce stale outputs.
+
+    - rule: "Staging-First Merge Strategy"
+      description: |
+        All development branches must merge to staging before merging to main.
+      justification: |
+        Direct merges to main bypass integration testing and risk production
+        stability. Staging provides a safe environment for pre-release validation.
+      workflow: "dev branch -> staging -> main"
+
+    - rule: "Environment-Worktree Alignment"
+      description: |
+        Use the appropriate worktree for the current phase (dev, staging,
+        cloud-deploy).
+      justification: |
+        Maintains clear boundaries between active development, integration
+        testing, and production-ready code.
+
+  epic_folder_conventions:
+    live_path: "docs/epics/live/{epic_folder}/"
+    completed_path: "docs/epics/completed/{epic_folder}/"
+    parameter_name: "epic_folder"
+    note: |
+      Epic folders follow the YYMMDDXX_description naming convention.
+      Use CLI commands to create and archive epic folders - never create
+      or move them manually.
+    cli_operations:
+      create: "agentic epic init <branch> --description <desc>"
+      archive: "agentic epic archive <epic_folder>  (auto on last ticket completion)"
+
+  anti_patterns:
+    - "Merging dev branches directly to main"
+    - "Modifying core guidance files in a feature branch without syncing to main"
+    - "Using the wrong worktree for a specific deployment phase"
+    - "Using plan_folder instead of epic_folder in parameter names"
+    - "Referencing docs/plans/ instead of docs/epics/ in path configurations"
+    - "Starting build phase before teach phase is merged to main"
+
+  examples:
+    good:
+      - description: "Main-First Planning: correct sequence"
+        example: |
+          # Phase 1: Teach (executes in main branch)
+          # - Teacher agents update guidance files in docs/epics/, epic_folder params
+          # - Changes committed and merged to main
+          # - Epic folder created: docs/epics/live/260301RE_remap_plan_task_to_epic_ticket/
+
+          # Phase 2: Build (executes in feature branch)
+          # - Branch created from updated main
+          # - Build agents inherit current guidance (epic_folder, docs/epics/ paths)
+          # - Agents work in: docs/epics/live/{epic_folder}/
+
+      - description: "Epic folder path usage"
+        example: |
+          # Correct: epic_folder and docs/epics/ vocabulary
+          inputs:
+            epic_folder: "260301RE_remap_plan_task_to_epic_ticket"
+            epic_path: "docs/epics/live/260301RE_remap_plan_task_to_epic_ticket/"
+
+          # Correct CLI for moving epic to completed:
+          # agentic epic archive 260301RE_remap_plan_task_to_epic_ticket
+
+    bad:
+      - description: "Old plan_folder vocabulary (do not use)"
+        example: |
+          # WRONG: plan_folder and docs/plans/ are deprecated vocabulary
+          inputs:
+            plan_folder: "260301RE_remap_plan_task_to_epic_ticket"
+            plan_path: "docs/plans/live/260301RE_remap_plan_task_to_epic_ticket/"
+
+      - description: "Teach phase skipped or merged after build starts"
+        example: |
+          # WRONG: Build agents spawn while guidance still uses plan_folder
+          # Result: All build agents produce output referencing old paths
+          # Resolution: Always complete and merge teach phase before build phase starts
+
+  related_guidelines:
+    - location: "modules/AgenticGuidance/assets/guidelines/safety.yml"
+      description: "Operational guardrails"
+    - location: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml"
+      description: "Planning standards including teach-before-build sequencing"
+    - location: "modules/AgenticGuidance/assets/guidelines/tool-offloading.yml"
+      description: "CLI commands for epic folder creation and archival"

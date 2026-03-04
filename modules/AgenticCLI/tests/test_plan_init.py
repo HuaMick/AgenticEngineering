@@ -1,7 +1,7 @@
-"""Tests for 'agentic plan init' command.
+"""Tests for 'agentic epic init' command.
 
-Integration tests for the plan initialization command that creates
-plan folders with YYMMDDXX_description naming convention.
+Integration tests for the epic initialization command that creates
+epic folders with YYMMDDXX_description naming convention.
 """
 
 import json
@@ -25,7 +25,7 @@ def create_worktree_for_test(temp_repo: Path, branch: str, base: str = "main") -
 
 
 class TestPlanInit:
-    """Tests for 'agentic plan init' command."""
+    """Tests for 'agentic epic init' command."""
 
     def test_init_with_existing_worktree(self, cli_runner, temp_repo):
         """Test init succeeds with existing worktree."""
@@ -33,17 +33,17 @@ class TestPlanInit:
         worktree_path = create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "init", branch, "--description", "my feature"]
+            ["agent", "epic", "init", branch, "--description", "my feature"]
         )
 
         # Should succeed
         assert code == 0
-        assert "Plan initialized" in stdout
+        assert "Epic initialized" in stdout or "Plan initialized" in stdout
 
-        # Verify plan folder was created with correct naming
-        # Plans are in docs/plans/live/
-        main_plans_dir = temp_repo / "docs" / "plans" / "live"
-        plan_folders = list(main_plans_dir.glob("*"))
+        # Verify epic folder was created with correct naming
+        # Epics are in docs/epics/live/
+        main_epics_dir = temp_repo / "docs" / "epics" / "live"
+        plan_folders = list(main_epics_dir.glob("*"))
         matching = [p for p in plan_folders if "_my_feature" in p.name]
         assert len(matching) == 1
         plan_folder_name = matching[0].name
@@ -57,48 +57,48 @@ class TestPlanInit:
         branch = "auth"
         create_worktree_for_test(temp_repo, branch)
 
-        stdout, stderr, code = cli_runner(["agent", "plan", "init", branch])
+        stdout, stderr, code = cli_runner(["agent", "epic", "init", branch])
 
         assert code == 0
 
-        # Verify plan folder uses branch as description
-        main_plans_dir = temp_repo / "docs" / "plans" / "live"
-        plan_folders = list(main_plans_dir.glob("*"))
+        # Verify epic folder uses branch as description
+        main_epics_dir = temp_repo / "docs" / "epics" / "live"
+        plan_folders = list(main_epics_dir.glob("*"))
         matching = [p for p in plan_folders if "_auth" in p.name]
         assert len(matching) == 1
 
     def test_init_creates_plan_in_repo_root(self, cli_runner, temp_repo):
-        """Test init creates plan folder in docs/plans/live/."""
+        """Test init creates epic folder in docs/epics/live/."""
         branch = "existing-branch"
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "init", branch, "--description", "repo root check"]
+            ["agent", "epic", "init", branch, "--description", "repo root check"]
         )
 
         assert code == 0
-        assert "Plan initialized" in stdout
+        assert "Epic initialized" in stdout or "Plan initialized" in stdout
 
-        # Should create plan folder in repo root
-        plans_dir = temp_repo / "docs" / "plans" / "live"
-        assert plans_dir.exists()
-        matching = [p for p in plans_dir.iterdir() if "_repo_root_check" in p.name]
+        # Should create epic folder in repo root
+        epics_dir = temp_repo / "docs" / "epics" / "live"
+        assert epics_dir.exists()
+        matching = [p for p in epics_dir.iterdir() if "_repo_root_check" in p.name]
         assert len(matching) == 1
 
     def test_init_fails_if_plan_folder_exists(self, cli_runner, temp_repo):
-        """Test init fails with exit code 2 if plan folder already exists."""
+        """Test init fails with exit code 2 if epic folder already exists."""
         branch = "dupe-test"
         create_worktree_for_test(temp_repo, branch)
 
-        # First create a plan
+        # First create an epic
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "init", branch, "--description", "first"]
+            ["agent", "epic", "init", branch, "--description", "first"]
         )
         assert code == 0
 
-        # Try to create another plan with same description
+        # Try to create another epic with same description
         # This should fail because the folder name will be the same
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "init", branch, "--description", "first"]
+            ["agent", "epic", "init", branch, "--description", "first"]
         )
 
         assert code == 2
@@ -110,14 +110,14 @@ class TestPlanInit:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "init", branch, "--description", "json output test"]
+            ["-j", "agent", "epic", "init", branch, "--description", "json output test"]
         )
 
         assert code == 0
         result = json.loads(stdout)
 
-        assert "plan_folder" in result
-        assert "plan_folder_name" in result
+        assert "epic_folder" in result
+        assert "epic_folder_name" in result
         assert result["branch"] == branch
 
     def test_init_with_base_branch(self, cli_runner, temp_repo):
@@ -145,7 +145,7 @@ class TestPlanInit:
         )
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "init", branch, "--base", "develop", "--description", "test"]
+            ["agent", "epic", "init", branch, "--base", "develop", "--description", "test"]
         )
 
         assert code == 0
@@ -156,14 +156,14 @@ class TestPlanInit:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "init", branch, "--description", "My Feature: Bug Fix #123!"]
+            ["agent", "epic", "init", branch, "--description", "My Feature: Bug Fix #123!"]
         )
 
         assert code == 0
 
-        # Verify description was sanitized (Main-First Planning)
-        main_plans_dir = temp_repo / "docs" / "plans" / "live"
-        plan_folders = list(main_plans_dir.glob("*"))
+        # Verify description was sanitized
+        main_epics_dir = temp_repo / "docs" / "epics" / "live"
+        plan_folders = list(main_epics_dir.glob("*"))
         matching = [p for p in plan_folders if "bug_fix" in p.name]
         assert len(matching) == 1
         plan_folder_name = matching[0].name
@@ -175,72 +175,72 @@ class TestPlanInit:
         assert "_my_feature_bug_fix_123" in plan_folder_name
 
     def test_init_creates_proper_folder_structure(self, cli_runner, temp_repo):
-        """Test init creates plan folder directory."""
+        """Test init creates epic folder directory."""
         branch = "structure-test"
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "init", branch, "--description", "structure"]
+            ["agent", "epic", "init", branch, "--description", "structure"]
         )
 
         assert code == 0
 
-        # Verify plan folder created
-        plans_dir = temp_repo / "docs" / "plans" / "live"
-        plan_folders = list(plans_dir.glob("*_structure"))
+        # Verify epic folder created
+        epics_dir = temp_repo / "docs" / "epics" / "live"
+        plan_folders = list(epics_dir.glob("*_structure"))
         assert len(plan_folders) == 1
         plan_folder = plan_folders[0]
         assert plan_folder.is_dir()
 
 
 class TestPlanInitEnforcement:
-    """Tests for plan init enforcement."""
+    """Tests for epic init enforcement."""
 
     def test_init_prevents_duplicate_plans(self, cli_runner, temp_repo):
-        """Test init prevents creating duplicate plans with same name."""
+        """Test init prevents creating duplicate epics with same name."""
         branch = "dup-check"
 
-        # Create first plan
+        # Create first epic
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "init", branch, "--description", "first"]
+            ["agent", "epic", "init", branch, "--description", "first"]
         )
         assert code == 0
 
-        # Try to create another plan with different description (should work)
+        # Try to create another epic with different description (should work)
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "init", branch, "--description", "second"]
+            ["agent", "epic", "init", branch, "--description", "second"]
         )
         assert code in [0, 2]  # 0 if different folder allowed, 2 if duplicate detected
 
 
 class TestPlanInitHelp:
-    """Tests for plan init help and usage."""
+    """Tests for epic init help and usage."""
 
     def test_init_help(self, cli_runner):
-        """Test plan init shows help."""
-        stdout, stderr, code = cli_runner(["agent", "plan", "init", "--help"])
+        """Test epic init shows help."""
+        stdout, stderr, code = cli_runner(["agent", "epic", "init", "--help"])
         assert "branch" in stdout.lower() or code == 0
 
 
 class TestPlanInitEdgeCases:
-    """Edge case tests for plan init."""
+    """Edge case tests for epic init."""
 
     def test_init_empty_branch_fails(self, cli_runner):
         """Test init fails with empty branch name."""
         # This should fail at argument parsing level
-        stdout, stderr, code = cli_runner(["agent", "plan", "init"])
+        stdout, stderr, code = cli_runner(["agent", "epic", "init"])
         assert code != 0
 
     def test_init_plan_id_from_repo_path(self, cli_runner, temp_repo):
-        """Test plan ID is derived from repo path."""
+        """Test epic ID is derived from repo path."""
         branch = "suffix-test"
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "init", branch, "--description", "test"]
+            ["-j", "agent", "epic", "init", branch, "--description", "test"]
         )
 
         assert code == 0
         result = json.loads(stdout)
 
-        plan_name = result["plan_folder_name"]
+        plan_name = result["epic_folder_name"]
         # Should have 2-letter uppercase ID at positions 6-7
         assert plan_name[6:8].isupper()

@@ -16,8 +16,8 @@ pytestmark = pytest.mark.uat
 
 
 @pytest.fixture
-def plan_with_pending_question(tmp_path):
-    """Create a plan folder with a pending question that has suggested answers."""
+def epic_with_pending_question(tmp_path):
+    """Create an epic folder with a pending question that has suggested answers."""
     plan_path = tmp_path / "test_plan"
     plan_path.mkdir()
 
@@ -52,8 +52,8 @@ def plan_with_pending_question(tmp_path):
 
 
 @pytest.fixture
-def plan_with_multiple_questions(tmp_path):
-    """Create a plan folder with multiple pending questions."""
+def epic_with_multiple_questions(tmp_path):
+    """Create an epic folder with multiple pending questions."""
     plan_path = tmp_path / "test_plan"
     plan_path.mkdir()
 
@@ -93,12 +93,12 @@ def plan_with_multiple_questions(tmp_path):
     return plan_path, questions
 
 
-def test_interactive_wizard_lists_pending_with_suggest_indicator(plan_with_multiple_questions, monkeypatch, capsys):
+def test_interactive_wizard_lists_pending_with_suggest_indicator(epic_with_multiple_questions, monkeypatch, capsys):
     """Test that interactive mode lists pending questions with [S] indicator for suggested answers."""
     from agenticcli.commands import question
     from types import SimpleNamespace
 
-    plan_path, questions = plan_with_multiple_questions
+    plan_path, questions = epic_with_multiple_questions
 
     # Mock user input: cancel the wizard
     inputs = iter([""])
@@ -128,11 +128,11 @@ def test_interactive_wizard_lists_pending_with_suggest_indicator(plan_with_multi
     assert "[S]" not in q1_line
 
 
-def test_interactive_select_suggested_answer(plan_with_pending_question, monkeypatch):
+def test_interactive_select_suggested_answer(epic_with_pending_question, monkeypatch):
     """Test selecting a suggested answer from the wizard menu."""
     from agenticcli.commands import question
 
-    plan_path, question_id = plan_with_pending_question
+    plan_path, question_id = epic_with_pending_question
 
     # Mock user inputs:
     # 1. Select question number 1
@@ -170,11 +170,11 @@ def test_interactive_select_suggested_answer(plan_with_pending_question, monkeyp
     assert not pending_file.exists()
 
 
-def test_interactive_custom_answer_flow(plan_with_pending_question, monkeypatch):
+def test_interactive_custom_answer_flow(epic_with_pending_question, monkeypatch):
     """Test the custom answer flow (select C, type answer)."""
     from agenticcli.commands import question
 
-    plan_path, question_id = plan_with_pending_question
+    plan_path, question_id = epic_with_pending_question
 
     # Mock user inputs:
     # 1. Select question number 1
@@ -207,11 +207,11 @@ def test_interactive_custom_answer_flow(plan_with_pending_question, monkeypatch)
     assert answer_data["answered_by"] == "human"
 
 
-def test_interactive_defer_flow(plan_with_pending_question, monkeypatch):
+def test_interactive_defer_flow(epic_with_pending_question, monkeypatch):
     """Test the defer flow (select D)."""
     from agenticcli.commands import question
 
-    plan_path, question_id = plan_with_pending_question
+    plan_path, question_id = epic_with_pending_question
 
     # Mock user inputs:
     # 1. Select question number 1
@@ -242,11 +242,11 @@ def test_interactive_defer_flow(plan_with_pending_question, monkeypatch):
     assert not (answered_dir / f"{question_id}.yml").exists()
 
 
-def test_non_interactive_answer_path_unbroken(plan_with_pending_question):
+def test_non_interactive_answer_path_unbroken(epic_with_pending_question):
     """Test that non-interactive answer mode still works (backward compatibility)."""
     from agenticcli.commands import question
 
-    plan_path, question_id = plan_with_pending_question
+    plan_path, question_id = epic_with_pending_question
 
     # Create mock args for non-interactive mode
     args = SimpleNamespace()
@@ -274,11 +274,11 @@ def test_non_interactive_answer_path_unbroken(plan_with_pending_question):
     assert answer_data["answered_by"] == "human"
 
 
-def test_wizard_displays_question_severity(plan_with_pending_question, monkeypatch, capsys):
+def test_wizard_displays_question_severity(epic_with_pending_question, monkeypatch, capsys):
     """Test that wizard displays question text and severity badge."""
     from agenticcli.commands import question
 
-    plan_path, question_id = plan_with_pending_question
+    plan_path, question_id = epic_with_pending_question
 
     # Mock user inputs: select question, then cancel with Ctrl+C
     inputs = iter(["1"])
@@ -302,11 +302,11 @@ def test_wizard_displays_question_severity(plan_with_pending_question, monkeypat
     assert "Use pytest or unittest?" in captured.out
 
 
-def test_wizard_displays_suggested_answers_as_numbered_options(plan_with_pending_question, monkeypatch, capsys):
+def test_wizard_displays_suggested_answers_as_numbered_options(epic_with_pending_question, monkeypatch, capsys):
     """Test that wizard displays suggested answers as numbered menu options."""
     from agenticcli.commands import question
 
-    plan_path, question_id = plan_with_pending_question
+    plan_path, question_id = epic_with_pending_question
 
     # Mock user inputs: select question, then cancel
     inputs = iter(["1"])
@@ -334,11 +334,11 @@ def test_wizard_displays_suggested_answers_as_numbered_options(plan_with_pending
     assert "1" in captured.out and "2" in captured.out and "3" in captured.out
 
 
-def test_wizard_confirmation_prompt(plan_with_pending_question, monkeypatch, capsys):
+def test_wizard_confirmation_prompt(epic_with_pending_question, monkeypatch, capsys):
     """Test that wizard shows confirmation prompt before submitting."""
     from agenticcli.commands import question
 
-    plan_path, question_id = plan_with_pending_question
+    plan_path, question_id = epic_with_pending_question
 
     # Mock user inputs: select question, select answer, then cancel confirmation
     inputs = iter(["1", "1", "N"])
@@ -364,11 +364,11 @@ def test_wizard_confirmation_prompt(plan_with_pending_question, monkeypatch, cap
     assert pending_file.exists()
 
 
-def test_empty_answer_rejected(plan_with_pending_question, monkeypatch, capsys):
+def test_empty_answer_rejected(epic_with_pending_question, monkeypatch, capsys):
     """Test that empty custom answers are rejected."""
     from agenticcli.commands import question
 
-    plan_path, question_id = plan_with_pending_question
+    plan_path, question_id = epic_with_pending_question
 
     # Mock user inputs: select question, custom answer, empty text, then real answer
     inputs = iter(["1", "C", "", "Valid answer", "Y"])
@@ -389,11 +389,11 @@ def test_empty_answer_rejected(plan_with_pending_question, monkeypatch, capsys):
     assert "cannot be empty" in captured.out.lower() or "empty" in captured.out.lower()
 
 
-def test_invalid_selection_rejected(plan_with_pending_question, monkeypatch):
+def test_invalid_selection_rejected(epic_with_pending_question, monkeypatch):
     """Test that invalid menu selections are rejected and user can retry."""
     from agenticcli.commands import question
 
-    plan_path, question_id = plan_with_pending_question
+    plan_path, question_id = epic_with_pending_question
 
     # Mock user inputs: select question, invalid choice, then valid choice
     inputs = iter(["1", "999", "1", "Y"])

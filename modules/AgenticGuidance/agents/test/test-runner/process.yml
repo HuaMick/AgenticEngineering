@@ -51,7 +51,7 @@ process:
         environment: "string - local or docker"
     - name: "failure_details"
       description: "Detailed failure information for each failing test"
-      location: "Returned to orchestrator; optionally updated in live plan"
+      location: "Returned to orchestrator; optionally updated in live epic"
       schema:
         - test_name: "string"
           component: "string"
@@ -77,8 +77,8 @@ process:
       # Get seed context (objective, process summary, inputs)
       agentic agent context bootstrap --role test-runner -j
 
-      # Get current task if working from a plan
-      agentic agent plan task current -j
+      # Get current ticket if working from an epic
+      agentic agent epic ticket current -j
       ```
 
       CLI output provides your objective, process summary, input file paths.
@@ -89,7 +89,7 @@ process:
       If an input is found in a different location, note the discrepancy in your output report.
     - |
       Discover tests to run:
-      - Identify the relevant test directory or markers based on the plan.
+      - Identify the relevant test directory or markers based on the epic.
       - Ensure you are using the correct environment (e.g., Docker, local).
     - |
       Execute the tests:
@@ -103,7 +103,7 @@ process:
     - |
       Report results:
       - If executing in a test-fix-loop context:
-        * Update the live plan file with any failures found.
+        * Update the live epic file with any failures found.
         * Format each failure as a structured entry per failure_reporting definition in inputs.yml.
         * This allows the builder agents to know what to fix.
       - Always report back to the orchestration agent with a summary.
@@ -116,7 +116,7 @@ process:
       1. Capture error context:
          - error_details: Full test failure output (error messages, stack traces)
          - affected_files: Files involved in the failures
-         - current_plan: Plan folder being executed when failures were found
+         - current_epic: Epic folder being executed when failures were found
          - discovery_context: "test-runner executing test suite for [scope]"
       2. Spawn orchestration-planning session with the error context package
       3. Continue reporting (non-blocking) — let the planner decide what to do
@@ -126,7 +126,7 @@ process:
         error_context:
           error_details: "<full failure output>"
           affected_files: ["<files>"]
-          current_plan: "<plan folder path>"
+          current_epic: "<epic folder path>"
           discovery_context: "<what you were testing>"
 
       FENCE: test-runner MUST NOT:

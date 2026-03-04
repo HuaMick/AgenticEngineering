@@ -567,7 +567,8 @@ def session_spawn(
     prompt: Annotated[Optional[str], typer.Option("--prompt", "-p", help="The prompt to send")] = None,
     role: Annotated[Optional[str], typer.Option("--role", help="Agent role to spawn")] = None,
     task: Annotated[Optional[str], typer.Option("--task", help="Task ID to spawn agent for")] = None,
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Plan folder name")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder name")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="[Deprecated: use --epic] Epic folder name")] = None,
     max_turns: Annotated[Optional[int], typer.Option("--max-turns", "-m", help="Maximum agentic turns")] = None,
     background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
@@ -583,10 +584,13 @@ def session_spawn(
         print_error("--role and --task are mutually exclusive.")
         raise typer.Exit(1)
 
+    # --plan is a deprecated alias for --epic; --epic takes precedence
+    resolved_epic = epic or plan
+
     _session_handle(_ns(
         command="session", session_command="spawn",
         json=_global["json"], debug=_global["debug"],
-        prompt=prompt, role=role, task=task, plan=plan,
+        prompt=prompt, role=role, task=task, plan=resolved_epic,
         max_turns=max_turns, background=background,
         directory=directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
@@ -1050,7 +1054,20 @@ app.add_typer(plan_app, name="plan")
 
 
 def _plan_handle(args):
-    _dispatch("plan", args, require_project=True)
+    """All plan commands are removed. Print error and exit."""
+    import json as _json
+    json_mode = getattr(args, 'json', False) or getattr(args, 'json_output', False)
+    if json_mode:
+        print(_json.dumps({"error": "Command removed. Use 'agentic epic ...' instead."}))
+    else:
+        import sys as _sys
+        print("Command removed. Use 'agentic epic ...' instead.", file=_sys.stderr)
+        print("See 'agentic epic --help' for available commands.", file=_sys.stderr)
+    raise typer.Exit(1)
+
+
+def _epic_handle(args):
+    _dispatch("epic", args, require_project=True)
 
 
 # --- plan new ---
@@ -1093,11 +1110,10 @@ def plan_scaffold(ctx: typer.Context):
 @plan_app.command("status")
 def plan_status(
     path: Optional[str] = typer.Argument(None, help="Path to plan folder"),
-    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path (takes priority over positional)")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
 ):
-    """Show plan status and task summary."""
-    resolved = plan or path
-    _plan_handle(_ns(command="plan", plan_command="status", json=_global["json"], debug=_global["debug"], path=resolved))
+    """Command removed. Use 'agentic epic status' instead."""
+    _plan_handle(_ns(json=_global["json"]))
 
 
 # --- plan validate ---
@@ -1112,8 +1128,8 @@ def plan_validate(ctx: typer.Context):
 # --- plan list ---
 @plan_app.command("list")
 def plan_list():
-    """List all plans in the repository."""
-    _plan_handle(_ns(command="plan", plan_command="list", json=_global["json"], debug=_global["debug"]))
+    """Command removed. Use 'agentic epic list' instead."""
+    _plan_handle(_ns(json=_global["json"]))
 
 
 # --- plan archive ---
@@ -1469,16 +1485,11 @@ def plan_db_status():
 @plan_app.command("cancel")
 def plan_cancel(
     path: Optional[str] = typer.Argument(None, help="Plan name or path"),
-    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
     force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
 ):
-    """Cancel an active plan."""
-    resolved = plan or path
-    _plan_handle(_ns(
-        command="plan", plan_command="cancel",
-        json=_global["json"], debug=_global["debug"],
-        path=resolved, force=force,
-    ))
+    """Command removed. Use 'agentic epic cancel' instead."""
+    _plan_handle(_ns(json=_global["json"]))
 
 
 # --- plan question ---
@@ -1543,6 +1554,340 @@ def plan_question_dashboard(
         json=_global["json"], debug=_global["debug"],
         refresh=refresh, no_tmux_window=no_tmux_window,
     ))
+
+
+# ===========================================================================
+# EPIC (new primary vocabulary: epic list, epic ticket start, etc.)
+# ===========================================================================
+
+epic_app = typer.Typer(help="Manage epic folders and track ticket status", no_args_is_help=True)
+app.add_typer(epic_app, name="epic")
+
+
+# --- epic list ---
+@epic_app.command("list")
+def epic_list():
+    """List all epics in the repository."""
+    _epic_handle(_ns(command="epic", epic_command="list", json=_global["json"], debug=_global["debug"]))
+
+
+# --- epic status ---
+@epic_app.command("status")
+def epic_status(
+    path: Optional[str] = typer.Argument(None, help="Path to epic folder"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Show epic status and ticket summary."""
+    resolved = epic or path
+    _epic_handle(_ns(command="epic", epic_command="status", json=_global["json"], debug=_global["debug"], path=resolved))
+
+
+# --- epic cancel ---
+@epic_app.command("cancel")
+def epic_cancel(
+    path: Optional[str] = typer.Argument(None, help="Epic name or path"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
+):
+    """Cancel an active epic."""
+    resolved = epic or path
+    _epic_handle(_ns(
+        command="epic", epic_command="cancel",
+        json=_global["json"], debug=_global["debug"],
+        path=resolved, force=force,
+    ))
+
+
+# --- epic ticket (nested sub-app) ---
+epic_ticket_app = typer.Typer(help="Manage tickets in epic files", no_args_is_help=True)
+epic_app.add_typer(epic_ticket_app, name="ticket")
+
+
+@epic_ticket_app.command("start")
+def epic_ticket_start(
+    task_id: str = typer.Argument(..., help="Ticket ID"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Mark ticket as in_progress."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="start",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=epic,
+    ))
+
+
+@epic_ticket_app.command("complete")
+def epic_ticket_complete(
+    task_id: str = typer.Argument(..., help="Ticket ID"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Mark ticket as completed."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="complete",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=epic,
+    ))
+
+
+@epic_ticket_app.command("prefill")
+def epic_ticket_prefill(
+    preset: Annotated[str, typer.Option("--preset", "-t", help="Preset name")] = ...,
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+):
+    """Load preset ticket list from template."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="prefill",
+        json=_global["json"], debug=_global["debug"],
+        preset=preset, plan=epic, dry_run=dry_run,
+    ))
+
+
+@epic_ticket_app.command("list")
+def epic_ticket_list(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    status: Annotated[str, typer.Option("--status", "-s", help="Filter by status", callback=_validate_status)] = "all",
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show full details")] = False,
+):
+    """Show all tickets in current epic folder."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, status=status, verbose=verbose,
+    ))
+
+
+@epic_ticket_app.command("status")
+def epic_ticket_status(
+    task_id: str = typer.Argument(..., help="Ticket ID"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Show detailed status for a specific ticket."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="status",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=epic,
+    ))
+
+
+@epic_ticket_app.command("add")
+def epic_ticket_add(
+    description: str = typer.Argument(..., help="Ticket description"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    phase: Annotated[Optional[str], typer.Option("--phase", "-ph", help="Phase ID")] = None,
+    id: Annotated[Optional[str], typer.Option("--id", help="Custom ticket ID")] = None,
+    priority: Annotated[str, typer.Option("--priority", help="Ticket priority", callback=_validate_priority)] = "medium",
+):
+    """Add new ticket to epic."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="add",
+        json=_global["json"], debug=_global["debug"],
+        description=description, plan=epic, phase=phase, id=id, priority=priority,
+    ))
+
+
+@epic_ticket_app.command("update")
+def epic_ticket_update(
+    task_id: str = typer.Argument(..., help="Ticket ID"),
+    status: Annotated[str, typer.Option("--status", "-s", help="New status")] = ...,
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    note: Annotated[Optional[str], typer.Option("--note", "-n", help="Completion note")] = None,
+):
+    """Update ticket status in epic file."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="update",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, status=status, plan=epic, note=note,
+    ))
+
+
+@epic_ticket_app.command("current")
+def epic_ticket_current(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Get the current ticket to work on."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="current",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic,
+    ))
+
+
+# --- epic phase (nested sub-app) ---
+epic_phase_app = typer.Typer(help="Manage epic phases", no_args_is_help=True)
+epic_app.add_typer(epic_phase_app, name="phase")
+
+
+@epic_phase_app.command("add")
+def epic_phase_add(
+    id: Annotated[str, typer.Option("--id", help="Phase ID")] = ...,
+    name: Annotated[str, typer.Option("--name", help="Phase name")] = ...,
+    description: Annotated[Optional[str], typer.Option("--description", help="Phase description")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Add a new phase to plan_build.yml."""
+    _epic_handle(_ns(
+        command="epic", epic_command="phase", phase_action="add",
+        json=_global["json"], debug=_global["debug"],
+        id=id, name=name, description=description, plan=epic,
+    ))
+
+
+@epic_phase_app.command("list")
+def epic_phase_list(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """List all phases in the epic."""
+    _epic_handle(_ns(
+        command="epic", epic_command="phase", phase_action="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic,
+    ))
+
+
+@epic_phase_app.command("update")
+def epic_phase_update(
+    phase_id: str = typer.Argument(..., help="Phase ID to update"),
+    status: Annotated[Optional[str], typer.Option("--status", "-s", help="New status")] = None,
+    name: Annotated[Optional[str], typer.Option("--name", "-n", help="New name")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Update a phase in plan_build.yml."""
+    _epic_handle(_ns(
+        command="epic", epic_command="phase", phase_action="update",
+        json=_global["json"], debug=_global["debug"],
+        phase_id=phase_id, status=status, name=name, plan=epic,
+    ))
+
+
+# --- epic move (nested sub-app) ---
+epic_move_app = typer.Typer(help="Move completed tickets or archive folder", no_args_is_help=True)
+epic_app.add_typer(epic_move_app, name="move")
+
+
+@epic_move_app.command("task")
+def epic_move_task(
+    task_id: str = typer.Argument(..., help="Ticket ID to move"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Move even with uncommitted changes")] = False,
+):
+    """Move a single completed ticket."""
+    _epic_handle(_ns(
+        command="epic", epic_command="move", move_type="task",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=epic, dry_run=dry_run, force=force,
+    ))
+
+
+@epic_move_app.command("tasks")
+def epic_move_tasks(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Move even with uncommitted changes")] = False,
+):
+    """Move all completed tickets."""
+    _epic_handle(_ns(
+        command="epic", epic_command="move", move_type="tasks",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, dry_run=dry_run, force=force,
+    ))
+
+
+@epic_move_app.command("folder")
+def epic_move_folder(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Archive even with uncommitted changes")] = False,
+):
+    """Archive the epic folder."""
+    _epic_handle(_ns(
+        command="epic", epic_command="move", move_type="folder",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, dry_run=dry_run, force=force,
+    ))
+
+
+# --- epic orchestration (nested sub-app) ---
+epic_orch_app = typer.Typer(help="Manage epic orchestration MMD files", no_args_is_help=True)
+epic_app.add_typer(epic_orch_app, name="orchestration")
+
+
+@epic_orch_app.command("generate")
+def epic_orchestration_generate(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output filename")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing")] = False,
+):
+    """Generate orchestration MMD from epic YAML."""
+    _epic_handle(_ns(
+        command="epic", epic_command="orchestration", orchestration_action="generate",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, output=output, force=force,
+    ))
+
+
+@epic_orch_app.command("validate")
+def epic_orchestration_validate(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    strict: Annotated[bool, typer.Option("--strict", help="Treat warnings as errors")] = False,
+):
+    """Validate orchestration MMD against epic YAML."""
+    _epic_handle(_ns(
+        command="epic", epic_command="orchestration", orchestration_action="validate",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, strict=strict,
+    ))
+
+
+# --- epic stories (nested sub-app) ---
+epic_stories_app = typer.Typer(help="Manage user stories in epic files", no_args_is_help=True)
+epic_app.add_typer(epic_stories_app, name="stories")
+
+
+@epic_stories_app.command("list")
+def epic_stories_list(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """List user stories from epic YAML."""
+    _epic_handle(_ns(
+        command="epic", epic_command="stories", stories_action="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic,
+    ))
+
+
+@epic_stories_app.command("test")
+def epic_stories_test(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output file path")] = None,
+    format: Annotated[str, typer.Option("--format", "-f", help="Output format")] = "yaml",
+):
+    """Generate blind test scenarios from user stories."""
+    _epic_handle(_ns(
+        command="epic", epic_command="stories", stories_action="test",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, output=output, format=format,
+    ))
+
+
+# --- epic db (nested sub-app) ---
+epic_db_app = typer.Typer(help="Manage epic TinyDB database", no_args_is_help=True)
+epic_app.add_typer(epic_db_app, name="db", hidden=True)
+
+
+@epic_db_app.command("sync")
+def epic_db_sync(
+    export: Annotated[bool, typer.Option("--export", help="Write TinyDB state to YAML (reverse sync)")] = False,
+):
+    """Rebuild TinyDB from YAML files or export TinyDB to YAML."""
+    _epic_handle(_ns(command="epic", epic_command="db", db_action="sync", json=_global["json"], debug=_global["debug"], export=export))
+
+
+@epic_db_app.command("status")
+def epic_db_status():
+    """Show TinyDB database statistics."""
+    _epic_handle(_ns(command="epic", epic_command="db", db_action="status", json=_global["json"], debug=_global["debug"]))
 
 
 # ===========================================================================
@@ -1963,6 +2308,417 @@ def agent_plan_new(
     ))
 
 
+# --- agent epic ---
+agent_epic_app = typer.Typer(help="Epic management plumbing for agents", no_args_is_help=True)
+agent_app.add_typer(agent_epic_app, name="epic")
+
+# --- agent epic ticket ---
+agent_epic_ticket_app = typer.Typer(help="Manage tickets in epic files", no_args_is_help=True)
+agent_epic_app.add_typer(agent_epic_ticket_app, name="ticket")
+
+
+@agent_epic_ticket_app.command("start")
+def agent_epic_ticket_start(
+    task_id: str = typer.Argument(..., help="Ticket ID"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Mark ticket as in_progress."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="start",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=epic,
+    ))
+
+
+@agent_epic_ticket_app.command("complete")
+def agent_epic_ticket_complete(
+    task_id: str = typer.Argument(..., help="Ticket ID"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Mark ticket as completed."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="complete",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=epic,
+    ))
+
+
+@agent_epic_ticket_app.command("prefill")
+def agent_epic_ticket_prefill(
+    preset: Annotated[str, typer.Option("--preset", "-t", help="Preset name")] = ...,
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+):
+    """Load preset ticket list from template."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="prefill",
+        json=_global["json"], debug=_global["debug"],
+        preset=preset, plan=epic, dry_run=dry_run,
+    ))
+
+
+@agent_epic_ticket_app.command("list")
+def agent_epic_ticket_list(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    status: Annotated[str, typer.Option("--status", "-s", help="Filter by status", callback=_validate_status)] = "all",
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show full details")] = False,
+):
+    """Show all tickets in current epic folder."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, status=status, verbose=verbose,
+    ))
+
+
+@agent_epic_ticket_app.command("status")
+def agent_epic_ticket_status(
+    task_id: str = typer.Argument(..., help="Ticket ID"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Show detailed status for a specific ticket."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="status",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=epic,
+    ))
+
+
+@agent_epic_ticket_app.command("add")
+def agent_epic_ticket_add(
+    description: str = typer.Argument(..., help="Ticket description"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    phase: Annotated[Optional[str], typer.Option("--phase", "-ph", help="Phase ID")] = None,
+    id: Annotated[Optional[str], typer.Option("--id", help="Custom ticket ID")] = None,
+    priority: Annotated[str, typer.Option("--priority", help="Ticket priority", callback=_validate_priority)] = "medium",
+):
+    """Add new ticket to epic."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="add",
+        json=_global["json"], debug=_global["debug"],
+        description=description, plan=epic, phase=phase, id=id, priority=priority,
+    ))
+
+
+@agent_epic_ticket_app.command("update")
+def agent_epic_ticket_update(
+    task_id: str = typer.Argument(..., help="Ticket ID"),
+    status: Annotated[str, typer.Option("--status", "-s", help="New status")] = ...,
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    note: Annotated[Optional[str], typer.Option("--note", "-n", help="Completion note")] = None,
+):
+    """Update ticket status in epic file."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="update",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, status=status, plan=epic, note=note,
+    ))
+
+
+@agent_epic_ticket_app.command("current")
+def agent_epic_ticket_current(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Get the current ticket to work on."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="current",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic,
+    ))
+
+
+# --- agent epic phase ---
+agent_epic_phase_app = typer.Typer(help="Manage epic phases", no_args_is_help=True)
+agent_epic_app.add_typer(agent_epic_phase_app, name="phase")
+
+
+@agent_epic_phase_app.command("add")
+def agent_epic_phase_add(
+    id: Annotated[str, typer.Option("--id", help="Phase ID")] = ...,
+    name: Annotated[str, typer.Option("--name", help="Phase name")] = ...,
+    description: Annotated[Optional[str], typer.Option("--description", help="Phase description")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Add a new phase to plan_build.yml."""
+    _epic_handle(_ns(
+        command="epic", epic_command="phase", phase_action="add",
+        json=_global["json"], debug=_global["debug"],
+        id=id, name=name, description=description, plan=epic,
+    ))
+
+
+@agent_epic_phase_app.command("list")
+def agent_epic_phase_list(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """List all phases in the epic."""
+    _epic_handle(_ns(
+        command="epic", epic_command="phase", phase_action="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic,
+    ))
+
+
+@agent_epic_phase_app.command("update")
+def agent_epic_phase_update(
+    phase_id: str = typer.Argument(..., help="Phase ID to update"),
+    status: Annotated[Optional[str], typer.Option("--status", "-s", help="New status")] = None,
+    name: Annotated[Optional[str], typer.Option("--name", "-n", help="New name")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Update a phase in plan_build.yml."""
+    _epic_handle(_ns(
+        command="epic", epic_command="phase", phase_action="update",
+        json=_global["json"], debug=_global["debug"],
+        phase_id=phase_id, status=status, name=name, plan=epic,
+    ))
+
+
+# --- agent epic move ---
+agent_epic_move_app = typer.Typer(help="Move completed tickets or archive folder", no_args_is_help=True)
+agent_epic_app.add_typer(agent_epic_move_app, name="move")
+
+
+@agent_epic_move_app.command("task")
+def agent_epic_move_task(
+    task_id: str = typer.Argument(..., help="Ticket ID to move"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Move even with uncommitted changes")] = False,
+):
+    """Move a single completed ticket."""
+    _epic_handle(_ns(
+        command="epic", epic_command="move", move_type="task",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=epic, dry_run=dry_run, force=force,
+    ))
+
+
+@agent_epic_move_app.command("tasks")
+def agent_epic_move_tasks(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Move even with uncommitted changes")] = False,
+):
+    """Move all completed tickets."""
+    _epic_handle(_ns(
+        command="epic", epic_command="move", move_type="tasks",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, dry_run=dry_run, force=force,
+    ))
+
+
+@agent_epic_move_app.command("folder")
+def agent_epic_move_folder(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Show without changes")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Archive even with uncommitted changes")] = False,
+):
+    """Archive the epic folder."""
+    _epic_handle(_ns(
+        command="epic", epic_command="move", move_type="folder",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, dry_run=dry_run, force=force,
+    ))
+
+
+# --- agent epic orchestration ---
+agent_epic_orch_app = typer.Typer(help="Manage epic orchestration MMD files", no_args_is_help=True)
+agent_epic_app.add_typer(agent_epic_orch_app, name="orchestration")
+
+
+@agent_epic_orch_app.command("generate")
+def agent_epic_orchestration_generate(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output filename")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing")] = False,
+):
+    """Generate orchestration MMD from epic YAML."""
+    _epic_handle(_ns(
+        command="epic", epic_command="orchestration", orchestration_action="generate",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, output=output, force=force,
+    ))
+
+
+@agent_epic_orch_app.command("validate")
+def agent_epic_orchestration_validate(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    strict: Annotated[bool, typer.Option("--strict", help="Treat warnings as errors")] = False,
+):
+    """Validate orchestration MMD against epic YAML."""
+    _epic_handle(_ns(
+        command="epic", epic_command="orchestration", orchestration_action="validate",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, strict=strict,
+    ))
+
+
+# --- agent epic stories ---
+agent_epic_stories_app = typer.Typer(help="Manage user stories in epic files", no_args_is_help=True)
+agent_epic_app.add_typer(agent_epic_stories_app, name="stories")
+
+
+@agent_epic_stories_app.command("list")
+def agent_epic_stories_list(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """List user stories from epic YAML."""
+    _epic_handle(_ns(
+        command="epic", epic_command="stories", stories_action="list",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic,
+    ))
+
+
+@agent_epic_stories_app.command("test")
+def agent_epic_stories_test(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output file path")] = None,
+    format: Annotated[str, typer.Option("--format", "-f", help="Output format")] = "yaml",
+):
+    """Generate blind test scenarios from user stories."""
+    _epic_handle(_ns(
+        command="epic", epic_command="stories", stories_action="test",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, output=output, format=format,
+    ))
+
+
+# --- agent epic db ---
+agent_epic_db_app = typer.Typer(help="Manage epic TinyDB database", no_args_is_help=True)
+agent_epic_app.add_typer(agent_epic_db_app, name="db")
+
+
+@agent_epic_db_app.command("sync")
+def agent_epic_db_sync(
+    export: Annotated[bool, typer.Option("--export", help="Write TinyDB state to YAML (reverse sync)")] = False,
+):
+    """Rebuild TinyDB from YAML files or export TinyDB to YAML."""
+    _epic_handle(_ns(command="epic", epic_command="db", db_action="sync", json=_global["json"], debug=_global["debug"], export=export))
+
+
+@agent_epic_db_app.command("status")
+def agent_epic_db_status():
+    """Show TinyDB database statistics."""
+    _epic_handle(_ns(command="epic", epic_command="db", db_action="status", json=_global["json"], debug=_global["debug"]))
+
+
+# --- agent epic direct commands (archive, unarchive, validate, scaffold, init, bootstrap, new) ---
+
+@agent_epic_app.command("archive")
+def agent_epic_archive(
+    path: Optional[str] = typer.Argument(None, help="Path to epic folder to archive"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+):
+    """Copy epic to completed folder."""
+    resolved = epic or path
+    if not resolved:
+        from agenticcli.console import print_error
+        print_error("Path required.")
+        raise typer.Exit(1)
+    _epic_handle(_ns(command="epic", epic_command="archive", json=_global["json"], debug=_global["debug"], path=resolved))
+
+
+@agent_epic_app.command("unarchive")
+def agent_epic_unarchive(
+    epic: Annotated[str, typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = ...,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
+):
+    """Move epic from completed back to live."""
+    _epic_handle(_ns(
+        command="epic", epic_command="unarchive",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, force=force,
+    ))
+
+
+@agent_epic_app.command("validate")
+def agent_epic_validate(
+    path: Optional[str] = typer.Argument(None, help="Path to epic folder"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    strict: Annotated[bool, typer.Option("--strict", help="Fail on stub templates")] = False,
+    check_fences: Annotated[bool, typer.Option("--check-fences", help="Validate UAT fence compliance")] = False,
+):
+    """Validate epic folder structure and YAML."""
+    resolved = epic or path
+    if not resolved:
+        from agenticcli.console import print_error
+        print_error("Path is required.")
+        raise typer.Exit(1)
+    _epic_handle(_ns(
+        command="epic", epic_command="validate",
+        json=_global["json"], debug=_global["debug"],
+        path=resolved, strict=strict, check_fences=check_fences,
+    ))
+
+
+@agent_epic_app.command("scaffold")
+def agent_epic_scaffold(
+    name: str = typer.Argument(..., help="Folder name"),
+):
+    """Create epic folder structure."""
+    _epic_handle(_ns(
+        command="epic", epic_command="scaffold",
+        json=_global["json"], debug=_global["debug"],
+        name=name,
+    ))
+
+
+@agent_epic_app.command("init")
+def agent_epic_init(
+    branch: str = typer.Argument(..., help="Branch name for the epic"),
+    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Epic description")] = None,
+    base: Annotated[str, typer.Option("--base", "-b", help="Base branch")] = "main",
+    objective: Annotated[Optional[str], typer.Option("--objective", "-o", help="Epic objective")] = None,
+):
+    """Initialize an epic folder with proper naming convention."""
+    _epic_handle(_ns(
+        command="epic", epic_command="init",
+        json=_global["json"], debug=_global["debug"],
+        branch=branch, description=description, base=base, objective=objective,
+    ))
+
+
+@agent_epic_app.command("bootstrap")
+def agent_epic_bootstrap(
+    branch: str = typer.Argument(..., help="Branch name for the epic"),
+    objective: Annotated[str, typer.Option("--objective", "-o", help="Epic objective")] = ...,
+    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Epic description")] = None,
+):
+    """Bootstrap a new epic with an objective."""
+    _epic_handle(_ns(
+        command="epic", epic_command="bootstrap",
+        json=_global["json"], debug=_global["debug"],
+        branch=branch, objective=objective, description=description,
+    ))
+
+
+@agent_epic_app.command("new")
+def agent_epic_new(
+    objective: Annotated[Optional[str], typer.Argument(help="Epic objective description")] = None,
+    branch: Annotated[Optional[str], typer.Option("--branch", "-b", help="Git branch name (auto-generated from objective if omitted)")] = None,
+    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Epic folder description suffix")] = None,
+    base: Annotated[str, typer.Option("--base", help="Base branch for the epic")] = "main",
+    execute: Annotated[bool, typer.Option("--execute", "-x", help="Auto-execute after planning completes")] = False,
+    max_turns: Annotated[int, typer.Option("--max-turns", help="Max turns for planner agent")] = 25,
+    dangerously_skip_permissions: Annotated[bool, typer.Option(
+        "--dangerously-skip-permissions", help="Skip permission prompts for spawned sessions")] = False,
+):
+    """Create epic and spawn planner agent (agent-facing)."""
+    if not objective:
+        from agenticcli.console import print_error
+        print_error("Objective is required. Usage: agentic agent epic new \"your objective\"")
+        raise typer.Exit(1)
+    _epic_handle(_ns(
+        command="epic", epic_command="new",
+        json=_global["json"], debug=_global["debug"],
+        objective=objective, branch=branch, description=description,
+        base=base, execute=execute, max_turns=max_turns,
+        dangerously_skip_permissions=dangerously_skip_permissions,
+    ))
+
+
 # --- agent context ---
 agent_context_app = typer.Typer(help="CCI context retrieval for agents", no_args_is_help=True)
 agent_app.add_typer(agent_context_app, name="context")
@@ -2268,7 +3024,7 @@ GLOBAL_COMMANDS = {
 }
 
 PROJECT_COMMANDS = {
-    "devops", "plan", "agent",
+    "devops", "plan", "epic", "agent",
     "stories", "st", "manifest", "mf",
     "context", "ctx", "entrypoint", "ep",
 }

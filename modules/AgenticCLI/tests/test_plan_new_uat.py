@@ -98,7 +98,7 @@ phases:
 """)
         return SessionResult(status="completed", result="Mock SDK planner output")
 
-    with patch("agenticcli.commands.plan.subprocess.run", side_effect=patched_run):
+    with patch("agenticcli.commands.epic.subprocess.run", side_effect=patched_run):
         with patch("agenticcli.utils.sdk_runner.run_agent_sync", side_effect=mock_sdk_run):
             yield
 
@@ -115,13 +115,13 @@ class TestUSORCH001InitiatePlanning:
     - Planning is initiated via _plan_build.yml entrypoint
     - The orchestration-planning agent coordinates the planning process
     - A worktree is created or verified via deploy-worktree agent
-    - A plan folder is created in docs/plans/live/ with YYMMDDXX_description naming
+    - A plan folder is created in docs/epics/live/ with YYMMDDXX_description naming
     - The planning objective is captured and validated
     - Required phases are determined based on objective type
     """
 
     def test_plan_new_creates_folder_with_yymmddxx_naming(self, cli_runner, temp_repo):
-        """Verify plan folder created in docs/plans/live/ with YYMMDDXX naming."""
+        """Verify plan folder created in docs/epics/live/ with YYMMDDXX naming."""
         branch = "test-uat-naming"
         objective = "Test feature implementation"
 
@@ -136,14 +136,14 @@ class TestUSORCH001InitiatePlanning:
         )
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", objective, "--branch", branch]
+            ["agent", "epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0, f"Command should succeed. stderr: {stderr}"
 
         # Verify plan folder exists in main worktree
-        plans_live = temp_repo / "docs" / "plans" / "live"
-        assert plans_live.exists(), "docs/plans/live should exist"
+        plans_live = temp_repo / "docs" / "epics" / "live"
+        assert plans_live.exists(), "docs/epics/live should exist"
 
         # Find plan folders matching our description
         plan_folders = [
@@ -170,7 +170,7 @@ class TestUSORCH001InitiatePlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", objective, "--branch", branch]
+            ["-j", "agent", "epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -196,7 +196,7 @@ class TestUSORCH001InitiatePlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", objective, "--branch", branch]
+            ["-j", "agent", "epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -224,7 +224,7 @@ class TestUSORCH001InitiatePlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", objective, "--branch", branch]
+            ["-j", "agent", "epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -252,16 +252,16 @@ class TestUSORCH002PlanCreation:
     """UAT for plan creation workflow.
 
     Acceptance criteria:
-    - Plan folders are created in docs/plans/live/
+    - Plan folders are created in docs/epics/live/
     - Plan creation via agentic plan new works end-to-end
     """
 
     def test_plan_folder_in_docs_plans_live(self, cli_runner, temp_repo):
-        """Verify plan folder is created in docs/plans/live/."""
+        """Verify plan folder is created in docs/epics/live/."""
         branch = "feature-main-first"
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "Plan creation test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "Plan creation test", "--branch", branch]
         )
 
         assert code == 0
@@ -272,8 +272,8 @@ class TestUSORCH002PlanCreation:
         # Verify plan folder is under repo root
         assert temp_repo in plan_folder.parents, "Plan should be in repo root"
 
-        # Verify it's in docs/plans/live/
-        assert "docs/plans/live" in str(plan_folder), "Plan should be in docs/plans/live/"
+        # Verify it's in docs/epics/live/
+        assert "docs/epics/live" in str(plan_folder), "Plan should be in docs/epics/live/"
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +300,7 @@ class TestUSORCH005OrchestrationMMD:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "Orchestration test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "Orchestration test", "--branch", branch]
         )
 
         assert code == 0
@@ -319,7 +319,7 @@ class TestUSORCH005OrchestrationMMD:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "MMD phase test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "MMD phase test", "--branch", branch]
         )
 
         assert code == 0
@@ -343,7 +343,7 @@ class TestUSORCH005OrchestrationMMD:
 
         # Run plan new (which should auto-validate)
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", "Validation test", "--branch", branch]
+            ["agent", "epic", "new", "Validation test", "--branch", branch]
         )
 
         assert code == 0
@@ -360,7 +360,7 @@ class TestUSORCH005OrchestrationMMD:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "JSON orch test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "JSON orch test", "--branch", branch]
         )
 
         assert code == 0
@@ -388,7 +388,7 @@ class TestFullWorkflowIntegration:
         branch = "api-endpoint"
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", objective, "--branch", branch]
+            ["-j", "agent", "epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0, "Plan creation should succeed"
@@ -417,7 +417,7 @@ class TestFullWorkflowIntegration:
     def test_error_recovery_missing_objective(self, cli_runner, temp_repo):
         """Verify clear error when objective is missing."""
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new"]
+            ["agent", "epic", "new"]
         )
 
         assert code != 0, "Should fail without objective"
@@ -433,13 +433,13 @@ class TestFullWorkflowIntegration:
 
         # Create first plan
         stdout1, stderr1, code1 = cli_runner(
-            ["agent", "plan", "new", objective, "--branch", branch]
+            ["agent", "epic", "new", objective, "--branch", branch]
         )
         assert code1 == 0
 
         # Try to create duplicate
         stdout2, stderr2, code2 = cli_runner(
-            ["agent", "plan", "new", objective, "--branch", branch]
+            ["agent", "epic", "new", objective, "--branch", branch]
         )
 
         # Should fail or warn about duplicate

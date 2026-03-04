@@ -1,8 +1,8 @@
 process:
   goal: |
-    Run the full orchestration lifecycle: discover all live plans, plan those
-    missing MMDs, execute those with MMDs, archive completed plans, and loop
-    until all plans are done or blocked.
+    Run the full orchestration lifecycle: discover all live epics, plan those
+    missing MMDs, execute those with MMDs, archive completed epics, and loop
+    until all epics are done or blocked.
 
   profile: "orchestrator"
 
@@ -12,7 +12,7 @@ process:
 
   outputs:
     - name: "loop_report"
-      description: "Summary of all plans processed with final status"
+      description: "Summary of all epics processed with final status"
 
   steps:
     # =========================================================================
@@ -23,9 +23,9 @@ process:
       description: |
         Execute bootstrap commands to get structured context:
         ```bash
-        agentic --version && agentic plan list
-        agentic --json plan list
-        agentic --json plan task current
+        agentic --version && agentic epic list
+        agentic --json epic list
+        agentic --json epic ticket current
         ```
         If ANY command fails, follow DOGFOOD RULE immediately:
         Reference: modules/AgenticGuidance/assets/guidelines/cli-error-recovery.yml
@@ -34,23 +34,23 @@ process:
     # DISCOVERY
     # =========================================================================
     - id: "discovery"
-      name: "Discover Plan Status"
+      name: "Discover Epic Status"
       description: |
-        For each live plan, classify its state:
+        For each live epic, classify its state:
 
-        1. Run: `agentic --json plan list`
-        2. For each plan folder, check:
-           - `ls docs/plans/live/<folder>/orchestration_*.mmd`
-           - `agentic --json plan status <folder>`
+        1. Run: `agentic --json epic list`
+        2. For each epic folder, check:
+           - `ls docs/epics/live/<folder>/orchestration_*.mmd`
+           - `agentic --json epic status <folder>`
 
-        Classify each plan:
-        - 100% complete -> ARCHIVE (run: `agentic agent plan move folder --plan <folder> --force`)
+        Classify each epic:
+        - 100% complete -> ARCHIVE (run: `agentic agent epic move folder --epic <folder> --force`)
         - Has orchestration MMD -> EXECUTE
         - No orchestration MMD -> PLAN
 
-        QUESTION GATE (MANDATORY): Before processing any plan:
-        `agentic agent question list --plan <folder>`
-        If pending blocking questions exist, mark plan as BLOCKED and skip.
+        QUESTION GATE (MANDATORY): Before processing any epic:
+        `agentic agent question list --epic <folder>`
+        If pending blocking questions exist, mark epic as BLOCKED and skip.
 
     # =========================================================================
     # PLANNING PASS
@@ -58,19 +58,19 @@ process:
     - id: "planning_pass"
       name: "Plan All Unplanned"
       description: |
-        For each plan classified as PLAN (no orchestration MMD):
+        For each epic classified as PLAN (no orchestration MMD):
 
         Launch orchestration-planning via CLI:
         ```bash
-        agentic orchestrate --mode planning --plan <folder>
+        agentic orchestrate --mode planning --epic <folder>
         ```
 
         Or spawn as a session:
         ```bash
-        agentic session spawn --role orchestration-planning --plan <folder> -b --dangerously-skip-permissions
+        agentic session spawn --role orchestration-planning --epic <folder> -b --dangerously-skip-permissions
         ```
 
-        After planning completes, re-classify the plan (it should now have an MMD).
+        After planning completes, re-classify the epic (it should now have an MMD).
 
     # =========================================================================
     # EXECUTION PASS
@@ -78,35 +78,35 @@ process:
     - id: "execution_pass"
       name: "Execute All Planned"
       description: |
-        For each plan classified as EXECUTE (has orchestration MMD):
+        For each epic classified as EXECUTE (has orchestration MMD):
 
         Launch orchestration-executor via CLI:
         ```bash
-        agentic orchestrate --mode executor --plan <folder>
+        agentic orchestrate --mode executor --epic <folder>
         ```
 
         Or spawn as a session:
         ```bash
-        agentic session spawn --role orchestration-executor --plan <folder> -b --dangerously-skip-permissions
+        agentic session spawn --role orchestration-executor --epic <folder> -b --dangerously-skip-permissions
         ```
 
         PARALLELISM RULES:
-        - Guidance-only plans: safe to run in parallel
-        - Build plans: run sequentially (shared files)
+        - Guidance-only epics: safe to run in parallel
+        - Build epics: run sequentially (shared files)
 
-        After execution completes, check plan status.
+        After execution completes, check epic status.
 
     # =========================================================================
     # ARCHIVE PASS
     # =========================================================================
     - id: "archive_pass"
-      name: "Archive Completed Plans"
+      name: "Archive Completed Epics"
       description: |
-        For each plan at 100% completion:
+        For each epic at 100% completion:
         ```bash
-        agentic agent plan move folder --plan <folder> --force
+        agentic agent epic move folder --epic <folder> --force
         ```
-        This moves the plan from live/ to completed/.
+        This moves the epic from live/ to completed/.
 
     # =========================================================================
     # LOOP CHECK
@@ -116,9 +116,9 @@ process:
       description: |
         After one full cycle (discover -> plan -> execute -> archive):
 
-        1. Re-run discovery: `agentic --json plan list`
-        2. If no live plans remain -> EXIT with completion promise
-        3. If all remaining plans are BLOCKED -> EXIT with blocked report
+        1. Re-run discovery: `agentic --json epic list`
+        2. If no live epics remain -> EXIT with completion promise
+        3. If all remaining epics are BLOCKED -> EXIT with blocked report
         4. If iteration count >= max_loop_iterations -> EXIT with max iterations report
         5. Otherwise -> return to discovery step for another cycle
 
@@ -129,10 +129,10 @@ process:
       name: "Loop Shutdown"
       description: |
         Generate final loop report:
-        - Plans completed (archived)
-        - Plans still in progress
-        - Plans blocked (with reasons)
-        - Remediation plans spawned during execution
+        - Epics completed (archived)
+        - Epics still in progress
+        - Epics blocked (with reasons)
+        - Remediation epics spawned during execution
         - Total iterations used
 
         Output completion promise or blocked status.
@@ -151,10 +151,10 @@ process:
     - "CLI-First Context: Always use agentic CLI commands for context. Do not explore the codebase before running bootstrap commands."
     - "DOGFOOD RULE: If ANY agentic command exits non-zero, follow modules/AgenticGuidance/assets/guidelines/cli-error-recovery.yml"
     - "FENCE: Do NOT continue the loop while CLI is broken."
-    - "NEVER use Edit tool to change task status in plan YAML files"
-    - "ALWAYS use agentic agent plan task start/complete for status updates"
-    - "ALWAYS use agentic agent plan move folder for archiving"
-    - "The --json flag is a root-level global flag: agentic --json plan list (not agentic plan list -j)"
-    - "--role and --task are mutually exclusive on session spawn"
-    - "Guidance plans can run in parallel. Build plans must run sequentially."
-    - "Complete ALL tasks (including LOW priority) before shutdown"
+    - "NEVER use Edit tool to change ticket status in epic YAML files"
+    - "ALWAYS use agentic agent epic ticket start/complete for status updates"
+    - "ALWAYS use agentic agent epic move folder for archiving"
+    - "The --json flag is a root-level global flag: agentic --json epic list (not agentic epic list -j)"
+    - "--role and --ticket are mutually exclusive on session spawn"
+    - "Guidance epics can run in parallel. Build epics must run sequentially."
+    - "Complete ALL tickets (including LOW priority) before shutdown"

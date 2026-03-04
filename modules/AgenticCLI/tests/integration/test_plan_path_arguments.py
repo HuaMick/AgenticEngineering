@@ -22,7 +22,7 @@ class TestPlanStatusPathArguments:
     @pytest.fixture
     def plan_with_status(self, temp_repo):
         """Create plan folder with tasks for status testing."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260202CL_status_test"
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260202CL_status_test"
         plan_path.mkdir(parents=True)
 
         # Create plan file with tasks
@@ -53,7 +53,7 @@ class TestPlanStatusPathArguments:
     def test_status_with_plan_flag(self, cli_runner, plan_with_status):
         """Test plan status with --plan flag."""
         result = cli_runner([
-            "plan", "status",
+            "epic", "status",
             "--plan", str(plan_with_status)
         ])
 
@@ -63,7 +63,7 @@ class TestPlanStatusPathArguments:
     def test_status_with_short_plan_flag(self, cli_runner, plan_with_status):
         """Test plan status with -p short flag."""
         result = cli_runner([
-            "plan", "status",
+            "epic", "status",
             "-p", str(plan_with_status)
         ])
 
@@ -73,7 +73,7 @@ class TestPlanStatusPathArguments:
     def test_status_with_positional_path(self, cli_runner, plan_with_status):
         """Test plan status with positional path argument (backward compatibility)."""
         result = cli_runner([
-            "plan", "status",
+            "epic", "status",
             str(plan_with_status)
         ])
 
@@ -81,9 +81,9 @@ class TestPlanStatusPathArguments:
         assert "260202CL_status_test" in result.stdout or "Status Test Plan" in result.stdout
 
     def test_status_with_folder_name_match(self, cli_runner, plan_with_status):
-        """Test plan status with partial folder name (searches in docs/plans/live)."""
+        """Test plan status with partial folder name (searches in docs/epics/live)."""
         result = cli_runner([
-            "plan", "status",
+            "epic", "status",
             "--plan", "260202CL_status_test"
         ])
 
@@ -94,7 +94,7 @@ class TestPlanStatusPathArguments:
         """Test plan status with --plan flag and JSON output."""
         result = cli_runner([
             "-j",
-            "plan", "status",
+            "epic", "status",
             "--plan", str(plan_with_status)
         ])
 
@@ -105,7 +105,7 @@ class TestPlanStatusPathArguments:
     def test_status_plan_flag_priority_over_positional(self, cli_runner, plan_with_status, temp_repo):
         """Test that --plan flag takes priority over positional argument."""
         # Create a second plan folder
-        other_plan = temp_repo / "docs" / "plans" / "live" / "260202CL_other_plan"
+        other_plan = temp_repo / "docs" / "epics" / "live" / "260202CL_other_plan"
         other_plan.mkdir(parents=True)
 
         other_plan_file = other_plan / "plan_other.yml"
@@ -121,7 +121,7 @@ class TestPlanStatusPathArguments:
 
         # Pass both positional and --plan flag; --plan should win
         result = cli_runner([
-            "plan", "status",
+            "epic", "status",
             str(other_plan),  # positional (should be ignored)
             "--plan", str(plan_with_status)  # flag (should be used)
         ])
@@ -133,7 +133,7 @@ class TestPlanStatusPathArguments:
     def test_status_nonexistent_plan(self, cli_runner):
         """Test plan status with nonexistent plan path."""
         result = cli_runner([
-            "plan", "status",
+            "epic", "status",
             "--plan", "/nonexistent/plan/folder"
         ])
 
@@ -147,7 +147,7 @@ class TestPlanValidatePathArguments:
     @pytest.fixture
     def plan_to_validate(self, temp_repo):
         """Create plan folder for validation testing."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260202CL_validate_test"
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260202CL_validate_test"
         plan_path.mkdir(parents=True)
 
         # Create valid plan file
@@ -175,7 +175,7 @@ class TestPlanValidatePathArguments:
     def test_validate_with_plan_flag(self, cli_runner, plan_to_validate):
         """Test plan validate with --plan flag."""
         result = cli_runner([
-            "agent", "plan", "validate",
+            "agent", "epic", "validate",
             "--plan", str(plan_to_validate)
         ])
 
@@ -185,7 +185,7 @@ class TestPlanValidatePathArguments:
     def test_validate_with_short_plan_flag(self, cli_runner, plan_to_validate):
         """Test plan validate with -p short flag."""
         result = cli_runner([
-            "agent", "plan", "validate",
+            "agent", "epic", "validate",
             "-p", str(plan_to_validate)
         ])
 
@@ -195,7 +195,7 @@ class TestPlanValidatePathArguments:
     def test_validate_with_positional_path(self, cli_runner, plan_to_validate):
         """Test plan validate with positional path argument (backward compatibility)."""
         result = cli_runner([
-            "agent", "plan", "validate",
+            "agent", "epic", "validate",
             str(plan_to_validate)
         ])
 
@@ -205,7 +205,7 @@ class TestPlanValidatePathArguments:
     def test_validate_with_folder_name_match(self, cli_runner, plan_to_validate):
         """Test plan validate with partial folder name."""
         result = cli_runner([
-            "agent", "plan", "validate",
+            "agent", "epic", "validate",
             "--plan", "260202CL_validate_test"
         ])
 
@@ -220,7 +220,7 @@ class TestPlanValidatePathArguments:
         missing orchestration file.
         """
         result = cli_runner([
-            "agent", "plan", "validate",
+            "agent", "epic", "validate",
             "--plan", str(plan_to_validate),
             "--strict"
         ])
@@ -233,7 +233,7 @@ class TestPlanValidatePathArguments:
         """Test plan validate with --plan flag and JSON output."""
         result = cli_runner([
             "-j",
-            "agent", "plan", "validate",
+            "agent", "epic", "validate",
             "--plan", str(plan_to_validate)
         ])
 
@@ -244,7 +244,7 @@ class TestPlanValidatePathArguments:
     def test_validate_plan_flag_priority(self, cli_runner, plan_to_validate, temp_repo):
         """Test that --plan flag takes priority over positional argument."""
         # Create a second plan folder with invalid YAML
-        invalid_plan = temp_repo / "docs" / "plans" / "live" / "260202CL_invalid_plan"
+        invalid_plan = temp_repo / "docs" / "epics" / "live" / "260202CL_invalid_plan"
         invalid_plan.mkdir(parents=True)
 
         invalid_file = invalid_plan / "plan_invalid.yml"
@@ -252,7 +252,7 @@ class TestPlanValidatePathArguments:
 
         # Pass both; --plan should win (valid plan)
         result = cli_runner([
-            "agent", "plan", "validate",
+            "agent", "epic", "validate",
             str(invalid_plan),  # positional (should be ignored)
             "--plan", str(plan_to_validate)  # flag (should be used)
         ])
@@ -263,7 +263,7 @@ class TestPlanValidatePathArguments:
     def test_validate_nonexistent_plan(self, cli_runner):
         """Test plan validate with nonexistent plan path."""
         result = cli_runner([
-            "agent", "plan", "validate",
+            "agent", "epic", "validate",
             "--plan", "/nonexistent/validate/folder"
         ])
 
@@ -278,11 +278,11 @@ class TestPlanArchivePathArguments:
     def plan_to_archive(self, temp_repo):
         """Create plan folder for archival testing."""
         # Create completed directory
-        completed_dir = temp_repo / "docs" / "plans" / "completed"
+        completed_dir = temp_repo / "docs" / "epics" / "completed"
         completed_dir.mkdir(parents=True, exist_ok=True)
 
         # Create plan folder to archive
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260202CL_archive_test"
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260202CL_archive_test"
         plan_path.mkdir(parents=True)
 
         # Create plan file
@@ -312,7 +312,7 @@ class TestPlanArchivePathArguments:
     def test_archive_with_plan_flag(self, cli_runner, plan_to_archive, temp_repo):
         """Test plan archive with --plan flag."""
         result = cli_runner([
-            "agent", "plan", "archive",
+            "agent", "epic", "archive",
             "--plan", str(plan_to_archive)
         ])
 
@@ -320,13 +320,13 @@ class TestPlanArchivePathArguments:
         assert "archived" in result.stdout.lower() or "completed" in result.stdout.lower()
 
         # Verify archived folder exists
-        archived_path = temp_repo / "docs" / "plans" / "completed" / "260202CL_archive_test"
+        archived_path = temp_repo / "docs" / "epics" / "completed" / "260202CL_archive_test"
         assert archived_path.exists()
 
     def test_archive_with_short_plan_flag(self, cli_runner, plan_to_archive, temp_repo):
         """Test plan archive with -p short flag."""
         result = cli_runner([
-            "agent", "plan", "archive",
+            "agent", "epic", "archive",
             "-p", str(plan_to_archive)
         ])
 
@@ -334,13 +334,13 @@ class TestPlanArchivePathArguments:
         assert "archived" in result.stdout.lower() or "completed" in result.stdout.lower()
 
         # Verify archived folder exists
-        archived_path = temp_repo / "docs" / "plans" / "completed" / "260202CL_archive_test"
+        archived_path = temp_repo / "docs" / "epics" / "completed" / "260202CL_archive_test"
         assert archived_path.exists()
 
     def test_archive_with_positional_path(self, cli_runner, plan_to_archive, temp_repo):
         """Test plan archive with positional path argument (backward compatibility)."""
         result = cli_runner([
-            "agent", "plan", "archive",
+            "agent", "epic", "archive",
             str(plan_to_archive)
         ])
 
@@ -348,13 +348,13 @@ class TestPlanArchivePathArguments:
         assert "archived" in result.stdout.lower() or "completed" in result.stdout.lower()
 
         # Verify archived folder exists
-        archived_path = temp_repo / "docs" / "plans" / "completed" / "260202CL_archive_test"
+        archived_path = temp_repo / "docs" / "epics" / "completed" / "260202CL_archive_test"
         assert archived_path.exists()
 
     def test_archive_with_folder_name_match(self, cli_runner, plan_to_archive, temp_repo):
         """Test plan archive with partial folder name."""
         result = cli_runner([
-            "agent", "plan", "archive",
+            "agent", "epic", "archive",
             "--plan", "260202CL_archive_test"
         ])
 
@@ -362,13 +362,13 @@ class TestPlanArchivePathArguments:
         assert "archived" in result.stdout.lower() or "completed" in result.stdout.lower()
 
         # Verify archived folder exists
-        archived_path = temp_repo / "docs" / "plans" / "completed" / "260202CL_archive_test"
+        archived_path = temp_repo / "docs" / "epics" / "completed" / "260202CL_archive_test"
         assert archived_path.exists()
 
     def test_archive_without_path_argument_fails(self, cli_runner):
         """Test plan archive without any path argument fails."""
         result = cli_runner([
-            "agent", "plan", "archive"
+            "agent", "epic", "archive"
         ])
 
         assert result.returncode != 0
@@ -377,7 +377,7 @@ class TestPlanArchivePathArguments:
     def test_archive_nonexistent_plan(self, cli_runner):
         """Test plan archive with nonexistent plan path."""
         result = cli_runner([
-            "agent", "plan", "archive",
+            "agent", "epic", "archive",
             "--plan", "/nonexistent/archive/folder"
         ])
 
@@ -387,7 +387,7 @@ class TestPlanArchivePathArguments:
     def test_archive_plan_flag_priority(self, cli_runner, plan_to_archive, temp_repo):
         """Test that --plan flag takes priority over positional argument."""
         # Create a second plan folder
-        other_plan = temp_repo / "docs" / "plans" / "live" / "260202CL_other_archive"
+        other_plan = temp_repo / "docs" / "epics" / "live" / "260202CL_other_archive"
         other_plan.mkdir(parents=True)
 
         other_plan_file = other_plan / "plan_completed.yml"
@@ -403,7 +403,7 @@ class TestPlanArchivePathArguments:
 
         # Pass both positional and --plan flag; --plan should win
         result = cli_runner([
-            "agent", "plan", "archive",
+            "agent", "epic", "archive",
             str(other_plan),  # positional (should be ignored)
             "--plan", str(plan_to_archive)  # flag (should be used)
         ])
@@ -412,9 +412,9 @@ class TestPlanArchivePathArguments:
         assert "archived" in result.stdout.lower() or "completed" in result.stdout.lower()
 
         # Verify the correct plan was archived
-        archived_path = temp_repo / "docs" / "plans" / "completed" / "260202CL_archive_test"
+        archived_path = temp_repo / "docs" / "epics" / "completed" / "260202CL_archive_test"
         assert archived_path.exists()
 
         # Verify the other plan was NOT archived
-        other_archived = temp_repo / "docs" / "plans" / "completed" / "260202CL_other_archive"
+        other_archived = temp_repo / "docs" / "epics" / "completed" / "260202CL_other_archive"
         assert not other_archived.exists()

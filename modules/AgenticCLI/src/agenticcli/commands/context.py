@@ -66,11 +66,11 @@ def cmd_bootstrap(args, ctx=None):
     resolver = MainFirstPlanResolver()
 
     # 1. Get active plan and task
-    plan_info = resolver.resolve_active_plan()
+    plan_info = resolver.resolve_active_epic()
     current_task = None
 
     if plan_info:
-        current_task = resolver.extract_current_task(plan_info["plan_folder"])
+        current_task = resolver.extract_current_ticket(plan_info["plan_folder"])
         # If role not specified, try to infer from current task
         if not role_id and current_task:
             role_id = current_task.get("agent_type", "build")
@@ -97,8 +97,8 @@ def cmd_bootstrap(args, ctx=None):
     bootstrap_context = {
         "role": role_id,
         "objective": plan_info.get("objective") if plan_info else None,
-        "plan_folder": plan_info.get("plan_folder_name") if plan_info else None,
-        "plan_path": str(plan_info.get("plan_folder")) if plan_info else None,
+        "epic_folder": plan_info.get("plan_folder_name") if plan_info else None,
+        "epic_path": str(plan_info.get("plan_folder")) if plan_info else None,
         "current_task": current_task,
         "process": role_process,
         "essential_inputs": inputs_manifest.get("inputs", [])[:10] if inputs_manifest else [],
@@ -122,8 +122,8 @@ def _print_bootstrap_human_readable(context: dict):
     if context.get("objective"):
         console.print(f"\n[bold]Objective:[/bold] {context['objective'][:200]}...")
 
-    if context.get("plan_folder"):
-        console.print(f"[bold]Plan Folder:[/bold] {context['plan_folder']}")
+    if context.get("epic_folder"):
+        console.print(f"[bold]Epic Folder:[/bold] {context['epic_folder']}")
 
     if context.get("current_task"):
         task = context["current_task"]
@@ -168,9 +168,9 @@ def cmd_role(args, ctx=None):
 
 
 def cmd_task(args, ctx=None):
-    """Get active task from Main-First plan.
+    """Get active task from Main-First epic.
 
-    Crawls the repo's docs/plans/live/ to find and extract
+    Crawls the repo's docs/epics/live/ to find and extract
     the active task for the current branch.
 
     Args:
@@ -185,22 +185,22 @@ def cmd_task(args, ctx=None):
     show_all = getattr(args, "all", False)
 
     resolver = MainFirstPlanResolver()
-    plan_info = resolver.resolve_active_plan()
+    plan_info = resolver.resolve_active_epic()
 
     if not plan_info:
         if json_output:
-            print_json({"error": "No active plan found", "tasks": []})
+            print_json({"error": "No active epic found", "tasks": []})
         else:
-            print_warning("No active plan found for current branch.")
-            print("Hint: Use 'agentic plan init <branch>' to create a plan.", file=sys.stderr)
+            print_warning("No active epic found for current branch.")
+            print("Hint: Use 'agentic epic init <branch>' to create an epic.", file=sys.stderr)
         sys.exit(0)
 
     if show_all:
         # Return all tasks
-        all_tasks = resolver.extract_all_tasks(plan_info["plan_folder"])
+        all_tasks = resolver.extract_all_tickets(plan_info["plan_folder"])
         if json_output:
             print_json({
-                "plan_folder": plan_info.get("plan_folder_name"),
+                "epic_folder": plan_info.get("plan_folder_name"),
                 "task_count": len(all_tasks),
                 "tasks": all_tasks,
             })
@@ -208,25 +208,25 @@ def cmd_task(args, ctx=None):
             _print_tasks_human_readable(all_tasks, plan_info.get("plan_folder_name"))
     else:
         # Return current/next task
-        current_task = resolver.extract_current_task(plan_info["plan_folder"])
+        current_task = resolver.extract_current_ticket(plan_info["plan_folder"])
         if json_output:
             print_json({
-                "plan_folder": plan_info.get("plan_folder_name"),
+                "epic_folder": plan_info.get("plan_folder_name"),
                 "task": current_task,
             })
         else:
             if current_task:
                 _print_single_task(current_task, plan_info.get("plan_folder_name"))
             else:
-                print("All tasks completed or no tasks found.")
+                print("All tickets completed or no tickets found.")
 
 
-def _print_tasks_human_readable(tasks: list, plan_folder: str):
+def _print_tasks_human_readable(tasks: list, epic_folder: str):
     """Print tasks in a table format."""
     from agenticcli.console import console
     from rich.table import Table
 
-    table = Table(title=f"Tasks in {plan_folder}")
+    table = Table(title=f"Tasks in {epic_folder}")
     table.add_column("ID", style="cyan")
     table.add_column("Name")
     table.add_column("Status", style="bold")
@@ -250,12 +250,12 @@ def _print_tasks_human_readable(tasks: list, plan_folder: str):
     console.print(table)
 
 
-def _print_single_task(task: dict, plan_folder: str):
+def _print_single_task(task: dict, epic_folder: str):
     """Print a single task with full details."""
     from agenticcli.console import console
     from rich.panel import Panel
 
-    console.print(Panel(f"[bold]Current Task[/bold] - {plan_folder}"))
+    console.print(Panel(f"[bold]Current Task[/bold] - {epic_folder}"))
     console.print(f"[bold]ID:[/bold] {task.get('id', 'N/A')}")
     console.print(f"[bold]Name:[/bold] {task.get('name', 'N/A')}")
     console.print(f"[bold]Status:[/bold] {task.get('status', 'N/A')}")

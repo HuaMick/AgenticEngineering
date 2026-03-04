@@ -46,8 +46,8 @@ def temp_git_repo(tmp_path):
         check=True,
     )
 
-    # Create docs/plans/live directory structure
-    plans_dir = repo_path / "docs" / "plans" / "live"
+    # Create docs/epics/live directory structure
+    plans_dir = repo_path / "docs" / "epics" / "live"
     plans_dir.mkdir(parents=True, exist_ok=True)
 
     return repo_path
@@ -78,7 +78,7 @@ def mock_git_context(temp_git_repo, monkeypatch):
                 return result
         return real_subprocess_run(cmd, *args, **kwargs)
 
-    monkeypatch.setattr("agenticcli.commands.plan.subprocess.run", patched_subprocess_run)
+    monkeypatch.setattr("agenticcli.commands.epic.subprocess.run", patched_subprocess_run)
 
     return temp_git_repo
 
@@ -88,7 +88,7 @@ class TestBootstrapPlannerWorkflow:
 
     def test_bootstrap_creates_planner_readable_plan(self, mock_git_context):
         """Test that bootstrap creates a plan that planner can read."""
-        from agenticcli.commands import plan
+        from agenticcli.commands import epic as plan
 
         # Bootstrap a plan
         args = SimpleNamespace(
@@ -102,7 +102,7 @@ class TestBootstrapPlannerWorkflow:
                 plan.cmd_bootstrap(args)
 
         # Find the created plan
-        plans_dir = mock_git_context / "docs" / "plans" / "live"
+        plans_dir = mock_git_context / "docs" / "epics" / "live"
         plan_folders = list(plans_dir.glob("*_workflow_test"))
         assert len(plan_folders) == 1
         plan_folder = plan_folders[0]
@@ -121,7 +121,7 @@ class TestBootstrapPlannerWorkflow:
 
     def test_bootstrap_plan_has_initial_tasks(self, mock_git_context):
         """Test that bootstrapped plan has initial tasks for planner."""
-        from agenticcli.commands import plan
+        from agenticcli.commands import epic as plan
 
         args = SimpleNamespace(
             branch="tasks-test",
@@ -133,7 +133,7 @@ class TestBootstrapPlannerWorkflow:
             with patch("builtins.print"):
                 plan.cmd_bootstrap(args)
 
-        plans_dir = mock_git_context / "docs" / "plans" / "live"
+        plans_dir = mock_git_context / "docs" / "epics" / "live"
         plan_folders = list(plans_dir.glob("*_tasks_test"))
         plan_folder = plan_folders[0]
 
@@ -156,7 +156,7 @@ class TestBootstrapPlannerWorkflow:
 
     def test_bootstrap_provides_planner_spawn_hint(self, mock_git_context, capsys):
         """Test that bootstrap output includes hint for spawning planner."""
-        from agenticcli.commands import plan
+        from agenticcli.commands import epic as plan
 
         args = SimpleNamespace(
             branch="hint-test",
@@ -173,7 +173,7 @@ class TestBootstrapPlannerWorkflow:
 
     def test_bootstrap_plan_folder_structure_valid(self, mock_git_context):
         """Test that bootstrapped plan folder structure is valid for planner."""
-        from agenticcli.commands import plan
+        from agenticcli.commands import epic as plan
 
         args = SimpleNamespace(
             branch="structure-test",
@@ -185,7 +185,7 @@ class TestBootstrapPlannerWorkflow:
             with patch("builtins.print"):
                 plan.cmd_bootstrap(args)
 
-        plans_dir = mock_git_context / "docs" / "plans" / "live"
+        plans_dir = mock_git_context / "docs" / "epics" / "live"
         plan_folders = list(plans_dir.glob("*_structure_valid"))
         plan_folder = plan_folders[0]
 
@@ -195,7 +195,7 @@ class TestBootstrapPlannerWorkflow:
 
     def test_multiple_bootstrap_plans_coexist(self, mock_git_context):
         """Test that multiple bootstrapped plans can coexist for planner."""
-        from agenticcli.commands import plan
+        from agenticcli.commands import epic as plan
 
         # Bootstrap first plan
         args1 = SimpleNamespace(
@@ -220,7 +220,7 @@ class TestBootstrapPlannerWorkflow:
                 plan.cmd_bootstrap(args2)
 
         # Both plans should exist
-        plans_dir = mock_git_context / "docs" / "plans" / "live"
+        plans_dir = mock_git_context / "docs" / "epics" / "live"
         plan1_folders = list(plans_dir.glob("*_plan_one"))
         plan2_folders = list(plans_dir.glob("*_plan_two"))
 
@@ -231,7 +231,7 @@ class TestBootstrapPlannerWorkflow:
 
     def test_bootstrap_plan_metadata_complete(self, mock_git_context):
         """Test that bootstrapped plan has complete metadata for planner."""
-        from agenticcli.commands import plan
+        from agenticcli.commands import epic as plan
 
         args = SimpleNamespace(
             branch="metadata-test",
@@ -243,7 +243,7 @@ class TestBootstrapPlannerWorkflow:
             with patch("builtins.print"):
                 plan.cmd_bootstrap(args)
 
-        plans_dir = mock_git_context / "docs" / "plans" / "live"
+        plans_dir = mock_git_context / "docs" / "epics" / "live"
         plan_folders = list(plans_dir.glob("*_metadata_test"))
         plan_folder = plan_folders[0]
 
@@ -269,7 +269,7 @@ class TestPlannerContextAccess:
 
     def test_planner_can_find_plan_by_folder_name(self, mock_git_context):
         """Test that planner can find plan by folder name."""
-        from agenticcli.commands import plan
+        from agenticcli.commands import epic as plan
 
         args = SimpleNamespace(
             branch="findable",
@@ -282,7 +282,7 @@ class TestPlannerContextAccess:
                 plan.cmd_bootstrap(args)
 
         # Planner would search for plans
-        plans_dir = mock_git_context / "docs" / "plans" / "live"
+        plans_dir = mock_git_context / "docs" / "epics" / "live"
         all_plans = list(plans_dir.iterdir())
 
         # Should be able to find by partial match
@@ -291,7 +291,7 @@ class TestPlannerContextAccess:
 
     def test_planner_can_read_plan_objective(self, mock_git_context):
         """Test that planner can read plan objective."""
-        from agenticcli.commands import plan
+        from agenticcli.commands import epic as plan
 
         objective_text = "This is a specific objective for the planner to read"
         args = SimpleNamespace(
@@ -304,7 +304,7 @@ class TestPlannerContextAccess:
             with patch("builtins.print"):
                 plan.cmd_bootstrap(args)
 
-        plans_dir = mock_git_context / "docs" / "plans" / "live"
+        plans_dir = mock_git_context / "docs" / "epics" / "live"
         plan_folders = list(plans_dir.glob("*_objective_read"))
         plan_folder = plan_folders[0]
 

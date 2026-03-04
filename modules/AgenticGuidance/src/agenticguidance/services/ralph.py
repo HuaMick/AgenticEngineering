@@ -1,25 +1,25 @@
-"""Ralph Loop Service - Plan discovery and prioritization.
+"""Ralph Loop Service - Epic discovery and prioritization.
 
 This service provides the brain of the Ralph Loop system, automatically discovering
-plans, analyzing their state, and building a priority queue of actions to take.
+epics, analyzing their state, and building a priority queue of actions to take.
 
 The RalphLoopService handles:
-- Discovery of all plans in docs/plans/live/
-- Analysis of plan state (orchestration MMD, pending tasks, etc.)
+- Discovery of all epics in docs/epics/live/
+- Analysis of epic state (orchestration MMD, pending tasks, etc.)
 - Priority queue building for action execution
-- Tracking completion state across all plans
+- Tracking completion state across all epics
 
-Plan State Detection:
+Epic State Detection:
 - has_orchestration: True if orchestration_*.mmd file exists
 - action_required: 'execute', 'needs_planning', 'blocked', or 'completed'
 - pending_tasks: Count of tasks not yet completed
 - current_task: The next task to execute (if any)
 
 Priority Order:
-1. Plans with action_required='execute' (has MMD, ready to run)
-2. Plans with action_required='needs_planning' (needs MMD created)
-3. Blocked plans (dependencies not met) - skipped
-4. Completed plans - no action needed
+1. Epics with action_required='execute' (has MMD, ready to run)
+2. Epics with action_required='needs_planning' (needs MMD created)
+3. Blocked epics (dependencies not met) - skipped
+4. Completed epics - no action needed
 """
 
 import json
@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class PlanInfo:
-    """Information about a discovered plan."""
+class EpicInfo:
+    """Information about a discovered epic."""
 
     name: str
     path: Path
@@ -68,7 +68,7 @@ class PlanInfo:
 
 
 @dataclass
-class PlanAction:
+class EpicAction:
     """A recommended action to take."""
 
     action: str  # execute, plan, complete, blocked
@@ -86,6 +86,11 @@ class PlanAction:
             "task": self.task_id,
             "reason": self.reason,
         }
+
+
+# Backward-compatibility aliases
+PlanInfo = EpicInfo
+PlanAction = EpicAction
 
 
 @dataclass
@@ -171,20 +176,20 @@ class RalphState:
 
 
 class RalphLoopService:
-    """Service for Ralph Loop plan discovery and prioritization.
+    """Service for Ralph Loop epic discovery and prioritization.
 
-    Provides automated plan discovery, state analysis, and action prioritization
+    Provides automated epic discovery, state analysis, and action prioritization
     for the Ralph Loop orchestration system.
     """
 
-    def __init__(self, plans_dir: Optional[Path] = None):
+    def __init__(self, epics_dir: Optional[Path] = None):
         """Initialize Ralph Loop service.
 
         Args:
-            plans_dir: Path to plans directory. Defaults to docs/plans/live
+            epics_dir: Path to epics directory. Defaults to docs/epics/live
                       relative to git repository root.
         """
-        if plans_dir is None:
+        if epics_dir is None:
             # Find git repo root
             try:
                 result = subprocess.run(
@@ -194,12 +199,12 @@ class RalphLoopService:
                     check=True,
                 )
                 repo_root = Path(result.stdout.strip())
-                plans_dir = repo_root / "docs" / "plans" / "live"
+                epics_dir = repo_root / "docs" / "epics" / "live"
             except subprocess.CalledProcessError:
                 # Fallback to current directory
-                plans_dir = Path.cwd() / "docs" / "plans" / "live"
+                epics_dir = Path.cwd() / "docs" / "epics" / "live"
 
-        self.plans_dir = plans_dir
+        self.epics_dir = epics_dir
         self.state_dir = Path.home() / ".agentic" / "ralph"
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -393,16 +398,16 @@ class RalphLoopService:
         return True
 
     def _build_dependency_graph(self) -> dict[str, list[str]]:
-        """Build graph of plan dependencies for topological ordering.
+        """Build graph of epic dependencies for topological ordering.
 
         Returns:
-            Dictionary mapping plan names to list of plans they depend on.
+            Dictionary mapping epic names to list of epics they depend on.
         """
         graph = {}
-        plans = self.discover_plans()
+        epics = self.discover_epics()
 
-        for plan in plans:
-            graph[plan.name] = plan.dependencies
+        for epic in epics:
+            graph[epic.name] = epic.dependencies
 
         return graph
 
@@ -410,7 +415,7 @@ class RalphLoopService:
         """Detect any cycles in the dependency graph.
 
         Returns:
-            List of cycles, where each cycle is a list of plan names.
+            List of cycles, where each cycle is a list of epic names.
             Empty list if no cycles detected.
         """
         graph = self._build_dependency_graph()
@@ -429,11 +434,11 @@ class RalphLoopService:
 
             # Visit dependencies
             for dep in graph.get(node, []):
-                # Find the full plan name for this dependency
+                # Find the full epic name for this dependency
                 dep_full_name = None
-                for plan_name in graph.keys():
-                    if plan_name == dep or plan_name.startswith(f"{dep}_"):
-                        dep_full_name = plan_name
+                for epic_name in graph.keys():
+                    if epic_name == dep or epic_name.startswith(f"{dep}_"):
+                        dep_full_name = epic_name
                         break
 
                 if dep_full_name is None:
@@ -461,7 +466,7 @@ class RalphLoopService:
 
         return cycles
 
-    def _get_completed_plans(self) -> set[str]:
+    def _get_completed_epics(self) -> set[str]:
         """Get set of plan names that are completed.
 
         Returns:
@@ -469,27 +474,27 @@ class RalphLoopService:
         """
         completed = set()
 
-        if not self.plans_dir.exists():
+        if not self.epics_dir.exists():
             return completed
 
-        for plan_dir in self.plans_dir.iterdir():
-            if not plan_dir.is_dir():
+        for epic_dir in self.epics_dir.iterdir():
+            if not epic_dir.is_dir():
                 continue
 
             # Skip hidden directories
-            if plan_dir.name.startswith("."):
+            if epic_dir.name.startswith("."):
                 continue
 
             # Check if it has plan_build.yml
-            plan_build = plan_dir / "plan_build.yml"
+            plan_build = epic_dir / "plan_build.yml"
             if not plan_build.exists():
                 continue
 
             # Analyze for completion
-            pending_tasks, completed_tasks, _ = self._analyze_plan_file(plan_dir)
+            pending_tasks, completed_tasks, _ = self._analyze_plan_file(epic_dir)
 
             # Also check has_orchestration
-            has_orchestration = self._has_orchestration_file(plan_dir)
+            has_orchestration = self._has_orchestration_file(epic_dir)
 
             # Determine action
             action = self._determine_action_required(
@@ -499,7 +504,7 @@ class RalphLoopService:
             )
 
             if action == "completed":
-                completed.add(plan_dir.name)
+                completed.add(epic_dir.name)
 
         return completed
 
@@ -547,35 +552,35 @@ class RalphLoopService:
         # Default fallback
         return "needs_planning"
 
-    def discover_plans(self) -> list[PlanInfo]:
-        """Discover all plans in live/ directory.
+    def discover_epics(self) -> list[EpicInfo]:
+        """Discover all epics in live/ directory.
 
         Returns:
-            List of PlanInfo with status, has_orchestration, action_required, etc.
+            List of EpicInfo with status, has_orchestration, action_required, etc.
         """
-        plans = []
+        epics = []
 
-        if not self.plans_dir.exists():
-            return plans
+        if not self.epics_dir.exists():
+            return epics
 
-        for plan_dir in self.plans_dir.iterdir():
-            if not plan_dir.is_dir():
+        for epic_dir in self.epics_dir.iterdir():
+            if not epic_dir.is_dir():
                 continue
 
-            # Skip hidden directories and non-plan folders
-            if plan_dir.name.startswith("."):
+            # Skip hidden directories and non-epic folders
+            if epic_dir.name.startswith("."):
                 continue
 
             # Check if it has plan_build.yml (or any plan_*.yml)
-            has_plan_file = len(list(plan_dir.glob("plan_*.yml"))) > 0
+            has_plan_file = len(list(epic_dir.glob("plan_*.yml"))) > 0
             if not has_plan_file:
                 continue
 
             # Check for orchestration file
-            has_orchestration = self._has_orchestration_file(plan_dir)
+            has_orchestration = self._has_orchestration_file(epic_dir)
 
             # Analyze plan file for task counts
-            pending_tasks, completed_tasks, current_task = self._analyze_plan_file(plan_dir)
+            pending_tasks, completed_tasks, current_task = self._analyze_plan_file(epic_dir)
 
             # Determine action required
             action_required = self._determine_action_required(
@@ -585,7 +590,7 @@ class RalphLoopService:
             )
 
             # Get status from plan_build.yml
-            plan_build = plan_dir / "plan_build.yml"
+            plan_build = epic_dir / "plan_build.yml"
             status = "active"
             if plan_build.exists():
                 try:
@@ -596,22 +601,22 @@ class RalphLoopService:
                     pass
 
             # Parse dependencies
-            dependencies = self._parse_dependencies(plan_dir)
+            dependencies = self._parse_dependencies(epic_dir)
 
             # Check if dependencies are met
-            completed_plans = self._get_completed_plans()
-            if not self._dependencies_met(plan_dir.name, dependencies, completed_plans):
+            completed_epics = self._get_completed_epics()
+            if not self._dependencies_met(epic_dir.name, dependencies, completed_epics):
                 # Override action to blocked if dependencies not met
                 action_required = "blocked"
 
             # Check for blocking questions
-            has_blocking, blocking_count = self._has_blocking_questions(plan_dir)
+            has_blocking, blocking_count = self._has_blocking_questions(epic_dir)
             if has_blocking and action_required not in ("completed",):
                 action_required = "blocked"
 
-            plan_info = PlanInfo(
-                name=plan_dir.name,
-                path=plan_dir,
+            epic_info = EpicInfo(
+                name=epic_dir.name,
+                path=epic_dir,
                 status=status,
                 has_orchestration=has_orchestration,
                 action_required=action_required,
@@ -622,59 +627,59 @@ class RalphLoopService:
                 blocking_questions=blocking_count,
             )
 
-            plans.append(plan_info)
+            epics.append(epic_info)
 
-        return plans
+        return epics
 
-    def get_priority_queue(self) -> list[PlanAction]:
+    def get_priority_queue(self) -> list[EpicAction]:
         """Build prioritized queue of actions.
 
         Priority order:
-        1. Plans with action_required='execute' (has MMD, ready to run)
-        2. Plans with action_required='needs_planning' (needs MMD created)
-        3. Blocked plans (dependencies not met) - skip
+        1. Epics with action_required='execute' (has MMD, ready to run)
+        2. Epics with action_required='needs_planning' (needs MMD created)
+        3. Blocked epics (dependencies not met) - skip
 
         Returns:
-            List of PlanAction ordered by priority.
+            List of EpicAction ordered by priority.
         """
-        plans = self.discover_plans()
+        epics = self.discover_epics()
         actions = []
 
         # Priority 1: Execute actions
-        for plan in plans:
-            if plan.action_required == "execute":
+        for epic in epics:
+            if epic.action_required == "execute":
                 actions.append(
-                    PlanAction(
+                    EpicAction(
                         action="execute",
-                        plan_name=plan.name,
-                        plan_path=plan.path,
-                        task_id=plan.current_task,
-                        reason=f"Plan has orchestration and {plan.pending_tasks} pending task(s)",
+                        plan_name=epic.name,
+                        plan_path=epic.path,
+                        task_id=epic.current_task,
+                        reason=f"Epic has orchestration and {epic.pending_tasks} pending task(s)",
                     )
                 )
 
         # Priority 2: Needs planning actions
-        for plan in plans:
-            if plan.action_required == "needs_planning":
+        for epic in epics:
+            if epic.action_required == "needs_planning":
                 actions.append(
-                    PlanAction(
+                    EpicAction(
                         action="plan",
-                        plan_name=plan.name,
-                        plan_path=plan.path,
+                        plan_name=epic.name,
+                        plan_path=epic.path,
                         task_id=None,
-                        reason="Plan needs orchestration MMD file",
+                        reason="Epic needs orchestration MMD file",
                     )
                 )
 
         # Priority 3: Blocked actions (for visibility, but not executable)
-        for plan in plans:
-            if plan.action_required == "blocked":
+        for epic in epics:
+            if epic.action_required == "blocked":
                 # Find which dependencies are not yet completed
-                completed_plans = self._get_completed_plans()
+                completed_epics = self._get_completed_epics()
                 unmet_deps = []
-                for dep in plan.dependencies:
+                for dep in epic.dependencies:
                     matched = False
-                    for completed in completed_plans:
+                    for completed in completed_epics:
                         if completed == dep or completed.startswith(f"{dep}_"):
                             matched = True
                             break
@@ -684,8 +689,8 @@ class RalphLoopService:
                 reasons = []
                 if unmet_deps:
                     reasons.append(f"Waiting for: {', '.join(unmet_deps)}")
-                if plan.blocking_questions > 0:
-                    q = plan.blocking_questions
+                if epic.blocking_questions > 0:
+                    q = epic.blocking_questions
                     if unmet_deps:
                         reasons.append(f"also blocked by {q} question(s)")
                     else:
@@ -693,10 +698,10 @@ class RalphLoopService:
                 reason = "; ".join(reasons) if reasons else "Blocked"
 
                 actions.append(
-                    PlanAction(
+                    EpicAction(
                         action="blocked",
-                        plan_name=plan.name,
-                        plan_path=plan.path,
+                        plan_name=epic.name,
+                        plan_path=epic.path,
                         task_id=None,
                         reason=reason,
                     )
@@ -704,11 +709,11 @@ class RalphLoopService:
 
         return actions
 
-    def get_next_action(self) -> Optional[PlanAction]:
+    def get_next_action(self) -> Optional[EpicAction]:
         """Get the single highest-priority action to take.
 
         Returns:
-            PlanAction or None if all plans complete.
+            EpicAction or None if all epics complete.
         """
         queue = self.get_priority_queue()
 
@@ -767,7 +772,7 @@ class RalphLoopService:
 
         return state
 
-    def record_iteration(self, action: PlanAction, result: str) -> None:
+    def record_iteration(self, action: EpicAction, result: str) -> None:
         """Record what happened in this iteration.
 
         Updates current_iteration.
@@ -880,60 +885,60 @@ class RalphLoopService:
             return None
 
     def check_all_complete(self) -> bool:
-        """Verify all plans are genuinely complete.
+        """Verify all epics are genuinely complete.
 
         Returns:
             True only if:
-            - No plans with action_required='execute'
-            - No plans with action_required='needs_planning'
-            - All plans either completed or explicitly blocked
+            - No epics with action_required='execute'
+            - No epics with action_required='needs_planning'
+            - All epics either completed or explicitly blocked
         """
-        plans = self.discover_plans()
+        epics = self.discover_epics()
 
-        for plan in plans:
-            if plan.action_required in ("execute", "needs_planning"):
+        for epic in epics:
+            if epic.action_required in ("execute", "needs_planning"):
                 return False
 
         return True
 
     def get_completion_status(self) -> dict:
-        """Get detailed completion status across all plans.
+        """Get detailed completion status across all epics.
 
         Returns:
             Dictionary with keys:
-            - all_complete: bool - True if every plan is completed or blocked
-            - blocked_by_deps: int - count of plans blocked by unmet dependencies
-            - blocked_by_questions: int - count of plans blocked by questions
-            - in_progress: int - count of plans with execute/needs_planning
-            - completed: int - count of completed plans
+            - all_complete: bool - True if every epic is completed or blocked
+            - blocked_by_deps: int - count of epics blocked by unmet dependencies
+            - blocked_by_questions: int - count of epics blocked by questions
+            - in_progress: int - count of epics with execute/needs_planning
+            - completed: int - count of completed epics
             - can_emit_promise: bool - True only when in_progress==0 and
               blocked_by_questions==0 (dep-blocked is OK since those deps
               might be in other repos or already archived)
         """
-        plans = self.discover_plans()
-        completed_plans = self._get_completed_plans()
+        epics = self.discover_epics()
+        completed_epics = self._get_completed_epics()
 
         in_progress = 0
         blocked_by_deps = 0
         blocked_by_questions = 0
         completed = 0
 
-        for plan in plans:
-            if plan.action_required in ("execute", "needs_planning"):
+        for epic in epics:
+            if epic.action_required in ("execute", "needs_planning"):
                 in_progress += 1
-            elif plan.action_required == "completed":
+            elif epic.action_required == "completed":
                 completed += 1
-            elif plan.action_required == "blocked":
-                # Determine blocking reason(s) — a plan can be both
+            elif epic.action_required == "blocked":
+                # Determine blocking reason(s) — an epic can be both
                 has_unmet_deps = (
-                    plan.dependencies
+                    epic.dependencies
                     and not self._dependencies_met(
-                        plan.name, plan.dependencies, completed_plans
+                        epic.name, epic.dependencies, completed_epics
                     )
                 )
                 if has_unmet_deps:
                     blocked_by_deps += 1
-                if plan.blocking_questions > 0:
+                if epic.blocking_questions > 0:
                     blocked_by_questions += 1
 
         all_complete = in_progress == 0 and blocked_by_deps == 0 and blocked_by_questions == 0

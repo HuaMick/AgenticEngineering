@@ -32,7 +32,7 @@ class TestUserStoriesWorkflow:
 
         Sets up:
         - Git repository with initial commit
-        - docs/plans/live directory structure
+        - docs/epics/live directory structure
         - User configuration for git
         """
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -58,7 +58,7 @@ class TestUserStoriesWorkflow:
             )
 
             # Create initial structure
-            (repo_path / "docs" / "plans" / "live").mkdir(parents=True)
+            (repo_path / "docs" / "epics" / "live").mkdir(parents=True)
             (repo_path / "README.md").write_text("# Stories Test Project\n")
 
             # Initial commit
@@ -215,12 +215,12 @@ class TestUserStoriesWorkflow:
         5. Verify generated test structure
         """
         # Step 1: Scaffold a plan folder
-        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "stories-test")
+        stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "stories-test")
         assert code == 0, f"Plan scaffold failed: {stderr}"
         assert "Created planning folder" in stdout
 
         # Verify plan folder was created
-        plan_path = stories_repo / "docs" / "plans" / "live" / "stories-test"
+        plan_path = stories_repo / "docs" / "epics" / "live" / "stories-test"
         assert plan_path.exists(), "Plan folder was not created"
 
         # Step 2: Create plan file with user_stories
@@ -232,7 +232,7 @@ class TestUserStoriesWorkflow:
 
         # Step 3: Run stories list
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "stories", "list",
+            "agent", "epic", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list failed: {stderr}"
@@ -245,7 +245,7 @@ class TestUserStoriesWorkflow:
 
         # Step 4: Run stories test to generate test YAML (to stdout)
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "stories", "test",
+            "agent", "epic", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories test failed: {stderr}"
@@ -280,13 +280,13 @@ class TestUserStoriesWorkflow:
         and produces machine-readable output.
         """
         # Setup plan with stories
-        plan_path = stories_repo / "docs" / "plans" / "live" / "json-stories"
+        plan_path = stories_repo / "docs" / "epics" / "live" / "json-stories"
         plan_path.mkdir(parents=True)
         self._create_plan_with_stories(plan_path)
 
         # Run stories list with JSON output
         stdout, stderr, code = cli_in_repo(
-            "--json", "agent", "plan", "stories", "list",
+            "--json", "agent", "epic", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list JSON failed: {stderr}"
@@ -310,14 +310,14 @@ class TestUserStoriesWorkflow:
         in YAML or JSON format.
         """
         # Setup plan with stories
-        plan_path = stories_repo / "docs" / "plans" / "live" / "file-output"
+        plan_path = stories_repo / "docs" / "epics" / "live" / "file-output"
         plan_path.mkdir(parents=True)
         self._create_plan_with_stories(plan_path)
 
         # Test YAML file output
         yaml_output = plan_path / "generated_tests.yml"
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "stories", "test",
+            "agent", "epic", "stories", "test",
             "--plan", str(plan_path),
             "--output", str(yaml_output)
         )
@@ -335,7 +335,7 @@ class TestUserStoriesWorkflow:
         # Test JSON file output
         json_output = plan_path / "generated_tests.json"
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "stories", "test",
+            "agent", "epic", "stories", "test",
             "--plan", str(plan_path),
             "--output", str(json_output),
             "--format", "json"
@@ -356,7 +356,7 @@ class TestUserStoriesWorkflow:
         based on the command type.
         """
         # Create plan with different command types
-        plan_path = stories_repo / "docs" / "plans" / "live" / "validation-types"
+        plan_path = stories_repo / "docs" / "epics" / "live" / "validation-types"
         plan_path.mkdir(parents=True)
 
         plan_content = {
@@ -402,7 +402,7 @@ class TestUserStoriesWorkflow:
 
         # Generate test cases
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "stories", "test",
+            "agent", "epic", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories test failed: {stderr}"
@@ -437,7 +437,7 @@ class TestUserStoriesWorkflow:
         Verifies graceful handling when no stories are found.
         """
         # Create plan without user_stories
-        plan_path = stories_repo / "docs" / "plans" / "live" / "no-stories"
+        plan_path = stories_repo / "docs" / "epics" / "live" / "no-stories"
         plan_path.mkdir(parents=True)
 
         plan_content = {
@@ -454,7 +454,7 @@ class TestUserStoriesWorkflow:
 
         # Run stories list
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "stories", "list",
+            "agent", "epic", "stories", "list",
             "--plan", str(plan_path)
         )
         # Should succeed but show no stories
@@ -470,7 +470,7 @@ class TestUserStoriesWorkflow:
         from a plan with no stories.
         """
         # Create plan without user_stories
-        plan_path = stories_repo / "docs" / "plans" / "live" / "no-stories-test"
+        plan_path = stories_repo / "docs" / "epics" / "live" / "no-stories-test"
         plan_path.mkdir(parents=True)
 
         plan_content = {
@@ -486,7 +486,7 @@ class TestUserStoriesWorkflow:
 
         # Run stories test - should fail with no stories
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "stories", "test",
+            "agent", "epic", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code != 0, "Expected failure when no stories to generate tests from"
@@ -521,7 +521,7 @@ class TestUserStoriesEdgeCases:
                 capture_output=True,
             )
 
-            (repo_path / "docs" / "plans" / "live").mkdir(parents=True)
+            (repo_path / "docs" / "epics" / "live").mkdir(parents=True)
             (repo_path / "README.md").write_text("# Edge Case Stories\n")
             subprocess.run(["git", "add", "."], cwd=repo_path, capture_output=True)
             subprocess.run(
@@ -577,7 +577,7 @@ class TestUserStoriesEdgeCases:
         Verifies that special characters in story descriptions
         are properly handled during list and test generation.
         """
-        plan_path = edge_repo / "docs" / "plans" / "live" / "special-chars"
+        plan_path = edge_repo / "docs" / "epics" / "live" / "special-chars"
         plan_path.mkdir(parents=True)
 
         plan_content = {
@@ -606,7 +606,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories list should handle special characters
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "stories", "list",
+            "agent", "epic", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list failed: {stderr}"
@@ -615,7 +615,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories test should handle special characters
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "stories", "test",
+            "agent", "epic", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories test failed: {stderr}"
@@ -629,7 +629,7 @@ class TestUserStoriesEdgeCases:
         Verifies that stories are collected from all plan files
         in the plan folder.
         """
-        plan_path = edge_repo / "docs" / "plans" / "live" / "multi-file"
+        plan_path = edge_repo / "docs" / "epics" / "live" / "multi-file"
         plan_path.mkdir(parents=True)
 
         # Create first plan file with stories
@@ -670,7 +670,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories list should aggregate from both files
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "stories", "list",
+            "agent", "epic", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list failed: {stderr}"
@@ -680,7 +680,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories test should generate tests for all stories
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "stories", "test",
+            "agent", "epic", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -696,7 +696,7 @@ class TestUserStoriesEdgeCases:
         Verifies that stories can be found when nested under
         different parent keys in the YAML structure.
         """
-        plan_path = edge_repo / "docs" / "plans" / "live" / "nested-stories"
+        plan_path = edge_repo / "docs" / "epics" / "live" / "nested-stories"
         plan_path.mkdir(parents=True)
 
         # Stories nested under 'plan' key
@@ -721,7 +721,7 @@ class TestUserStoriesEdgeCases:
 
         # Stories should be found when nested
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "stories", "list",
+            "agent", "epic", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Stories list failed: {stderr}"
@@ -733,7 +733,7 @@ class TestUserStoriesEdgeCases:
         Verifies that acceptance criteria lists are properly
         included in generated test cases.
         """
-        plan_path = edge_repo / "docs" / "plans" / "live" / "acceptance-list"
+        plan_path = edge_repo / "docs" / "epics" / "live" / "acceptance-list"
         plan_path.mkdir(parents=True)
 
         plan_content = {
@@ -760,7 +760,7 @@ class TestUserStoriesEdgeCases:
 
         # Generate test cases
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "stories", "test",
+            "agent", "epic", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -802,7 +802,7 @@ class TestUserStoriesIntegrationWithOtherCommands:
                 capture_output=True,
             )
 
-            (repo_path / "docs" / "plans" / "live").mkdir(parents=True)
+            (repo_path / "docs" / "epics" / "live").mkdir(parents=True)
             (repo_path / "README.md").write_text("# Integration Stories\n")
             subprocess.run(["git", "add", "."], cwd=repo_path, capture_output=True)
             subprocess.run(
@@ -862,10 +862,10 @@ class TestUserStoriesIntegrationWithOtherCommands:
         Verifies that user stories integrate into the full plan workflow.
         """
         # Step 1: Scaffold
-        stdout, stderr, code = integration_cli("agent", "plan", "scaffold", "full-workflow")
+        stdout, stderr, code = integration_cli("agent", "epic", "scaffold", "full-workflow")
         assert code == 0
 
-        plan_path = integration_repo / "docs" / "plans" / "live" / "full-workflow"
+        plan_path = integration_repo / "docs" / "epics" / "live" / "full-workflow"
 
         # Step 2: Generate template with stories
         output_file = plan_path / "plan_build.yml"
@@ -898,7 +898,7 @@ class TestUserStoriesIntegrationWithOtherCommands:
 
         # Step 3: Verify stories list works
         stdout, stderr, code = integration_cli(
-            "agent", "plan", "stories", "list",
+            "agent", "epic", "stories", "list",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -906,7 +906,7 @@ class TestUserStoriesIntegrationWithOtherCommands:
 
         # Step 4: Generate tests
         stdout, stderr, code = integration_cli(
-            "agent", "plan", "stories", "test",
+            "agent", "epic", "stories", "test",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -914,14 +914,14 @@ class TestUserStoriesIntegrationWithOtherCommands:
 
         # Step 5: Generate orchestration
         stdout, stderr, code = integration_cli(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
 
         # Step 6: Validate plan (should pass with orchestration)
         stdout, stderr, code = integration_cli(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0

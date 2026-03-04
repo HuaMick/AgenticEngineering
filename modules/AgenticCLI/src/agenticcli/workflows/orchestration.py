@@ -161,15 +161,15 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
     """
 
     def load_mmd(self, plan_folder: str) -> Optional[str]:
-        """Load orchestration MMD content from plan folder.
+        """Load orchestration MMD content from epic folder.
 
         Args:
-            plan_folder: Plan folder name.
+            plan_folder: Epic folder name.
 
         Returns:
             MMD file content string or None if not found.
         """
-        plan_dir = self.plans_dir / plan_folder
+        plan_dir = self.epics_dir / plan_folder
         if not plan_dir.exists():
             logger.warning("Plan folder does not exist: %s", plan_dir)
             return None
@@ -210,7 +210,7 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
         Returns:
             Path to MMD file or None if not found.
         """
-        plan_dir = self.plans_dir / plan_folder
+        plan_dir = self.epics_dir / plan_folder
         if not plan_dir.exists():
             return None
         mmds = list(plan_dir.glob("orchestration_*.mmd"))
@@ -273,12 +273,12 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
         Returns:
             List of plan folder names needing execution.
         """
-        if not self.plans_dir.exists():
-            logger.warning("Plans directory does not exist: %s", self.plans_dir)
+        if not self.epics_dir.exists():
+            logger.warning("Plans directory does not exist: %s", self.epics_dir)
             return []
 
         needs_execution = []
-        for plan_dir in sorted(self.plans_dir.iterdir()):
+        for plan_dir in sorted(self.epics_dir.iterdir()):
             if not plan_dir.is_dir():
                 continue
             mmds = list(plan_dir.glob("orchestration_*.mmd"))
@@ -354,7 +354,7 @@ class PlanningRunner:
             return False
 
         # Archive completed plans
-        for plan_dir in sorted(self.workflow.plans_dir.iterdir()):
+        for plan_dir in sorted(self.workflow.epics_dir.iterdir()):
             if plan_dir.is_dir() and self.workflow.get_plan_status(plan_dir.name) == "completed":
                 logger.info("Archiving completed plan: %s", plan_dir.name)
                 self.workflow.archive_plan(plan_dir.name)
@@ -472,7 +472,7 @@ class ExecutionRunner:
             return False
 
         # Archive completed plans
-        for plan_dir in sorted(self.workflow.plans_dir.iterdir()):
+        for plan_dir in sorted(self.workflow.epics_dir.iterdir()):
             if plan_dir.is_dir() and self.workflow.get_plan_status(plan_dir.name) == "completed":
                 logger.info("Archiving completed plan: %s", plan_dir.name)
                 self.workflow.archive_plan(plan_dir.name)

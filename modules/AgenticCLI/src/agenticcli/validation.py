@@ -79,18 +79,11 @@ def validate_branch_name_or_raise(name: str) -> str:
     return name
 
 
-def validate_plan_folder_structure(path: Path) -> tuple[bool, list[str]]:
-    """Validate a plan folder has the required structure.
-
-    Expected structure:
-        plan_folder/
-        ├── live/           # Required
-        │   └── *.yml       # At least one plan file
-        ├── completed/      # Optional
-        └── analysis/       # Optional
+def validate_epic_folder_exists(path: Path) -> tuple[bool, list[str]]:
+    """Validate that an epic folder exists and is a directory.
 
     Args:
-        path: Path to the plan folder.
+        path: Path to the epic folder.
 
     Returns:
         Tuple of (is_valid, list_of_issues).
@@ -100,7 +93,40 @@ def validate_plan_folder_structure(path: Path) -> tuple[bool, list[str]]:
     issues = []
 
     if not path.exists():
-        return False, [f"plan folder does not exist: {path}"]
+        return False, [f"epic folder does not exist: {path}"]
+
+    if not path.is_dir():
+        return False, [f"path is not a directory: {path}"]
+
+    return True, issues
+
+
+# Backward compatibility alias
+validate_plan_folder_exists = validate_epic_folder_exists
+
+
+def validate_epic_folder_structure(path: Path) -> tuple[bool, list[str]]:
+    """Validate an epic folder has the required structure.
+
+    Expected structure:
+        epic_folder/
+        ├── live/           # Required
+        │   └── *.yml       # At least one epic file
+        ├── completed/      # Optional
+        └── analysis/       # Optional
+
+    Args:
+        path: Path to the epic folder.
+
+    Returns:
+        Tuple of (is_valid, list_of_issues).
+        If valid, returns (True, []).
+        If invalid, returns (False, list_of_issue_strings).
+    """
+    issues = []
+
+    if not path.exists():
+        return False, [f"epic folder does not exist: {path}"]
 
     if not path.is_dir():
         return False, [f"path is not a directory: {path}"]
@@ -113,32 +139,67 @@ def validate_plan_folder_structure(path: Path) -> tuple[bool, list[str]]:
     return len(issues) == 0, issues
 
 
-def validate_plan_folder_or_raise(path: Path) -> Path:
-    """Validate a plan folder structure, raising ValidationError if invalid.
+# Backward compatibility alias
+validate_plan_folder_structure = validate_epic_folder_structure
+
+
+def validate_epic_folder_is_valid(path: Path) -> tuple[bool, list[str]]:
+    """Validate an epic folder is valid (exists and has required structure).
 
     Args:
-        path: Path to the plan folder.
+        path: Path to the epic folder.
+
+    Returns:
+        Tuple of (is_valid, list_of_issues).
+        If valid, returns (True, []).
+        If invalid, returns (False, list_of_issue_strings).
+    """
+    exists_valid, exists_issues = validate_epic_folder_exists(path)
+    if not exists_valid:
+        return False, exists_issues
+
+    return validate_epic_folder_structure(path)
+
+
+# Backward compatibility alias
+validate_plan_folder_is_valid = validate_epic_folder_is_valid
+
+
+def validate_epic_folder_or_raise(path: Path) -> Path:
+    """Validate an epic folder structure, raising ValidationError if invalid.
+
+    Args:
+        path: Path to the epic folder.
 
     Returns:
         The validated path.
 
     Raises:
-        ValidationError: If the plan folder structure is invalid.
+        ValidationError: If the epic folder structure is invalid.
     """
-    is_valid, issues = validate_plan_folder_structure(path)
+    is_valid, issues = validate_epic_folder_structure(path)
     if not is_valid:
-        raise ValidationError.invalid_plan_folder(str(path), "; ".join(issues))
+        raise ValidationError.invalid_epic_folder(str(path), "; ".join(issues))
     return path
 
 
-# Required fields for plan YAML files
-PLAN_REQUIRED_FIELDS = ["plan"]
-PLAN_INNER_REQUIRED_FIELDS = ["name", "status"]
-PLAN_VALID_STATUSES = ["pending", "in_progress", "completed", "blocked", "cancelled"]
+# Backward compatibility alias
+validate_plan_folder_or_raise = validate_epic_folder_or_raise
 
 
-def validate_plan_yaml(content: str, file_path: Optional[str] = None) -> tuple[bool, list[str]]:
-    """Validate plan YAML content against schema requirements.
+# Required fields for epic YAML files
+EPIC_REQUIRED_FIELDS = ["plan"]
+EPIC_INNER_REQUIRED_FIELDS = ["name", "status"]
+EPIC_VALID_STATUSES = ["pending", "in_progress", "completed", "blocked", "cancelled"]
+
+# Backward compatibility aliases
+PLAN_REQUIRED_FIELDS = EPIC_REQUIRED_FIELDS
+PLAN_INNER_REQUIRED_FIELDS = EPIC_INNER_REQUIRED_FIELDS
+PLAN_VALID_STATUSES = EPIC_VALID_STATUSES
+
+
+def validate_epic_yaml(content: str, file_path: Optional[str] = None) -> tuple[bool, list[str]]:
+    """Validate epic YAML content against schema requirements.
 
     Args:
         content: The YAML content to validate.
@@ -167,7 +228,7 @@ def validate_plan_yaml(content: str, file_path: Optional[str] = None) -> tuple[b
         return False, ["YAML root must be a mapping"]
 
     # Check required top-level fields
-    for field in PLAN_REQUIRED_FIELDS:
+    for field in EPIC_REQUIRED_FIELDS:
         if field not in data:
             violations.append(f"missing required field '{field}'")
 
@@ -175,16 +236,16 @@ def validate_plan_yaml(content: str, file_path: Optional[str] = None) -> tuple[b
     if "plan" in data and isinstance(data["plan"], dict):
         plan = data["plan"]
 
-        for field in PLAN_INNER_REQUIRED_FIELDS:
+        for field in EPIC_INNER_REQUIRED_FIELDS:
             if field not in plan:
                 violations.append(f"missing required field 'plan.{field}'")
 
         # Validate status if present
         if "status" in plan:
             status = plan["status"]
-            if status not in PLAN_VALID_STATUSES:
+            if status not in EPIC_VALID_STATUSES:
                 violations.append(
-                    f"invalid status '{status}', must be one of: {', '.join(PLAN_VALID_STATUSES)}"
+                    f"invalid status '{status}', must be one of: {', '.join(EPIC_VALID_STATUSES)}"
                 )
 
         # Validate phases if present
@@ -201,8 +262,31 @@ def validate_plan_yaml(content: str, file_path: Optional[str] = None) -> tuple[b
     return len(violations) == 0, violations
 
 
-def validate_plan_yaml_or_raise(content: str, file_path: Optional[str] = None) -> dict:
-    """Validate plan YAML content, raising ValidationError if invalid.
+# Backward compatibility alias
+validate_plan_yaml = validate_epic_yaml
+
+
+def validate_epic_yaml_content(content: str, file_path: Optional[str] = None) -> tuple[bool, list[str]]:
+    """Validate epic YAML content (alias for validate_epic_yaml).
+
+    Args:
+        content: The YAML content to validate.
+        file_path: Optional file path for error context.
+
+    Returns:
+        Tuple of (is_valid, list_of_violations).
+        If valid, returns (True, []).
+        If invalid, returns (False, list_of_violation_strings).
+    """
+    return validate_epic_yaml(content, file_path)
+
+
+# Backward compatibility alias
+validate_plan_yaml_content = validate_epic_yaml_content
+
+
+def validate_epic_yaml_strict(content: str, file_path: Optional[str] = None) -> dict:
+    """Validate epic YAML content strictly, raising ValidationError if invalid.
 
     Args:
         content: The YAML content to validate.
@@ -214,10 +298,34 @@ def validate_plan_yaml_or_raise(content: str, file_path: Optional[str] = None) -
     Raises:
         ValidationError: If the YAML content is invalid.
     """
-    is_valid, violations = validate_plan_yaml(content, file_path)
+    is_valid, violations = validate_epic_yaml(content, file_path)
     if not is_valid:
         raise ValidationError.schema_violation(file_path or "<string>", violations)
     return yaml.safe_load(content)
+
+
+# Backward compatibility alias
+validate_plan_yaml_strict = validate_epic_yaml_strict
+
+
+def validate_epic_yaml_or_raise(content: str, file_path: Optional[str] = None) -> dict:
+    """Validate epic YAML content, raising ValidationError if invalid.
+
+    Args:
+        content: The YAML content to validate.
+        file_path: Optional file path for error context.
+
+    Returns:
+        The parsed YAML data.
+
+    Raises:
+        ValidationError: If the YAML content is invalid.
+    """
+    return validate_epic_yaml_strict(content, file_path)
+
+
+# Backward compatibility alias
+validate_plan_yaml_or_raise = validate_epic_yaml_or_raise
 
 
 def validate_path_safe(path: str) -> tuple[bool, Optional[str]]:
@@ -253,7 +361,7 @@ def validate_path_safe(path: str) -> tuple[bool, Optional[str]]:
 
 
 def validate_identifier(name: str, max_length: int = 64) -> tuple[bool, Optional[str]]:
-    """Validate an identifier (task ID, phase ID, etc.).
+    """Validate an identifier (ticket ID, phase ID, etc.).
 
     Args:
         name: The identifier to validate.

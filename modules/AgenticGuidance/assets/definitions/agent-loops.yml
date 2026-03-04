@@ -277,11 +277,11 @@ loop_types:
     phase: "guidance-validation"
     maximum_iterations: 3
     core_pattern:
-      - "Define test task from guidance"
+      - "Define test ticket from guidance"
       - "Spawn test-guidance-simulator"
       - "Execute with minimal context"
       - "Report guidance gaps found"
-      - "Update plan task statuses from report"
+      - "Update epic ticket statuses from report"
       - "Fix gaps via teacher agents"
       - "Repeat until no gaps remain"
     participants:
@@ -384,7 +384,7 @@ loop_types:
       - "Agents review their own inputs.yml, process.yml, manifest.yml"
       - "Collect issues and questions requiring user decisions"
       - "User provides answers to ambiguities"
-      - "Spawn planner-guidance agents to create remediation plans (parallel)"
+      - "Spawn planner-guidance agents to create remediation epics (parallel)"
       - "Execute fixes via teacher-update-guidance agents"
       - "Repeat until multiple agents report NO ISSUES REMAINING"
     participants:
@@ -399,17 +399,17 @@ loop_types:
           - "Self-review status is PASS (not NEEDS_ATTENTION)"
           - "Zero NEEDS_ATTENTION triggers (NAT-001 through NAT-005) detected"
           - "Spot-check flag rate <50% (if spot-check phase applies)"
-          - "No pending plan files in live/ folder for this agent"
+          - "No pending epic files in live/ folder for this agent"
         reference: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml#needs_attention_triggers"
       iteration_continues_when:
         description: "Loop continues while ANY of the following are true"
         conditions:
           - "Any agent has NEEDS_ATTENTION status"
           - "Any NAT-* trigger is active"
-          - "Plan files exist in live/ that haven't been executed"
+          - "Epic files exist in live/ that haven't been executed"
           - "Spot-check flag rate >= 50%"
       legacy_conditions:
-        - "All identified issues have remediation plans executed"
+        - "All identified issues have remediation epics executed"
         - "Max iterations reached (escalate)"
     user_decision_gate: true
     visual_reference: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/guidance_self_review_loop.mmd"
@@ -423,23 +423,23 @@ loop_types:
         for this loop. The orchestrator:
         1. Spawns subagents for self-review
         2. Collects self-review results
-        3. ENFORCES plan file creation check
-        4. Rejects incomplete self-reviews (NEEDS_ATTENTION without plan file)
+        3. ENFORCES epic file creation check
+        4. Rejects incomplete self-reviews (NEEDS_ATTENTION without epic file)
         5. Continues loop until NO_ISSUES_REMAINING
       enforcement_checkpoint: |
         After each self-review subagent returns:
         IF status == NEEDS_ATTENTION:
-          CHECK: Does live/ contain plan_guidance_{agent_name}_*.yml?
-          IF NO: Reject result, require plan file creation
-          IF YES: Present plan to user for approval
+          CHECK: Does live/ contain ticket_guidance_{agent_name}_*.yml?
+          IF NO: Reject result, require epic ticket file creation
+          IF YES: Present epic to user for approval
         IF status == PASS:
           CHECK: Verify zero NAT-* triggers
           IF ANY NAT-* active: Reject, status should be NEEDS_ATTENTION
       rejection_response: |
         When orchestrator rejects incomplete self-review:
-        1. Return to subagent with: "Self-review incomplete: NEEDS_ATTENTION status requires plan file"
-        2. Require subagent to create plan file at: {plan_folder}/live/plan_guidance_{agent_name}_*.yml
-        3. Block loop advancement until plan file exists
+        1. Return to subagent with: "Self-review incomplete: NEEDS_ATTENTION status requires epic file"
+        2. Require subagent to create epic file at: {epic_folder}/live/ticket_guidance_{agent_name}_*.yml
+        3. Block loop advancement until epic file exists
     note: |
       This loop includes a USER DECISION GATE between self-review and planning.
       Questions/ambiguities from self-reviews must be resolved before creating
@@ -449,16 +449,16 @@ loop_types:
     # FENCE: Plan File Creation Requirement (SRLE-001)
     # ==========================================================================
     fence_plan_creation:
-      name: "Self-Review Plan Creation FENCE"
+      name: "Self-Review Ticket Creation FENCE"
       trigger: "NEEDS_ATTENTION status from any self-reviewing agent"
       requirement: |
         FENCE: When self-review returns NEEDS_ATTENTION:
-        1. Agent MUST create plan file at: {plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml
+        1. Agent MUST create epic file at: {epic_folder}/live/ticket_guidance_{agent_name}_{issue_type}.yml
         2. Agent MUST NOT autonomously defer issues - present ALL findings to user
-        3. Plan file MUST include: objective, findings list, proposed tasks
-        4. Without plan file in live/, the loop CANNOT iterate
+        3. Epic file MUST include: objective, findings list, proposed tickets
+        4. Without epic file in live/, the loop CANNOT iterate
       violation: |
-        If NEEDS_ATTENTION but no plan file created:
+        If NEEDS_ATTENTION but no epic file created:
         - Self-review is INCOMPLETE
         - Loop iteration is BLOCKED
         - Orchestrator MUST reject the self-review result
@@ -469,12 +469,12 @@ loop_types:
         - Only user can mark a finding as "deferred"
         - Agent may RECOMMEND deferral but MUST NOT implement it unilaterally
       plan_file_template:
-        location: "{plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml"
+        location: "{epic_folder}/live/ticket_guidance_{agent_name}_{issue_type}.yml"
         required_fields:
           - "name"
           - "objective"
           - "findings (list with id, severity, description)"
-          - "tasks (list of remediation tasks)"
+          - "tickets (list of remediation tickets)"
           - "status: pending"
 
 phase_ordering:
@@ -504,17 +504,17 @@ exit_conditions:
 error_driven_planning:
   concept: |
     During any loop iteration, agents may discover errors outside the current
-    plan's scope. These are NOT retry conditions — they are opportunities for
+    epic's scope. These are NOT retry conditions — they are opportunities for
     systematic improvement via new planning sessions.
 
   protocol_reference: "modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml"
 
   loop_behavior: |
     When an agent within a loop reports out_of_scope_error:
-    1. The orchestrator logs the error and suggested remediation plan
+    1. The orchestrator logs the error and suggested remediation epic
     2. The loop CONTINUES (out-of-scope errors do NOT consume iterations)
     3. At loop exit, all out-of-scope errors are aggregated
-    4. Orchestrator creates remediation plans for HIGH+ priority errors
+    4. Orchestrator creates remediation epics for HIGH+ priority errors
 
   does_not_affect:
     - "Iteration count (out-of-scope errors are separate from in-scope retries)"

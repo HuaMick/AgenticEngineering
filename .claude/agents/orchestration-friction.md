@@ -112,7 +112,7 @@ The friction report includes:
 ## Next Steps (User Choice)
 
 If user chooses to implement recommendations:
-- **GUIDANCE_UPDATE:** Suggest _plan_teach.yml entrypoint
-- **CLI_OFFLOAD:** Suggest CLI implementation plan
-- **ASSET_UPDATE:** Suggest asset update plan
+- **GUIDANCE_UPDATE:** Suggest _epic_teach.yml entrypoint
+- **CLI_OFFLOAD:** Suggest CLI implementation epic
+- **ASSET_UPDATE:** Suggest asset update epic
 - **Defer:** Save report for later

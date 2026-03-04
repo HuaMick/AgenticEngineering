@@ -174,14 +174,14 @@ class TestOrchestrationWorkflow:
         """load_mmd returns MMD content when file exists."""
         from agenticcli.workflows.orchestration import OrchestrationWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "my_plan"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "my_plan"
         plan.mkdir()
         mmd_file = plan / "orchestration_build.mmd"
         mmd_file.write_text("graph TD\n  A --> B")
 
-        workflow = OrchestrationWorkflow(plans_dir=plans_dir)
+        workflow = OrchestrationWorkflow(epics_dir=epics_dir)
         result = workflow.load_mmd("my_plan")
 
         assert result == "graph TD\n  A --> B"
@@ -190,12 +190,12 @@ class TestOrchestrationWorkflow:
         """load_mmd returns None when no MMD file exists."""
         from agenticcli.workflows.orchestration import OrchestrationWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "my_plan"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "my_plan"
         plan.mkdir()
 
-        workflow = OrchestrationWorkflow(plans_dir=plans_dir)
+        workflow = OrchestrationWorkflow(epics_dir=epics_dir)
         result = workflow.load_mmd("my_plan")
 
         assert result is None
@@ -225,12 +225,12 @@ class TestPlanningRunner:
         """run() succeeds for single plan with all phases passing."""
         from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
-        # Create mock workflow with plans_dir that exists
-        plans_dir = tmp_path / "docs" / "plans" / "live"
-        plans_dir.mkdir(parents=True)
+        # Create mock workflow with epics_dir that exists
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
         workflow = MagicMock(spec=OrchestrationWorkflow)
         workflow.working_dir = str(tmp_path)
-        workflow.plans_dir = plans_dir
+        workflow.epics_dir = epics_dir
         workflow.run_health_check.return_value = None
         workflow.discover_plans_needing_orchestration.return_value = []
 
@@ -252,14 +252,14 @@ class TestPlanningRunner:
             assert len(runner.state["plans_failed"]) == 0
 
     def test_run_discovery_mode(self, tmp_path, monkeypatch):
-        """run() discovers and processes multiple plans when no --plan flag."""
+        """run() discovers and processes multiple plans when no --epic flag."""
         from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
-        plans_dir = tmp_path / "docs" / "plans" / "live"
-        plans_dir.mkdir(parents=True)
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
         workflow = MagicMock(spec=OrchestrationWorkflow)
         workflow.working_dir = str(tmp_path)
-        workflow.plans_dir = plans_dir
+        workflow.epics_dir = epics_dir
         workflow.run_health_check.return_value = None
         workflow.discover_plans_needing_orchestration.return_value = ["plan_a", "plan_b"]
 
@@ -279,11 +279,11 @@ class TestPlanningRunner:
         """run() returns True immediately when no plans need orchestration."""
         from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
-        plans_dir = tmp_path / "docs" / "plans" / "live"
-        plans_dir.mkdir(parents=True)
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
         workflow = MagicMock(spec=OrchestrationWorkflow)
         workflow.working_dir = str(tmp_path)
-        workflow.plans_dir = plans_dir
+        workflow.epics_dir = epics_dir
         workflow.run_health_check.return_value = None
         workflow.discover_plans_needing_orchestration.return_value = []
 
@@ -309,11 +309,11 @@ class TestPlanningRunner:
         """Plans that fail planning are added to plans_failed."""
         from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
-        plans_dir = tmp_path / "docs" / "plans" / "live"
-        plans_dir.mkdir(parents=True)
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
         workflow = MagicMock(spec=OrchestrationWorkflow)
         workflow.working_dir = str(tmp_path)
-        workflow.plans_dir = plans_dir
+        workflow.epics_dir = epics_dir
         workflow.run_health_check.return_value = None
         workflow.discover_plans_needing_orchestration.return_value = ["bad_plan"]
 
@@ -337,11 +337,11 @@ class TestPlanningRunner:
         """Exceptions raised by PlannerLoopRunner are caught and tracked."""
         from agenticcli.workflows.orchestration import PlanningRunner, OrchestrationWorkflow
 
-        plans_dir = tmp_path / "docs" / "plans" / "live"
-        plans_dir.mkdir(parents=True)
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
         workflow = MagicMock(spec=OrchestrationWorkflow)
         workflow.working_dir = str(tmp_path)
-        workflow.plans_dir = plans_dir
+        workflow.epics_dir = epics_dir
         workflow.run_health_check.return_value = None
         workflow.discover_plans_needing_orchestration.return_value = ["crash_plan"]
 

@@ -3,19 +3,19 @@
 # Referenced by: modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
 
 checklists:
-  plan_structure:
-    description: "Plan has valid root structure"
+  epic_structure:
+    description: "Epic has valid root structure"
     items:
-      - "Plan has unique name at root level (plan_name field)"
-      - "Plan folder follows YYMMDDXX_description naming (CLI-enforced)"
-      - "Plan objective clearly states what will be improved"
-      - "Plan files (plan_*.yml) are at folder root, NOT in subdirectories"
-      - "No plan_live_ prefix in filenames (use plan_*.yml, not plan_live_*.yml)"
-      - "No nested live/, completed/, analysis/, or audit/ folders containing plan files"
+      - "Epic has unique name at root level (epic_name field)"
+      - "Epic folder follows YYMMDDXX_description naming (CLI-enforced)"
+      - "Epic objective clearly states what will be improved"
+      - "Epic files (ticket_*.yml) are at folder root, NOT in subdirectories"
+      - "No ticket_live_ prefix in filenames (use ticket_*.yml, not ticket_live_*.yml)"
+      - "No nested live/, completed/, analysis/, or audit/ folders containing epic files"
     notes:
-      - "Plan folder naming is enforced by 'agentic plan init' - trust CLI enforcement"
-      - "Flat structure is enforced by CLI - nested plan files cause auto-archival failures"
-      - "Optional subfolders (reference/, analysis/, audit/) are for artifacts only, NOT plan files"
+      - "Epic folder naming is enforced by 'agentic epic init' - trust CLI enforcement"
+      - "Flat structure is enforced by CLI - nested epic files cause auto-archival failures"
+      - "Optional subfolders (reference/, analysis/, audit/) are for artifacts only, NOT epic files"
 
   inputs:
     description: "Plan inputs are properly defined"
@@ -32,36 +32,36 @@ checklists:
       - "Technical validation criteria are verifiable"
       - "Criteria define observable outcomes, not implementation details"
 
-  task_structure:
-    description: "Tasks are well-defined"
+  ticket_structure:
+    description: "Tickets are well-defined"
     items:
-      - "Each task specifies exact target file(s) to edit"
+      - "Each ticket specifies exact target file(s) to edit"
       - "Agent types are correctly allocated by category"
       - "Operations are properly ordered (CREATE before UPDATE)"
-      - "Each task has concrete acceptance criteria"
+      - "Each ticket has concrete acceptance criteria"
 
   pattern_alignment:
-    description: "Plan follows established patterns"
+    description: "Epic follows established patterns"
     items:
-      - "Tasks follow Domain -> Workflow -> Entrypoint patterns where applicable"
+      - "Tickets follow Domain -> Workflow -> Entrypoint patterns where applicable"
       - "Phase dependencies are explicitly declared"
       - "All mandatory loops included (audit-test-fix after cleanup, etc.)"
 
   loop_structure:
-    description: "Plan includes appropriate loops for iteration"
+    description: "Epic includes appropriate loops for iteration"
     items:
-      - "loop_structure section exists for non-trivial plans"
+      - "loop_structure section exists for non-trivial epics"
       - "Loop type matches phase type (per phase_to_loop_mapping)"
       - "Exit criteria are explicit and verifiable"
       - "Max iterations specified with escalation path"
     rejection_condition:
-      condition: "Non-trivial plan missing loop_structure"
-      message: "Plan must include loop_structure. See loop-inclusion-for-planners.yml"
+      condition: "Non-trivial epic missing loop_structure"
+      message: "Epic must include loop_structure. See loop-inclusion-for-planners.yml"
 
   # Context quality checklist (SSR-004)
   # Note: Token-based thresholds removed - context quality measured by relevance, not size
   context_quality:
-    description: "Plan inputs follow context quality principles"
+    description: "Epic inputs follow context quality principles"
     items:
       - "No inline definitions that duplicate shared assets"
       - "No duplicate definitions across inputs.yml files"
@@ -94,46 +94,46 @@ fences:
     skip_condition: "If plan does not reference RLM patterns, skip entirely"
 
   mmd_presence:
-    description: "MMD file validation for orchestrated plans"
+    description: "MMD file validation for orchestrated epics"
     checklist:
       - "orchestration_*.mmd file exists in live/ folder"
       - "MMD contains GOAL header comment"
       - "MMD contains AGENT_ROUTING header comment or metadata"
       - "MMD contains PHASES list"
     rejection_condition:
-      condition: "orchestration_*.mmd missing from plan folder"
+      condition: "orchestration_*.mmd missing from epic folder"
       message: "Missing orchestration MMD. Return to orchestration-planning."
-    exception: "Single-task plans (1 phase with 1 task) may be approved without MMD"
+    exception: "Single-ticket epics (1 phase with 1 ticket) may be approved without MMD"
 
   file_placement:
-    description: "Plan folder contains only properly placed files (BLOCKING)"
+    description: "Epic folder contains only properly placed files (BLOCKING)"
     allowed_at_root:
-      - "plan_*.yml files (NOT plan_live_*.yml - outdated naming)"
+      - "ticket_*.yml files (NOT ticket_live_*.yml - outdated naming)"
       - "orchestration_*.mmd files"
       - "README.md"
     allowed_in_subfolders:
       - "reference/: Reference materials"
-      - "analysis/: Analysis files, iteration logs (*.md, plan_iteration_*.yml)"
+      - "analysis/: Analysis files, iteration logs (*.md, ticket_iteration_*.yml)"
       - "audit/: Audit reports (audit_*.yml)"
-      - "completed/: Completed plan snapshots (optional subfolder)"
+      - "completed/: Completed epic snapshots (optional subfolder)"
     forbidden:
-      - "plan_*.yml files in nested live/, completed/, analysis/, or audit/ subfolders"
-      - "plan_live_*.yml naming (outdated - use plan_*.yml)"
-      - "Nested live/ subfolder containing plan files"
+      - "ticket_*.yml files in nested live/, completed/, analysis/, or audit/ subfolders"
+      - "ticket_live_*.yml naming (outdated - use ticket_*.yml)"
+      - "Nested live/ subfolder containing epic files"
       - "Analysis/documentation files at root (*.md except README.md) -> analysis/"
       - "Audit reports at root (audit_*.yml) -> audit/"
     rejection_note: "File placement issues ARE blocking issues - flat structure is required for CLI compatibility"
 
   codebase_verification:
     description: "Verify live/ files reflect codebase reality (BLOCKING)"
-    plan_file_checks:
-      - "Do target_files referenced in tasks still exist?"
-      - "Have any pending tasks already been implemented?"
-      - "If >50% pending tasks done, FLAG: stale tasks"
+    epic_file_checks:
+      - "Do target_files referenced in tickets still exist?"
+      - "Have any pending tickets already been implemented?"
+      - "If >50% pending tickets done, FLAG: stale tickets"
     analysis_file_checks:
       - "Classify as: IMPLEMENTED, PARTIALLY_IMPLEMENTED, NOT_IMPLEMENTED"
       - "PARTIALLY_IMPLEMENTED: FLAG incomplete work"
-      - "NOT_IMPLEMENTED: FLAG should be live plan"
+      - "NOT_IMPLEMENTED: FLAG should be live epic"
     rlm_extension:
       - "Referenced context accessor patterns exist"
       - "Variable naming follows documented conventions"
@@ -141,13 +141,13 @@ fences:
       - "RLM phases have bounded iteration counts"
 
   # Self-review validation fence (SSR-004)
-  # BLOCKING: Must pass before plan approval
+  # BLOCKING: Must pass before epic approval
   self_review_validation:
-    description: "Validate plan inputs against self-review criteria (BLOCKING)"
-    trigger: "All plan reviews"
+    description: "Validate epic inputs against self-review criteria (BLOCKING)"
+    trigger: "All epic reviews"
     blocking: true
     items:
-      - "Plan inputs do not duplicate content from referenced assets"
+      - "Epic inputs do not duplicate content from referenced assets"
       - "All file references validated and resolve to existing files"
       - "Version numbers aligned across agent files"
       - "No deprecated patterns without migration notes"

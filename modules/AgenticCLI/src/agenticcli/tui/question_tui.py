@@ -165,20 +165,20 @@ class QuestionTUI:
     # ------------------------------------------------------------------
 
     def _refresh_questions(self) -> None:
-        """Scan docs/plans/live/*/questions/pending/*.yml and populate self.questions.
+        """Scan docs/epics/live/*/questions/pending/*.yml and populate self.questions.
 
         Reads each YAML file, builds a list of question dicts, sorts by severity
         (blocking > high > medium > low) then by created_at timestamp.
         """
-        live_plans_dir = self.repo_root / "docs" / "plans" / "live"
-        if not live_plans_dir.exists():
+        live_epics_dir = self.repo_root / "docs" / "epics" / "live"
+        if not live_epics_dir.exists():
             self.questions = []
             self.cursor = 0
             return
 
         found: list[dict] = []
 
-        for plan_dir in sorted(live_plans_dir.iterdir()):
+        for plan_dir in sorted(live_epics_dir.iterdir()):
             if not plan_dir.is_dir():
                 continue
 

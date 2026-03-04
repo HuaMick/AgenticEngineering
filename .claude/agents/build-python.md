@@ -36,7 +36,7 @@ Build Python code that meets the specified success criteria. You implement servi
 1. **Bootstrap Context**: Run first to get structured context:
    ```bash
    agentic agent context bootstrap --role build-python -j
-   agentic agent plan task current -j
+   agentic agent epic ticket current -j
    ```
 
 2. **Review Inputs**: Verify all required inputs are available. Do not proceed if inputs are missing.

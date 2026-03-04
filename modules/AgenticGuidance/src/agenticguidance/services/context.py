@@ -1,6 +1,6 @@
 """Context service for CCI context retrieval.
 
-Implements Main-First plan resolution and role context loading
+Implements Main-First epic resolution and role context loading
 for the CCI Pull-based context architecture.
 """
 
@@ -11,12 +11,12 @@ from typing import Optional
 import yaml
 
 
-class MainFirstPlanResolver:
-    """Resolves active plans from Main-First worktree.
+class MainFirstEpicResolver:
+    """Resolves active epics from Main-First worktree.
 
-    Main-First Planning: Plans are created and maintained in the main
+    Main-First Planning: Epics are created and maintained in the main
     worktree for visibility, but execution happens in feature worktrees.
-    This class resolves plans from main when running in any worktree.
+    This class resolves epics from main when running in any worktree.
     """
 
     def __init__(self, cwd: Optional[Path] = None):
@@ -88,16 +88,16 @@ class MainFirstPlanResolver:
         except subprocess.CalledProcessError:
             return None
 
-    def resolve_active_plan(self, branch: Optional[str] = None) -> Optional[dict]:
-        """Find the active plan for a branch.
+    def resolve_active_epic(self, branch: Optional[str] = None) -> Optional[dict]:
+        """Find the active epic for a branch.
 
-        Scans main_worktree/docs/plans/live/ for folders matching the branch.
+        Scans main_worktree/docs/epics/live/ for folders matching the branch.
 
         Args:
-            branch: Branch name to find plan for, defaults to current branch.
+            branch: Branch name to find epic for, defaults to current branch.
 
         Returns:
-            Dict with plan info or None if not found:
+            Dict with epic info or None if not found:
             {
                 "plan_folder": Path,
                 "plan_folder_name": str,
@@ -114,7 +114,7 @@ class MainFirstPlanResolver:
         if not branch:
             return None
 
-        plans_live = main_wt / "docs" / "plans" / "live"
+        plans_live = main_wt / "docs" / "epics" / "live"
         if not plans_live.exists():
             return None
 
@@ -200,16 +200,16 @@ class MainFirstPlanResolver:
 
         return plan_info
 
-    def extract_current_task(self, plan_folder: Path) -> Optional[dict]:
-        """Extract the current task (in_progress or next pending).
+    def extract_current_ticket(self, plan_folder: Path) -> Optional[dict]:
+        """Extract the current ticket (in_progress or next pending).
 
         Args:
             plan_folder: Path to the plan folder.
 
         Returns:
-            Task dict or None.
+            Ticket dict or None.
         """
-        tasks = self.extract_all_tasks(plan_folder)
+        tasks = self.extract_all_tickets(plan_folder)
 
         # First: find in_progress
         for task in tasks:
@@ -223,14 +223,14 @@ class MainFirstPlanResolver:
 
         return None
 
-    def extract_all_tasks(self, plan_folder: Path) -> list:
-        """Extract all tasks from plan files in a folder.
+    def extract_all_tickets(self, plan_folder: Path) -> list:
+        """Extract all tickets from plan files in a folder.
 
         Args:
             plan_folder: Path to the plan folder (flattened structure).
 
         Returns:
-            List of task dicts.
+            List of ticket dicts.
         """
         tasks = []
 
@@ -276,6 +276,10 @@ class MainFirstPlanResolver:
                 pass
 
         return tasks
+
+
+# Backward compatibility alias
+MainFirstPlanResolver = MainFirstEpicResolver
 
 
 def get_role_process(role_id: str) -> Optional[dict]:

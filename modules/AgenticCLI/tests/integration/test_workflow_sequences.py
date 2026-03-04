@@ -36,7 +36,7 @@ class TestPlanWorkflowSequence:
                 capture_output=True,
             )
 
-            (repo_path / "docs" / "plans" / "live").mkdir(parents=True)
+            (repo_path / "docs" / "epics" / "live").mkdir(parents=True)
             (repo_path / "README.md").write_text("# Test Project\n")
 
             subprocess.run(["git", "add", "."], cwd=repo_path, capture_output=True)
@@ -98,26 +98,26 @@ class TestPlanWorkflowSequence:
 
     def test_plan_scaffold_status_workflow(self, cli_in_repo, integration_repo):
         """Test: scaffold plan -> check status -> validate."""
-        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "test-feature")
+        stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "test-feature")
         assert code == 0
         assert "Created planning folder" in stdout
 
-        plan_path = integration_repo / "docs" / "plans" / "live" / "test-feature"
+        plan_path = integration_repo / "docs" / "epics" / "live" / "test-feature"
         assert plan_path.exists()
         plan_files = list(plan_path.glob("plan_*.yml"))
         assert len(plan_files) >= 1, "Expected at least one plan_*.yml file"
 
-        stdout, stderr, code = cli_in_repo("plan", "status")
+        stdout, stderr, code = cli_in_repo("epic", "status")
         assert code == 0
 
-        stdout, stderr, code = cli_in_repo("agent", "plan", "validate")
+        stdout, stderr, code = cli_in_repo("agent", "epic", "validate")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
     def test_plan_with_json_output(self, cli_in_repo, integration_repo):
         """Test plan commands with JSON output mode."""
-        cli_in_repo("agent", "plan", "scaffold", "json-test")
+        cli_in_repo("agent", "epic", "scaffold", "json-test")
 
-        plan_path = integration_repo / "docs" / "plans" / "live" / "json-test"
+        plan_path = integration_repo / "docs" / "epics" / "live" / "json-test"
         plan_content = {
             "plan": {
                 "name": "JSON Test Plan",
@@ -138,7 +138,7 @@ class TestPlanWorkflowSequence:
         with open(plan_path / "plan_test.yml", "w") as f:
             yaml.dump(plan_content, f)
 
-        stdout, stderr, code = cli_in_repo("--json", "plan", "status")
+        stdout, stderr, code = cli_in_repo("--json", "epic", "status")
         assert code == 0
         data = json.loads(stdout)
         assert isinstance(data, dict)
@@ -146,10 +146,10 @@ class TestPlanWorkflowSequence:
 
     def test_plan_scaffold_already_exists(self, cli_in_repo, integration_repo):
         """Test scaffolding a plan that already exists."""
-        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "duplicate-test")
+        stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "duplicate-test")
         assert code == 0
 
-        stdout, stderr, code = cli_in_repo("agent", "plan", "scaffold", "duplicate-test")
+        stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "duplicate-test")
         assert code == 1
         assert "already exists" in stdout or "already exists" in stderr
 
@@ -388,7 +388,7 @@ class TestErrorRecoverySequence:
 
     def test_missing_required_args(self, cli_runner):
         """Test that missing required args show usage."""
-        stdout, stderr, code = cli_runner("agent", "plan", "scaffold")
+        stdout, stderr, code = cli_runner("agent", "epic", "scaffold")
         assert code == 2
 
     def test_invalid_plan_path_handled(self, cli_runner, temp_dir):
@@ -396,7 +396,7 @@ class TestErrorRecoverySequence:
         original_cwd = os.getcwd()
         os.chdir(temp_dir)
         try:
-            stdout, stderr, code = cli_runner("plan", "status")
+            stdout, stderr, code = cli_runner("epic", "status")
             assert code in [0, 1]
         finally:
             os.chdir(original_cwd)
@@ -599,7 +599,7 @@ class TestCrossCommandIntegration:
                 capture_output=True,
             )
 
-            (repo_path / "docs" / "plans" / "live").mkdir(parents=True)
+            (repo_path / "docs" / "epics" / "live").mkdir(parents=True)
             (repo_path / "modules").mkdir()
             (repo_path / "README.md").write_text("# Full Integration Test\n")
 
@@ -665,21 +665,21 @@ class TestCrossCommandIntegration:
         stdout, stderr, code = full_cli("setup", "health")
 
         # Step 3: Scaffold a plan
-        stdout, stderr, code = full_cli("agent", "plan", "scaffold", "feature-integration")
+        stdout, stderr, code = full_cli("agent", "epic", "scaffold", "feature-integration")
         assert code == 0
 
         # Step 5: Check plan status
-        stdout, stderr, code = full_cli("plan", "status")
+        stdout, stderr, code = full_cli("epic", "status")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
         # Step 6: Validate plan
-        stdout, stderr, code = full_cli("agent", "plan", "validate")
+        stdout, stderr, code = full_cli("agent", "epic", "validate")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
     def test_json_mode_consistency(self, full_cli):
         """Test that JSON mode works consistently across commands."""
         json_commands = [
-            ["--json", "plan", "status"],
+            ["--json", "epic", "status"],
             ["--json", "configure", "preferences", "list"],
             ["--json", "configure", "state", "list"],
         ]

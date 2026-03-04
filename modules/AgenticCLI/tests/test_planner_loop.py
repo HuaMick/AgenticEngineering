@@ -34,21 +34,21 @@ class TestDiscoverPlansNeedingOrchestration:
         """Plans missing orchestration_*.mmd are returned."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "docs" / "plans" / "live"
-        plans_dir.mkdir(parents=True)
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
 
         # Plan with MMD - should NOT be returned
-        plan_a = plans_dir / "260210AA_with_mmd"
+        plan_a = epics_dir / "260210AA_with_mmd"
         plan_a.mkdir()
         (plan_a / "plan_build.yml").write_text("title: A")
         (plan_a / "orchestration_build.mmd").write_text("graph TD")
 
         # Plan without MMD - should be returned
-        plan_b = plans_dir / "260210BB_no_mmd"
+        plan_b = epics_dir / "260210BB_no_mmd"
         plan_b.mkdir()
         (plan_b / "plan_build.yml").write_text("title: B")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         result = workflow.discover_plans_needing_orchestration()
 
         assert result == ["260210BB_no_mmd"]
@@ -57,23 +57,23 @@ class TestDiscoverPlansNeedingOrchestration:
         """No plans returned when all have orchestration MMDs."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "docs" / "plans" / "live"
-        plans_dir.mkdir(parents=True)
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
 
-        plan_a = plans_dir / "260210AA_done"
+        plan_a = epics_dir / "260210AA_done"
         plan_a.mkdir()
         (plan_a / "orchestration_build.mmd").write_text("graph TD")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         result = workflow.discover_plans_needing_orchestration()
 
         assert result == []
 
     def test_returns_empty_when_no_plans_dir(self, tmp_path):
-        """Returns empty list when plans directory doesn't exist."""
+        """Returns empty list when epics directory doesn't exist."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        workflow = PlannerLoopWorkflow(plans_dir=tmp_path / "nonexistent")
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_path / "nonexistent")
         result = workflow.discover_plans_needing_orchestration()
 
         assert result == []
@@ -82,15 +82,15 @@ class TestDiscoverPlansNeedingOrchestration:
         """Only directories are considered, not files."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "docs" / "plans" / "live"
-        plans_dir.mkdir(parents=True)
-        (plans_dir / "README.md").write_text("info")
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
+        (epics_dir / "README.md").write_text("info")
 
-        plan = plans_dir / "260210CC_real"
+        plan = epics_dir / "260210CC_real"
         plan.mkdir()
         (plan / "plan_build.yml").write_text("title: C")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         result = workflow.discover_plans_needing_orchestration()
 
         assert result == ["260210CC_real"]
@@ -149,49 +149,49 @@ class TestDeterminePlanType:
         """Returns 'build' when plan_build.yml exists."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "my_plan"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "my_plan"
         plan.mkdir()
         (plan / "plan_build.yml").write_text("title: test")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("my_plan") == "build"
 
     def test_test_type(self, tmp_path):
         """Returns 'test' when plan_test.yml exists."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "my_plan"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "my_plan"
         plan.mkdir()
         (plan / "plan_test.yml").write_text("title: test")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("my_plan") == "test"
 
     def test_no_plan_file(self, tmp_path):
         """Returns None when no plan_*.yml exists."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "my_plan"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "my_plan"
         plan.mkdir()
         (plan / "README.md").write_text("no plan here")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("my_plan") is None
 
     def test_nonexistent_folder(self, tmp_path):
         """Returns None when plan folder doesn't exist."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("nonexistent") is None
 
 
@@ -202,99 +202,99 @@ class TestDetectSdkObjective:
         """Returns True when plan_build.yml context contains SDK keywords."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "sdk_plan"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "sdk_plan"
         plan.mkdir()
         (plan / "plan_build.yml").write_text(
             "context: |\n  Migrate sessions to use claude-agent-sdk\n"
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("sdk_plan") is True
 
     def test_no_sdk_keywords(self, tmp_path):
         """Returns False when context has no SDK keywords."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "normal_plan"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "normal_plan"
         plan.mkdir()
         (plan / "plan_build.yml").write_text(
             "context: |\n  Add a new CLI command for listing plans\n"
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("normal_plan") is False
 
     def test_no_context_field(self, tmp_path):
         """Returns False when plan_build.yml has no context field."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "no_ctx"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "no_ctx"
         plan.mkdir()
         (plan / "plan_build.yml").write_text("title: test\nstatus: active\n")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("no_ctx") is False
 
     def test_no_plan_build_yml(self, tmp_path):
         """Returns False when plan_build.yml doesn't exist."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "no_build"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "no_build"
         plan.mkdir()
         (plan / "plan_test.yml").write_text("title: test\n")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("no_build") is False
 
     def test_case_insensitive_matching(self, tmp_path):
         """SDK keyword matching is case-insensitive."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "case_plan"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "case_plan"
         plan.mkdir()
         (plan / "plan_build.yml").write_text(
             "context: |\n  Replace subprocess calls with SDK Migration patterns\n"
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("case_plan") is True
 
     def test_multiple_sdk_keywords(self, tmp_path):
         """Returns True when multiple SDK keywords present."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "multi_sdk"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "multi_sdk"
         plan.mkdir()
         (plan / "plan_build.yml").write_text(
             "context: |\n  Use claude-agent-sdk query() and async iterator for session spawn\n"
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("multi_sdk") is True
 
     def test_malformed_yaml(self, tmp_path):
         """Returns False on malformed YAML (doesn't crash)."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "bad_yaml"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "bad_yaml"
         plan.mkdir()
         (plan / "plan_build.yml").write_text(": : invalid: [yaml\n")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("bad_yaml") is False
 
 
@@ -305,58 +305,58 @@ class TestDeterminePlanTypeWithSdkRouting:
         """plan_build.yml with SDK context returns 'sdk' instead of 'build'."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "sdk_build"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "sdk_build"
         plan.mkdir()
         (plan / "plan_build.yml").write_text(
             "context: |\n  Migrate subprocess replacement using claude-agent-sdk\n"
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("sdk_build") == "sdk"
 
     def test_build_without_sdk_context_returns_build(self, tmp_path):
         """plan_build.yml without SDK context still returns 'build'."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "normal_build"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "normal_build"
         plan.mkdir()
         (plan / "plan_build.yml").write_text(
             "context: |\n  Add new CLI commands for plan management\n"
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("normal_build") == "build"
 
     def test_plan_sdk_yml_returns_sdk(self, tmp_path):
         """plan_sdk.yml returns 'sdk' directly (no context check needed)."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "explicit_sdk"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "explicit_sdk"
         plan.mkdir()
         (plan / "plan_sdk.yml").write_text("title: SDK plan\n")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("explicit_sdk") == "sdk"
 
     def test_test_type_not_affected(self, tmp_path):
         """plan_test.yml returns 'test' (SDK detection only applies to 'build')."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plans_dir.mkdir()
-        plan = plans_dir / "test_plan"
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        plan = epics_dir / "test_plan"
         plan.mkdir()
         (plan / "plan_test.yml").write_text(
             "context: |\n  Test claude-agent-sdk integration\n"
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("test_plan") == "test"
 
 
@@ -469,9 +469,17 @@ class TestPlannerLoopRunner:
 
     def _make_runner(self, monkeypatch, **overrides):
         """Create a runner with a mocked workflow."""
+        import tempfile
+        from pathlib import Path
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
 
-        workflow = PlannerLoopWorkflow()
+        # Create a temporary empty epics_dir so iterdir() won't fail
+        tmp_epics_dir = Path(tempfile.mkdtemp()) / "docs" / "epics" / "live"
+        tmp_epics_dir.mkdir(parents=True, exist_ok=True)
+
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
+        # Also mock get_plan_status so archive loop doesn't fail on missing plans
+        monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "in_progress")
         # Default mocks: all spawn methods return successful SessionResult
         monkeypatch.setattr(workflow, "run_health_check", overrides.get("health_check", lambda: None))
         monkeypatch.setattr(workflow, "compile_bootstrap_context", overrides.get("bootstrap", lambda role="orchestration-planning": {}))
@@ -786,9 +794,9 @@ class TestGetPlanStatus:
     # Helper
     # ------------------------------------------------------------------
 
-    def _make_plan(self, plans_dir, folder_name, yaml_content):
-        """Write a plan_build.yml under plans_dir/folder_name."""
-        plan_dir = plans_dir / folder_name
+    def _make_plan(self, epics_dir, folder_name, yaml_content):
+        """Write a plan_build.yml under epics_dir/folder_name."""
+        plan_dir = epics_dir / folder_name
         plan_dir.mkdir(parents=True, exist_ok=True)
         (plan_dir / "plan_build.yml").write_text(yaml_content)
         return plan_dir
@@ -806,9 +814,9 @@ class TestGetPlanStatus:
         """
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
+        epics_dir = tmp_path / "epics"
         self._make_plan(
-            plans_dir,
+            epics_dir,
             "active_plan",
             "status: active\nphases:\n"
             "  - tasks:\n"
@@ -816,23 +824,23 @@ class TestGetPlanStatus:
             "      - {name: task2, status: completed}\n",
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("active_plan") == "active"
 
     def test_in_progress_status_not_overridden(self, tmp_path):
         """Any non-completed YAML status is respected regardless of tasks."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
+        epics_dir = tmp_path / "epics"
         self._make_plan(
-            plans_dir,
+            epics_dir,
             "wip_plan",
             "status: in_progress\nphases:\n"
             "  - tasks:\n"
             "      - {name: task1, status: completed}\n",
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("wip_plan") == "in_progress"
 
     # ------------------------------------------------------------------
@@ -843,9 +851,9 @@ class TestGetPlanStatus:
         """Plans with no YAML status field are auto-detected as completed via task counting."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
+        epics_dir = tmp_path / "epics"
         self._make_plan(
-            plans_dir,
+            epics_dir,
             "implicit_done",
             "phases:\n"
             "  - tasks:\n"
@@ -853,16 +861,16 @@ class TestGetPlanStatus:
             "      - {name: task2, status: completed}\n",
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("implicit_done") == "completed"
 
     def test_no_status_field_pending_tasks_returns_none(self, tmp_path):
         """Plans with no status field and pending tasks return None (not completed)."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
+        epics_dir = tmp_path / "epics"
         self._make_plan(
-            plans_dir,
+            epics_dir,
             "partial_plan",
             "phases:\n"
             "  - tasks:\n"
@@ -870,7 +878,7 @@ class TestGetPlanStatus:
             "      - {name: task2, status: pending}\n",
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("partial_plan") is None
 
     # ------------------------------------------------------------------
@@ -881,16 +889,16 @@ class TestGetPlanStatus:
         """Explicit status: completed with all tasks done returns completed."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
+        epics_dir = tmp_path / "epics"
         self._make_plan(
-            plans_dir,
+            epics_dir,
             "done_plan",
             "status: completed\nphases:\n"
             "  - tasks:\n"
             "      - {name: task1, status: completed}\n",
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("done_plan") == "completed"
 
     def test_explicit_completed_status_even_with_pending_tasks(self, tmp_path):
@@ -899,16 +907,16 @@ class TestGetPlanStatus:
 
         # When YAML says completed but tasks are still pending, task counting
         # won't trigger the 'pending==0' branch, so the YAML status is returned.
-        plans_dir = tmp_path / "plans"
+        epics_dir = tmp_path / "epics"
         self._make_plan(
-            plans_dir,
+            epics_dir,
             "weird_plan",
             "status: completed\nphases:\n"
             "  - tasks:\n"
             "      - {name: task1, status: pending}\n",
         )
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         # Task counting: pending=1, completed=0 -> not triggered -> falls back to yaml_status="completed"
         assert workflow.get_plan_status("weird_plan") == "completed"
 
@@ -917,44 +925,44 @@ class TestGetPlanStatus:
     # ------------------------------------------------------------------
 
     def test_nonexistent_plan_folder_returns_none(self, tmp_path):
-        """Returns None when plan folder does not exist."""
+        """Returns None when epic folder does not exist."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        workflow = PlannerLoopWorkflow(plans_dir=tmp_path / "plans")
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_path / "epics")
         assert workflow.get_plan_status("ghost_plan") is None
 
     def test_plan_folder_without_plan_build_yml_returns_none(self, tmp_path):
         """Returns None when plan_build.yml is absent."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plan_dir = plans_dir / "no_build"
+        epics_dir = tmp_path / "epics"
+        plan_dir = epics_dir / "no_build"
         plan_dir.mkdir(parents=True)
         (plan_dir / "README.md").write_text("no plan file")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("no_build") is None
 
     def test_malformed_yaml_returns_none(self, tmp_path):
         """Returns None gracefully when plan_build.yml is malformed."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        plan_dir = plans_dir / "bad_yaml"
+        epics_dir = tmp_path / "epics"
+        plan_dir = epics_dir / "bad_yaml"
         plan_dir.mkdir(parents=True)
         (plan_dir / "plan_build.yml").write_text(": : invalid: [yaml\n")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("bad_yaml") is None
 
     def test_empty_phases_no_tasks_returns_none(self, tmp_path):
         """Returns None when phases exist but contain no tasks (completed=0)."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        plans_dir = tmp_path / "plans"
-        self._make_plan(plans_dir, "empty_plan", "phases:\n  - tasks: []\n")
+        epics_dir = tmp_path / "epics"
+        self._make_plan(epics_dir, "empty_plan", "phases:\n  - tasks: []\n")
 
-        workflow = PlannerLoopWorkflow(plans_dir=plans_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("empty_plan") is None
 
 
@@ -1158,6 +1166,8 @@ class TestValidateResult:
 
     def test_validate_result_called_in_process_plan(self, monkeypatch):
         """_process_plan calls _validate_result after each agent execution."""
+        import tempfile
+        from pathlib import Path
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
 
         validated_roles = []
@@ -1165,7 +1175,12 @@ class TestValidateResult:
         def tracking_validate_result(result, role_name):
             validated_roles.append(role_name)
 
-        workflow = PlannerLoopWorkflow()
+        # Create a temporary empty epics_dir so iterdir() won't fail
+        tmp_epics_dir = Path(tempfile.mkdtemp()) / "docs" / "epics" / "live"
+        tmp_epics_dir.mkdir(parents=True, exist_ok=True)
+
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
+        monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "in_progress")
         monkeypatch.setattr(workflow, "run_health_check", lambda: None)
         monkeypatch.setattr(workflow, "compile_bootstrap_context", lambda role="orchestration-planning": {})
         monkeypatch.setattr(workflow, "spawn_explore_agent", lambda pf: _ok_result(duration_ms=100))

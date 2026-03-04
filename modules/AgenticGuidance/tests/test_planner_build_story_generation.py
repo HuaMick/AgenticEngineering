@@ -66,7 +66,7 @@ def test_story_generation_fence_blocks_without_stories():
         content = f.read()
 
     # Check that guidance mentions the fence behavior
-    assert "If `agentic stories find` returns no stories" in content, \
+    assert "If `agentic agent stories find` returns no stories" in content, \
         "Missing guidance for when story discovery returns empty"
 
     # Check that guidance requires story generation

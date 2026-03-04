@@ -287,39 +287,39 @@ class TestRalphStatus:
         data = json.loads(result.stdout)
 
         assert "loop" in data
-        assert "plans" in data
+        assert "epics" in data
         assert data["loop"]["status"] == "running"
         assert data["loop"]["loop_id"] == "test-loop-123"
         assert data["loop"]["current_iteration"] == 2
 
     def test_status_shows_plan_counts(self, cli_runner, mock_ralph_service, ralph_running_state):
-        """status shows plan statistics."""
+        """status shows epic statistics."""
         result = cli_runner(["session", "orchestrate", "ralph", "status", "-j"])
 
         assert result.returncode == 0
         data = json.loads(result.stdout)
 
-        plans_info = data["plans"]
-        assert "total" in plans_info
-        assert "ready_to_execute" in plans_info
-        assert "needs_planning" in plans_info
-        assert "blocked" in plans_info
-        assert "completed" in plans_info
+        epics_info = data["epics"]
+        assert "total" in epics_info
+        assert "ready_to_execute" in epics_info
+        assert "needs_epic_planning" in epics_info
+        assert "blocked" in epics_info
+        assert "completed" in epics_info
 
         # Based on our fixture setup
-        assert plans_info["total"] == 4
-        assert plans_info["ready_to_execute"] == 1  # 260203QC
-        assert plans_info["needs_planning"] == 1  # 260203QG
-        assert plans_info["blocked"] == 1  # 260203VP
-        assert plans_info["completed"] == 1  # 260203PS
+        assert epics_info["total"] == 4
+        assert epics_info["ready_to_execute"] == 1  # 260203QC
+        assert epics_info["needs_epic_planning"] == 1  # 260203QG
+        assert epics_info["blocked"] == 1  # 260203VP
+        assert epics_info["completed"] == 1  # 260203PS
 
     def test_status_human_readable_shows_plan_stats(self, cli_runner, mock_ralph_service):
-        """status without -j shows plan statistics in human format."""
+        """status without -j shows epic statistics in human format."""
         result = cli_runner(["session", "orchestrate", "ralph", "status"])
 
         assert result.returncode == 0
-        # Should show plan breakdown
-        assert "Plan Status" in result.stdout or "plan" in result.stdout.lower()
+        # Should show epic breakdown
+        assert "Epic Status" in result.stdout or "epic" in result.stdout.lower()
         assert "Ready to execute" in result.stdout or "execute" in result.stdout.lower()
 
 
@@ -582,10 +582,10 @@ class TestRalphIntegration:
         assert next_result.returncode == 0
         next_data = json.loads(next_result.stdout)
 
-        # If status shows ready_to_execute plans, next should return execute action
-        if status_data["plans"]["ready_to_execute"] > 0:
+        # If status shows ready_to_execute epics, next should return execute action
+        if status_data["epics"]["ready_to_execute"] > 0:
             assert next_data["action"] == "execute"
-        elif status_data["plans"]["needs_planning"] > 0:
+        elif status_data["epics"]["needs_epic_planning"] > 0:
             assert next_data["action"] == "plan"
 
     def test_next_prioritizes_execute_over_plan(self, cli_runner, mock_ralph_service):

@@ -9,10 +9,10 @@ from agenticcli.validation import (
     validate_branch_name_or_raise,
     validate_identifier,
     validate_path_safe,
-    validate_plan_folder_or_raise,
-    validate_plan_folder_structure,
-    validate_plan_yaml,
-    validate_plan_yaml_or_raise,
+    validate_epic_folder_or_raise,
+    validate_epic_folder_structure,
+    validate_epic_yaml,
+    validate_epic_yaml_or_raise,
 )
 
 
@@ -105,12 +105,12 @@ class TestValidateBranchNameOrRaise:
         assert exc_info.value.exit_code == 40
 
 
-class TestValidatePlanFolderStructure:
-    """Tests for plan folder structure validation."""
+class TestValidateEpicFolderStructure:
+    """Tests for epic folder structure validation."""
 
     def test_nonexistent_folder(self, temp_dir):
         """Test nonexistent folder is invalid."""
-        is_valid, issues = validate_plan_folder_structure(temp_dir / "nonexistent")
+        is_valid, issues = validate_epic_folder_structure(temp_dir / "nonexistent")
         assert is_valid is False
         assert "does not exist" in issues[0]
 
@@ -118,7 +118,7 @@ class TestValidatePlanFolderStructure:
         """Test file instead of directory is invalid."""
         file_path = temp_dir / "plan.yml"
         file_path.write_text("test")
-        is_valid, issues = validate_plan_folder_structure(file_path)
+        is_valid, issues = validate_epic_folder_structure(file_path)
         assert is_valid is False
         assert "not a directory" in issues[0]
 
@@ -126,7 +126,7 @@ class TestValidatePlanFolderStructure:
         """Test missing plan_*.yml files is invalid (flattened structure)."""
         plan_dir = temp_dir / "plan_folder"
         plan_dir.mkdir()
-        is_valid, issues = validate_plan_folder_structure(plan_dir)
+        is_valid, issues = validate_epic_folder_structure(plan_dir)
         assert is_valid is False
         assert "no plan_*.yml files" in issues[0]
 
@@ -136,7 +136,7 @@ class TestValidatePlanFolderStructure:
         plan_dir.mkdir()
         # Create a non-plan file
         (plan_dir / "README.md").write_text("# Test")
-        is_valid, issues = validate_plan_folder_structure(plan_dir)
+        is_valid, issues = validate_epic_folder_structure(plan_dir)
         assert is_valid is False
         assert "no plan_*.yml files" in issues[0]
 
@@ -146,13 +146,13 @@ class TestValidatePlanFolderStructure:
         plan_dir.mkdir()
         # Flattened: plan file directly in plan_dir
         (plan_dir / "plan_build.yml").write_text("plan:\n  name: Test")
-        is_valid, issues = validate_plan_folder_structure(plan_dir)
+        is_valid, issues = validate_epic_folder_structure(plan_dir)
         assert is_valid is True
         assert issues == []
 
 
-class TestValidatePlanFolderOrRaise:
-    """Tests for validate_plan_folder_or_raise."""
+class TestValidateEpicFolderOrRaise:
+    """Tests for validate_epic_folder_or_raise."""
 
     def test_valid_returns_path(self, temp_dir):
         """Test valid folder returns path (flattened structure)."""
@@ -160,17 +160,17 @@ class TestValidatePlanFolderOrRaise:
         plan_dir.mkdir()
         # Flattened: plan file directly in plan_dir
         (plan_dir / "plan_build.yml").write_text("test")
-        result = validate_plan_folder_or_raise(plan_dir)
+        result = validate_epic_folder_or_raise(plan_dir)
         assert result == plan_dir
 
     def test_invalid_raises(self, temp_dir):
         """Test invalid folder raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validate_plan_folder_or_raise(temp_dir / "nonexistent")
+            validate_epic_folder_or_raise(temp_dir / "nonexistent")
         assert "does not exist" in str(exc_info.value)
 
 
-class TestValidatePlanYaml:
+class TestValidateEpicYaml:
     """Tests for plan YAML validation."""
 
     def test_valid_minimal_plan(self):
@@ -180,7 +180,7 @@ plan:
   name: Test Plan
   status: pending
 """
-        is_valid, violations = validate_plan_yaml(content)
+        is_valid, violations = validate_epic_yaml(content)
         assert is_valid is True
         assert violations == []
 
@@ -198,33 +198,33 @@ plan:
       name: Phase 2
       status: pending
 """
-        is_valid, violations = validate_plan_yaml(content)
+        is_valid, violations = validate_epic_yaml(content)
         assert is_valid is True
 
     def test_invalid_yaml_syntax(self):
         """Test invalid YAML syntax."""
         content = "plan:\n  name: Test\n  invalid: ["
-        is_valid, violations = validate_plan_yaml(content)
+        is_valid, violations = validate_epic_yaml(content)
         assert is_valid is False
         assert any("parse error" in v.lower() for v in violations)
 
     def test_empty_content(self):
         """Test empty content is invalid."""
-        is_valid, violations = validate_plan_yaml("")
+        is_valid, violations = validate_epic_yaml("")
         assert is_valid is False
         assert "empty" in violations[0]
 
     def test_missing_plan_field(self):
         """Test missing plan field is invalid."""
         content = "name: Test"
-        is_valid, violations = validate_plan_yaml(content)
+        is_valid, violations = validate_epic_yaml(content)
         assert is_valid is False
         assert any("'plan'" in v for v in violations)
 
     def test_missing_name(self):
         """Test missing plan.name is invalid."""
         content = "plan:\n  status: pending"
-        is_valid, violations = validate_plan_yaml(content)
+        is_valid, violations = validate_epic_yaml(content)
         assert is_valid is False
         assert any("'plan.name'" in v for v in violations)
 
@@ -235,7 +235,7 @@ plan:
   name: Test
   status: unknown
 """
-        is_valid, violations = validate_plan_yaml(content)
+        is_valid, violations = validate_epic_yaml(content)
         assert is_valid is False
         assert any("invalid status" in v for v in violations)
 
@@ -247,7 +247,7 @@ plan:
   status: pending
   phases: not-a-list
 """
-        is_valid, violations = validate_plan_yaml(content)
+        is_valid, violations = validate_epic_yaml(content)
         assert is_valid is False
         assert any("must be a list" in v for v in violations)
 
@@ -260,24 +260,24 @@ plan:
   phases:
     - status: pending
 """
-        is_valid, violations = validate_plan_yaml(content)
+        is_valid, violations = validate_epic_yaml(content)
         assert is_valid is False
         assert any("missing 'id' or 'name'" in v for v in violations)
 
 
-class TestValidatePlanYamlOrRaise:
-    """Tests for validate_plan_yaml_or_raise."""
+class TestValidateEpicYamlOrRaise:
+    """Tests for validate_epic_yaml_or_raise."""
 
     def test_valid_returns_data(self):
         """Test valid YAML returns parsed data."""
         content = "plan:\n  name: Test\n  status: pending"
-        data = validate_plan_yaml_or_raise(content)
+        data = validate_epic_yaml_or_raise(content)
         assert data["plan"]["name"] == "Test"
 
     def test_invalid_raises(self):
         """Test invalid YAML raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validate_plan_yaml_or_raise("invalid: [")
+            validate_epic_yaml_or_raise("invalid: [")
         assert exc_info.value.exit_code == 40
 
 

@@ -656,10 +656,10 @@ class TestResolvePlanFolder:
     """Tests for _resolve_plan_folder helper."""
 
     def test_resolve_existing_plan(self, tmp_path, monkeypatch):
-        """Test resolving an existing plan folder in docs/plans/live/."""
+        """Test resolving an existing epic folder in docs/epics/live/."""
         from agenticcli.commands import session
 
-        live_dir = tmp_path / "docs" / "plans" / "live"
+        live_dir = tmp_path / "docs" / "epics" / "live"
         plan_dir = live_dir / "260207TA_cli_task_spawn"
         plan_dir.mkdir(parents=True)
 
@@ -669,10 +669,10 @@ class TestResolvePlanFolder:
         assert result == plan_dir
 
     def test_resolve_completed_plan(self, tmp_path, monkeypatch):
-        """Test resolving a plan in docs/plans/completed/."""
+        """Test resolving an epic in docs/epics/completed/."""
         from agenticcli.commands import session
 
-        completed_dir = tmp_path / "docs" / "plans" / "completed"
+        completed_dir = tmp_path / "docs" / "epics" / "completed"
         plan_dir = completed_dir / "260203TS_task_service"
         plan_dir.mkdir(parents=True)
 
@@ -682,10 +682,10 @@ class TestResolvePlanFolder:
         assert result == plan_dir
 
     def test_resolve_nonexistent_plan(self, tmp_path, monkeypatch):
-        """Test resolving a plan that doesn't exist."""
+        """Test resolving an epic folder that doesn't exist."""
         from agenticcli.commands import session
 
-        (tmp_path / "docs" / "plans" / "live").mkdir(parents=True)
+        (tmp_path / "docs" / "epics" / "live").mkdir(parents=True)
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
 
         result = session._resolve_plan_folder("nonexistent_plan")
@@ -713,7 +713,7 @@ class TestBuildRolePrompt:
         prompt = session._build_role_prompt("build-python", plan_folder)
         assert "build-python" in prompt
         assert "260207TA_cli_task_spawn" in prompt
-        assert "plan task list" in prompt
+        assert "epic ticket list" in prompt
 
 
 class TestBuildTaskPrompt:
@@ -726,8 +726,8 @@ class TestBuildTaskPrompt:
         plan_folder = tmp_path / "260207TA_test"
         plan_folder.mkdir()
 
-        # Create a plan_build.yml with a task
-        plan_file = plan_folder / "plan_build.yml"
+        # Create a ticket_build.yml with a task
+        plan_file = plan_folder / "ticket_build.yml"
         plan_file.write_text("""
 phases:
   - name: "Test Phase"
@@ -748,7 +748,7 @@ phases:
         assert "CLI_001" in prompt
         assert "Add --task argument" in prompt
         assert "session.py" in prompt
-        assert "agentic plan task complete" in prompt
+        assert "agentic epic ticket complete" in prompt
 
     def test_task_prompt_with_invalid_task(self, tmp_path):
         """Test building a task prompt for a nonexistent task."""
@@ -757,7 +757,7 @@ phases:
         plan_folder = tmp_path / "260207TA_test"
         plan_folder.mkdir()
 
-        plan_file = plan_folder / "plan_build.yml"
+        plan_file = plan_folder / "ticket_build.yml"
         plan_file.write_text("""
 phases:
   - name: "Test Phase"
@@ -781,8 +781,8 @@ class TestSpawnWithRoleAndPlan:
         """Test spawn with --role constructs prompt and spawns agent."""
         from agenticcli.commands import session
 
-        # Set up plan folder
-        live_dir = tmp_path / "docs" / "plans" / "live"
+        # Set up epic folder
+        live_dir = tmp_path / "docs" / "epics" / "live"
         plan_dir = live_dir / "260207TA_test"
         plan_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
@@ -833,12 +833,12 @@ class TestSpawnWithRoleAndPlan:
         """Test spawn with --task loads task context and spawns agent."""
         from agenticcli.commands import session
 
-        # Set up plan folder with task
-        live_dir = tmp_path / "docs" / "plans" / "live"
+        # Set up epic folder with task
+        live_dir = tmp_path / "docs" / "epics" / "live"
         plan_dir = live_dir / "260207TA_test"
         plan_dir.mkdir(parents=True)
 
-        plan_file = plan_dir / "plan_build.yml"
+        plan_file = plan_dir / "ticket_build.yml"
         plan_file.write_text("""
 phases:
   - name: "Build Phase"
@@ -916,7 +916,7 @@ phases:
         """Test that spawn with nonexistent plan fails."""
         from agenticcli.commands import session
 
-        (tmp_path / "docs" / "plans" / "live").mkdir(parents=True)
+        (tmp_path / "docs" / "epics" / "live").mkdir(parents=True)
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
 
         args = SimpleNamespace(
@@ -935,13 +935,13 @@ phases:
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
-        assert "Plan folder not found" in captured.err
+        assert "Epic folder not found" in captured.err
 
     def test_spawn_invalid_task_id(self, mock_sessions_dir, tmp_path, monkeypatch, capsys):
         """Test that spawn with invalid task ID fails gracefully."""
         from agenticcli.commands import session
 
-        live_dir = tmp_path / "docs" / "plans" / "live"
+        live_dir = tmp_path / "docs" / "epics" / "live"
         plan_dir = live_dir / "260207TA_test"
         plan_dir.mkdir(parents=True)
 
@@ -974,7 +974,7 @@ phases:
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
-        assert "Task not found" in captured.err
+        assert "Ticket not found" in captured.err
 
     def test_spawn_no_prompt_no_role_no_task(self, mock_sessions_dir, capsys):
         """Test that spawn without any prompt source fails."""
@@ -2300,8 +2300,8 @@ class TestSpawnAutoWatchDaemon:
         """Test that spawn with --plan calls _ensure_watch_daemon."""
         from agenticcli.commands import session
 
-        # Set up plan folder
-        live_dir = tmp_path / "docs" / "plans" / "live"
+        # Set up epic folder
+        live_dir = tmp_path / "docs" / "epics" / "live"
         plan_dir = live_dir / "260210WD_test"
         plan_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
@@ -2380,8 +2380,8 @@ class TestSpawnAutoWatchDaemon:
         """Test that _ensure_watch_daemon failure doesn't block cmd_spawn."""
         from agenticcli.commands import session
 
-        # Set up plan folder
-        live_dir = tmp_path / "docs" / "plans" / "live"
+        # Set up epic folder
+        live_dir = tmp_path / "docs" / "epics" / "live"
         plan_dir = live_dir / "260210WD_test"
         plan_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)

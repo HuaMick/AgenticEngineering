@@ -12,8 +12,8 @@ import yaml
 
 from agenticguidance.services.ralph import (
     IterationRecord,
-    PlanAction,
-    PlanInfo,
+    EpicAction,
+    EpicInfo,
     RalphLoopService,
     RalphState,
 )
@@ -42,7 +42,7 @@ def clean_state_dir():
 def isolated_service(tmp_path):
     """Create service with isolated state directory."""
     # Use tmp_path for state to avoid conflicts
-    service = RalphLoopService(plans_dir=tmp_path)
+    service = RalphLoopService(epics_dir=tmp_path)
     # Override state_dir to use tmp_path
     service.state_dir = tmp_path / ".state"
     service.state_dir.mkdir(parents=True, exist_ok=True)
@@ -98,13 +98,13 @@ def create_test_plan(
 
 # Test Classes
 
-class TestPlanDiscovery:
-    """Test plan discovery functionality."""
+class TestEpicDiscovery:
+    """Test epic discovery functionality."""
 
     def test_discover_empty_dir(self, tmp_path):
         """Empty directory returns empty list."""
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert plans == []
 
@@ -112,8 +112,8 @@ class TestPlanDiscovery:
         """Single plan with plan_build.yml is discovered."""
         create_test_plan(tmp_path, "test_plan")
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].name == "test_plan"
@@ -125,8 +125,8 @@ class TestPlanDiscovery:
         create_test_plan(tmp_path, "plan_two")
         create_test_plan(tmp_path, "plan_three")
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 3
         plan_names = {p.name for p in plans}
@@ -136,8 +136,8 @@ class TestPlanDiscovery:
         """Plan with orchestration_*.mmd has has_orchestration=True."""
         create_test_plan(tmp_path, "test_plan", has_mmd=True)
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].has_orchestration is True
@@ -146,8 +146,8 @@ class TestPlanDiscovery:
         """Plan without orchestration MMD has has_orchestration=False."""
         create_test_plan(tmp_path, "test_plan", has_mmd=False)
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].has_orchestration is False
@@ -164,8 +164,8 @@ class TestPlanDiscovery:
             ],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].action_required == "execute"
@@ -175,8 +175,8 @@ class TestPlanDiscovery:
         """Plan without MMD gets action_required='needs_planning'."""
         create_test_plan(tmp_path, "test_plan", has_mmd=False)
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].action_required == "needs_planning"
@@ -193,8 +193,8 @@ class TestPlanDiscovery:
             ],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].action_required == "completed"
@@ -206,8 +206,8 @@ class TestPlanDiscovery:
         create_test_plan(tmp_path, ".hidden_plan")
         create_test_plan(tmp_path, "visible_plan")
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].name == "visible_plan"
@@ -222,8 +222,8 @@ class TestPlanDiscovery:
         # Create valid plan
         create_test_plan(tmp_path, "valid_plan")
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].name == "valid_plan"
@@ -240,8 +240,8 @@ class TestPlanDiscovery:
             ],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].current_task == "T2"
@@ -250,8 +250,8 @@ class TestPlanDiscovery:
         """Plan status is read from YAML."""
         create_test_plan(tmp_path, "deferred_plan", status="deferred")
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].status == "deferred"
@@ -273,7 +273,7 @@ class TestPriorityQueue:
             task_statuses=[{"id": "T1", "status": "pending"}],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         queue = service.get_priority_queue()
 
         assert len(queue) == 2
@@ -302,7 +302,7 @@ class TestPriorityQueue:
             dependencies=["dep_plan"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         queue = service.get_priority_queue()
 
         # Should have execute action for dep_plan and blocked action for blocked_plan
@@ -320,7 +320,7 @@ class TestPriorityQueue:
             task_statuses=[{"id": "T1", "status": "completed"}],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         queue = service.get_priority_queue()
 
         # Blocked actions are included in queue but not executable
@@ -348,7 +348,7 @@ class TestPriorityQueue:
         create_test_plan(tmp_path, "plan_one", has_mmd=False)
         create_test_plan(tmp_path, "plan_two", has_mmd=False)
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         queue = service.get_priority_queue()
 
         # First two should be execute actions
@@ -367,8 +367,8 @@ class TestDependencyResolution:
         """Plan without dependencies returns empty list."""
         create_test_plan(tmp_path, "test_plan")
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].dependencies == []
@@ -381,8 +381,8 @@ class TestDependencyResolution:
             dependencies=["dep1", "dep2"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].dependencies == ["dep1", "dep2"]
@@ -405,8 +405,8 @@ class TestDependencyResolution:
             dependencies=["dep_plan"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         # Find dependent plan
         dependent = next(p for p in plans if p.name == "dependent_plan")
@@ -430,8 +430,8 @@ class TestDependencyResolution:
             dependencies=["dep_plan"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         # Find dependent plan
         dependent = next(p for p in plans if p.name == "dependent_plan")
@@ -455,7 +455,7 @@ class TestDependencyResolution:
             dependencies=["unmet_dep"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         queue = service.get_priority_queue()
 
         # Find blocked action
@@ -474,7 +474,7 @@ class TestDependencyResolution:
         create_question_file(plan_dir, severity="blocking", question_id="Q-20260221-120000-a1b2")
         create_question_file(plan_dir, severity="blocking", question_id="Q-20260221-120001-c3d4")
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         queue = service.get_priority_queue()
 
         blocked = next(a for a in queue if a.action == "blocked")
@@ -499,7 +499,7 @@ class TestDependencyResolution:
         )
         create_question_file(plan_dir, severity="blocking", question_id="Q-20260221-130000-e5f6")
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         queue = service.get_priority_queue()
 
         blocked = next(a for a in queue if a.plan_name == "double_blocked")
@@ -524,8 +524,8 @@ class TestDependencyResolution:
         }
         (plan_dir / "plan_build.yml").write_text(yaml.dump(plan_data))
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].dependencies == ["dep1", "dep2"]
@@ -548,8 +548,8 @@ class TestDependencyResolution:
             dependencies=["260203QF"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         # Find dependent plan
         dependent = next(p for p in plans if p.name == "dependent_plan")
@@ -587,7 +587,7 @@ class TestStateManagement:
         """record_iteration adds to iterations list."""
         state = isolated_service.start_loop()
 
-        action = PlanAction(
+        action = EpicAction(
             action="execute",
             plan_name="test_plan",
             plan_path=tmp_path / "test_plan",
@@ -637,12 +637,12 @@ class TestStateManagement:
         state_dir.mkdir()
 
         # Create and start loop
-        service1 = RalphLoopService(plans_dir=tmp_path)
+        service1 = RalphLoopService(epics_dir=tmp_path)
         service1.state_dir = state_dir
         state1 = service1.start_loop(prompt_file="/tmp/prompt.txt")
 
         # Create new service instance and retrieve state
-        service2 = RalphLoopService(plans_dir=tmp_path)
+        service2 = RalphLoopService(epics_dir=tmp_path)
         service2.state_dir = state_dir
         state2 = service2.get_state()
 
@@ -668,7 +668,7 @@ class TestStateManagement:
 
     def test_record_iteration_without_state_raises(self, tmp_path, isolated_service):
         """record_iteration raises when no state exists."""
-        action = PlanAction(action="execute", plan_name="test")
+        action = EpicAction(action="execute", plan_name="test")
 
         with pytest.raises(RuntimeError) as exc_info:
             isolated_service.record_iteration(action, "success")
@@ -682,7 +682,7 @@ class TestStateManagement:
         state_dir.mkdir()
 
         # Test completed
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         service.state_dir = state_dir
         service.start_loop()
         service.stop_loop(reason="completed")
@@ -709,8 +709,8 @@ class TestDataclasses:
     """Test dataclass serialization."""
 
     def test_plan_action_to_dict(self):
-        """PlanAction.to_dict() serializes correctly."""
-        action = PlanAction(
+        """EpicAction.to_dict() serializes correctly."""
+        action = EpicAction(
             action="execute",
             plan_name="test_plan",
             plan_path=Path("/tmp/test_plan"),
@@ -727,8 +727,8 @@ class TestDataclasses:
         assert result["reason"] == "Ready to execute"
 
     def test_plan_action_to_dict_with_none_values(self):
-        """PlanAction.to_dict() handles None values."""
-        action = PlanAction(action="complete")
+        """EpicAction.to_dict() handles None values."""
+        action = EpicAction(action="complete")
 
         result = action.to_dict()
 
@@ -890,8 +890,8 @@ class TestDataclasses:
         assert iteration.output_file == "/tmp/iteration3.log"
 
     def test_plan_info_to_dict(self):
-        """PlanInfo.to_dict() serializes correctly."""
-        info = PlanInfo(
+        """EpicInfo.to_dict() serializes correctly."""
+        info = EpicInfo(
             name="test_plan",
             path=Path("/tmp/test_plan"),
             status="active",
@@ -929,7 +929,7 @@ class TestGetNextAction:
         )
         create_test_plan(tmp_path, "plan2", has_mmd=False)
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         action = service.get_next_action()
 
         assert action is not None
@@ -940,7 +940,7 @@ class TestGetNextAction:
         """get_next_action returns plan action when no execute actions."""
         create_test_plan(tmp_path, "plan1", has_mmd=False)
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         action = service.get_next_action()
 
         assert action is not None
@@ -955,7 +955,7 @@ class TestGetNextAction:
             task_statuses=[{"id": "T1", "status": "completed"}],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         action = service.get_next_action()
 
         assert action is None
@@ -978,7 +978,7 @@ class TestGetNextAction:
             dependencies=["dep_plan"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         action = service.get_next_action()
 
         # Should return execute action for dep_plan, not blocked_plan
@@ -1003,7 +1003,7 @@ class TestCheckAllComplete:
             task_statuses=[{"id": "T1", "status": "completed"}],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         result = service.check_all_complete()
 
         assert result is True
@@ -1017,7 +1017,7 @@ class TestCheckAllComplete:
             task_statuses=[{"id": "T1", "status": "pending"}],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         result = service.check_all_complete()
 
         assert result is False
@@ -1026,7 +1026,7 @@ class TestCheckAllComplete:
         """check_all_complete returns False when planning needed."""
         create_test_plan(tmp_path, "plan1", has_mmd=False)
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         result = service.check_all_complete()
 
         assert result is False
@@ -1042,7 +1042,7 @@ class TestCheckAllComplete:
             dependencies=["nonexistent_dep"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         result = service.check_all_complete()
 
         # All executable work is done (blocked plans don't count)
@@ -1050,7 +1050,7 @@ class TestCheckAllComplete:
 
     def test_check_all_complete_empty_directory(self, tmp_path):
         """check_all_complete returns True when no plans exist."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         result = service.check_all_complete()
 
         assert result is True
@@ -1059,15 +1059,15 @@ class TestCheckAllComplete:
 class TestServiceInitialization:
     """Test RalphLoopService initialization."""
 
-    def test_init_with_custom_plans_dir(self, tmp_path):
-        """Service accepts custom plans_dir."""
-        service = RalphLoopService(plans_dir=tmp_path)
+    def test_init_with_custom_epics_dir(self, tmp_path):
+        """Service accepts custom epics_dir."""
+        service = RalphLoopService(epics_dir=tmp_path)
 
-        assert service.plans_dir == tmp_path
+        assert service.epics_dir == tmp_path
 
     @patch("subprocess.run")
-    def test_init_without_plans_dir_finds_git_root(self, mock_run, tmp_path):
-        """Service finds git root when plans_dir not provided."""
+    def test_init_without_epics_dir_finds_git_root(self, mock_run, tmp_path):
+        """Service finds git root when epics_dir not provided."""
         mock_run.return_value = MagicMock(
             stdout=str(tmp_path) + "\n",
             returncode=0,
@@ -1075,22 +1075,22 @@ class TestServiceInitialization:
 
         service = RalphLoopService()
 
-        assert service.plans_dir == tmp_path / "docs" / "plans" / "live"
+        assert service.epics_dir == tmp_path / "docs" / "epics" / "live"
 
     @patch("subprocess.run")
-    def test_init_without_plans_dir_fallback_on_git_error(self, mock_run, tmp_path):
+    def test_init_without_epics_dir_fallback_on_git_error(self, mock_run, tmp_path):
         """Service falls back to cwd when git command fails."""
         mock_run.side_effect = subprocess.CalledProcessError(1, "git")
 
         service = RalphLoopService()
 
-        # Should fall back to cwd/docs/plans/live
-        expected = Path.cwd() / "docs" / "plans" / "live"
-        assert service.plans_dir == expected
+        # Should fall back to cwd/docs/epics/live
+        expected = Path.cwd() / "docs" / "epics" / "live"
+        assert service.epics_dir == expected
 
     def test_state_dir_created(self, tmp_path):
         """State directory is created on initialization."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         assert service.state_dir.exists()
         assert service.state_dir.is_dir()
@@ -1106,8 +1106,8 @@ class TestEdgeCases:
         plan_dir.mkdir()
         (plan_dir / "plan_build.yml").write_text("invalid: yaml: [unclosed")
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         # Corrupted plan is discovered but with zero tasks
         # (yaml.safe_load returns None on error, handled by _analyze_plan_file)
@@ -1127,8 +1127,8 @@ class TestEdgeCases:
             ],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].pending_tasks == 2  # in_progress + pending
@@ -1141,8 +1141,8 @@ class TestEdgeCases:
         plan_dir.mkdir()
         (plan_dir / "plan_build.yml").write_text("")
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         # Empty plan should still be discovered but with zero tasks
         assert len(plans) == 1
@@ -1156,8 +1156,8 @@ class TestEdgeCases:
         plan_data = {"name": "no_tasks", "status": "active", "phases": []}
         (plan_dir / "plan_build.yml").write_text(yaml.dump(plan_data))
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].pending_tasks == 0
@@ -1169,7 +1169,7 @@ class TestEdgeCases:
 
         # Record multiple iterations
         for i in range(1, 4):
-            action = PlanAction(
+            action = EpicAction(
                 action="execute",
                 plan_name=f"plan{i}",
                 task_id=f"T{i}",
@@ -1235,7 +1235,7 @@ class TestBlockingQuestions:
         plan_dir = create_test_plan(tmp_path, "test_plan")
         create_question_file(plan_dir, severity="blocking")
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         has_blocking, count = service._has_blocking_questions(plan_dir)
 
         assert has_blocking is True
@@ -1246,7 +1246,7 @@ class TestBlockingQuestions:
         plan_dir = create_test_plan(tmp_path, "test_plan")
         create_question_file(plan_dir, severity="medium")
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         has_blocking, count = service._has_blocking_questions(plan_dir)
 
         assert has_blocking is False
@@ -1257,14 +1257,14 @@ class TestBlockingQuestions:
         plan_dir = create_test_plan(tmp_path, "test_plan")
         # No questions directory created - just the plan
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         has_blocking, count = service._has_blocking_questions(plan_dir)
 
         assert has_blocking is False
         assert count == 0
 
-    def test_discover_plans_blocks_on_questions(self, tmp_path):
-        """discover_plans sets action_required='blocked' when blocking questions exist."""
+    def test_discover_epics_blocks_on_questions(self, tmp_path):
+        """discover_epics sets action_required='blocked' when blocking questions exist."""
         plan_dir = create_test_plan(
             tmp_path,
             "test_plan",
@@ -1273,8 +1273,8 @@ class TestBlockingQuestions:
         )
         create_question_file(plan_dir, severity="blocking")
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
 
         assert len(plans) == 1
         assert plans[0].action_required == "blocked"
@@ -1286,7 +1286,7 @@ class TestDetermineAction:
 
     def test_determine_action_empty_plan_no_mmd(self, tmp_path):
         """Empty plan without orchestration returns 'needs_planning'."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         action = service._determine_action_required(
             has_orchestration=False,
             pending_tasks=0,
@@ -1297,7 +1297,7 @@ class TestDetermineAction:
 
     def test_determine_action_empty_plan_with_mmd(self, tmp_path):
         """Empty plan with orchestration returns 'completed'."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         action = service._determine_action_required(
             has_orchestration=True,
             pending_tasks=0,
@@ -1320,7 +1320,7 @@ class TestCompletionStatus:
         )
         create_question_file(plan_dir, severity="blocking")
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         status = service.get_completion_status()
 
         assert status["blocked_by_questions"] == 1
@@ -1344,7 +1344,7 @@ class TestCompletionStatus:
             ],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         status = service.get_completion_status()
 
         assert status["can_emit_promise"] is True
@@ -1372,7 +1372,7 @@ class TestCompletionStatus:
             dependencies=["dep_plan"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         status = service.get_completion_status()
 
         assert status["blocked_by_deps"] == 1
@@ -1390,7 +1390,7 @@ class TestCompletionStatus:
             dependencies=["nonexistent_external_dep"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         status = service.get_completion_status()
 
         assert status["blocked_by_deps"] == 1
@@ -1413,7 +1413,7 @@ class TestCompletionStatus:
             has_mmd=False,
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         status = service.get_completion_status()
 
         assert status["in_progress"] == 2
@@ -1421,7 +1421,7 @@ class TestCompletionStatus:
 
     def test_get_completion_status_empty_dir(self, tmp_path):
         """Empty directory returns all zeros and can_emit_promise True."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         status = service.get_completion_status()
 
         assert status["all_complete"] is True

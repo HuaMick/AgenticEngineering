@@ -1,7 +1,7 @@
 guideline:
-  name: "Plan Completion Patterns (Copy-and-Sync)"
+  name: "Epic Completion Patterns (Copy-and-Sync)"
   description: |
-    Standard patterns for managing plan files during the transition from 'active' to 'completed' states.
+    Standard patterns for managing epic files during the transition from 'active' to 'completed' states.
     Ensures that live workspaces remain focused while preserving a full audit trail of finished work.
 
   inputs:
@@ -11,15 +11,15 @@ guideline:
   rules:
     - rule: "Two-Level Completion Model"
       description: |
-        Plan completion happens at two levels: item-level sync (file remains in live/) 
-        and folder-level copy (entire plan folder moves to completed/).
+        Epic completion happens at two levels: item-level sync (file remains in live/)
+        and folder-level copy (entire epic folder moves to completed/).
       justification: |
-        Allows follow-on work to continue in the live folder without losing the context 
+        Allows follow-on work to continue in the live folder without losing the context
         of what was previously achieved. Avoids large, monolithic 'completed' files.
       
     - rule: "Incremental Completion (Copy-and-Sync)"
       description: |
-        For phase plans (plan_live_*.yml), files stay in live/ as long as ANY item is pending.
+        For phase epics (ticket_*.yml), files stay in live/ as long as ANY item is pending.
         Completed items are synced to a copy in completed/.
       execution_pattern:
         - "Identify completed items in live/ file"
@@ -33,7 +33,7 @@ guideline:
       execution_pattern:
         - "Verify all items in live/my_feature.yml are status: completed"
         - "Ensure completed/my_feature.yml contains all these items"
-        - "Use `agentic plan move tasks --plan <plan_folder>` to archive completed tasks"
+        - "Use `agentic epic move tickets --epic <epic_folder>` to archive completed tickets"
 
   examples:
     - description: "Copy-and-Sync Pattern Demonstration"
@@ -44,11 +44,11 @@ guideline:
         scenario: "Work in progress with some items completed"
 
         folder_structure:
-          docs/plans/live/251215MA_main/:
+          docs/epics/live/251215MA_main/:
             live/:
-              plan_live_enhance.yml: "Phase definition (reserved - stays in live/)"
+              ticket_enhance.yml: "Phase definition (reserved - stays in live/)"
               my_feature.yml: "5 items: 3 completed, 2 pending (stays in live/)"
-              another_task.yml: "All items pending (stays in live/)"
+              another_ticket.yml: "All items pending (stays in live/)"
             completed/:
               my_feature.yml: "3 items: only completed ones (synced copy)"
               old_feature.yml: "All items done, deleted from live/"
@@ -67,7 +67,7 @@ guideline:
             note: "Was deleted from live/ when all items completed"
 
           - description: "No completion yet (file ONLY in live/)"
-            file: another_task.yml
+            file: another_ticket.yml
             note: "Will get a completed/ copy when first item completes"
 
         completion_workflow:
@@ -84,55 +84,55 @@ guideline:
 
   cli_commands:
     description: |
-      CLI commands for plan archival. See modules/AgenticGuidance/assets/definitions/plans.yml
+      CLI commands for epic archival. See modules/AgenticGuidance/assets/definitions/plans.yml
       for authoritative CLI usage documentation.
     commands:
       archive:
-        command: "agentic plan archive <full_path>"
-        example: "agentic plan archive docs/plans/live/260128AG_example"
+        command: "agentic epic archive <full_path>"
+        example: "agentic epic archive docs/epics/live/260128AG_example"
         note: "Copies to completed/ but does NOT remove source from live/"
       unarchive:
-        command: "agentic plan unarchive <plan_name>"
-        example: "agentic plan unarchive 260128AG_example"
+        command: "agentic epic unarchive <epic_name>"
+        example: "agentic epic unarchive 260128AG_example"
         note: "Moves from completed/ back to live/ (reverse archival)"
       auto_archival:
-        trigger: "When completing the last task with 'agentic plan task complete'"
+        trigger: "When completing the last ticket with 'agentic epic ticket complete'"
         suppress: "Use --no-archive flag to prevent auto-archival"
     path_requirement: |
-      Plan commands accept full paths or short names.
+      Epic commands accept full paths or short names.
       Short-name resolution IS supported: partial folder names are matched
-      against docs/plans/live/ using prefix matching (startswith).
-      Example: --plan 260128AG resolves to docs/plans/live/260128AG_example
+      against docs/epics/live/ using prefix matching (startswith).
+      Example: --epic 260128AG resolves to docs/epics/live/260128AG_example
 
   # ==============================================
   # FENCE: CLI-ONLY FILE OPERATIONS
   # ==============================================
   cli_only_fence:
     description: |
-      FENCE: All plan file operations MUST use CLI commands.
+      FENCE: All epic file operations MUST use CLI commands.
       Manual file operations (rm, mv, Edit on status fields) are PROHIBITED.
     justification: |
       CLI commands ensure data consistency, trigger auto-archival, and maintain
-      proper plan lifecycle state. Manual operations bypass these safeguards and
-      can leave plans in inconsistent states.
+      proper epic lifecycle state. Manual operations bypass these safeguards and
+      can leave epics in inconsistent states.
     prohibited_operations:
-      - "rm docs/plans/live/<folder>  # Use CLI archival instead"
-      - "mv docs/plans/live/<folder> docs/plans/completed/  # CLI handles this"
-      - "Edit tool to change task status fields  # Use agentic plan task start/complete"
-      - "Direct YAML editing of plan status  # CLI manages status transitions"
+      - "rm docs/epics/live/<folder>  # Use CLI archival instead"
+      - "mv docs/epics/live/<folder> docs/epics/completed/  # CLI handles this"
+      - "Edit tool to change ticket status fields  # Use agentic epic ticket start/complete"
+      - "Direct YAML editing of epic status  # CLI manages status transitions"
     required_cli_commands:
-      task_management:
-        - command: "agentic plan task start <task_id> --plan <folder>"
-          purpose: "Mark task as in_progress"
-        - command: "agentic plan task complete <task_id> --plan <folder>"
-          purpose: "Mark task as completed; triggers auto-archive if last task"
+      ticket_management:
+        - command: "agentic epic ticket start <ticket_id> --epic <folder>"
+          purpose: "Mark ticket as in_progress"
+        - command: "agentic epic ticket complete <ticket_id> --epic <folder>"
+          purpose: "Mark ticket as completed; triggers auto-archive if last ticket"
       archival:
-        - command: "agentic plan archive <folder>"
+        - command: "agentic epic archive <folder>"
           purpose: "Manual archival (copies to completed/)"
-        - command: "agentic plan unarchive <name>"
-          purpose: "Restore archived plan to live/"
+        - command: "agentic epic unarchive <name>"
+          purpose: "Restore archived epic to live/"
     violation_indicators:
-      - "Bash rm command on docs/plans/ paths"
-      - "Bash mv command on docs/plans/ paths"
-      - "Edit tool modifying status: field in plan YAML"
-      - "Plan folder missing from live/ without CLI archive call"
+      - "Bash rm command on docs/epics/ paths"
+      - "Bash mv command on docs/epics/ paths"
+      - "Edit tool modifying status: field in epic YAML"
+      - "Epic folder missing from live/ without CLI archive call"

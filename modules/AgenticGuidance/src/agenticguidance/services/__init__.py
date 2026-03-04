@@ -6,15 +6,16 @@ Each module provides a specific domain of functionality:
 
 - config: Configuration management with tiered loading
 - state: Process state registry and file locking
-- context: Plan resolution and role context loading
-- plan: Plan movement and archival workflows + CRUD operations (PlanService)
-- plan_repository: TinyDB-backed storage repository for plans and tasks
+- context: Epic resolution and role context loading
+- epic: Epic movement and archival workflows + CRUD operations (EpicService)
+- epic_repository: TinyDB-backed storage repository for epics and tickets
 - environment: Environment variable management
 - template: Jinja2 template rendering
-- preset: Task preset loading
+- preset: Ticket preset loading
 - session: Tmux session lifecycle management
 - claude_session: Claude Code session state management
-- ralph: Ralph Loop plan discovery and prioritization
+- ralph: Ralph Loop epic discovery and prioritization
+- ticket: Ticket CRUD operations (TicketService)
 """
 
 from .config import (
@@ -38,23 +39,23 @@ from .environment import (
     SecretSource,
     is_secret_name,
 )
-from .plan import (
+from .epic import (
+    EpicCreateResult,
+    EpicData,
+    EpicDeleteResult,
+    EpicMetadata,
+    EpicMovementWorkflow,
+    EpicService,
+    EpicUpdateResult,
     FolderMoveResult,
     GitSafetyChecker,
     MoveResult,
     PhaseData,
-    PlanCreateResult,
-    PlanData,
-    PlanDeleteResult,
-    PlanMetadata,
-    PlanMovementWorkflow,
-    PlanService,
-    PlanUpdateResult,
-    TaskData,
-    TaskMoveResult,
+    TicketData,
+    TicketMoveResult,
     ValidationResult,
 )
-from .plan_repository import PlanRepository
+from .epic_repository import EpicRepository
 from .preset import (
     PresetLoadResult,
     TaskPresetWorkflow,
@@ -89,14 +90,16 @@ from .template import (
     create_template_context_from_project,
 )
 from .ralph import (
+    EpicAction,
+    EpicInfo,
     PlanAction,
     PlanInfo,
     RalphLoopService,
 )
-from .task import (
-    Task,
-    TaskService,
-    TaskStatus,
+from .ticket import (
+    Ticket,
+    TicketService,
+    TicketStatus,
 )
 
 __all__ = [
@@ -118,22 +121,23 @@ __all__ = [
     "EnvVar",
     "SecretSource",
     "is_secret_name",
-    # Plan services
+    # Epic services (new canonical names)
+    "EpicCreateResult",
+    "EpicData",
+    "EpicDeleteResult",
+    "EpicMetadata",
+    "EpicMovementWorkflow",
+    "EpicService",
+    "EpicUpdateResult",
+    "EpicRepository",
+    # Shared movement types (used by both epic and plan modules)
     "FolderMoveResult",
     "GitSafetyChecker",
     "MoveResult",
     "PhaseData",
-    "PlanCreateResult",
-    "PlanData",
-    "PlanDeleteResult",
-    "PlanMetadata",
-    "PlanMovementWorkflow",
-    "PlanService",
-    "PlanUpdateResult",
-    "TaskData",
-    "TaskMoveResult",
+    "TicketData",
+    "TicketMoveResult",
     "ValidationResult",
-    "PlanRepository",
     # Preset services
     "PresetLoadResult",
     "TaskPresetWorkflow",
@@ -161,11 +165,13 @@ __all__ = [
     "TemplateWorkflow",
     "create_template_context_from_project",
     # Ralph Loop services
-    "PlanAction",
-    "PlanInfo",
+    "EpicAction",
+    "EpicInfo",
+    "PlanAction",  # backward-compat alias for EpicAction
+    "PlanInfo",    # backward-compat alias for EpicInfo
     "RalphLoopService",
-    # Task services
-    "Task",
-    "TaskService",
-    "TaskStatus",
+    # Ticket services (new canonical names)
+    "Ticket",
+    "TicketService",
+    "TicketStatus",
 ]

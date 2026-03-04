@@ -57,7 +57,7 @@ executor_scope:
       description: "Primary entrypoint for execution with pre-approved plan"
       required_inputs:
         - "plan_path: Path to approved Plan-MMD file"
-        - "plan_folder: Path to plan folder containing YAML files"
+        - "epic_folder: Path to epic folder containing YAML files"
       behavior: |
         Executor loads the Plan-MMD, validates all referenced YAML files exist,
         resumes from last incomplete phase (or starts from beginning), and
@@ -531,7 +531,7 @@ feedback_triggers:
         create_remediation_plan: |
           1. If agent did not already create plan folder:
              - Generate plan name using standard naming: YYMMDDXX_<description>
-             - Create folder: agentic plan init <branch> --description <desc>
+             - Create folder: agentic agent epic init <branch> --description <desc>
              - Write seed file with error context
           2. Log remediation plan reference in current plan's execution report
           3. If CRITICAL: Pause and ask user whether to continue or address first
@@ -676,7 +676,7 @@ state_model:
         %% STATUS: Environment_Setup=completed, Domain_Build=completed, Integration_Test=in_progress, CI_CD_Validation=pending
 
     yaml_status_format:
-      location: "Phase entries in plan_live_*.yml files"
+      location: "Phase entries in ticket_*.yml files"
       structure: |
         phases:
           - name: "Environment_Setup"
@@ -878,13 +878,13 @@ fallback_behaviors:
 
   missing_plan_yaml:
     scenario: "Plan-MMD references plan folder but YAML files are missing"
-    detection: "plan_folder path exists but required YAML files absent"
+    detection: "epic_folder path exists but required YAML files absent"
 
     fallback_strategy:
       check_pattern: |
         Required files:
-        - plan_live_build.yml OR plan_live_test.yml OR plan_live_teach.yml
-        - At least one plan_live_*.yml must exist for execution
+        - ticket_build.yml OR ticket_test.yml OR ticket_teach.yml
+        - At least one ticket_*.yml must exist for execution
 
       on_missing:
         - "1. Check if plan needs generation (new plan folder)"
@@ -938,8 +938,8 @@ execution_protocol:
 
       - step: "2. Load Plan YAML files"
         actions:
-          - "Read plan_folder path"
-          - "Load all plan_live_*.yml files"
+          - "Read epic_folder path"
+          - "Load all ticket_*.yml files"
           - "Build phase-to-YAML mapping"
 
       - step: "3. Validate orchestrator manifest"
@@ -1003,7 +1003,7 @@ execution_protocol:
     on_completion:
       - "Update all phase statuses to final state"
       - "Generate execution summary"
-      - "Archive completed plan to docs/plans/completed/ (if fully complete)"
+      - "Archive completed epic to docs/epics/completed/ (if fully complete)"
 
     on_interruption:
       - "Persist current state to YAML"
@@ -1088,15 +1088,15 @@ task_parallelization:
 
     cli_pattern: |
       # Spawn individual task within a plan
-      agentic session spawn --role <agent> --plan <folder> --task <task_id> -b --dangerously-skip-permissions
+      agentic session spawn --role <agent> --epic <folder> --ticket <ticket_id> -b --dangerously-skip-permissions
 
     example: |
       # Parallel batch: T_001 and T_002 can run simultaneously
-      agentic session spawn --role build-python --plan 260207XX_feature --task T_001 -b --dangerously-skip-permissions
-      agentic session spawn --role build-python --plan 260207XX_feature --task T_002 -b --dangerously-skip-permissions
+      agentic session spawn --role build-python --epic 260207XX_feature --ticket T_001 -b --dangerously-skip-permissions
+      agentic session spawn --role build-python --epic 260207XX_feature --ticket T_002 -b --dangerously-skip-permissions
 
       # Sequential: Wait for T_001 to complete, then run T_003
-      agentic session spawn --role build-python --plan 260207XX_feature --task T_003 -b --dangerously-skip-permissions
+      agentic session spawn --role build-python --epic 260207XX_feature --ticket T_003 -b --dangerously-skip-permissions
 
   missing_target_files:
     behavior: |
@@ -1112,9 +1112,9 @@ integration_points:
   agentic_cli:
     description: "CLI commands the executor uses for plan operations"
     commands:
-      - "agentic plan validate: Validate plan folder structure"
-      - "agentic plan move tasks: Move completed tasks to plan_completed.yml"
-      - "agentic plan move folder: Archive plan folder to completed/"
+      - "agentic agent epic validate: Validate epic folder structure"
+      - "agentic agent epic move tickets: Move completed tickets to epic_completed.yml"
+      - "agentic agent epic move folder: Archive epic folder to completed/"
 
   orchestration_planning:
     description: "Interface for delegating to planning agent"
@@ -1149,7 +1149,7 @@ examples:
       %% PLAN_MMD_VERSION: 1.1
       %% GOAL: Implement feature X
       %% PROFILE: Build
-      %% PLAN_FOLDER: docs/plans/live/250110Repo_feature-x
+      %% EPIC_FOLDER: docs/epics/live/250110Repo_feature-x
       %% PHASES: Setup, Implementation, Testing
       %% AGENT_ROUTING: Setup -> deployer, Implementation -> builder, Testing -> tester
       %% STATUS: Setup=pending, Implementation=pending, Testing=pending
@@ -1199,7 +1199,7 @@ validation_checklist:
     - "All routed agents are valid types"
     - "All routed agents are in orchestrator's spawns fence"
     - "Plan folder exists and is accessible"
-    - "At least one plan_live_*.yml exists"
+    - "At least one ticket_*.yml exists"
     - "YAML phase names match MMD PHASES"
 
   during_execution:

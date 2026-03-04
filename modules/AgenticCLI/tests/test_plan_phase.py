@@ -1,6 +1,6 @@
-"""Tests for phase commands in plan management.
+"""Tests for phase commands in epic management.
 
-Unit tests for 'agentic plan phase add/list/update' commands.
+Unit tests for 'agentic agent epic phase add/list/update' commands.
 Tests cover adding phases to plans, listing phases, and updating
 phase status and names.
 """
@@ -101,7 +101,7 @@ class TestPhaseAddToEmptyPlan:
     def test_phase_add_to_empty_plan(self, empty_plan, cli_runner):
         """Test adding a phase to a plan with no phases."""
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "phase", "add", "--id", "P1", "--name", "Initial Setup", "--plan", str(empty_plan)]
+            ["agent", "epic", "phase", "add", "--id", "P1", "--name", "Initial Setup", "--plan", str(empty_plan)]
         )
         assert code == 0
         assert "Added phase" in stdout
@@ -121,7 +121,7 @@ class TestPhaseAddToEmptyPlan:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "add",
                 "--id", "P1",
@@ -147,7 +147,7 @@ class TestPhaseAddToExistingPhases:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "add",
                 "--id", "P3",
@@ -176,7 +176,7 @@ class TestPhaseAddToExistingPhases:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "add",
                 "--id", "P1",
@@ -198,7 +198,7 @@ class TestPhaseAddToExistingPhases:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "add",
                 "--id", "NP2",
@@ -222,7 +222,7 @@ class TestPhaseListEmpty:
     def test_phase_list_empty(self, empty_plan, cli_runner):
         """Test listing phases on a plan with no phases."""
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "phase", "list", "--plan", str(empty_plan)]
+            ["agent", "epic", "phase", "list", "--plan", str(empty_plan)]
         )
         # Should succeed but show no phases message
         assert code == 0
@@ -235,7 +235,7 @@ class TestPhaseListWithPhases:
     def test_phase_list_with_phases(self, plan_with_phases, cli_runner):
         """Test listing phases shows all phase information."""
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "phase", "list", "--plan", str(plan_with_phases)]
+            ["agent", "epic", "phase", "list", "--plan", str(plan_with_phases)]
         )
         assert code == 0
         assert "P1" in stdout
@@ -246,7 +246,7 @@ class TestPhaseListWithPhases:
     def test_phase_list_shows_status(self, plan_with_phases, cli_runner):
         """Test that phase list shows status for each phase."""
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "phase", "list", "--plan", str(plan_with_phases)]
+            ["agent", "epic", "phase", "list", "--plan", str(plan_with_phases)]
         )
         assert code == 0
         # Status values should appear
@@ -255,7 +255,7 @@ class TestPhaseListWithPhases:
     def test_phase_list_shows_task_count(self, plan_with_phases, cli_runner):
         """Test that phase list shows task count for each phase."""
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "phase", "list", "--plan", str(plan_with_phases)]
+            ["agent", "epic", "phase", "list", "--plan", str(plan_with_phases)]
         )
         assert code == 0
         # Should show task counts (P1 has 1 task, P2 has 2 tasks)
@@ -266,7 +266,7 @@ class TestPhaseListWithPhases:
         import json
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "phase", "list", "--plan", str(plan_with_phases)]
+            ["-j", "agent", "epic", "phase", "list", "--plan", str(plan_with_phases)]
         )
         assert code == 0
         result = json.loads(stdout)
@@ -278,7 +278,7 @@ class TestPhaseListWithPhases:
     def test_phase_list_nested_structure(self, plan_with_nested_structure, cli_runner):
         """Test listing phases from nested 'plan' key structure."""
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "phase", "list", "--plan", str(plan_with_nested_structure)]
+            ["agent", "epic", "phase", "list", "--plan", str(plan_with_nested_structure)]
         )
         assert code == 0
         assert "NP1" in stdout
@@ -294,7 +294,7 @@ class TestPhaseUpdateStatus:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "P2",
@@ -319,7 +319,7 @@ class TestPhaseUpdateStatus:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "P2",
@@ -341,7 +341,7 @@ class TestPhaseUpdateStatus:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "P1",
@@ -367,7 +367,7 @@ class TestPhaseUpdateName:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "P1",
@@ -392,7 +392,7 @@ class TestPhaseUpdateName:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "P2",
@@ -421,7 +421,7 @@ class TestPhaseUpdateNotFound:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "P99",
@@ -439,7 +439,7 @@ class TestPhaseUpdateNotFound:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "P1",
@@ -455,7 +455,7 @@ class TestPhaseUpdateNotFound:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "P1",
@@ -477,7 +477,7 @@ class TestPhaseUpdateNestedStructure:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "NP1",
@@ -498,7 +498,7 @@ class TestPhaseUpdateNestedStructure:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "update",
                 "NP1",
@@ -529,7 +529,7 @@ class TestPhaseAddEdgeCases:
                 yaml.dump({"name": "test"}, f)
 
             stdout, stderr, code = cli_runner(
-                ["agent", "plan", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(plan_dir)]
+                ["agent", "epic", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(plan_dir)]
             )
             assert code != 0
             assert "plan_build.yml not found" in stderr
@@ -539,7 +539,7 @@ class TestPhaseAddEdgeCases:
         stdout, stderr, code = cli_runner(
             [
                 "agent",
-                "plan",
+                "epic",
                 "phase",
                 "add",
                 "--id", "P1-BUILD_V2",
@@ -559,7 +559,7 @@ class TestPhaseAddEdgeCases:
         import json
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(empty_plan)]
+            ["-j", "agent", "epic", "phase", "add", "--id", "P1", "--name", "Test Phase", "--plan", str(empty_plan)]
         )
         assert code == 0
         result = json.loads(stdout)
@@ -582,7 +582,7 @@ class TestPhaseListEdgeCases:
                 yaml.dump({"name": "test"}, f)
 
             stdout, stderr, code = cli_runner(
-                ["agent", "plan", "phase", "list", "--plan", str(plan_dir)]
+                ["agent", "epic", "phase", "list", "--plan", str(plan_dir)]
             )
             assert code != 0
             assert "plan_build.yml not found" in stderr
@@ -596,7 +596,7 @@ class TestPhaseListEdgeCases:
             plan_file.write_text("")
 
             stdout, stderr, code = cli_runner(
-                ["agent", "plan", "phase", "list", "--plan", str(plan_dir)]
+                ["agent", "epic", "phase", "list", "--plan", str(plan_dir)]
             )
             assert code != 0
             assert "empty" in stderr.lower()
@@ -624,7 +624,7 @@ class TestPhaseListEdgeCases:
                 yaml.dump(plan_content, f, default_flow_style=False)
 
             stdout, stderr, code = cli_runner(
-                ["agent", "plan", "phase", "list", "--plan", str(plan_dir)]
+                ["agent", "epic", "phase", "list", "--plan", str(plan_dir)]
             )
             # Should succeed and show 0 tasks
             assert code == 0

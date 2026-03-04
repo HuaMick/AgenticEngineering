@@ -249,13 +249,13 @@ class TestAnswerCommandInteractive:
     """Integration tests for question answer command with --interactive flag."""
 
     @pytest.fixture
-    def plan_with_pending_question(self, temp_repo):
-        """Create plan folder with a pending question."""
+    def epic_with_pending_question(self, temp_repo):
+        """Create epic folder with a pending question."""
         import time
 
         import yaml
 
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260208PN_interactive_test"
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260208PN_interactive_test"
         plan_path.mkdir(parents=True)
 
         questions_dir = plan_path / "questions"
@@ -280,7 +280,7 @@ class TestAnswerCommandInteractive:
         return plan_path
 
     def test_interactive_flag_launches_wizard(
-        self, cli_runner, plan_with_pending_question
+        self, cli_runner, epic_with_pending_question
     ):
         """Test that --interactive flag launches the wizard."""
         # Mock the wizard to return a test answer
@@ -297,7 +297,7 @@ class TestAnswerCommandInteractive:
                     "Q-20260208-100000-a1b2",
                     "--interactive",
                     "--plan",
-                    str(plan_with_pending_question),
+                    str(epic_with_pending_question),
                 ]
             )
 
@@ -306,7 +306,7 @@ class TestAnswerCommandInteractive:
             assert result.returncode == 0
 
     def test_interactive_without_question_id_lists_questions(
-        self, cli_runner, plan_with_pending_question
+        self, cli_runner, epic_with_pending_question
     ):
         """Test that --interactive without question_id shows selection list."""
         # Mock input to select question 1
@@ -324,7 +324,7 @@ class TestAnswerCommandInteractive:
                         "answer",
                         "--interactive",
                         "--plan",
-                        str(plan_with_pending_question),
+                        str(epic_with_pending_question),
                     ]
                 )
 
@@ -334,7 +334,7 @@ class TestAnswerCommandInteractive:
                 # The key is that it doesn't error immediately
 
     def test_interactive_deferred_question_updates_status(
-        self, cli_runner, plan_with_pending_question
+        self, cli_runner, epic_with_pending_question
     ):
         """Test that deferring via wizard updates question status."""
         from agenticcli.utils.interactive_answer import DEFER_SENTINEL
@@ -353,7 +353,7 @@ class TestAnswerCommandInteractive:
                     "Q-20260208-100000-a1b2",
                     "--interactive",
                     "--plan",
-                    str(plan_with_pending_question),
+                    str(epic_with_pending_question),
                 ]
             )
 
@@ -363,14 +363,14 @@ class TestAnswerCommandInteractive:
             # Verify question status was updated
             import yaml
 
-            pending_dir = plan_with_pending_question / "questions" / "pending"
+            pending_dir = epic_with_pending_question / "questions" / "pending"
             question_file = pending_dir / "Q-20260208-100000-a1b2.yml"
             assert question_file.exists()
 
             content = yaml.safe_load(question_file.read_text())
             assert content["status"] == "deferred"
 
-    def test_non_interactive_unchanged(self, cli_runner, plan_with_pending_question):
+    def test_non_interactive_unchanged(self, cli_runner, epic_with_pending_question):
         """Test that non-interactive mode still works as before."""
         result = cli_runner(
             [
@@ -381,7 +381,7 @@ class TestAnswerCommandInteractive:
                 "--text",
                 "Non-interactive answer",
                 "--plan",
-                str(plan_with_pending_question),
+                str(epic_with_pending_question),
             ]
         )
 
@@ -389,11 +389,11 @@ class TestAnswerCommandInteractive:
         assert "answered" in result.stdout.lower()
 
         # Verify question moved to answered directory
-        answered_dir = plan_with_pending_question / "questions" / "answered"
+        answered_dir = epic_with_pending_question / "questions" / "answered"
         assert (answered_dir / "Q-20260208-100000-a1b2_question.yml").exists()
 
     def test_interactive_with_confidence_from_wizard(
-        self, cli_runner, plan_with_pending_question
+        self, cli_runner, epic_with_pending_question
     ):
         """Test that wizard-provided confidence is used."""
         # Mock wizard to return answer with high confidence
@@ -410,7 +410,7 @@ class TestAnswerCommandInteractive:
                     "Q-20260208-100000-a1b2",
                     "--interactive",
                     "--plan",
-                    str(plan_with_pending_question),
+                    str(epic_with_pending_question),
                 ]
             )
 
@@ -420,7 +420,7 @@ class TestAnswerCommandInteractive:
             # Verify answer file contains confidence
             import yaml
 
-            answered_dir = plan_with_pending_question / "questions" / "answered"
+            answered_dir = epic_with_pending_question / "questions" / "answered"
             answer_file = answered_dir / "Q-20260208-100000-a1b2.yml"
             assert answer_file.exists()
 

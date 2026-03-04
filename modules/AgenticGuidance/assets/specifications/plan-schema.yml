@@ -1,31 +1,41 @@
 # Plan Schema Definition
 # Defines the formal structure for planning YAML files used by planner agents.
 #
-# SCOPE: Schema definitions for plan_build.yml, plan_teach.yml, and related plan files.
+# SCOPE: Schema definitions for ticket_build.yml, ticket_teach.yml, and related ticket files.
 # For MMD schemas, see: assets/specifications/plan-mmd-schema.yml
-# For plan definitions, see: assets/definitions/plans.yml
+# For epic definitions, see: assets/definitions/plans.yml
+
+deprecation_note: |
+  TERMINOLOGY RENAME (2026-03-01): "plan files" (plan_*.yml) are now called "ticket files"
+  (ticket_*.yml). The containing folder is now called an "epic folder" (docs/epics/).
+  The schema structure itself is unchanged - only naming conventions have been updated.
+  Legacy plan_*.yml filenames are retained for backward compatibility during migration.
 
 plan_schema:
   definition: |
-    A plan file defines the scope, phases, tasks, and success criteria for an implementation
-    or teaching objective. Plan files are YAML documents that follow this schema to ensure
-    consistency and enable orchestration agents to parse and execute plans.
+    A ticket file defines the scope, phases, tickets, and success criteria for an
+    implementation or teaching objective. Ticket files are YAML documents stored inside
+    epic folders (docs/epics/) that follow this schema to ensure consistency and enable
+    orchestration agents to parse and execute epics.
 
   file_types:
-    plan_build:
-      description: "Implementation plans for code changes, features, or bug fixes"
-      filename_pattern: "plan_build.yml"
+    ticket_build:
+      description: "Implementation tickets for code changes, features, or bug fixes"
+      filename_pattern: "ticket_build.yml"
       primary_use: "build-python, build-flutter agents"
+      legacy_name: "plan_build.yml"
 
-    plan_teach:
-      description: "Teaching plans for guidance updates, process improvements"
-      filename_pattern: "plan_teach.yml"
+    ticket_teach:
+      description: "Teaching tickets for guidance updates, process improvements"
+      filename_pattern: "ticket_teach.yml"
       primary_use: "teacher-update-guidance, teacher-update-assets agents"
+      legacy_name: "plan_teach.yml"
 
-    plan_test:
-      description: "Test strategy plans for validation and coverage"
-      filename_pattern: "plan_test.yml"
+    ticket_test:
+      description: "Test strategy tickets for validation and coverage"
+      filename_pattern: "ticket_test.yml"
       primary_use: "test-builder, test-runner agents"
+      legacy_name: "plan_test.yml"
 
 # =============================================================================
 # CORE PLAN STRUCTURE
@@ -116,9 +126,9 @@ impacted_files_schema:
       required: true
       description: "File path relative to repo root"
       examples:
-        - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+        - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
         - "modules/AgenticGuidance/agents/planner-build/process.yml"
-        - "docs/plans/live/260204IM/README.md"
+        - "docs/epics/live/260204IM/README.md"
 
     change_type:
       type: "str"
@@ -152,20 +162,20 @@ impacted_files_schema:
 
   example: |
     impacted_files:
-      - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
+      - path: "modules/AgenticCLI/src/agenticcli/commands/epic.py"
         change_type: create
         change_category: implementation
-        reason: "New CLI command module for plan management"
+        reason: "New CLI command module for epic management"
 
       - path: "modules/AgenticCLI/src/agenticcli/cli.py"
         change_type: modify
         change_category: implementation
-        reason: "Register new plan command group"
+        reason: "Register new epic command group"
 
-      - path: "modules/AgenticCLI/tests/test_plan_commands.py"
+      - path: "modules/AgenticCLI/tests/test_epic_commands.py"
         change_type: create
         change_category: test
-        reason: "Tests for plan CLI commands"
+        reason: "Tests for epic CLI commands"
 
   orchestration_usage: |
     DEPRECATED: Orchestration now uses task-level target_files for these decisions.
@@ -211,16 +221,16 @@ impacted_artifacts_schema:
       required: true
       description: |
         Unique identifier for the artifact. Format varies by type:
-        - api: "GET /api/v1/users" or "PlanService.create_plan"
-        - cli_command: "agentic plan init"
-        - service: "QuestionQueue" or "plan.py:PlanService"
+        - api: "GET /api/v1/users" or "EpicService.create_epic"
+        - cli_command: "agentic epic init"
+        - service: "QuestionQueue" or "epic.py:EpicService"
         - agent: "planner-build" or "test-runner"
         - config: "pyproject.toml:dependencies"
         - model: "Question" or "models/question.py:Answer"
         - schema: "plan-schema.yml:impacted_files"
       examples:
-        - "agentic plan init"
-        - "PlanService.validate_plan"
+        - "agentic epic init"
+        - "EpicService.validate_epic"
         - "planner-build"
 
     impact_type:
@@ -249,21 +259,21 @@ impacted_artifacts_schema:
   example: |
     impacted_artifacts:
       - artifact_type: cli_command
-        artifact_identifier: "agentic plan init"
+        artifact_identifier: "agentic epic init"
         impact_type: new
-        description: "New CLI command for standardized plan folder creation"
+        description: "New CLI command for standardized epic folder creation"
         breaking_change: false
 
       - artifact_type: cli_command
-        artifact_identifier: "agentic plan create"
+        artifact_identifier: "agentic epic create"
         impact_type: interface_change
         description: "Add required --branch parameter"
         breaking_change: true
 
       - artifact_type: service
-        artifact_identifier: "PlanService.validate_plan"
+        artifact_identifier: "EpicService.validate_epic"
         impact_type: new
-        description: "New validation method for plan folder structure"
+        description: "New validation method for epic folder structure"
 
       - artifact_type: agent
         artifact_identifier: "planner-build"

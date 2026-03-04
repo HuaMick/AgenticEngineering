@@ -346,16 +346,16 @@ test_scenarios:
 
   selfreview_no_plan_rejection:
     id: "selfreview_no_plan_rejection"
-    purpose: "Verify FENCE rejects NEEDS_ATTENTION without plan file"
+    purpose: "Verify FENCE rejects NEEDS_ATTENTION without epic file"
     description: |
       Tests that the orchestrator correctly rejects self-review results that have
-      NEEDS_ATTENTION status but do not include a plan file. This ensures the
+      NEEDS_ATTENTION status but do not include an epic file. This ensures the
       fence_plan_creation enforcement is working correctly.
-      Source: SRLE-007 - Self-Review Loop Enforcement Plan
+      Source: SRLE-007 - Self-Review Loop Enforcement Epic
 
     setup: |
       1. Configure test agent to return NEEDS_ATTENTION status
-      2. Do NOT create plan file
+      2. Do NOT create epic file
       3. Provide plan_file_path as null
 
     inputs:
@@ -368,28 +368,28 @@ test_scenarios:
       plan_file_path: null
 
     constraints:
-      - "Orchestrator must detect missing plan file"
+      - "Orchestrator must detect missing epic file"
       - "Self-review must not be accepted as complete"
       - "Loop must not advance to next iteration"
 
     expected_behavior: |
       Orchestrator should:
-      1. Detect missing plan file
+      1. Detect missing epic file
       2. Reject self-review result
-      3. Require plan file creation
+      3. Require epic file creation
       4. NOT advance loop iteration
 
     expected_outputs:
-      rejection_message: "Self-review incomplete: NEEDS_ATTENTION status requires plan file"
+      rejection_message: "Self-review incomplete: NEEDS_ATTENTION status requires epic file"
       loop_state: "BLOCKED"
-      next_action: "Create plan file at {plan_folder}/live/plan_guidance_{agent_name}_{issue_type}.yml"
+      next_action: "Create epic file at {epic_folder}/live/ticket_guidance_{agent_name}_{issue_type}.yml"
 
     failure_indicators:
-      - "Orchestrator accepts result without plan file"
+      - "Orchestrator accepts result without epic file"
       - "Loop advances to next iteration"
       - "Self-review marked as complete"
 
-    pass_criteria: "Loop does not advance without plan file; rejection message returned"
+    pass_criteria: "Loop does not advance without epic file; rejection message returned"
 
     reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#guidance-self-review-loop.fence_plan_creation"
 
@@ -398,9 +398,9 @@ test_scenarios:
     purpose: "Verify PASS with zero NAT-* triggers exits loop"
     description: |
       Tests that a PASS status with empty findings and zero NAT-* triggers correctly
-      causes the loop to exit for that agent. Confirms that plan file is NOT required
+      causes the loop to exit for that agent. Confirms that epic file is NOT required
       for PASS status.
-      Source: SRLE-008 - Self-Review Loop Enforcement Plan
+      Source: SRLE-008 - Self-Review Loop Enforcement Epic
 
     setup: |
       1. Configure test agent to return PASS status
@@ -415,14 +415,14 @@ test_scenarios:
     constraints:
       - "No NAT-* triggers should be active"
       - "Findings list must be empty"
-      - "Plan file should NOT be required"
+      - "Epic file should NOT be required"
 
     expected_behavior: |
       Orchestrator should:
       1. Accept PASS result
       2. Verify zero NAT-* triggers
       3. Exit loop for this agent
-      4. NOT require plan file
+      4. NOT require epic file
 
     expected_outputs:
       loop_state: "EXITED"
@@ -430,11 +430,11 @@ test_scenarios:
       nat_trigger_count: 0
 
     failure_indicators:
-      - "Orchestrator requires plan file for PASS"
+      - "Orchestrator requires epic file for PASS"
       - "Loop continues despite PASS status"
       - "NAT-* triggers incorrectly detected"
 
-    pass_criteria: "Loop exits cleanly with PASS status and no plan file required"
+    pass_criteria: "Loop exits cleanly with PASS status and no epic file required"
 
     reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#guidance-self-review-loop.exit_conditions.no_issues_remaining"
 
@@ -445,7 +445,7 @@ test_scenarios:
       Tests that agents present ALL findings to the user regardless of severity,
       rather than autonomously deferring low-severity issues. Agents may RECOMMEND
       deferral but must NOT implement it unilaterally.
-      Source: SRLE-009 - Self-Review Loop Enforcement Plan
+      Source: SRLE-009 - Self-Review Loop Enforcement Epic
 
     setup: |
       1. Configure test agent to find LOW severity issue
@@ -461,13 +461,13 @@ test_scenarios:
 
     constraints:
       - "Agent must include ALL findings in output"
-      - "Agent must create plan file even for LOW severity issues"
+      - "Agent must create epic file even for LOW severity issues"
       - "Agent must NOT autonomously decide to skip issues"
 
     expected_behavior: |
       Agent should:
       1. Include issue in findings list
-      2. Include issue in plan file
+      2. Include issue in epic file
       3. Mark as severity: LOW
       4. NOT automatically defer
       5. Present to user with: "Recommend deferral: [reason]. User decision required."
@@ -475,22 +475,22 @@ test_scenarios:
     expected_outputs:
       status: "NEEDS_ATTENTION"
       findings_include_low_severity: true
-      plan_file_created: true
+      ticket_file_created: true
       deferral_decided_by: "user"
 
     anti_pattern: |
       Agent should NOT:
       - Remove low-severity issues from findings
-      - Mark plan as "deferred" without user input
-      - Decide not to create plan file because "issues are minor"
+      - Mark epic as "deferred" without user input
+      - Decide not to create epic file because "issues are minor"
       - Filter findings based on severity before presenting to user
 
     failure_indicators:
       - "LOW severity issues missing from findings"
-      - "No plan file created for LOW severity issues"
+      - "No epic ticket file created for LOW severity issues"
       - "Agent auto-deferred without user input"
 
-    pass_criteria: "LOW severity issues appear in findings and plan file; user decides deferral"
+    pass_criteria: "LOW severity issues appear in findings and epic ticket file; user decides deferral"
 
     reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml#guidance-self-review-loop.fence_plan_creation.user_deferral_policy"
 

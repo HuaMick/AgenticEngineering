@@ -1,22 +1,22 @@
 stories:
 - id: US-GD-200
-  title: TinyDB Plan Repository - CRUD Operations
+  title: TinyDB Epic Repository - CRUD Operations
   category: services
   priority: critical
-  as_a: CLI or agent managing plans
-  i_want: to use a TinyDB-backed PlanRepository for plan CRUD operations
-  so_that: plan data access is faster, indexed, and queryable without scanning YAML files
+  as_a: CLI or agent managing epics
+  i_want: to use a TinyDB-backed EpicRepository for epic CRUD operations
+  so_that: epic data access is faster, indexed, and queryable without scanning YAML files
   acceptance_criteria:
-  - PlanRepository provides create, read, update, delete operations via TinyDB
-  - All plan data (name, worktree_path, branch, status, objective, phases, tasks) stored in TinyDB
+  - EpicRepository provides create, read, update, delete operations via TinyDB
+  - All epic data (name, worktree_path, branch, status, objective, phases, tickets) stored in TinyDB
   - FileLock wraps ALL write operations to ensure safe multi-agent concurrent access
   - Phase CRUD operations implemented: add_phase, update_phase, list_phases, get_phase
-  - Plan lifecycle operations implemented: archive_plan, unarchive_plan, cancel_plan
-  - Helper queries implemented: check_all_tasks_complete, get_task_counts, get_plan_branch
+  - Epic lifecycle operations implemented: archive_plan, unarchive_plan, cancel_plan
+  - Helper queries implemented: check_all_tickets_complete, get_ticket_counts, get_plan_branch
   - Query by plan_id, status, branch, or folder name returns correct results
   related_services:
-  - PlanRepository
-  - PlanService
+  - EpicRepository
+  - EpicService
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
   - modules/AgenticGuidance/src/agenticguidance/services/plan.py
@@ -25,22 +25,22 @@ stories:
   tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 
 - id: US-GD-201
-  title: TinyDB Task Storage and Queries
+  title: TinyDB Ticket Storage and Queries
   category: services
   priority: critical
-  as_a: CLI listing or updating tasks
-  i_want: tasks stored in TinyDB with indexed lookups
-  so_that: task queries (by status, phase, plan_id) are O(1) instead of O(n) YAML parsing
+  as_a: CLI listing or updating tickets
+  i_want: tickets stored in TinyDB with indexed lookups
+  so_that: ticket queries (by status, phase, plan_id) are O(1) instead of O(n) YAML parsing
   acceptance_criteria:
-  - Tasks stored as TinyDB documents with plan_id, phase_id, task_id, status fields
-  - get_task_counts returns a dict with keys pending, in_progress, completed, and total
-  - check_all_tasks_complete returns a boolean indicating whether all tasks are done
-  - get_current_task resolves to the first in_progress task, then the first pending task
+  - Tickets stored as TinyDB documents with plan_id, phase_id, ticket_id, status fields
+  - get_ticket_counts returns a dict with keys pending, in_progress, completed, and total
+  - check_all_tickets_complete returns a boolean indicating whether all tickets are done
+  - get_current_ticket resolves to the first in_progress ticket, then the first pending ticket
   - TaskData dataclass expanded with inputs, target_files, guidance, completed_date, and success_criteria fields
-  - Update task status atomically in TinyDB
+  - Update ticket status atomically in TinyDB
   related_services:
-  - PlanRepository
-  - TaskService
+  - EpicRepository
+  - TicketService
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
   - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -52,16 +52,16 @@ stories:
   title: YAML Import/Export for Human Readability
   category: services
   priority: high
-  as_a: developer reading plan files
-  i_want: plan data to round-trip between TinyDB and YAML without loss
-  so_that: plans remain human-readable and git-trackable while TinyDB is the runtime store
+  as_a: developer reading epic files
+  i_want: epic data to round-trip between TinyDB and YAML without loss
+  so_that: epics remain human-readable and git-trackable while TinyDB is the runtime store
   acceptance_criteria:
-  - sync_to_yaml() method writes current TinyDB plan state back to YAML format
+  - sync_to_yaml() method writes current TinyDB epic state back to YAML format
   - Auto-import from YAML occurs on TinyDB cache miss (read-through pattern)
-  - When TinyDB has no record for a plan, it imports from the YAML file on first access
+  - When TinyDB has no record for an epic, it imports from the YAML file on first access
   - Round-trip (YAML -> TinyDB -> YAML) preserves all fields without data loss
   related_services:
-  - PlanRepository
+  - EpicRepository
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
   last_tested: "2026-02-24"
@@ -69,21 +69,21 @@ stories:
   tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
 
 - id: US-GD-203
-  title: CLI Plan Commands Use PlanRepository
+  title: CLI Epic Commands Use EpicRepository
   category: services
   priority: critical
-  as_a: CLI user running plan commands
-  i_want: plan CLI commands to use PlanRepository as the primary data source with YAML fallback
+  as_a: CLI user running epic commands
+  i_want: epic CLI commands to use EpicRepository as the primary data source with YAML fallback
   so_that: data access is consistent and goes through a single service layer
   acceptance_criteria:
-  - _get_repo() helper provides a PlanRepository instance to CLI command handlers
-  - TinyDB-first with YAML fallback pattern applied throughout plan command handlers
-  - folder_matches guard prevents cross-plan data leaks when loading by folder name
-  - 30 plan-data YAML calls replaced with PlanRepository calls
-  - 6 non-plan YAML calls intentionally retained (config, context, and non-plan files)
+  - _get_repo() helper provides a EpicRepository instance to CLI command handlers
+  - TinyDB-first with YAML fallback pattern applied throughout epic command handlers
+  - folder_matches guard prevents cross-epic data leaks when loading by folder name
+  - 30 epic-data YAML calls replaced with EpicRepository calls
+  - 6 non-epic YAML calls intentionally retained (config, context, and non-epic files)
   - No behavioral regression from the user's perspective
   related_services:
-  - PlanRepository
+  - EpicRepository
   related_files:
   - modules/AgenticCLI/src/agenticcli/commands/plan.py
   last_tested: "2026-02-24"
@@ -95,15 +95,15 @@ stories:
   category: services
   priority: high
   as_a: system administrator upgrading to TinyDB
-  i_want: existing YAML plans to become available in TinyDB without a manual migration step
-  so_that: no plan data is lost and no explicit migration command is required
+  i_want: existing YAML epics to become available in TinyDB without a manual migration step
+  so_that: no epic data is lost and no explicit migration command is required
   acceptance_criteria:
   - Read-through auto-import replaces any explicit migration script
-  - When TinyDB has no record for a plan, it automatically imports from the YAML file on first access
+  - When TinyDB has no record for an epic, it automatically imports from the YAML file on first access
   - Auto-import is idempotent (repeated access does not duplicate data)
   - No manual migration step or command is needed to begin using TinyDB
   related_services:
-  - PlanRepository
+  - EpicRepository
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
   last_tested: "2026-02-24"
@@ -124,7 +124,7 @@ stories:
   - .agentic/ directory is listed in .gitignore so the database is not tracked by git
   - Graceful handling when database is missing (auto-rebuild from YAML via read-through import)
   related_services:
-  - PlanRepository
+  - EpicRepository
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
   last_tested: "2026-02-24"
@@ -137,15 +137,15 @@ stories:
   priority: high
   as_a: agent or CLI user during transition period
   i_want: the system to work correctly even when TinyDB state diverges from disk state
-  so_that: existing workflows don't break and resurrection or disk-only plans are handled safely
+  so_that: existing workflows don't break and resurrection or disk-only epics are handled safely
   acceptance_criteria:
-  - PlanRepository falls back to YAML file reading when TinyDB record is not found
-  - Resurrection detection re-imports a plan when it is in completed/ in TinyDB but present in live/ on disk
-  - folder_matches guard ensures data isolation between plans that share a similar name
-  - yaml_sync_enabled flag on TaskService enables dual-write to both TinyDB and YAML during transition
+  - EpicRepository falls back to YAML file reading when TinyDB record is not found
+  - Resurrection detection re-imports an epic when it is in completed/ in TinyDB but present in live/ on disk
+  - folder_matches guard ensures data isolation between epics that share a similar name
+  - yaml_sync_enabled flag on TicketService enables dual-write to both TinyDB and YAML during transition
   - YAML files remain git-committable source of truth; TinyDB acts as a fast read cache
   related_services:
-  - PlanRepository
+  - EpicRepository
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
   last_tested: "2026-02-24"

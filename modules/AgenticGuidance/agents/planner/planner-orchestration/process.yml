@@ -1,8 +1,8 @@
-goal: "Generate orchestration MMD files from approved plan YAMLs for downstream execution by orchestration-executor."
+goal: "Generate orchestration MMD files from approved ticket YAMLs for downstream execution by orchestration-executor."
 
 context:
   role: |
-    planner-orchestration is a PLANNING artifact generator. It reads approved plan YAML files
+    planner-orchestration is a PLANNING artifact generator. It reads approved ticket YAML files
     and produces orchestration MMD flowcharts that orchestration-executor can consume.
 
     This agent does NOT execute plans. It does NOT orchestrate other agents.
@@ -17,17 +17,17 @@ process:
     # ========================================
     # STEP 1: Load Plan Context
     # ========================================
-    - name: "Load Plan Context"
+    - name: "Load Epic Context"
       action: |
-        Read all plan_*.yml files from the plan folder's live/ directory.
+        Read all ticket_*.yml files from the epic folder's live/ directory.
         Extract:
-        - Plan name and metadata
+        - Epic name and metadata
         - All phases (name, execution mode, description)
         - All tasks per phase (id, name, agent_type, status)
         - Loop structures (type, applies_to_phase, exit_criteria)
         - Success criteria
       inputs:
-        - plan_folder_path: "Provided by orchestration-planning or user"
+        - epic_folder_path: "Provided by orchestration-planning or user"
 
     # ========================================
     # STEP 2: Extract Phase Sequence
@@ -50,7 +50,7 @@ process:
         - build phases -> builder agents (build-python, build-flutter)
         - test phases -> tester agents (test-runner, test-builder)
         - cleanup phases -> builder agents (cleanup tasks use builders)
-        - audit phases -> planner-audit (plan folder compliance)
+        - audit phases -> planner-audit (epic folder compliance)
         - uat phases -> test-user-simulator (user acceptance testing)
 
         For each phase, resolve the generic type to the specific agent based on:
@@ -166,10 +166,10 @@ process:
     # ========================================
     - name: "Write MMD File"
       action: |
-        Write the generated MMD to: <plan_folder>/orchestration_<name>.mmd
-        where <name> is derived from the plan folder name.
+        Write the generated MMD to: <epic_folder>/orchestration_<name>.mmd
+        where <name> is derived from the epic folder name.
 
-        Example: docs/plans/live/260207PO_refactor/ -> orchestration_planner_orchestration_refactor.mmd
+        Example: docs/epics/live/260207PO_refactor/ -> orchestration_planner_orchestration_refactor.mmd
 
     # ========================================
     # STEP 9: Validate MMD Against Schema
@@ -179,7 +179,7 @@ process:
         Validate the written MMD file against the plan-mmd-schema:
         1. All required metadata fields present
         2. Node granularity is high-level only
-        3. All phases from plan YAML are represented
+        3. All phases from ticket YAML are represented
         4. Loop subgraphs match loop_structure definitions
         5. Feedback paths exist for failure scenarios
         6. Start and end nodes are properly defined

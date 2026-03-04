@@ -130,7 +130,7 @@ class TestRalphLoopFullCycle:
         )
 
         # Initialize service
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -240,7 +240,7 @@ class TestRalphLoopFullCycle:
             depends_on=["PlanB"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # Initially: Only PlanA is executable
         action = service.get_next_action()
@@ -287,7 +287,7 @@ class TestRalphLoopFullCycle:
         create_mock_plan(tmp_path, "PlanB", has_mmd=False)
         create_mock_plan(tmp_path, "PlanC", has_mmd=False)
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # All actions should be plan actions
         queue = service.get_priority_queue()
@@ -336,7 +336,7 @@ class TestRalphLoopFullCycle:
             depends_on=["AnotherMissingPlan"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # All plans should be blocked
         queue = service.get_priority_queue()
@@ -368,7 +368,7 @@ class TestRalphLoopFullCycle:
         )
         create_mock_plan(tmp_path, "PlanNeeds2", has_mmd=False)
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # First two actions should be execute (higher priority)
         action1 = service.get_next_action()
@@ -422,7 +422,7 @@ class TestStateTransitions:
 
     def test_start_to_running(self, tmp_path):
         """start_loop creates running state."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -440,7 +440,7 @@ class TestStateTransitions:
 
     def test_running_to_completed(self, tmp_path):
         """Loop transitions to completed when all done."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -473,7 +473,7 @@ class TestStateTransitions:
 
     def test_running_to_stopped(self, tmp_path):
         """stop_loop transitions to stopped."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -497,7 +497,7 @@ class TestStateTransitions:
         )
         create_mock_plan(tmp_path, "PlanB", has_mmd=False)
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -559,7 +559,7 @@ class TestCompletionVerification:
             ],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # All tasks completed
         assert service.check_all_complete() is True
@@ -595,7 +595,7 @@ class TestCompletionVerification:
             ],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # Not all complete
         assert service.check_all_complete() is False
@@ -621,7 +621,7 @@ class TestCompletionVerification:
             tasks=[{"id": "A1", "name": "Task A1", "status": "completed"}],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # Initially complete
         assert service.check_all_complete() is True
@@ -643,7 +643,7 @@ class TestErrorRecovery:
 
     def test_corrupted_state_recovery(self, tmp_path):
         """Service handles corrupted state file."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -666,10 +666,10 @@ class TestErrorRecovery:
         create_mock_plan(tmp_path, "PlanA", has_mmd=True)
         plan_path = tmp_path / "PlanA"
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # Verify plan discovered
-        plans = service.discover_plans()
+        plans = service.discover_epics()
         assert len(plans) == 1
 
         # Delete plan directory
@@ -677,7 +677,7 @@ class TestErrorRecovery:
         shutil.rmtree(plan_path)
 
         # Rediscover - should handle gracefully
-        plans = service.discover_plans()
+        plans = service.discover_epics()
         assert len(plans) == 0
 
         # Service should continue to work
@@ -691,10 +691,10 @@ class TestErrorRecovery:
         # Create corrupted plan_build.yml
         (plan_dir / "plan_build.yml").write_text("invalid: yaml: [[[")
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # Should discover plan but with zero tasks
-        plans = service.discover_plans()
+        plans = service.discover_epics()
         assert len(plans) == 1
         assert plans[0].pending_tasks == 0
         assert plans[0].completed_tasks == 0
@@ -708,7 +708,7 @@ class TestErrorRecovery:
         state_dir.mkdir()
 
         # Create and start loop
-        service1 = RalphLoopService(plans_dir=tmp_path)
+        service1 = RalphLoopService(epics_dir=tmp_path)
         service1.state_dir = state_dir
         state1 = service1.start_loop(prompt_file="/tmp/prompt.txt")
 
@@ -717,7 +717,7 @@ class TestErrorRecovery:
         service1.record_iteration(action, "success")
 
         # Simulate crash - create new service instance
-        service2 = RalphLoopService(plans_dir=tmp_path)
+        service2 = RalphLoopService(epics_dir=tmp_path)
         service2.state_dir = state_dir
 
         # State should be recoverable
@@ -730,7 +730,7 @@ class TestErrorRecovery:
 
     def test_max_iterations_tracking(self, tmp_path):
         """Loop tracks iterations against max_iterations limit."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -752,11 +752,11 @@ class TestErrorRecovery:
         # Service just tracks the count
 
     def test_empty_plans_directory(self, tmp_path):
-        """Service handles empty plans directory."""
-        service = RalphLoopService(plans_dir=tmp_path)
+        """Service handles empty epics directory."""
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # Should return empty list
-        plans = service.discover_plans()
+        plans = service.discover_epics()
         assert plans == []
 
         # Should consider complete (no work to do)
@@ -801,7 +801,7 @@ class TestComplexDependencyScenarios:
             depends_on=["PlanB", "PlanC"],
         )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # Only A should be executable
         action = service.get_next_action()
@@ -861,7 +861,7 @@ class TestComplexDependencyScenarios:
                 depends_on=deps,
             )
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
 
         # Only A should be executable
         action = service.get_next_action()
@@ -938,7 +938,7 @@ class TestQuestionBlockedFlow:
         # Add a blocking question to PlanBlocked
         self._add_question(tmp_path / "PlanBlocked", "Q-001", severity="blocking")
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         action = service.get_next_action()
 
         assert action is not None
@@ -951,7 +951,7 @@ class TestQuestionBlockedFlow:
         assert all(a.plan_name != "PlanBlocked" for a in executable)
 
     def test_ralph_status_includes_question_summary(self, tmp_path):
-        """discover_plans reports accurate blocking_questions counts.
+        """discover_epics reports accurate blocking_questions counts.
 
         Setup:
         - PlanA: 2 blocking questions
@@ -989,8 +989,8 @@ class TestQuestionBlockedFlow:
 
         # PlanD: no questions
 
-        service = RalphLoopService(plans_dir=tmp_path)
-        plans = service.discover_plans()
+        service = RalphLoopService(epics_dir=tmp_path)
+        plans = service.discover_epics()
         plans_by_name = {p.name: p for p in plans}
 
         # PlanA: 2 blocking questions
@@ -1029,7 +1029,7 @@ class TestQuestionBlockedFlow:
         self._add_question(tmp_path / "PlanQ", "Q-002", severity="blocking")
         self._add_question(tmp_path / "PlanQ", "Q-003", severity="blocking")
 
-        service = RalphLoopService(plans_dir=tmp_path)
+        service = RalphLoopService(epics_dir=tmp_path)
         queue = service.get_priority_queue()
 
         blocked_actions = [a for a in queue if a.action == "blocked"]

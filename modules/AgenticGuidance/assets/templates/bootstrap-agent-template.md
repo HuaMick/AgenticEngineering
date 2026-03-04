@@ -10,16 +10,16 @@ Before taking action, run these commands to get your context:
 # 1. Get your role context and current task
 agentic agent context bootstrap --role {{ROLE_ID}} -j
 
-# 2. Get your current/next task details
-agentic agent plan task current -j
+# 2. Get your current/next ticket details
+agentic agent epic ticket current -j
 ```
 
 ## Execution Loop
 
-1. **Read** your current task from `agentic agent plan task current`
-2. **Execute** the task following the guidance provided
-3. **Update** status when done: `agentic agent plan task update <task-id> --status completed`
-4. **Repeat** from step 1 until all tasks are complete
+1. **Read** your current ticket from `agentic agent epic ticket current`
+2. **Execute** the ticket following the guidance provided
+3. **Update** status when done: `agentic agent epic ticket update <ticket-id> --status completed`
+4. **Repeat** from step 1 until all tickets are complete
 
 ## CLI Commands Reference
 
@@ -29,15 +29,15 @@ agentic agent plan task current -j
 | `agentic agent context role {{ROLE_ID}}` | Get role-specific process/guidelines |
 | `agentic agent context task` | Get active task from current plan |
 | `agentic agent context inputs --role {{ROLE_ID}}` | Get input files manifest |
-| `agentic agent plan task current` | Get current/next task to work on |
-| `agentic agent plan task list` | List all tasks with status |
-| `agentic agent plan task update <id> --status <s>` | Update task status |
+| `agentic agent epic ticket current` | Get current/next ticket to work on |
+| `agentic agent epic ticket list` | List all tickets with status |
+| `agentic agent epic ticket update <id> --status <s>` | Update ticket status |
 
 ## Error Handling
 
 - If `agentic agent context bootstrap` fails: You may not be in a git project. Check with `git status`.
 - If no plan found: Ask the orchestrator or planner to create a plan first.
-- If task update fails: Verify the task ID with `agentic agent plan task list`.
+- If ticket update fails: Verify the ticket ID with `agentic agent epic ticket list`.
 
 ## Role Boundary
 

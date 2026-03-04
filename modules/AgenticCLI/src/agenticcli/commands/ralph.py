@@ -1,11 +1,11 @@
 """Ralph Loop CLI commands.
 
-This module provides CLI commands for the Ralph Loop - a self-directing plan
-orchestration system that automatically discovers plans, prioritizes tasks,
+This module provides CLI commands for the Ralph Loop - a self-directing epic
+orchestration system that automatically discovers epics, prioritizes tasks,
 and executes them in dependency order.
 
 Commands:
-    start: Start Ralph loop to process all live plans
+    start: Start Ralph loop to process all live epics
     stop: Stop the running Ralph loop
     status: Show Ralph loop status and progress
     next: Get the next recommended action (used by agent)
@@ -24,12 +24,12 @@ from rich.console import Console
 from rich.table import Table
 
 # Import from AgenticGuidance
-from agenticguidance.services.ralph import PlanAction, RalphLoopService
+from agenticguidance.services.ralph import EpicAction, EpicInfo, RalphLoopService
 from agenticguidance.services.question import QuestionQueue
 
 app = typer.Typer(
     name="ralph",
-    help="Ralph Loop - self-directing plan orchestration"
+    help="Ralph Loop - self-directing epic orchestration"
 )
 
 console = Console()
@@ -109,7 +109,7 @@ def start(
     max_iterations: int = typer.Option(20, "--max-iterations", "-n", help="Max iterations"),
     background: bool = typer.Option(False, "--background", "-b", help="Run in background"),
 ):
-    """Start Ralph loop to process all live plans.
+    """Start Ralph loop to process all live epics.
 
     If no prompt_file specified, uses default orchestration prompt.
 
@@ -324,7 +324,7 @@ def status(
     Displays:
     - Loop status (running/stopped/completed)
     - Current iteration number
-    - Plans progress (discovered/executable/blocked)
+    - Epics progress (discovered/executable/blocked)
     - Time elapsed
     - Tmux session info
 
@@ -334,8 +334,8 @@ def status(
     service = RalphLoopService()
     state = service.get_state()
 
-    # Also get current plan status
-    plans = service.discover_plans()
+    # Also get current epic status
+    plans = service.discover_epics()
     queue = service.get_priority_queue()
 
     # Count by action type
@@ -371,10 +371,10 @@ def status(
                 "tmux_session": state.tmux_session if state else None,
                 "started_at": state.started_at if state else None,
             } if state else None,
-            "plans": {
+            "epics": {
                 "total": len(plans),
                 "ready_to_execute": execute_count,
-                "needs_planning": plan_count,
+                "needs_epic_planning": plan_count,
                 "blocked": blocked_count,
                 "completed": complete_count,
             },
@@ -415,10 +415,10 @@ def status(
             seconds = int(elapsed % 60)
             console.print(f"[cyan]Elapsed:[/cyan] {minutes}m {seconds}s")
 
-        console.print("\n[bold cyan]Plan Status[/bold cyan]")
+        console.print("\n[bold cyan]Epic Status[/bold cyan]")
         console.print("─" * 40)
         console.print(f"[green]Ready to execute:[/green] {execute_count}")
-        console.print(f"[yellow]Needs planning:[/yellow] {plan_count}")
+        console.print(f"[yellow]Needs epic planning:[/yellow] {plan_count}")
         console.print(f"[red]Blocked:[/red] {blocked_count}")
         console.print(f"[cyan]Completed:[/cyan] {complete_count}")
         console.print(f"[dim]Total:[/dim] {len(plans)}")
@@ -435,11 +435,11 @@ def status(
             console.print(f"[dim]Total pending:[/dim] {total_pending_questions}")
 
         if completion["all_complete"]:
-            console.print("\n[bold green]All plans complete![/bold green]")
+            console.print("\n[bold green]All epics complete![/bold green]")
         elif completion["can_emit_promise"]:
             console.print(
                 "\n[bold green]Can emit completion promise[/bold green]"
-                f" [dim]({completion['blocked_by_deps']} dep-blocked plans OK)[/dim]"
+                f" [dim]({completion['blocked_by_deps']} dep-blocked epics OK)[/dim]"
             )
 
 
@@ -451,15 +451,15 @@ def next_action(
 
     Returns JSON with:
     - action: 'execute' | 'plan' | 'complete' | 'blocked'
-    - plan: plan folder name (if action is execute/plan)
+    - plan: epic folder name (if action is execute/plan)
     - task: current task ID (if action is execute)
     - reason: explanation of why this action
 
     Examples:
       {"action": "execute", "plan": "260203QC", "task": "QC_001", "reason": "Ready"}
       {"action": "plan", "plan": "260203QG", "reason": "Needs orchestration MMD"}
-      {"action": "complete", "reason": "All plans finished"}
-      {"action": "blocked", "reason": "All remaining plans have unmet dependencies"}
+      {"action": "complete", "reason": "All epics finished"}
+      {"action": "blocked", "reason": "All remaining epics have unmet dependencies"}
 
     Args:
         json_output: Output structured data as JSON instead of formatted text
@@ -467,11 +467,11 @@ def next_action(
     service = RalphLoopService()
     completion = service.get_completion_status()
 
-    # Check if all plans are complete
+    # Check if all epics are complete
     if completion["can_emit_promise"]:
-        reason = "All plans finished"
+        reason = "All epics finished"
         if completion["blocked_by_deps"] > 0:
-            reason += f" ({completion['blocked_by_deps']} dep-blocked plans OK)"
+            reason += f" ({completion['blocked_by_deps']} dep-blocked epics OK)"
         output = {
             "action": "complete",
             "plan": None,
@@ -485,10 +485,10 @@ def next_action(
             # No executable actions — build detailed reason
             reasons = []
             if completion["blocked_by_deps"] > 0:
-                reasons.append(f"{completion['blocked_by_deps']} plan(s) blocked by dependencies")
+                reasons.append(f"{completion['blocked_by_deps']} epic(s) blocked by dependencies")
             if completion["blocked_by_questions"] > 0:
-                reasons.append(f"{completion['blocked_by_questions']} plan(s) blocked by questions")
-            reason = "No actionable plans - " + ", ".join(reasons) if reasons else "No actionable plans - all remaining plans are blocked"
+                reasons.append(f"{completion['blocked_by_questions']} epic(s) blocked by questions")
+            reason = "No actionable epics - " + ", ".join(reasons) if reasons else "No actionable epics - all remaining epics are blocked"
             output = {
                 "action": "blocked",
                 "plan": None,
@@ -536,10 +536,10 @@ def history(
 
     Displays table with:
     - Iteration #
-    - Action taken (execute:plan, plan:plan)
+    - Action taken (execute:epic, plan:epic)
     - Result (success/failure/skipped)
     - Duration
-    - Plans completed
+    - Epics completed
 
     Args:
         limit: Maximum number of iteration records to display
@@ -588,7 +588,7 @@ def history(
         table.add_column("Action", width=30)
         table.add_column("Result", width=10)
         table.add_column("Duration", width=10)
-        table.add_column("Plans Completed", width=20)
+        table.add_column("Epics Completed", width=20)
 
         for it in iterations:
             # Format result with color

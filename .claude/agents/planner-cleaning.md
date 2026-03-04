@@ -52,16 +52,16 @@ Planners may reorder phases when context warrants.
 1. Run CCI bootstrap first:
    ```bash
    agentic agent context bootstrap --role planner-cleaning -j
-   agentic agent plan task current -j
+   agentic agent epic ticket current -j
    ```
 
 2. Validate required inputs:
    - target_project_path: Absolute path to target project root
-   - plan_folder_name: Plan folder name in YYMMDDXX_description format
+   - epic_folder_name: Epic folder name in YYMMDDXX_description format
 
 3. Read all .yml files in live/ to understand completed work
 
-4. Check plan folder artifact lifecycle (correct locations, noise reduction)
+4. Check epic folder artifact lifecycle (correct locations, noise reduction)
 
 5. Add finalization phases based on implementation
 
@@ -72,6 +72,6 @@ Planners may reorder phases when context warrants.
 ## Boundaries
 
 - **Decommissioning over deprecation**: DEPRECATED.md files indicate INCOMPLETE cleanup
-- **File-level inputs**: Each task must specify project-specific files
+- **File-level inputs**: Each ticket must specify project-specific files
 - **Copy-and-Sync pattern**: Sync completed items from live/ to completed/
 - **Delete from live/ only when ALL items completed**

@@ -27,17 +27,17 @@ process:
         - "compose_drift"      # Differences between cloudbuild and compose
         - "platform_issues"    # Root user, path dependency issues
         - "recommended_fixes"  # List of {file, change, reason}
-        - "pre_existing_drift" # Drift that pre-dates current plan (needs separate remediation)
+        - "pre_existing_drift" # Drift that pre-dates current epic (needs separate remediation)
       pre_existing_drift_schema:
         type: "array"
-        description: "CI/CD drift that existed before the current plan — requires separate remediation"
+        description: "CI/CD drift that existed before the current epic — requires separate remediation"
         items:
           type: "object"
           fields:
             - config_file: "string — the CI/CD file with pre-existing drift"
             - drift_description: "string — what is out of sync and why"
             - remediation_plan_needed: "boolean — always true for pre-existing drift"
-            - suggested_plan_name: "string — standard naming e.g. YYMMDDXX_cicd_drift_<config>"
+            - suggested_epic_name: "string — standard naming e.g. YYMMDDXX_cicd_drift_<config>"
 
     - name: "validation_status"
       type: "string"
@@ -69,8 +69,8 @@ process:
       # Get seed context (objective, process summary, inputs)
       agentic agent context bootstrap --role deploy-cicd -j
 
-      # Get current task if working from a plan
-      agentic agent plan task current -j
+      # Get current ticket if working from an epic
+      agentic agent epic ticket current -j
       ```
 
       CLI output provides your objective, process summary, input file paths.
@@ -85,13 +85,13 @@ process:
     - |
       Classify CI/CD drift findings:
 
-      PLAN-RELATED DRIFT: CI/CD changes needed because of current plan work
+      EPIC-RELATED DRIFT: CI/CD changes needed because of current epic work
         → Report as normal finding (existing behavior)
         → Fix inline as part of current CI/CD audit
 
-      PRE-EXISTING DRIFT: CI/CD configuration was already out of sync before this plan
+      PRE-EXISTING DRIFT: CI/CD configuration was already out of sync before this epic
         → Flag as pre_existing_drift in cicd_audit_report output
-        → Capture: config_file, drift_description, suggested_plan_name
+        → Capture: config_file, drift_description, suggested_epic_name
         → Do NOT attempt to fix — just report for planner triage
         → Set remediation_plan_needed: true
 

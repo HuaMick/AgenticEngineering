@@ -33,7 +33,7 @@ You participate in **audit-test-fix-loop** as the final-validator:
 
 1. **Bootstrap Context**: Run `agentic agent context bootstrap --role test-final-output -j` to get seed context
 
-2. **Review Inputs**: Orchestration agent provides live plan path and execution data (changes, test results, failures, design decisions)
+2. **Review Inputs**: Orchestration agent provides live epic ticket path and execution data (changes, test results, failures, design decisions)
 
 3. **Interrogate Execution Data** - Assume nothing, verify everything:
    - What changed? Which tests passed/failed/skipped?

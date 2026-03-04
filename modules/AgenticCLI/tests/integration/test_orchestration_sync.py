@@ -34,7 +34,7 @@ class TestOrchestrationSyncWorkflow:
 
         Sets up:
         - Git repository with initial commit
-        - docs/plans/live directory structure
+        - docs/epics/live directory structure
         - User configuration for git
         """
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -60,7 +60,7 @@ class TestOrchestrationSyncWorkflow:
             )
 
             # Create initial structure
-            (repo_path / "docs" / "plans" / "live").mkdir(parents=True)
+            (repo_path / "docs" / "epics" / "live").mkdir(parents=True)
             (repo_path / "README.md").write_text("# Orchestration Sync Test Project\n")
 
             # Initial commit
@@ -188,7 +188,7 @@ class TestOrchestrationSyncWorkflow:
         7. Validate passes again (MMD now matches updated YAML)
         """
         # Step 1: Create plan folder
-        plan_path = sync_repo / "docs" / "plans" / "live" / "sync-test"
+        plan_path = sync_repo / "docs" / "epics" / "live" / "sync-test"
         plan_path.mkdir(parents=True)
 
         # Create initial plan with 2 phases
@@ -218,7 +218,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 2: Generate orchestration MMD
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Initial orchestration generate failed: {stderr}"
@@ -238,7 +238,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 3: Validate passes (MMD matches YAML)
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Initial validation should pass: {stderr}"
@@ -272,7 +272,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 5: Validate fails (drift detected)
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Validation should fail when MMD is missing phases"
@@ -284,7 +284,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 6: Regenerate MMD with --force
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
@@ -301,7 +301,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 7: Validate passes again
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Final validation should pass after regeneration: {stderr}"
@@ -314,7 +314,7 @@ class TestOrchestrationSyncWorkflow:
         drift detection results.
         """
         # Setup plan folder
-        plan_path = sync_repo / "docs" / "plans" / "live" / "json-sync"
+        plan_path = sync_repo / "docs" / "epics" / "live" / "json-sync"
         plan_path.mkdir(parents=True)
 
         # Create initial plan
@@ -330,7 +330,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Generate MMD
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -346,7 +346,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Validate with JSON output
         stdout, stderr, code = cli_in_repo(
-            "-j", "agent", "plan", "orchestration", "validate",
+            "-j", "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Validation should fail with drift"
@@ -365,13 +365,13 @@ class TestOrchestrationSyncWorkflow:
 
         # Regenerate and validate again with JSON
         cli_in_repo(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
 
         stdout, stderr, code = cli_in_repo(
-            "-j", "agent", "plan", "orchestration", "validate",
+            "-j", "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -387,7 +387,7 @@ class TestOrchestrationSyncWorkflow:
         during validation (tasks are warnings, not errors by default).
         """
         # Setup plan folder
-        plan_path = sync_repo / "docs" / "plans" / "live" / "task-sync"
+        plan_path = sync_repo / "docs" / "epics" / "live" / "task-sync"
         plan_path.mkdir(parents=True)
 
         # Create initial plan with one task
@@ -405,7 +405,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Generate MMD
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -424,7 +424,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Validate - should pass (missing tasks are warnings)
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0, "Should pass - missing tasks are warnings, not errors"
@@ -435,7 +435,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Validate with --strict should fail
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path),
             "--strict"
         )
@@ -443,13 +443,13 @@ class TestOrchestrationSyncWorkflow:
 
         # Regenerate and validate strict mode should pass
         cli_in_repo(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
 
         stdout, stderr, code = cli_in_repo(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path),
             "--strict"
         )
@@ -483,7 +483,7 @@ class TestOrchestrationSyncEdgeCases:
                 capture_output=True,
             )
 
-            (repo_path / "docs" / "plans" / "live").mkdir(parents=True)
+            (repo_path / "docs" / "epics" / "live").mkdir(parents=True)
             (repo_path / "README.md").write_text("# Edge Sync Test\n")
             subprocess.run(["git", "add", "."], cwd=repo_path, capture_output=True)
             subprocess.run(
@@ -539,7 +539,7 @@ class TestOrchestrationSyncEdgeCases:
         When a phase is removed from YAML, the MMD will have extra phases.
         This should still validate (MMD has more than YAML is OK, just warns).
         """
-        plan_path = edge_repo / "docs" / "plans" / "live" / "phase-removal"
+        plan_path = edge_repo / "docs" / "epics" / "live" / "phase-removal"
         plan_path.mkdir(parents=True)
 
         # Create initial plan with 3 phases
@@ -559,7 +559,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Generate MMD with all 3 phases
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -572,7 +572,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Validate - should pass (MMD having extra phases is OK)
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         # MMD has P3 but YAML doesn't - validation checks YAML phases exist in MMD
@@ -583,7 +583,7 @@ class TestOrchestrationSyncEdgeCases:
 
         Changing a phase ID in YAML creates a missing phase (new ID not in MMD).
         """
-        plan_path = edge_repo / "docs" / "plans" / "live" / "id-change"
+        plan_path = edge_repo / "docs" / "epics" / "live" / "id-change"
         plan_path.mkdir(parents=True)
 
         # Create initial plan
@@ -601,7 +601,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Generate MMD
         edge_cli(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
 
@@ -613,7 +613,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Validate should fail - RENAMED not in MMD
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Should fail - RENAMED phase ID not in MMD"
@@ -625,7 +625,7 @@ class TestOrchestrationSyncEdgeCases:
 
         Phases from all plan files should be validated against the MMD.
         """
-        plan_path = edge_repo / "docs" / "plans" / "live" / "multi-file-sync"
+        plan_path = edge_repo / "docs" / "epics" / "live" / "multi-file-sync"
         plan_path.mkdir(parents=True)
 
         # Create first plan file
@@ -650,7 +650,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Generate MMD
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -663,7 +663,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Validate should pass
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -677,7 +677,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Validate should fail
         stdout, stderr, code = edge_cli(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Should fail - B2 not in MMD"
@@ -689,7 +689,7 @@ class TestOrchestrationSyncEdgeCases:
 
         Multiple generate -> validate cycles should be stable.
         """
-        plan_path = edge_repo / "docs" / "plans" / "live" / "idempotent-sync"
+        plan_path = edge_repo / "docs" / "epics" / "live" / "idempotent-sync"
         plan_path.mkdir(parents=True)
 
         # Create plan
@@ -707,9 +707,9 @@ class TestOrchestrationSyncEdgeCases:
             yaml.dump(plan_content, f)
 
         # Cycle 1: Generate and validate
-        edge_cli("agent", "plan", "orchestration", "generate", "--plan", str(plan_path))
+        edge_cli("agent", "epic", "orchestration", "generate", "--plan", str(plan_path))
         stdout1, _, code1 = edge_cli(
-            "agent", "plan", "orchestration", "validate", "--plan", str(plan_path)
+            "agent", "epic", "orchestration", "validate", "--plan", str(plan_path)
         )
         assert code1 == 0
 
@@ -719,12 +719,12 @@ class TestOrchestrationSyncEdgeCases:
 
         # Cycle 2: Regenerate (with --force) and validate
         edge_cli(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
         stdout2, _, code2 = edge_cli(
-            "agent", "plan", "orchestration", "validate", "--plan", str(plan_path)
+            "agent", "epic", "orchestration", "validate", "--plan", str(plan_path)
         )
         assert code2 == 0
 
@@ -738,12 +738,12 @@ class TestOrchestrationSyncEdgeCases:
 
         # Cycle 3: One more time
         edge_cli(
-            "agent", "plan", "orchestration", "generate",
+            "agent", "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
         _, _, code3 = edge_cli(
-            "agent", "plan", "orchestration", "validate", "--plan", str(plan_path)
+            "agent", "epic", "orchestration", "validate", "--plan", str(plan_path)
         )
         assert code3 == 0
 
@@ -775,7 +775,7 @@ class TestOrchestrationSyncValidationDetails:
                 capture_output=True,
             )
 
-            (repo_path / "docs" / "plans" / "live").mkdir(parents=True)
+            (repo_path / "docs" / "epics" / "live").mkdir(parents=True)
             (repo_path / "README.md").write_text("# Detail Sync Test\n")
             subprocess.run(["git", "add", "."], cwd=repo_path, capture_output=True)
             subprocess.run(
@@ -827,7 +827,7 @@ class TestOrchestrationSyncValidationDetails:
 
     def test_validation_reports_yaml_and_mmd_files(self, detail_cli, detail_repo):
         """Test that validation output reports which files were checked."""
-        plan_path = detail_repo / "docs" / "plans" / "live" / "file-report"
+        plan_path = detail_repo / "docs" / "epics" / "live" / "file-report"
         plan_path.mkdir(parents=True)
 
         # Create plan
@@ -841,11 +841,11 @@ class TestOrchestrationSyncValidationDetails:
             yaml.dump(plan_content, f)
 
         # Generate MMD
-        detail_cli("agent", "plan", "orchestration", "generate", "--plan", str(plan_path))
+        detail_cli("agent", "epic", "orchestration", "generate", "--plan", str(plan_path))
 
         # Validate and check output includes file names
         stdout, stderr, code = detail_cli(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -856,7 +856,7 @@ class TestOrchestrationSyncValidationDetails:
 
     def test_validation_counts_phases_and_tasks(self, detail_cli, detail_repo):
         """Test that validation output includes phase and task counts."""
-        plan_path = detail_repo / "docs" / "plans" / "live" / "counts"
+        plan_path = detail_repo / "docs" / "epics" / "live" / "counts"
         plan_path.mkdir(parents=True)
 
         # Create plan with multiple phases and tasks
@@ -886,17 +886,17 @@ class TestOrchestrationSyncValidationDetails:
             yaml.dump(plan_content, f)
 
         # Generate and validate
-        detail_cli("agent", "plan", "orchestration", "generate", "--plan", str(plan_path))
+        detail_cli("agent", "epic", "orchestration", "generate", "--plan", str(plan_path))
 
         stdout, stderr, code = detail_cli(
-            "agent", "plan", "orchestration", "validate",
+            "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0
 
         # Check JSON output has counts
         stdout_json, _, _ = detail_cli(
-            "-j", "agent", "plan", "orchestration", "validate",
+            "-j", "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         result = json.loads(stdout_json)
@@ -906,7 +906,7 @@ class TestOrchestrationSyncValidationDetails:
 
     def test_validation_error_details_in_json(self, detail_cli, detail_repo):
         """Test that validation errors include detailed information in JSON."""
-        plan_path = detail_repo / "docs" / "plans" / "live" / "error-details"
+        plan_path = detail_repo / "docs" / "epics" / "live" / "error-details"
         plan_path.mkdir(parents=True)
 
         # Create plan with one phase
@@ -920,7 +920,7 @@ class TestOrchestrationSyncValidationDetails:
             yaml.dump(plan_content, f)
 
         # Generate MMD
-        detail_cli("agent", "plan", "orchestration", "generate", "--plan", str(plan_path))
+        detail_cli("agent", "epic", "orchestration", "generate", "--plan", str(plan_path))
 
         # Add multiple new phases to create multiple drift errors
         plan_content["phases"].extend([
@@ -932,7 +932,7 @@ class TestOrchestrationSyncValidationDetails:
 
         # Validate with JSON
         stdout, stderr, code = detail_cli(
-            "-j", "agent", "plan", "orchestration", "validate",
+            "-j", "agent", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0

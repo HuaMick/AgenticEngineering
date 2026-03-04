@@ -1,6 +1,7 @@
-"""Tests for TaskPresetWorkflow functionality.
+"""Tests for TicketPresetWorkflow functionality.
 
-Unit tests for PresetLoadResult dataclass and TaskPresetWorkflow class methods.
+Unit tests for PresetLoadResult dataclass and TicketPresetWorkflow class methods.
+Note: TaskPresetWorkflow is an alias for TicketPresetWorkflow (backward compat).
 """
 
 from pathlib import Path
@@ -16,7 +17,7 @@ class TestPresetLoadResult:
 
     def test_result_creation(self):
         """Test creating PresetLoadResult with required fields."""
-        from agenticcli.workflows.task_workflow import PresetLoadResult
+        from agenticcli.workflows.ticket_workflow import PresetLoadResult
 
         result = PresetLoadResult(
             preset_name="planner-build",
@@ -32,7 +33,7 @@ class TestPresetLoadResult:
 
     def test_result_with_all_fields(self):
         """Test PresetLoadResult with all optional fields."""
-        from agenticcli.workflows.task_workflow import PresetLoadResult
+        from agenticcli.workflows.ticket_workflow import PresetLoadResult
 
         result = PresetLoadResult(
             preset_name="builder",
@@ -47,7 +48,7 @@ class TestPresetLoadResult:
 
     def test_result_default_tasks_list(self):
         """Test that tasks defaults to empty list."""
-        from agenticcli.workflows.task_workflow import PresetLoadResult
+        from agenticcli.workflows.ticket_workflow import PresetLoadResult
 
         result = PresetLoadResult(
             preset_name="test",
@@ -58,7 +59,7 @@ class TestPresetLoadResult:
 
 
 class TestTaskPresetWorkflow:
-    """Tests for TaskPresetWorkflow class."""
+    """Tests for TicketPresetWorkflow class (TaskPresetWorkflow is an alias)."""
 
     @pytest.fixture
     def temp_plan_dir(self, temp_dir):
@@ -71,14 +72,14 @@ class TestTaskPresetWorkflow:
     @pytest.fixture
     def workflow(self, temp_plan_dir):
         """Create workflow instance with temp directory."""
-        from agenticcli.workflows.task_workflow import TaskPresetWorkflow
+        from agenticcli.workflows.ticket_workflow import TicketPresetWorkflow
 
-        return TaskPresetWorkflow(temp_plan_dir)
+        return TicketPresetWorkflow(temp_plan_dir)
 
     @pytest.fixture
     def preset_dir(self, temp_dir, monkeypatch):
         """Create mock presets directory."""
-        from agenticcli.workflows import task_workflow
+        from agenticcli.workflows import ticket_workflow
 
         preset_path = temp_dir / "presets"
         preset_path.mkdir()
@@ -93,7 +94,7 @@ class TestTaskPresetWorkflow:
 
         # Patch PRESETS_DIR
         monkeypatch.setattr(
-            task_workflow.TaskPresetWorkflow,
+            ticket_workflow.TicketPresetWorkflow,
             "PRESETS_DIR",
             preset_path
         )
@@ -109,12 +110,12 @@ class TestTaskPresetWorkflow:
 
     def test_list_presets_empty_dir(self, workflow, temp_dir, monkeypatch):
         """Test list_presets returns empty list if no presets."""
-        from agenticcli.workflows import task_workflow
+        from agenticcli.workflows import ticket_workflow
 
         empty_dir = temp_dir / "empty_presets"
         empty_dir.mkdir()
         monkeypatch.setattr(
-            task_workflow.TaskPresetWorkflow,
+            ticket_workflow.TicketPresetWorkflow,
             "PRESETS_DIR",
             empty_dir
         )
@@ -124,10 +125,10 @@ class TestTaskPresetWorkflow:
 
     def test_list_presets_nonexistent_dir(self, workflow, monkeypatch):
         """Test list_presets returns empty list if dir doesn't exist."""
-        from agenticcli.workflows import task_workflow
+        from agenticcli.workflows import ticket_workflow
 
         monkeypatch.setattr(
-            task_workflow.TaskPresetWorkflow,
+            ticket_workflow.TicketPresetWorkflow,
             "PRESETS_DIR",
             Path("/nonexistent/path")
         )

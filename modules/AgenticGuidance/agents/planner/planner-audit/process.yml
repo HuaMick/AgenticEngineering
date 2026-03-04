@@ -1,60 +1,60 @@
 process:
   goal: |
-    Audit plan folder compliance: identify misplaced, stale, or misleading files.
+    Audit epic folder compliance: identify misplaced, stale, or misleading files.
     Output: audit_plan_compliance.yml in audit/ subfolder with findings and actions.
 
   inputs:
     - location: "modules/AgenticGuidance/agents/planner/planner-audit/inputs.yml"
       description: "Core planner-audit agent inputs, definitions, and guidelines"
-    - location: "docs/plans/live/YYMMDDXX_description/"
-      description: "The plan folder to audit"
+    - location: "docs/epics/live/YYMMDDXX_description/"
+      description: "The epic folder to audit"
 
   steps:
     - |
       CCI BOOTSTRAP (CLI Context Injection) - Run FIRST:
       ```bash
       agentic agent context bootstrap --role planner-audit -j
-      agentic agent plan task current -j
+      agentic agent epic ticket current -j
       ```
       Use Glob/Grep/Read only if CLI output indicates specific files to examine.
 
     - |
       VALIDATE REQUIRED INPUTS (STOP if missing):
-      1. plan_folder_path - Path to audit (e.g., "docs/plans/live/260106MyProject_feature_auth/")
+      1. epic_folder_path - Path to audit (e.g., "docs/epics/live/260106MyProject_feature_auth/")
       2. target_project_path - Absolute path to project root (e.g., "/home/code/MyProject")
 
     - |
-      FENCE: PLAN FOLDER MUST EXIST BEFORE AUDITING
-      The plan folder MUST already exist at the provided plan_folder_path.
+      FENCE: EPIC FOLDER MUST EXIST BEFORE AUDITING
+      The epic folder MUST already exist at the provided epic_folder_path.
 
       VALIDATION STEP:
-      Before proceeding, verify the plan folder exists:
-      1. Check if the provided plan_folder_path exists on disk
+      Before proceeding, verify the epic folder exists:
+      1. Check if the provided epic_folder_path exists on disk
       2. If the folder does NOT exist, STOP immediately with this message:
 
-         "FENCE VIOLATION: Plan folder not found at {plan_folder_path}
+         "FENCE VIOLATION: Epic folder not found at {epic_folder_path}
 
-          The plan folder must be created via CLI before auditing can begin.
+          The epic folder must be created via CLI before auditing can begin.
 
           REQUIRED ACTION:
-          Run: agentic agent plan init <branch> --description <description>
+          Run: agentic agent epic init <branch> --description <description>
 
-          The CLI creates the plan folder structure.
-          Do NOT create the plan folder directly with the Write tool.
+          The CLI creates the epic folder structure.
+          Do NOT create the epic folder directly with the Write tool.
 
           After running the CLI command, retry the audit operation."
 
       3. If the folder exists, proceed with audit
 
     - |
-      INVENTORY THE PLAN FOLDER:
+      INVENTORY THE EPIC FOLDER:
       List all files in root and subfolders (live/, completed/, audit/, analysis/).
       Record: file path, type (from naming pattern), last modified date.
 
     - |
-      AUDIT PLAN STRUCTURE HIERARCHY (CRITICAL - must pass before other checks):
+      AUDIT EPIC STRUCTURE HIERARCHY (CRITICAL - must pass before other checks):
 
-      For each plan file (plan_*.yml) in the plan folder:
+      For each ticket file (ticket_*.yml) in the epic folder:
       1. Parse the YAML and inspect the ROOT-LEVEL keys
       2. Check for a `tasks:` key at root level (i.e., NOT nested under `phases:`)
       3. Check for a `phases:` key at root level
@@ -77,7 +77,7 @@ process:
          under 'phases' entries. Root-level tasks break downstream parser loops
          that iterate phases[].tasks[]."
       - If `phases:` is missing entirely AND `tasks:` is at root, this is a
-        BLOCKING failure - the audit MUST report FAIL for this plan.
+        BLOCKING failure - the audit MUST report FAIL for this ticket.
       - If `phases:` exists but individual phases lack a `tasks:` key, FLAG as
         MEDIUM severity: "Phase '{name}' has no tasks defined."
       - Each phase entry MUST contain a `tasks:` list. Phases without tasks
@@ -89,19 +89,19 @@ process:
       AUDIT FILE PLACEMENT (for each file ask: "Does this file belong here?"):
 
       For files in live/:
-      - Is this a phase plan (plan_*.yml)? Check if ANY items are still pending/in-progress.
+      - Is this a ticket file (ticket_*.yml)? Check if ANY items are still pending/in-progress.
         If ALL items are completed, FLAG: "Should be removed from live/ (exists in completed/)"
       - Is this an audit report (audit_*.yml)? FLAG: "Should be in audit/ subfolder"
       - Is this a review decision (review_*.yml)? FLAG: "Should be in analysis/ subfolder"
-      - Is this a remediation plan (plan_*_remediation*.yml)? Check if it was merged.
-        If merged, FLAG: "Should be deleted (tasks merged into phase plan)"
+      - Is this a remediation ticket (ticket_*_remediation*.yml)? Check if it was merged.
+        If merged, FLAG: "Should be deleted (tasks merged into phase ticket)"
       - Is this analysis content? FLAG: "Should be in analysis/ subfolder"
 
       For files in completed/:
       - Does this file have a corresponding live/ version with pending items?
         If yes, this is normal (Copy-and-Sync pattern).
         If the live/ version has ALL items completed, FLAG the live/ version for removal.
-      - Is plan_completed.yml present? If not, FLAG: "Missing plan_completed.yml summary"
+      - Is ticket_completed.yml present? If not, FLAG: "Missing ticket_completed.yml summary"
 
       For files in audit/:
       - These are generally correct placement (audit reports belong here after processing)
@@ -112,7 +112,7 @@ process:
     - |
       AUDIT FOR COMPLETED FILES STILL IN LIVE:
 
-      For each phase plan in live/ (plan_*.yml):
+      For each ticket file in live/ (ticket_*.yml):
       1. Read the file and examine all tasks/items
       2. Check the status field of each item
       3. If ALL items have status: completed:
@@ -153,23 +153,23 @@ process:
       - Recommend update, archive, or delete with specific reasoning
 
     - |
-      AUDIT PLAN-TO-EXECUTION TRACKING:
+      AUDIT TICKET-TO-EXECUTION TRACKING:
 
-      For each plan file, verify execution status:
+      For each ticket file, verify execution status:
 
       EXPECTED COMPLETIONS:
-      - Plans with status: completed should have evidence of execution
+      - Tickets with status: completed should have evidence of execution
       - Check for corresponding code changes, test results, or documentation
 
-      INCOMPLETE PLANS:
-      - Plans with status: active but no recent activity
-      - Plans with some items completed but others abandoned
-      - Plans that were superseded without explicit documentation
+      INCOMPLETE TICKETS:
+      - Tickets with status: active but no recent activity
+      - Tickets with some items completed but others abandoned
+      - Tickets that were superseded without explicit documentation
 
-      For incomplete plans, document:
+      For incomplete tickets, document:
       - What was the intended goal?
       - What evidence exists of partial execution?
-      - Was the plan superseded? If so, by what?
+      - Was the ticket superseded? If so, by what?
       - Recommend: mark as abandoned, complete remaining items, or archive
 
     - |
@@ -178,7 +178,7 @@ process:
       Create audit_plan_compliance.yml with:
       ```yaml
       audit:
-        plan_folder: "{plan_folder_path}"
+        epic_folder: "{epic_folder_path}"
         audit_date: "YYYYMMDD"
         auditor: "planner-audit"
 
@@ -245,7 +245,7 @@ process:
 
   guidelines:
     # Core guidelines: See inputs.yml for transitive layer references
-    # Plan lifecycle: See modules/AgenticGuidance/assets/definitions/plans.yml
+    # Epic lifecycle: See modules/AgenticGuidance/assets/definitions/plans.yml
     - |
       QUESTION EACH FILE: "Is this file compliant? Does it belong here?"
     - |
@@ -253,7 +253,7 @@ process:
     - |
       SEVERITY: HIGH=could mislead agent, MEDIUM=wrong location/stale, LOW=minor organizational.
     - |
-      HIERARCHY ENFORCEMENT: Plans MUST use phases->tasks nesting. Root-level `tasks:` keys
+      HIERARCHY ENFORCEMENT: Tickets MUST use phases->tasks nesting. Root-level `tasks:` keys
       are a BLOCKING audit failure. Downstream parsers iterate phases[].tasks[] and will
       silently skip root-level tasks, causing missed work. Reference: plans.yml#required_fields.
     - |

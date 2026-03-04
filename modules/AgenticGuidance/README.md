@@ -98,14 +98,14 @@ High-level coordination of planning and execution workflows.
 
 | Agent | Purpose |
 |-------|---------|
-| `orchestration-planning` | Human-in-the-loop plan creation + MMD generation |
+| `orchestration-planning` | Human-in-the-loop epic creation + MMD generation |
 | `orchestration-executor` | Dynamic agent routing from Plan-MMD |
 | `orchestration-friction` | LangSmith trace friction analysis workflow |
 | ~~`orchestration-build`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
 | ~~`orchestration-guidance`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
 
 ### Planner (7 agents)
-Create executable implementation plans from objectives.
+Create executable implementation epics from objectives.
 
 | Agent | Purpose |
 |-------|---------|
@@ -114,8 +114,8 @@ Create executable implementation plans from objectives.
 | `planner-cleaning` | Cleanup and audit planning |
 | `planner-guidance` | Guidance improvement planning |
 | `planner-guidance-testing` | Guidance completeness testing |
-| `planner-reviewer` | Plan review and approval |
-| `planner-audit` | Plan folder compliance auditing |
+| `planner-reviewer` | Epic review and approval |
+| `planner-audit` | Epic folder compliance auditing |
 
 ### Test (7 agents)
 Validation through testing and quality assurance.
@@ -160,7 +160,7 @@ Infrastructure and deployment tooling.
 ### Definitions (42 files)
 Stable concepts and terminology that define "what is X". Key definitions include:
 - `agent-categories.yml` - Agent taxonomy
-- `plans.yml` - Plan structure and lifecycle
+- `plans.yml` - Epic structure and lifecycle
 - `agent-loops.yml` - Loop patterns for iterative work
 - `rlm-patterns.yml` - RLM pattern definitions for context decomposition
 - `friction.yml` - Friction pattern definitions
@@ -206,9 +206,9 @@ Four top-level entrypoints for initiating workflows:
 
 | Entrypoint | Purpose |
 |------------|---------|
-| `_plan_build.yml` | Create implementation plans for code changes |
-| `_plan_teach.yml` | Create guidance plans for teaching/documentation |
-| `_orchestrate.yml` | Execute a pre-approved plan |
+| `_plan_build.yml` | Create implementation epics for code changes |
+| `_plan_teach.yml` | Create guidance epics for teaching/documentation |
+| `_orchestrate.yml` | Execute a pre-approved epic |
 | `_analyze_friction.yml` | Analyze LangSmith traces for friction patterns |
 
 ### Usage
@@ -217,15 +217,15 @@ To initiate a workflow, **inject the content** of the appropriate entrypoint fil
 
 ### Workflow
 
-1. **Planning Phase**: Use `_plan_build.yml` or `_plan_teach.yml` to create a plan
+1. **Planning Phase**: Use `_plan_build.yml` or `_plan_teach.yml` to create an epic
    - Invokes `orchestration-planning` agent
    - Spawns `deploy-worktree` for workspace setup
    - Runs planning loops with specialized planners and reviewers
-   - Outputs approved plan to `docs/plans/live/YYMMDDXX_description/`
+   - Outputs approved epic to `docs/epics/live/YYMMDDXX_description/`
 
-2. **Execution Phase**: Use `_orchestrate.yml` to execute the approved plan
+2. **Execution Phase**: Use `_orchestrate.yml` to execute the approved epic
    - Invokes `orchestration-executor` agent
-   - Discovers `orchestration_*.mmd` file in plan folder
+   - Discovers `orchestration_*.mmd` file in epic folder
    - Executes phases using dynamic AGENT_ROUTING from MMD metadata
    - Orchestrates builder, tester, and teacher agents per phase definitions
 
@@ -239,16 +239,16 @@ To initiate a workflow, **inject the content** of the appropriate entrypoint fil
 
 ### Main-First Planning Workflow
 
-Plans are created in the **main worktree** for centralized visibility before execution:
+Epics are created in the **main worktree** for centralized visibility before execution:
 
-1. **Plan Creation** (main worktree): `agentic plan init <branch> --description <desc>`
-   - Creates plan folder in `docs/plans/live/YYMMDDXX_description/`
+1. **Epic Creation** (main worktree): `agentic agent epic init <branch> --description <desc>`
+   - Creates epic folder in `docs/epics/live/YYMMDDXX_description/`
    - Creates feature worktree for code implementation
-2. **Plan Approval**: Human reviews and approves the plan
+2. **Epic Approval**: Human reviews and approves the epic
 3. **Execution** (feature worktree): Switch to feature worktree for implementation
 4. **Merge**: Code merges via staging to main
 
-This ensures all active plans are visible from a single location while code development follows proper branching workflow.
+This ensures all active epics are visible from a single location while code development follows proper branching workflow.
 
 ## CCI Bootstrap Pattern
 
@@ -260,8 +260,8 @@ This ensures all active plans are visible from a single location while code deve
 # 1. Get role context (process, inputs, guidelines)
 agentic agent context bootstrap --role <agent-role> -j
 
-# 2. Get current task from plan
-agentic agent plan task current -j
+# 2. Get current ticket from epic
+agentic agent epic ticket current -j
 ```
 
 ### Key Principles
@@ -295,7 +295,7 @@ AgenticGuidance uses two path resolution strategies:
 
 ## Implementation Status
 
-This section is the **source of truth** for agent implementation status. Plan-reviewer agents should check this before planning work. Agents should not create tasks for unimplemented infrastructure.
+This section is the **source of truth** for agent implementation status. Epic-reviewer agents should check this before planning work. Agents should not create tickets for unimplemented infrastructure.
 
 ### Status Legend
 - Implemented: Agent guidance complete AND functional infrastructure exists
@@ -309,7 +309,7 @@ This section is the **source of truth** for agent implementation status. Plan-re
 
 | Agent | Status | Notes |
 |-------|--------|-------|
-| orchestration-planning | Implemented | Human-in-the-loop plan creation, MMD generation |
+| orchestration-planning | Implemented | Human-in-the-loop epic creation, MMD generation |
 | orchestration-executor | Implemented | Dynamic agent routing from Plan-MMD metadata |
 | orchestration-friction | Implemented | LangSmith trace friction analysis workflow |
 | ~~orchestration-build~~ | Deprecated | Replaced by orchestration-executor |
@@ -324,8 +324,8 @@ This section is the **source of truth** for agent implementation status. Plan-re
 | planner-cleaning | Implemented | Cleanup and audit planning |
 | planner-guidance | Implemented | Guidance improvement planning |
 | planner-guidance-testing | Implemented | Guidance completeness testing |
-| planner-reviewer | Implemented | Plan review and approval |
-| planner-audit | Implemented | Plan folder compliance auditing |
+| planner-reviewer | Implemented | Epic review and approval |
+| planner-audit | Implemented | Epic folder compliance auditing |
 
 ### Test Agents
 
@@ -395,8 +395,8 @@ This README serves as the **overall progress tracker** for the AgenticGuidance m
 1. **Source of Truth**: This Implementation Status section documents what is implemented, in progress, and NOT yet implemented.
 
 2. **Planning Guidance**:
-   - Plan-reviewer agents MUST check this section before approving plans
-   - Do NOT create tasks that depend on unimplemented infrastructure (e.g., CI/CD validation tasks when no pipeline exists)
+   - Epic-reviewer agents MUST check this section before approving epics
+   - Do NOT create tickets that depend on unimplemented infrastructure (e.g., CI/CD validation tickets when no pipeline exists)
    - Mark items as "In Progress" when work begins
 
 3. **Status Updates**:

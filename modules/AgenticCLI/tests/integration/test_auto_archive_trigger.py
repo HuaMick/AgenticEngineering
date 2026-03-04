@@ -24,15 +24,15 @@ class TestNoAutoArchiveOnCompletion:
         """Create a plan folder with multiple tasks for completion testing.
 
         Structure:
-        - docs/plans/live/260130AA_auto_archive_test/
+        - docs/epics/live/260130AA_auto_archive_test/
           - plan_build.yml (3 tasks: 2 pending, 1 in_progress)
-        - docs/plans/completed/ (empty, destination for archive)
+        - docs/epics/completed/ (empty, destination for archive)
         """
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260130AA_auto_archive_test"
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260130AA_auto_archive_test"
         plan_path.mkdir(parents=True, exist_ok=True)
 
         # Create completed directory
-        completed_dir = temp_repo / "docs" / "plans" / "completed"
+        completed_dir = temp_repo / "docs" / "epics" / "completed"
         completed_dir.mkdir(parents=True, exist_ok=True)
 
         # Create plan file with multiple tasks
@@ -77,11 +77,11 @@ class TestNoAutoArchiveOnCompletion:
     @pytest.fixture
     def plan_with_single_task(self, temp_repo):
         """Create a plan folder with a single pending task."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260130AA_single_task_test"
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260130AA_single_task_test"
         plan_path.mkdir(parents=True, exist_ok=True)
 
         # Create completed directory
-        completed_dir = temp_repo / "docs" / "plans" / "completed"
+        completed_dir = temp_repo / "docs" / "epics" / "completed"
         completed_dir.mkdir(parents=True, exist_ok=True)
 
         plan_content = {
@@ -115,11 +115,11 @@ class TestNoAutoArchiveOnCompletion:
     @pytest.fixture
     def plan_with_tasks_across_files(self, temp_repo):
         """Create a plan folder with tasks spread across multiple YAML files."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260130AA_multi_file_test"
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260130AA_multi_file_test"
         plan_path.mkdir(parents=True, exist_ok=True)
 
         # Create completed directory
-        completed_dir = temp_repo / "docs" / "plans" / "completed"
+        completed_dir = temp_repo / "docs" / "epics" / "completed"
         completed_dir.mkdir(parents=True, exist_ok=True)
 
         # First plan file
@@ -181,7 +181,7 @@ class TestNoAutoArchiveOnCompletion:
 
         # Complete first task
         result = cli_runner([
-            "agent", "plan", "task", "complete", "build_01_001",
+            "agent", "epic", "ticket", "complete", "build_01_001",
             "--plan", str(plan_path),
         ])
         assert result.returncode == 0
@@ -194,7 +194,7 @@ class TestNoAutoArchiveOnCompletion:
 
         # Complete second task
         result = cli_runner([
-            "agent", "plan", "task", "complete", "build_01_002",
+            "agent", "epic", "ticket", "complete", "build_01_002",
             "--plan", str(plan_path),
         ])
         assert result.returncode == 0
@@ -215,9 +215,9 @@ class TestNoAutoArchiveOnCompletion:
         dest_path = completed_dir / plan_path.name
 
         # Complete all three tasks
-        cli_runner(["agent", "plan", "task", "complete", "build_01_001", "--plan", str(plan_path)])
-        cli_runner(["agent", "plan", "task", "complete", "build_01_002", "--plan", str(plan_path)])
-        result = cli_runner(["agent", "plan", "task", "complete", "build_01_003", "--plan", str(plan_path)])
+        cli_runner(["agent", "epic", "ticket", "complete", "build_01_001", "--plan", str(plan_path)])
+        cli_runner(["agent", "epic", "ticket", "complete", "build_01_002", "--plan", str(plan_path)])
+        result = cli_runner(["agent", "epic", "ticket", "complete", "build_01_003", "--plan", str(plan_path)])
 
         assert result.returncode == 0
         assert "completed" in result.stdout.lower()
@@ -235,7 +235,7 @@ class TestNoAutoArchiveOnCompletion:
         dest_path = completed_dir / plan_path.name
 
         result = cli_runner([
-            "agent", "plan", "task", "complete", "build_01_001",
+            "agent", "epic", "ticket", "complete", "build_01_001",
             "--plan", str(plan_path),
         ])
 
@@ -259,7 +259,7 @@ class TestNoAutoArchiveOnCompletion:
 
         # Complete task in first file
         result = cli_runner([
-            "agent", "plan", "task", "complete", "build_01_001",
+            "agent", "epic", "ticket", "complete", "build_01_001",
             "--plan", str(plan_path),
         ])
         assert result.returncode == 0
@@ -270,7 +270,7 @@ class TestNoAutoArchiveOnCompletion:
 
         # Complete task in second file
         result = cli_runner([
-            "agent", "plan", "task", "complete", "test_01_001",
+            "agent", "epic", "ticket", "complete", "test_01_001",
             "--plan", str(plan_path),
         ])
         assert result.returncode == 0
@@ -281,10 +281,10 @@ class TestNoAutoArchiveOnCompletion:
 
     def test_no_archive_when_task_not_found(self, temp_repo, cli_runner):
         """Test that failing to complete a task doesn't affect the folder."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260130AA_edge_case_test"
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260130AA_edge_case_test"
         plan_path.mkdir(parents=True, exist_ok=True)
 
-        completed_dir = temp_repo / "docs" / "plans" / "completed"
+        completed_dir = temp_repo / "docs" / "epics" / "completed"
         completed_dir.mkdir(parents=True, exist_ok=True)
 
         plan_content = {
@@ -316,7 +316,7 @@ class TestNoAutoArchiveOnCompletion:
         dest_path = completed_dir / plan_path.name
 
         result = cli_runner([
-            "agent", "plan", "task", "complete", "nonexistent_task",
+            "agent", "epic", "ticket", "complete", "nonexistent_task",
             "--plan", str(plan_path),
         ])
 
@@ -334,13 +334,13 @@ class TestIsPlanFullyCompleted:
     @pytest.fixture
     def plan_folder(self, temp_repo):
         """Create a basic plan folder for testing."""
-        plan_path = temp_repo / "docs" / "plans" / "live" / "260130AA_completion_check"
+        plan_path = temp_repo / "docs" / "epics" / "live" / "260130AA_completion_check"
         plan_path.mkdir(parents=True, exist_ok=True)
         return plan_path
 
     def test_returns_false_when_no_plan_files(self, plan_folder):
         """Test returns False when no plan_*.yml files exist."""
-        from agenticcli.commands.plan import is_plan_fully_completed
+        from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         # Empty folder - no plan files
         result = is_plan_fully_completed(plan_folder)
@@ -348,7 +348,7 @@ class TestIsPlanFullyCompleted:
 
     def test_returns_false_when_no_tasks(self, plan_folder):
         """Test returns False when plan files have no tasks."""
-        from agenticcli.commands.plan import is_plan_fully_completed
+        from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         # Plan file with no tasks
         plan_content = {
@@ -370,7 +370,7 @@ class TestIsPlanFullyCompleted:
 
     def test_returns_false_with_pending_tasks(self, plan_folder):
         """Test returns False when any task is pending."""
-        from agenticcli.commands.plan import is_plan_fully_completed
+        from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         plan_content = {
             "name": "incomplete-plan",
@@ -394,7 +394,7 @@ class TestIsPlanFullyCompleted:
 
     def test_returns_false_with_in_progress_tasks(self, plan_folder):
         """Test returns False when any task is in_progress."""
-        from agenticcli.commands.plan import is_plan_fully_completed
+        from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         plan_content = {
             "name": "incomplete-plan",
@@ -418,7 +418,7 @@ class TestIsPlanFullyCompleted:
 
     def test_returns_true_when_all_completed(self, plan_folder):
         """Test returns True when all tasks are completed."""
-        from agenticcli.commands.plan import is_plan_fully_completed
+        from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         plan_content = {
             "name": "completed-plan",
@@ -442,7 +442,7 @@ class TestIsPlanFullyCompleted:
 
     def test_checks_all_plan_files(self, plan_folder):
         """Test checks tasks across all plan_*.yml files."""
-        from agenticcli.commands.plan import is_plan_fully_completed
+        from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         # First file - all completed
         plan_build = {
@@ -483,7 +483,7 @@ class TestIsPlanFullyCompleted:
 
     def test_handles_yaml_parse_errors(self, plan_folder):
         """Test returns False on YAML parse errors."""
-        from agenticcli.commands.plan import is_plan_fully_completed
+        from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         # Create invalid YAML
         (plan_folder / "plan_invalid.yml").write_text("invalid: yaml: content: {{{")
@@ -493,7 +493,7 @@ class TestIsPlanFullyCompleted:
 
     def test_ignores_non_plan_files(self, plan_folder):
         """Test ignores files that don't match plan_*.yml pattern."""
-        from agenticcli.commands.plan import is_plan_fully_completed
+        from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         # Create a plan file with completed tasks
         plan_content = {
@@ -532,7 +532,7 @@ class TestIsPlanFullyCompleted:
 
     def test_handles_legacy_implementation_steps(self, plan_folder):
         """Test handles legacy structure with implementation_steps."""
-        from agenticcli.commands.plan import is_plan_fully_completed
+        from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         # Legacy structure with implementation_steps
         plan_content = {

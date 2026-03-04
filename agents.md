@@ -17,7 +17,7 @@ You are **Antigravity**, the primary orchestration and planning agent for the **
 │   ├── AgenticLangSmith/    # LangSmith trace integration
 │   └── AgenticFrontend/     # (placeholder)
 ├── docs/
-│   ├── plans/               # live/, completed/, deferred/
+│   ├── epics/               # live/, completed/, deferred/
 │   ├── userstories/         # AgenticCLI/, AgenticGuidance/
 │   ├── prompts/             # Prompt templates
 │   └── research/            # Research notes
@@ -51,10 +51,10 @@ AgenticLangSmith ─► (langsmith)
 Your default mode is the **Planning Loop**. You do not execute implementation tasks directly; instead, you structure objectives into executable plans and delegate to specialized sub-agents.
 
 **Default Behavior**:
-- When given an objective, start with `agentic agent plan init`.
-- Break objectives into **Phases** (P1, P2...) and **Tasks** (T1, T2...).
-- Every plan must reside in its own **Git Worktree**.
-- Every task MUST be tracked via `agentic agent plan task start` and `agentic agent plan task complete`.
+- When given an objective, start with `agentic agent epic init`.
+- Break objectives into **Phases** (P1, P2...) and **Tickets** (T1, T2...).
+- Every epic must reside in its own **Git Worktree**.
+- Every ticket MUST be tracked via `agentic agent epic ticket start` and `agentic agent epic ticket complete`.
 
 ---
 
@@ -73,17 +73,17 @@ Interact with the project system through the `agentic` CLI. Avoid manual file ma
 
 | Command Group | Purpose | Key Subcommands |
 |---------------|---------|-----------------|
-| `agentic plan` | Plan lifecycle (user-facing) | `new`, `list`, `status` |
-| `agentic agent plan` | Plan lifecycle (agent-facing) | `init`, `phase add`, `task start/complete`, `validate`, `archive` |
+| `agentic epic` | Epic lifecycle (user-facing) | `new`, `list`, `status` |
+| `agentic agent epic` | Epic lifecycle (agent-facing) | `init`, `phase add`, `ticket start/complete`, `validate`, `archive` |
 | `agentic agent stories` | User story discovery | `find`, `list`, `status` |
 | `agentic session` | Agent session management | `spawn`, `status`, `logs`, `kill` |
 | `agentic loop` | Ralph Loop execution | `start`, `status`, `stop` |
 | `agentic question` | Human-in-the-loop Q&A | `ask`, `answer`, `list`, `watch` |
 | `agentic agent context` | Context bootstrapping | `bootstrap --role <role>` |
-| `agentic session orchestrate` | Plan execution | (modes: planning, executor, loop) |
+| `agentic session orchestrate` | Epic execution | (modes: planning, executor, loop) |
 | `agentic devops worktree` | Git worktree ops | `create`, `list`, `remove` |
 | `agentic agent entrypoint` | Workflow entry points | `list`, `show`, `execute` |
-| `agentic planner` | Planner commands | (planning loop) |
+| `agentic planner` | Planner commands | (epic loop) |
 | `agentic ralph` | Ralph loop mgmt | `status`, `next`, `history` |
 | `agentic langsmith` | Trace analysis | (LangSmith integration) |
 | `agentic setup` | Setup, health, update | `init`, `health`, `update`, `rebuild` |
@@ -165,7 +165,7 @@ modules/AgenticGuidance/agents/
 | Interpreting user intent | YAML/JSON validation |
 | Code generation & review | Git operations |
 | Error diagnosis | Status reporting |
-| Planning & sequencing | Task status updates |
+| Planning & sequencing | Ticket status updates |
 | Synthesizing information | Session lifecycle |
 
 ---
@@ -177,41 +177,41 @@ modules/AgenticGuidance/agents/
 | Service | File | Purpose | Storage |
 |---------|------|---------|---------|
 | **StateRegistry** | `services/state.py` | Process lifecycle, FileLock | `~/.config/agenticguidance/state.json` |
-| **PlanService** | `services/plan.py` | Plan CRUD, scaffolding | `docs/plans/live/` YAML |
-| **PlanMovementWorkflow** | `services/plan.py` | Archive plans, move tasks | File operations |
-| **TaskService** | `services/task.py` | Task CRUD in plan YAML | `plan_build.yml` |
+| **EpicService** | `services/plan.py` | Epic CRUD, scaffolding | `docs/epics/live/` YAML |
+| **EpicMovementWorkflow** | `services/plan.py` | Archive epics, move tickets | File operations |
+| **TicketService** | `services/task.py` | Ticket CRUD in epic YAML | `plan_build.yml` |
 | **QuestionQueue** | `services/question.py` | Q&A workflow | `questions/pending/`, `answered/` |
 | **SessionService** | `services/session.py` | tmux session lifecycle | `~/.config/agenticcli/sessions.json` |
 | **SessionStateService** | `services/claude_session.py` | Claude session tracking | `~/.agentic/sessions/*.json` |
-| **RalphLoopService** | `services/ralph.py` | Plan discovery & priority | `~/.agentic/ralph/state.json` |
-| **ContextService** | `services/context.py` | Main-First plan resolution | Git metadata |
+| **RalphLoopService** | `services/ralph.py` | Epic discovery & priority | `~/.agentic/ralph/state.json` |
+| **ContextService** | `services/context.py` | Main-First epic resolution | Git metadata |
 | **ConfigService** | `services/config.py` | Multi-layer config | Files + ENV |
 | **TemplateWorkflow** | `services/template.py` | Jinja2 rendering | Memory |
-| **TaskPresetWorkflow** | `services/preset.py` | Task preset loading | YAML templates |
+| **TicketPresetWorkflow** | `services/preset.py` | Ticket preset loading | YAML templates |
 | **EnvironmentProvider** | `services/environment.py` | Secure env injection | Memory (no .env) |
 
 ### 5.2 Key Data Models
 
 ```python
-# Task lifecycle
-class TaskStatus(Enum): PENDING, IN_PROGRESS, COMPLETED
+# Ticket lifecycle
+class TicketStatus(Enum): PENDING, IN_PROGRESS, COMPLETED
 
 @dataclass
-class Task:
+class Ticket:
     id, name, description, status, agent, inputs, target_files, guidance, completed_date
 
-# Plan structure
+# Epic structure
 @dataclass
-class PlanData: name, description, objective, status, created
-class PhaseData: name, description, execution, tasks
-class TaskData: id, name, description, status, agent, phase_name
+class EpicData: name, description, objective, status, created
+class PhaseData: name, description, execution, tickets
+class TicketData: id, name, description, status, agent, phase_name
 
 # Question workflow
 class QuestionSeverity(Enum): BLOCKING, HIGH, MEDIUM, LOW
 class AnswerConfidence(Enum): HIGH, MEDIUM, LOW
 
 # Ralph Loop
-class PlanAction: action (execute|plan|complete|blocked), plan_name, task_id, reason
+class EpicAction: action (execute|plan|complete|blocked), epic_name, ticket_id, reason
 ```
 
 ### 5.3 Architecture Pattern: Domain -> Workflow -> Entrypoint
@@ -235,24 +235,24 @@ Every new objective follows this sequence:
 
 1. **Bootstrap**: `agentic --json agent context bootstrap --role orchestration-planning`
 2. **Story Discovery**: `agentic --json agent stories find` (affected stories MUST be recorded)
-3. **Plan Init**: `agentic agent plan init <branch_name> --description "..." --objective "..."`
-4. **Phase Determination**: Structure work using `agentic agent plan phase add`
-5. **Task Population**: Define tasks with success criteria and agent assignments
-6. **Orchestration MMD**: Generate flow using `agentic agent plan orchestration generate`
-7. **Validation**: `agentic agent plan validate <plan_path> --strict`
+3. **Epic Init**: `agentic agent epic init <branch_name> --description "..." --objective "..."`
+4. **Phase Determination**: Structure work using `agentic agent epic phase add`
+5. **Ticket Population**: Define tickets with success criteria and agent assignments
+6. **Orchestration MMD**: Generate flow using `agentic agent epic orchestration generate`
+7. **Validation**: `agentic agent epic validate <epic_path> --strict`
 
 ---
 
-## 7. Plan System
+## 7. Epic System
 
-### 7.1 Plan Folder Structure
+### 7.1 Epic Folder Structure
 
 ```
-docs/plans/live/YYMMDDXX_description/
-├── README.md                        # Plan overview
-├── plan_build.yml                   # Build phase tasks
-├── plan_test.yml                    # Test phase tasks (optional)
-├── plan_teach.yml                   # Teach phase tasks (optional)
+docs/epics/live/YYMMDDXX_description/
+├── README.md                        # Epic overview
+├── plan_build.yml                   # Build phase tickets
+├── plan_test.yml                    # Test phase tickets (optional)
+├── plan_teach.yml                   # Teach phase tickets (optional)
 ├── plan_uat.yml                     # UAT phase (optional)
 ├── orchestration_<name>.mmd         # Process diagram
 ├── questions/                       # HITL Q&A
@@ -263,14 +263,14 @@ docs/plans/live/YYMMDDXX_description/
 └── audit/                           # Optional audit reports
 ```
 
-### 7.2 Plan Naming Convention
+### 7.2 Epic Naming Convention
 
 Format: `YYMMDDXX_description` where:
 - `YYMMDD` = date (6 digits)
 - `XX` = 2-letter code (from worktree/branch)
 - `description` = snake_case description
 
-### 7.3 Plan Lifecycle
+### 7.3 Epic Lifecycle
 
 ```
 planning → active → partially_completed → fully_completed
@@ -278,24 +278,24 @@ planning → active → partially_completed → fully_completed
                                     auto-archive to completed/
 ```
 
-### 7.4 Plan YAML Structure (Root-Level Keys)
+### 7.4 Epic YAML Structure (Root-Level Keys)
 
 ```yaml
 name: 260203PS_plan_service
-objective: Implement Plan Service
+objective: Implement Epic Service
 status: active
 affected_stories: ["US-CLI-001"]
 phases:
   - name: phase_1
     description: Build core service
-    tasks:
+    tickets:
       - id: PS_001
-        name: Create PlanService class
+        name: Create EpicService class
         status: pending
         agent: build-python
 ```
 
-**CRITICAL**: Plan files use ROOT-LEVEL keys. NOT nested under `plan:`.
+**CRITICAL**: Epic files use ROOT-LEVEL keys. NOT nested under `epic:`.
 
 ---
 
@@ -315,7 +315,7 @@ phases:
 ### 8.2 Key Definitions
 
 - `agent-categories.yml` - Agent taxonomy (all 24 agents)
-- `plans.yml` - Plan structure and lifecycle
+- `plans.yml` - Epic structure and lifecycle
 - `agent-loops.yml` - Loop patterns (test-fix, audit-test-fix, etc.)
 - `user-stories.yml` - Story format and UAT patterns
 - `cli-commands.yml` - Complete CLI reference
@@ -361,9 +361,9 @@ deploy-shared.yml            ← Deploy agents
 
 | Entrypoint | Agent | Purpose |
 |------------|-------|---------|
-| `_plan_build.yml` | `orchestration-planning` | Create build/implementation plans |
-| `_plan_teach.yml` | `orchestration-planning` | Create guidance improvement plans |
-| `_orchestrate.yml` | `orchestration-executor` | Execute pre-approved Plan-MMD files |
+| `_plan_build.yml` | `orchestration-planning` | Create build/implementation epics |
+| `_plan_teach.yml` | `orchestration-planning` | Create guidance improvement epics |
+| `_orchestrate.yml` | `orchestration-executor` | Execute pre-approved Epic-MMD files |
 | `_analyze_friction.yml` | `orchestration-friction` | Analyze traces for friction patterns |
 
 ---
@@ -454,7 +454,7 @@ modules/AgenticGuidance/tests/
 If ANY `agentic` command fails with a non-zero exit code:
 1. **STOP** all planned work immediately.
 2. Capture the exact error output.
-3. Use `agentic agent plan init` to create a **Remediation Plan** for the CLI fix.
+3. Use `agentic agent epic init` to create a **Remediation Epic** for the CLI fix.
 4. Execute the fix, verify with `pytest`, then resume the original objective.
 5. **NEVER** work around CLI errors manually.
 
@@ -471,17 +471,17 @@ If ANY `agentic` command fails with a non-zero exit code:
 - Execution happens in feature worktrees.
 - Plans sync back to main after completion.
 
-### 13.4 CLI-Only Plan Operations
+### 13.4 CLI-Only Epic Operations
 
 **PROHIBITED**:
-- `rm docs/plans/live/<folder>`
-- Using `Edit` tool on plan YAML status fields
-- Manual YAML manipulation of plan state
+- `rm docs/epics/live/<folder>`
+- Using `Edit` tool on epic YAML status fields
+- Manual YAML manipulation of epic state
 
 **REQUIRED**:
-- `agentic agent plan task start/complete` for status updates
-- `agentic agent plan archive` for archival
-- CLI handles auto-archival when all tasks complete
+- `agentic agent epic ticket start/complete` for status updates
+- `agentic agent epic archive` for archival
+- CLI handles auto-archival when all tickets complete
 
 ### 13.5 Human-in-the-Loop (HITL)
 
@@ -522,21 +522,21 @@ agentic session logs <id>
 
 ## 15. Key Workflows
 
-### 15.1 Plan Lifecycle
+### 15.1 Epic Lifecycle
 
 ```
-CREATE   → agentic agent plan init feature-auth --description auth_module
-           Creates: docs/plans/live/YYMMDDXX_auth_module/
+CREATE   → agentic agent epic init feature-auth --description auth_module
+           Creates: docs/epics/live/YYMMDDXX_auth_module/
 
-DESIGN   → PlannerLoopWorkflow populates plan_build.yml with phases/tasks
+DESIGN   → PlannerLoopWorkflow populates plan_build.yml with phases/tickets
 
-VALIDATE → agentic agent plan validate <path> --strict
+VALIDATE → agentic agent epic validate <path> --strict
 
-EXECUTE  → RalphLoopService discovers plans → spawns agents per phase
+EXECUTE  → RalphLoopService discovers epics → spawns agents per phase
 
-TRACK    → agentic agent plan task start/complete <task_id> --plan <folder>
+TRACK    → agentic agent epic ticket start/complete <ticket_id> --epic <folder>
 
-ARCHIVE  → Auto-archives when all tasks complete
+ARCHIVE  → Auto-archives when all tickets complete
            Moves: live/ → completed/
 ```
 
@@ -552,7 +552,7 @@ AGENT READS   → agentic question get <id> -j
 
 ```
 START    → agentic session orchestrate ralph start --max-iterations 20
-ITERATE  → agentic session orchestrate ralph next -j   # Returns: execute|plan|complete|blocked
+ITERATE  → agentic session orchestrate ralph next -j   # Returns: execute|epic|complete|blocked
 TRACK    → agentic session orchestrate ralph status
 HISTORY  → agentic session orchestrate ralph history
 STOP     → agentic session orchestrate ralph stop
@@ -585,8 +585,8 @@ agentic --json agent context bootstrap --role <agent-role>
 | Session registry | `~/.config/agenticcli/sessions.json` |
 | Claude sessions | `~/.agentic/sessions/*.json` |
 | Ralph loop state | `~/.agentic/ralph/state.json` |
-| Plans (live) | `docs/plans/live/` |
-| Plans (archived) | `docs/plans/completed/` |
+| Epics (live) | `docs/epics/live/` |
+| Epics (archived) | `docs/epics/completed/` |
 | User stories | `docs/userstories/<project>/` |
 | Questions | `<plan>/questions/pending/` and `answered/` |
 

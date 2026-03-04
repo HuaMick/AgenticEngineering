@@ -48,8 +48,8 @@ process:
         # Get seed context (objective, process summary, inputs)
         agentic agent context bootstrap --role orchestration-executor -j
 
-        # Get current task if working from a plan
-        agentic agent plan task current -j
+        # Get current ticket if working from an epic
+        agentic agent epic ticket current -j
         ```
 
         CLI output provides:
@@ -64,7 +64,7 @@ process:
         When spawning agents for phase execution, use CLI session commands:
         ```bash
         # Spawn a Claude Code session for an agent role
-        agentic session spawn --role <agent-role> --plan <plan-folder> -j
+        agentic session spawn --role <agent-role> --epic <epic_folder> -j
 
         # Check session health/detail status
         agentic session healthcheck <session-id> -j
@@ -105,9 +105,9 @@ process:
       name: "Validate Required Inputs"
       description: |
         REQUIRED INPUTS (from inputs.yml):
-        1. plan_folder_path (string, required)
-           - Path to plan folder with YAML and MMD files
-           - ERROR if missing: "STOP: No plan_folder_path provided."
+        1. epic_folder_path (string, required)
+           - Path to epic folder with YAML and MMD files
+           - ERROR if missing: "STOP: No epic_folder_path provided."
 
         2. target_project_path (string, required)
            - Absolute path to target project
@@ -119,13 +119,13 @@ process:
       name: "Discover and Load Plan-MMD File"
       description: |
         PATH SEMANTICS:
-        - Input: plan_folder_path = the plan folder (e.g., "docs/plans/live/260110Repo_feature")
-        - Files are located directly in the plan folder root: <plan_folder_path>/orchestration_*.mmd
+        - Input: epic_folder_path = the epic folder (e.g., "docs/epics/live/260110Repo_feature")
+        - Files are located directly in the epic folder root: <epic_folder_path>/orchestration_*.mmd
 
         MMD DISCOVERY PROCESS:
-        1. Search for orchestration_*.mmd file in {plan_folder_path}/
-        2. If multiple .mmd files found, use the one matching plan_id pattern
-        3. If NO .mmd file found: ERROR "No orchestration MMD found in {plan_folder_path}/"
+        1. Search for orchestration_*.mmd file in {epic_folder_path}/
+        2. If multiple .mmd files found, use the one matching epic_id pattern
+        3. If NO .mmd file found: ERROR "No orchestration MMD found in {epic_folder_path}/"
 
         MMD PARSING:
         5. Parse Mermaid flowchart structure
@@ -144,8 +144,8 @@ process:
     - id: "startup_load_yaml"
       name: "Load Plan YAML File"
       description: |
-        1. Locate plan_*.yml in {plan_folder_path}/ (same directory as MMD)
-        2. Parse phases and tasks
+        1. Locate ticket_*.yml in {epic_folder_path}/ (same directory as MMD)
+        2. Parse phases and tickets
         3. Extract success criteria
         4. Verify alignment with MMD phases
 
@@ -193,7 +193,7 @@ process:
       description: |
         Update status from pending -> in_progress:
         1. Update MMD STATUS header
-        2. Update plan YAML phase status
+        2. Update epic YAML phase status
         3. Record started_at timestamp
 
         CONSTRAINT: Only ONE phase may be in_progress at a time.
@@ -225,7 +225,7 @@ process:
 
         CLI SESSION SPAWN (preferred for deterministic management):
         ```bash
-        agentic session spawn --role <resolved-agent> --plan <plan_folder_path> -j
+        agentic session spawn --role <resolved-agent> --epic <epic_folder_path> -j
         ```
 
         Context provided automatically via CCI:
@@ -324,7 +324,7 @@ process:
             (output contains out_of_scope_error: true or remediation_plan_needed: true)
           - Action:
             - If agent already created planning folder: Log in remediation_plans_spawned
-            - If agent did not create folder: Create via `agentic agent plan init`
+            - If agent did not create folder: Create via `agentic agent epic init`
             - If CRITICAL priority: Transition to blocked, ask user whether to continue or address first
             - If HIGH/MEDIUM/LOW: Log in remediation_plans_spawned, continue execution
           - Note: Unlike TEST_FAILURE/BUILD_FAILURE which re-plan the current plan,
@@ -339,7 +339,7 @@ process:
       description: |
         On successful agent completion with no triggers:
         1. Update MMD STATUS: Phase_Name=completed
-        2. Update plan YAML: phase.status = "completed"
+        2. Update epic YAML: phase.status = "completed"
         3. Record completed_at timestamp
         4. Record agent_used
 
@@ -453,7 +453,7 @@ process:
               - Minimal args = simplest valid invocation
               - Examples:
                 * agentic orchestrate --mode planning --no-tmux
-                * agentic plan list
+                * agentic epic list
                 * agentic session list
               - Verify returncode == 0 OR expected error code (not crash)
               - Verify stderr is empty OR contains expected validation messages
@@ -532,7 +532,7 @@ process:
       description: |
         Ensure state is durably stored:
         1. Final MMD STATUS header update
-        2. Final plan YAML updates
+        2. Final epic YAML updates
         3. Archive completed phases if configured
 
     - id: "shutdown_return"
@@ -561,9 +561,9 @@ process:
       4. Ask user for resolution
 
     yaml_mmd_desync: |
-      If plan YAML and MMD phases don't align:
+      If epic YAML and MMD phases don't align:
       1. Log discrepancy
-      2. Use plan YAML as source of truth for task details
+      2. Use epic YAML as source of truth for ticket details
       3. Use MMD for routing and flow
       4. If critical mismatch, transition to blocked
 
@@ -574,20 +574,20 @@ process:
     # CLI-FIRST CONTEXT PRINCIPLE
     - "CLI-First Context: Always use agentic CLI commands for initial context. Agents should not need Read/Glob/Grep tools during bootstrap phase."
     - "All context retrieval should flow through CCI (CLI Context Injection) commands before any file exploration"
-    # CLI MANDATE FOR TASK MANAGEMENT
-    - "NEVER use Edit tool to change task status in plan YAML files"
-    - "ALWAYS use `agentic agent plan task start <task_id> --plan <folder>` when beginning a task"
-    - "ALWAYS use `agentic agent plan task complete <task_id> --plan <folder>` when finishing a task"
-    - "CLI auto-archives plan when completing the last task - do NOT manually archive"
-    - "NEVER use rm or mv commands on plan folders - CLI handles all file operations"
+    # CLI MANDATE FOR TICKET MANAGEMENT
+    - "NEVER use Edit tool to change ticket status in epic YAML files"
+    - "ALWAYS use `agentic agent epic ticket start <ticket_id> --epic <folder>` when beginning a ticket"
+    - "ALWAYS use `agentic agent epic ticket complete <ticket_id> --epic <folder>` when finishing a ticket"
+    - "CLI auto-archives epic when completing the last ticket - do NOT manually archive"
+    - "NEVER use rm or mv commands on epic folders - CLI handles all file operations"
     # ORCHESTRATION WORKFLOW
-    - "Standard workflow: get task → start → spawn agent → complete"
-    - "  1. `agentic agent plan task current --plan <folder>` to get next task"
-    - "  2. `agentic agent plan task start <task_id> --plan <folder>` before spawning agent"
-    - "  3. Spawn appropriate agent for the task"
-    - "  4. `agentic agent plan task complete <task_id> --plan <folder>` when agent succeeds"
+    - "Standard workflow: get ticket → start → spawn agent → complete"
+    - "  1. `agentic agent epic ticket current --epic <folder>` to get next ticket"
+    - "  2. `agentic agent epic ticket start <ticket_id> --epic <folder>` before spawning agent"
+    - "  3. Spawn appropriate agent for the ticket"
+    - "  4. `agentic agent epic ticket complete <ticket_id> --epic <folder>` when agent succeeds"
     # QUESTION WATCHING
-    - "Before starting phase execution loop, start question watcher daemon: `agentic agent question watch-daemon --plan <plan_folder_path>`"
+    - "Before starting phase execution loop, start question watcher daemon: `agentic agent question watch-daemon --epic <epic_folder_path>`"
     - "This ensures agent-created questions trigger phone notifications and replies are auto-resolved"
     - "After execution completes (shutdown), stop the watcher: `agentic agent question watch-stop`"
     # EXECUTION RULES

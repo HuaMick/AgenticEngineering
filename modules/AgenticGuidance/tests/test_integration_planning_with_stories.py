@@ -14,9 +14,9 @@ import shutil
 
 
 @pytest.fixture
-def temp_plan_folder():
-    """Create temporary plan folder for testing."""
-    temp_dir = tempfile.mkdtemp(prefix="test_plan_")
+def temp_epic_folder():
+    """Create temporary epic folder for testing."""
+    temp_dir = tempfile.mkdtemp(prefix="test_epic_")
     yield Path(temp_dir)
     shutil.rmtree(temp_dir)
 
@@ -30,7 +30,7 @@ def temp_userstories_dir():
 
 
 @pytest.mark.integration
-def test_planning_workflow_generates_stories_when_none_found(temp_plan_folder, temp_userstories_dir):
+def test_planning_workflow_generates_stories_when_none_found(temp_epic_folder, temp_userstories_dir):
     """
     Integration test: Verify planning workflow generates stories when discovery finds none.
 
@@ -88,7 +88,7 @@ def test_planning_workflow_generates_stories_when_none_found(temp_plan_folder, t
 
 
 @pytest.mark.integration
-def test_orchestration_validates_story_content_before_uat(temp_plan_folder, temp_userstories_dir):
+def test_orchestration_validates_story_content_before_uat(temp_epic_folder, temp_userstories_dir):
     """
     Integration test: Verify orchestration validates story content exists before UAT.
 
@@ -173,7 +173,7 @@ def test_orchestration_validates_story_content_before_uat(temp_plan_folder, temp
 
 
 @pytest.mark.integration
-def test_planner_test_creates_uat_tasks_from_stories(temp_plan_folder):
+def test_planner_test_creates_uat_tasks_from_stories(temp_epic_folder):
     """
     Integration test: Verify planner-test creates UAT tasks that map to stories.
 

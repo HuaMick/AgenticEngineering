@@ -1,0 +1,2488 @@
+name: remap-plan-task-to-epic-ticket-uat
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: planning
+priority: medium
+objective: 'User acceptance testing for the epic/ticket terminology migration.
+
+  Validates complete end-to-end user workflows work correctly with the new
+
+  epic/ticket commands, and that the migration is transparent to users
+
+  familiar with Jira/Agile conventions.
+
+
+  DEPENDENCY: plan_cleaning.yml must be fully completed.
+
+
+  UAT SCOPE:
+
+  - Complete epic lifecycle workflow (create, work on, archive)
+
+  - Agent spawning via epic context (agentic session spawn --epic)
+
+  - Orchestration planning workflow (orchestration-planning creates epics)
+
+  - Ralph loop discovering and acting on epics
+
+  - Worktree integration with epic folders
+
+  '
+created: ''
+phases:
+- name: Plan Folder Compliance Audit
+  execution: sequential
+  description: 'Audit this epic folder (260301RE_remap_plan_task_to_epic_ticket) for
+
+    compliance with the new epic folder standards.
+
+    '
+  tasks:
+  - id: audit_01
+    name: Verify all ticket files are at folder root
+    description: 'Check that all ticket_*.yml and plan_*.yml files are at the folder
+      root.
+
+      This epic was created before the migration, so it uses plan_*.yml names.
+
+      Post-migration, verify:
+
+      1. All files are at docs/epics/live/260301RE_remap_plan_task_to_epic_ticket/
+
+      2. No nested subdirectories contain ticket files
+
+      3. README.md is present at root
+
+      4. orchestration_*.mmd is present at root (once created)
+
+      '
+    status: completed
+    agent: test-audit
+    inputs:
+    - docs/epics/live/260301RE_remap_plan_task_to_epic_ticket/
+    completed_date: '2026-03-03'
+    success_criteria:
+    - All ticket files at folder root
+    - No nested ticket files in subdirectories
+    - README.md present
+    - Folder path is docs/epics/live/ (not docs/plans/live/)
+  - id: audit_02
+    name: Verify phase and ticket structure in all ticket files
+    description: 'Audit each ticket file for proper structure:
+
+      1. Each file has name, worktree_path, branch, status, objective fields (root-level)
+
+      2. Each file has phases[] with tasks[] or tickets[]
+
+      3. Each task/ticket has id, name, description, status, success_criteria
+
+      4. loop_structure present in each ticket file
+
+      5. No _template_status: stub fields remaining
+
+      '
+    status: completed
+    agent: test-audit
+    inputs:
+    - docs/epics/live/260301RE_remap_plan_task_to_epic_ticket/plan_teach.yml
+    - docs/epics/live/260301RE_remap_plan_task_to_epic_ticket/plan_build.yml
+    - docs/epics/live/260301RE_remap_plan_task_to_epic_ticket/plan_test.yml
+    - docs/epics/live/260301RE_remap_plan_task_to_epic_ticket/plan_cleaning.yml
+    - docs/epics/live/260301RE_remap_plan_task_to_epic_ticket/plan_uat.yml
+    completed_date: '2026-03-03'
+    success_criteria:
+    - All ticket files have required root-level fields
+    - No _template_status: stub remaining
+    - All tasks have success_criteria
+    - loop_structure present in each file
+- name: Services Layer Migration
+  execution: sequential
+  description: 'Rename and refactor the AgenticGuidance services layer.
+
+    This is the foundation - CLI and tests depend on this layer.
+
+    '
+  tasks:
+  - id: build_01
+    name: Create epic.py service (rename from plan.py)
+    description: 'Create modules/AgenticGuidance/src/agenticguidance/services/epic.py
+
+      by renaming and refactoring plan.py:
+
+
+      CLASS RENAMES:
+
+      - PlanMovementWorkflow -> EpicMovementWorkflow
+
+      - PlanCreateResult -> EpicCreateResult
+
+      - PlanData -> EpicData
+
+      - PlanMetadata -> EpicMetadata
+
+      - PlanUpdateResult -> EpicUpdateResult
+
+      - PlanDeleteResult -> EpicDeleteResult
+
+      - PlanService -> EpicService
+
+      - TaskMoveResult -> TicketMoveResult
+
+      - TaskData -> TicketData (in plan.py context)
+
+
+      KEY METHOD RENAMES in EpicService:
+
+      - create_plan -> create_epic
+
+      - get_plan -> get_epic
+
+      - list_plans -> list_epics
+
+      - update_plan_status -> update_epic_status
+
+      - get_plan_tasks -> get_epic_tickets
+
+      - validate_plan_structure -> validate_epic_structure
+
+      - _generate_plan_folder_name -> _generate_epic_folder_name
+
+      - _resolve_plan_folder -> _resolve_epic_folder
+
+
+      PATH UPDATES in EpicMovementWorkflow:
+
+      - archive_plan_folder -> archive_epic_folder
+
+      - All "docs/plans/live/" -> "docs/epics/live/"
+
+      - All "docs/plans/completed/" -> "docs/epics/completed/"
+
+
+      PRESERVATION: Keep plan.py as a compatibility shim that imports from epic.py
+
+      and re-exports all old names with DeprecationWarning on first import.
+
+      Do NOT delete plan.py in this phase (cleanup phase handles deletion).
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    success_criteria:
+    - epic.py created with all renamed classes and methods
+    - plan.py updated to re-export from epic.py with deprecation warnings
+    - No functionality removed - purely a rename
+    - All docstrings updated to use epic/ticket vocabulary
+  - id: build_02
+    name: Create ticket.py service (rename from task.py)
+    description: 'Create modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+
+      by renaming and refactoring task.py:
+
+
+      CLASS RENAMES:
+
+      - TaskStatus -> TicketStatus (values: PENDING, IN_PROGRESS, COMPLETED unchanged)
+
+      - Task -> Ticket
+
+      - TaskService -> TicketService
+
+
+      METHOD RENAMES in TicketService:
+
+      - get_task -> get_ticket
+
+      - list_tasks -> list_tickets
+
+      - get_current_task -> get_current_ticket
+
+      - update_task_status -> update_ticket_status
+
+      - start_task -> start_ticket
+
+      - complete_task -> complete_ticket
+
+
+      ATTRIBUTE RENAMES:
+
+      - self.plan_path -> self.epic_path
+
+      - self.plan_file -> self.ticket_file (defaults to ticket_build.yml)
+
+      - self._plan_folder_name -> self._epic_folder_name
+
+
+      PRESERVATION: Keep task.py as a compatibility shim importing from ticket.py.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    success_criteria:
+    - ticket.py created with all renamed classes and methods
+    - task.py updated to re-export from ticket.py with deprecation warnings
+    - TicketStatus, Ticket, TicketService all functional
+  - id: build_03
+    name: Create epic_repository.py (rename from plan_repository.py)
+    description: 'Create modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+
+      by renaming and refactoring plan_repository.py:
+
+
+      CLASS RENAMES:
+
+      - PlanRepository -> EpicRepository
+
+
+      TinyDB TABLE RENAMES:
+
+      - self._plans = self._db.table("plans") -> self._epics = self._db.table("epics")
+
+      - self._tasks = self._db.table("tasks") -> self._tickets = self._db.table("tickets")
+
+      - self._phases = self._db.table("phases") (unchanged - phases are still phases)
+
+
+      FIELD RENAMES in TinyDB documents:
+
+      - "plan_folder_name" -> "epic_folder_name" (key field in all tables)
+
+      - "plan_folder" -> "epic_folder"
+
+
+      METHOD RENAMES:
+
+      - create_plan -> create_epic
+
+      - get_plan -> get_epic
+
+      - list_plans -> list_epics
+
+      - update_plan -> update_epic
+
+      - delete_plan -> delete_epic
+
+      - archive_plan -> archive_epic
+
+      - unarchive_plan -> unarchive_epic
+
+      - cancel_plan -> cancel_epic
+
+      - resync_plan_folder -> resync_epic_folder
+
+      - get_tasks -> get_tickets
+
+      - get_task -> get_ticket
+
+      - update_task_status -> update_ticket_status
+
+      - add_task -> add_ticket
+
+      - get_current_task -> get_current_ticket
+
+      - check_all_tasks_complete -> check_all_tickets_complete
+
+      - get_plan_branch -> get_epic_branch
+
+      - get_task_counts -> get_ticket_counts
+
+      - import_from_yaml -> import_from_yaml (unchanged - reads ticket_*.yml)
+
+      - import_all_yaml -> import_all_yaml (scans docs/epics/ instead of docs/plans/)
+
+      - export_to_yaml -> export_to_yaml (writes ticket_build.yml)
+
+
+      PATH UPDATES:
+
+      - /plans/live/ -> /epics/live/ in archive_epic and unarchive_epic
+
+      - docs/plans -> docs/epics in import_all_yaml
+
+      - Default db_path: ~/.agentic/plans.db -> ~/.agentic/epics.db
+
+
+      DB MIGRATION: The EpicRepository constructor must include a migration
+
+      method that detects old "plans" table and migrates to "epics" table.
+
+      This handles existing installations without data loss.
+
+
+      PRESERVATION: Keep plan_repository.py as a compatibility shim.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    success_criteria:
+    - EpicRepository created with all renamed methods and tables
+    - TinyDB tables use "epics", "tickets", "phases" names
+    - Migration logic handles existing "plans" table
+    - plan_repository.py re-exports from epic_repository.py
+    - Default db path changed to ~/.agentic/epics.db
+  - id: build_04
+    name: Update services __init__.py exports
+    description: 'Update modules/AgenticGuidance/src/agenticguidance/services/__init__.py:
+
+      - Add imports from epic.py, ticket.py, epic_repository.py
+
+      - Export all new names: EpicService, EpicData, EpicMetadata, etc.
+
+      - Export TicketService, Ticket, TicketStatus, TicketData
+
+      - Export EpicRepository
+
+      - Keep old names exported for backward compatibility (via shims)
+
+      - Update RalphLoopService imports: PlanInfo -> EpicInfo, PlanAction -> EpicAction
+
+      - Update module docstring
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+    - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    success_criteria:
+    - All new Epic/Ticket names exported
+    - Old names still exported via backward compat
+    - __all__ list updated
+  - id: build_05
+    name: Update ralph.py service for epic terminology
+    description: 'Update modules/AgenticGuidance/src/agenticguidance/services/ralph.py:
+
+
+      DATACLASS RENAMES:
+
+      - PlanInfo -> EpicInfo (all field names stay same: name, path, status, etc.)
+
+      - PlanAction -> EpicAction
+
+
+      CLASS RENAMES:
+
+      - RalphLoopService (no rename - it''s a service class name, not plan-specific)
+
+
+      PATH UPDATES in RalphLoopService:
+
+      - docs/plans/live -> docs/epics/live (default discovery path)
+
+      - plans_dir parameter -> epics_dir
+
+      - All self.plans_dir -> self.epics_dir
+
+
+      METHOD/VARIABLE UPDATES:
+
+      - _get_completed_plans -> _get_completed_epics
+
+      - discover_plans -> discover_epics
+
+      - Internal variables: plan_dir -> epic_dir, plan_path -> epic_path
+
+      Note: plan_name field in EpicInfo stays as name (not plan_name)
+
+
+      KEEP for backward compat: RalphLoopService still importable from ralph.py.
+
+      Add module-level aliases: PlanInfo = EpicInfo, PlanAction = EpicAction
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    success_criteria:
+    - EpicInfo and EpicAction dataclasses exist
+    - discover_epics method works correctly
+    - docs/epics/live used as default discovery path
+    - PlanInfo/PlanAction still importable as aliases
+  - id: build_06
+    name: Update context.py service for epic terminology
+    description: 'Update modules/AgenticGuidance/src/agenticguidance/services/context.py:
+
+
+      CLASS RENAMES:
+
+      - MainFirstPlanResolver -> MainFirstEpicResolver
+
+
+      PATH UPDATES:
+
+      - docs/plans/live -> docs/epics/live (in resolve_active_plan path resolution)
+
+
+      METHOD UPDATES:
+
+      - resolve_active_plan -> resolve_active_epic
+
+      - extract_current_task -> extract_current_ticket
+
+      - extract_all_tasks -> extract_all_tickets
+
+
+      KEEP backward compat alias: MainFirstPlanResolver = MainFirstEpicResolver
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    success_criteria:
+    - MainFirstEpicResolver class created
+    - resolve_active_epic method works
+    - docs/epics/live used for plan resolution
+    - Backward compat alias present
+- name: CLI Layer Migration
+  execution: sequential
+  description: 'Rename CLI commands from plan/task to epic/ticket, update the command
+
+    module, and update cli.py routing.
+
+    '
+  tasks:
+  - id: build_07
+    name: Create epic.py command module (from plan.py)
+    description: "Create modules/AgenticCLI/src/agenticcli/commands/epic.py\nby copying\
+      \ and refactoring plan.py:\n\nFUNCTION RENAMES:\n- find_plan_folder -> find_epic_folder\n\
+      - is_plan_fully_completed -> is_epic_fully_completed\n- has_pending_questions\
+      \ -> has_pending_questions (unchanged)\n- _get_plan_branch -> _get_epic_branch\n\
+      - _try_worktree_cleanup_after_archive -> _try_worktree_cleanup_after_archive\
+      \ (unchanged)\n- cmd_plan_status -> cmd_epic_status\n- cmd_plan_list -> cmd_epic_list\n\
+      - cmd_plan_new -> cmd_epic_new\n- cmd_plan_init -> cmd_epic_init\n- cmd_plan_scaffold\
+      \ -> cmd_epic_scaffold\n- cmd_plan_bootstrap -> cmd_epic_bootstrap\n- cmd_plan_archive\
+      \ -> cmd_epic_archive\n- cmd_plan_unarchive -> cmd_epic_unarchive\n- cmd_plan_validate\
+      \ -> cmd_epic_validate\n- cmd_plan_cancel -> cmd_epic_cancel\n- cmd_plan_task\
+      \ -> cmd_epic_ticket\n- cmd_plan_move -> cmd_epic_move\n- cmd_plan_phase ->\
+      \ cmd_epic_phase\n- cmd_plan_orchestration -> cmd_epic_orchestration\n- cmd_plan_stories\
+      \ -> cmd_epic_stories\n- cmd_plan_db -> cmd_epic_db\nhandle function route table:\
+      \ update all plan_command -> epic_command,\ntask_action -> ticket_action in\
+      \ argparse namespace handling\n\nPATH UPDATES throughout:\n- docs/plans/live\
+      \ -> docs/epics/live\n- docs/plans/completed -> docs/epics/completed\n- /plans/\
+      \ -> /epics/ in all string paths\n\nIMPORT UPDATES:\n- from agenticguidance.services.plan_repository\
+      \ import PlanRepository ->\n  from agenticguidance.services.epic_repository\
+      \ import EpicRepository\n- from agenticguidance.services.plan import PlanService\
+      \ ->\n  from agenticguidance.services.epic import EpicService\n- From task import\
+      \ TaskService -> from ticket import TicketService\n\nKEEP: plan.py as thin wrapper\
+      \ calling epic.py handle() with translated args.\nThe handle() function in plan.py\
+      \ should translate plan_command -> epic_command\nand call epic.handle().\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/epic.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    success_criteria:
+    - epic.py created with all renamed commands
+    - handle() function in epic.py routes epic_command correctly
+    - plan.py delegates to epic.py with arg translation
+    - All docs/epics/ paths used in epic.py
+  - id: build_08
+    name: Update cli.py to add epic command group
+    description: 'Update modules/AgenticCLI/src/agenticcli/cli.py to add the new
+
+      agentic epic ... command hierarchy alongside the deprecated agentic plan ...
+      hierarchy.
+
+
+      ADD NEW GROUP at line ~1106 (after plan section):
+
+      epic_app = typer.Typer(help="Manage epics and track ticket status", no_args_is_help=True)
+
+      app.add_typer(epic_app, name="epic")
+
+
+      The epic_app group must have all the same subcommands as plan_app
+
+      but using "epic" and "ticket" vocabulary:
+
+      - epic list, epic status, epic cancel
+
+      - epic task -> DEPRECATED; epic ticket subgroup
+
+      - epic ticket start/complete/list/status/add/update/current/prefill
+
+      - epic phase add/list/update
+
+      - epic move task/tasks/folder
+
+      - epic orchestration generate/validate
+
+      - epic stories list/test
+
+      - epic db sync/status
+
+
+      AGENT SUBGROUP: agent_epic_app mirrors agent_plan_app but under
+
+      agentic agent epic ... path.
+
+
+      DEPRECATE plan_app commands: The existing plan_app commands should
+
+      emit a deprecation warning (via print_warning) and delegate to the
+
+      corresponding epic_app command. The plan_app itself is NOT removed
+
+      in this phase (that is Phase 4 cleanup).
+
+
+      UPDATE _plan_handle to delegate to _dispatch("epic", ...)
+
+      with translated args, after printing deprecation warning.
+
+
+      QUESTION/PLAN cross-references: Update all --plan option help text
+
+      to say "--plan/--epic (use --epic, --plan deprecated)"
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/epic.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    success_criteria:
+    - agentic epic list works and shows epics
+    - agentic epic ticket start <id> --epic <folder> works
+    - agentic plan list emits deprecation warning and calls agentic epic list
+    - agentic agent epic init works
+    - All existing plan tests still pass (via backward compat)
+  - id: build_09
+    name: Update naming utilities for epic vocabulary
+    description: "Update modules/AgenticCLI/src/agenticcli/utils/naming.py:\n- generate_plan_folder_name\
+      \ -> generate_epic_folder_name\n  (keep generate_plan_folder_name as an alias)\n\
+      - validate_plan_folder_name -> validate_epic_folder_name\n  (keep validate_plan_folder_name\
+      \ as an alias)\n- parse_plan_folder_name -> parse_epic_folder_name\n  (keep\
+      \ parse_plan_folder_name as an alias)\nUpdate all docstrings to use \"epic folder\"\
+      \ terminology.\nUpdate module docstring: \"Plan folder naming\" -> \"Epic folder\
+      \ naming\"\nKEEP: All aliases (generate_plan_folder_name, etc.) for backward\
+      \ compat.\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    success_criteria:
+    - generate_epic_folder_name is the primary function
+    - Old name still works as alias
+    - Module docstring updated
+  - id: build_10
+    name: Update planner_loop.py workflow
+    description: 'Update modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py:
+
+      - PLAN_TYPE_TO_PLANNER dict is unchanged (planner agent names unchanged)
+
+      - plans_dir parameter -> epics_dir where used as variable name
+
+      - plan_folder -> epic_folder in method signatures and bodies
+
+      - plan_name -> epic_name in variable names
+
+      - Any "docs/plans/" path references -> "docs/epics/"
+
+      - _build_agent_prompt: Update to reference epic_folder instead of plan_folder
+
+      Note: The planner agent names (planner-build, etc.) are NOT renamed in this
+      phase.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    success_criteria:
+    - epic_folder used in prompts and variable names
+    - docs/epics/ paths used
+  - id: build_11
+    name: Update worktree.py command for epic terminology
+    description: 'Update modules/AgenticCLI/src/agenticcli/commands/worktree.py:
+
+      - get_live_plan_folders -> get_live_epic_folders (keep alias)
+
+      - create_planning_folder -> create_epic_folder (keep alias)
+
+      - find_workspace_file (unchanged)
+
+      - update_workspace_add (unchanged)
+
+      - All docs/plans/live/ -> docs/epics/live/ in path strings
+
+      - --no-plan flag -> --no-epic flag (keep --no-plan as deprecated alias)
+
+      - "planning folder" text -> "epic folder" in help text
+
+      - JSON output: plan_folder -> epic_folder
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    success_criteria:
+    - get_live_epic_folders works and scans docs/epics/live/
+    - create_epic_folder works
+    - JSON output uses epic_folder key
+    - --no-epic flag works (--no-plan still accepted)
+  - id: build_12
+    name: Update session.py and other commands for epic references
+    description: "Update modules/AgenticCLI/src/agenticcli/commands/session.py:\n\
+      - _resolve_plan_folder -> _resolve_epic_folder (keep alias)\n- _build_task_prompt\
+      \ -> _build_ticket_prompt (keep alias)\n- plan_folder variable -> epic_folder\n\
+      - all \"docs/plans/\" -> \"docs/epics/\"\n- Import changes: from agenticguidance.services.task\
+      \ import TaskService ->\n  from agenticguidance.services.ticket import TicketService\n\
+      - _compile_spawn_context: update --plan to --epic in warning messages\n\nUpdate\
+      \ modules/AgenticCLI/src/agenticcli/utils/planner_prompt.py:\n- plan_folder\
+      \ parameter -> epic_folder\n- Update generated prompt text to use epic vocabulary\n\
+      \nUpdate modules/AgenticCLI/src/agenticcli/commands/context.py:\n- Any plan_folder\
+      \ -> epic_folder in context resolution\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/utils/planner_prompt.py
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/utils/planner_prompt.py
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    success_criteria:
+    - session.py uses epic_folder internally
+    - planner_prompt.py generates prompts with epic vocabulary
+    - TicketService used in session.py
+- name: Filesystem Migration
+  execution: sequential
+  description: 'Perform the git mv to rename docs/plans/ to docs/epics/ and update
+
+    all hardcoded path strings in the codebase.
+
+    '
+  tasks:
+  - id: build_13
+    name: Execute git mv docs/plans to docs/epics
+    description: "Perform the atomic filesystem migration:\n1. git mv docs/plans docs/epics\n\
+      \   This preserves git history for all plan/epic folders.\n2. Update any README\
+      \ or CLAUDE.md files that reference docs/plans/\n3. Update agenticengineering.code-workspace\
+      \ if it references docs/plans/\n\nIMPORTANT: This step must happen AFTER all\
+      \ Python code changes are committed.\nRun git status to verify no uncommitted\
+      \ changes before the mv.\nAfter git mv, run agentic agent epic bootstrap to\
+      \ re-import all epics into TinyDB.\n\nNote: The TinyDB database (~/.agentic/plans.db)\
+      \ will be migrated separately\nby the EpicRepository migration logic.\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - docs/plans/
+    target_files:
+    - docs/epics/
+    - agenticengineering.code-workspace
+    success_criteria:
+    - git mv completed: docs/plans/ does not exist, docs/epics/ does exist
+    - All epic folders present at docs/epics/live/ and docs/epics/completed/
+    - .code-workspace updated if it referenced docs/plans/
+    - git status shows only the rename (not untracked files)
+  - id: build_14
+    name: Run TinyDB migration from plans.db to epics.db
+    description: "Execute the TinyDB migration:\n1. Run agentic agent epic bootstrap\
+      \ to trigger EpicRepository auto-bootstrap\n   from docs/epics/ (this will create\
+      \ ~/.agentic/epics.db)\n2. Verify the migration: agentic epic list --json should\
+      \ show all epics\n3. Compare old plan count with new epic count\n4. If old ~/.agentic/plans.db\
+      \ exists, verify data parity then keep as backup\n\nThe EpicRepository migration\
+      \ logic (added in build_03) handles:\n- Detecting existing \"plans\" table in\
+      \ plans.db\n- Copying data to \"epics\" table in epics.db\n- Renaming plan_folder_name\
+      \ -> epic_folder_name in all documents\n- Renaming plan_folder -> epic_folder\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+    success_criteria:
+    - ~/.agentic/epics.db created with all epics
+    - agentic epic list shows same count as old agentic plan list
+    - agentic epic status <epic_folder> works for existing epics
+- name: Module README and Package Metadata Updates
+  execution: sequential
+  description: 'Update README files and pyproject.toml files with new terminology.
+
+    '
+  tasks:
+  - id: build_15
+    name: Update module README files and pyproject.toml
+    description: 'Update the following files for epic/ticket vocabulary:
+
+      - modules/AgenticCLI/README.md: Update plan management section
+
+      - modules/AgenticGuidance/README.md: Update service descriptions
+
+      - .agent/instructions.md: Update any plan references
+
+      - docs/README.md: Update directory description
+
+
+      Do NOT update pyproject.toml version numbers or package names.
+
+      Only update descriptive text that references plan/task terminology.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/README.md
+    - modules/AgenticGuidance/README.md
+    target_files:
+    - modules/AgenticCLI/README.md
+    - modules/AgenticGuidance/README.md
+    - docs/README.md
+    success_criteria:
+    - README files use epic/ticket vocabulary
+    - No breaking changes to package structure
+- name: Additional CLI and Service Touchpoints
+  execution: sequential
+  description: 'Files identified by post-plan codebase audit that were not covered
+
+    in the original build tasks. These are critical for full migration.
+
+    '
+  tasks:
+  - id: build_16
+    name: Update orchestrate.py and ralph.py CLI commands
+    description: "modules/AgenticCLI/src/agenticcli/commands/orchestrate.py:\n  -\
+      \ Update module docstring referencing \"planning and execution for plans\"\n\
+      \  - Update \"planning\" action vocabulary and plan_folder parameter names\n\
+      \  - Update command descriptions and help text\n  - Update path references:\
+      \ docs/plans/ -> docs/epics/\n\nmodules/AgenticCLI/src/agenticcli/commands/ralph.py:\n\
+      \  - Update \"action: plan\" references to \"action: epic\"\n  - Update \"needs\
+      \ planning\" status text\n  - Update plan folder name displays and queue outputs\n\
+      \  - Update docstrings referencing plan orchestration\n  - Update PlanInfo ->\
+      \ EpicInfo, PlanAction -> EpicAction imports\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    success_criteria:
+    - orchestrate.py uses epic terminology in docstrings and help text
+    - ralph.py imports EpicInfo/EpicAction and uses epic vocabulary
+    - No "plan folder" or "docs/plans/" references remain
+  - id: build_17
+    name: Update exceptions.py and validation.py
+    description: "modules/AgenticCLI/src/agenticcli/exceptions.py:\n  - Rename PlanFileError\
+      \ -> EpicFileError (keep alias)\n  - Rename PlanFolderError -> EpicFolderError\
+      \ (keep alias)\n  - Update error message strings: \"plan file\" -> \"epic file\"\
+      ,\n    \"plan folder\" -> \"epic folder\", \"agentic plan scaffold\" -> \"agentic\
+      \ epic scaffold\"\n\nmodules/AgenticCLI/src/agenticcli/validation.py:\n  - validate_plan_folder_exists\
+      \ -> validate_epic_folder_exists (keep alias)\n  - validate_plan_folder_structure\
+      \ -> validate_epic_folder_structure (keep alias)\n  - validate_plan_folder_is_valid\
+      \ -> validate_epic_folder_is_valid (keep alias)\n  - PLAN_REQUIRED_FIELDS ->\
+      \ EPIC_REQUIRED_FIELDS (keep alias)\n  - validate_plan_yaml -> validate_epic_yaml\
+      \ (keep alias)\n  - validate_plan_yaml_content -> validate_epic_yaml_content\
+      \ (keep alias)\n  - validate_plan_yaml_strict -> validate_epic_yaml_strict (keep\
+      \ alias)\n  - Update all error messages and docstrings\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/exceptions.py
+    - modules/AgenticCLI/src/agenticcli/validation.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/exceptions.py
+    - modules/AgenticCLI/src/agenticcli/validation.py
+    success_criteria:
+    - New Epic* class/function names exist as primary
+    - Old Plan* names kept as backward compat aliases
+    - All error messages use epic/ticket vocabulary
+  - id: build_18
+    name: Update git.py env var, question_watcher.py, question_tui.py
+    description: "modules/AgenticCLI/src/agenticcli/utils/git.py:\n  - Add AGENTIC_EPICS_DIR\
+      \ env var support (primary)\n  - Keep AGENTIC_PLANS_DIR as deprecated fallback\n\
+      \  - get_plans_dir -> get_epics_dir (keep alias)\n  - Update fallback path:\
+      \ docs/plans/live -> docs/epics/live\n  - Update comments referencing docs/plans/\n\
+      \nmodules/AgenticCLI/src/agenticcli/services/question_watcher.py:\n  - plan_folder\
+      \ parameter -> epic_folder (keep alias)\n  - Update docstrings: \"plan folder\
+      \ containing questions\"\n  - Update path scanning: docs/plans/live/ -> docs/epics/live/\n\
+      \nmodules/AgenticCLI/src/agenticcli/tui/question_tui.py:\n  - Update path scanning\
+      \ from docs/plans/live/* to docs/epics/live/*\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/git.py
+    - modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    - modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/git.py
+    - modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    - modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    success_criteria:
+    - AGENTIC_EPICS_DIR supported as primary env var
+    - Question watcher scans docs/epics/live/
+    - TUI scans docs/epics/live/*
+    - All backward compat aliases present
+  - id: build_19
+    name: Update __init__.py stability markers, task_workflow.py, orchestration workflow
+    description: "modules/AgenticCLI/src/agenticcli/__init__.py:\n  - Rename stability\
+      \ markers: \"plan.task.prefill\" -> \"epic.ticket.prefill\"\n  - \"plan.task.list\"\
+      \ -> \"epic.ticket.list\", etc.\n\nmodules/AgenticCLI/src/agenticcli/workflows/task_workflow.py:\n\
+      \  - Rename to ticket_workflow.py (keep task_workflow.py as compat shim)\n \
+      \ - TaskPresetWorkflow -> TicketPresetWorkflow\n  - PresetLoadResult stays same\
+      \ name (not plan-specific)\n  - Update docstrings: \"plan's live subdirectory\"\
+      \ -> \"epic's live subdirectory\"\n  - \"task presets into plan files\" -> \"\
+      ticket presets into epic files\"\n\nmodules/AgenticCLI/src/agenticcli/workflows/orchestration.py:\n\
+      \  - Update docstring: \"Load orchestration MMD content from plan folder\"\n\
+      \    -> \"Load orchestration MMD content from epic folder\"\n  - Update any\
+      \ plan_folder variable names\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/__init__.py
+    - modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py
+    - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/__init__.py
+    - modules/AgenticCLI/src/agenticcli/workflows/ticket_workflow.py
+    - modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py
+    - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
+    success_criteria:
+    - Stability markers use epic.ticket.* naming
+    - ticket_workflow.py created with TicketPresetWorkflow
+    - task_workflow.py is compat shim
+    - orchestration.py docstrings updated
+  - id: build_20
+    name: Update settings.local.json, .gitignore, pyproject.toml keywords, entrypoints
+    description: ".claude/settings.local.json:\n  - Add permissions for agentic epic\
+      \ commands alongside plan commands\n  - \"Bash(agentic epic:*)\", \"Bash(agentic\
+      \ --json epic list:*)\" etc.\n\n.gitignore:\n  - Update comment: \"Agentic local\
+      \ state (TinyDB plans database)\"\n    -> \"Agentic local state (TinyDB epics\
+      \ database)\"\n\nmodules/AgenticCLI/pyproject.toml:\n  - Add \"epic\" to keywords\
+      \ list (keep \"planning\" for discoverability)\n\nmodules/AgenticGuidance/entrypoints/_plan_build.yml:\n\
+      \  - Create _epic_build.yml as primary (keep _plan_build.yml as compat)\n  -\
+      \ Update internal references: agentic plan init -> agentic epic init\n  - Update\
+      \ step descriptions to use epic/ticket vocabulary\n\nmodules/AgenticGuidance/entrypoints/_plan_teach.yml:\n\
+      \  - Create _epic_teach.yml as primary (keep _plan_teach.yml as compat)\n  -\
+      \ Same updates as above\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - .claude/settings.local.json
+    - .gitignore
+    - modules/AgenticCLI/pyproject.toml
+    - modules/AgenticGuidance/entrypoints/_plan_build.yml
+    - modules/AgenticGuidance/entrypoints/_plan_teach.yml
+    target_files:
+    - .claude/settings.local.json
+    - .gitignore
+    - modules/AgenticCLI/pyproject.toml
+    - modules/AgenticGuidance/entrypoints/_epic_build.yml
+    - modules/AgenticGuidance/entrypoints/_epic_teach.yml
+    - modules/AgenticGuidance/entrypoints/_plan_build.yml
+    - modules/AgenticGuidance/entrypoints/_plan_teach.yml
+    success_criteria:
+    - Settings allow both epic and plan CLI commands
+    - .gitignore comment updated
+    - pyproject.toml has "epic" keyword
+    - Entrypoint files created/updated with epic vocabulary
+- name: Identify Remaining Plan References
+  execution: sequential
+  description: 'Audit the codebase to find any remaining plan/task references that
+
+    should be cleaned up.
+
+    '
+  tasks:
+  - id: clean_01
+    name: Audit codebase for remaining plan/task references
+    description: "Run comprehensive search for remaining plan/task terminology:\n\
+      1. grep -rn \"docs/plans\" modules/ --include=\"*.py\" (should return empty)\n\
+      2. grep -rn \"PlanService\\|TaskService\\|PlanRepository\" modules/ --include=\"\
+      *.py\"\n   (should only return shim files and backward compat)\n3. grep -rn\
+      \ \"plan_folder\\b\" modules/ --include=\"*.py\"\n   (should be replaced by\
+      \ epic_folder everywhere)\n4. grep -rn \"plan_command\\|plan_action\" modules/\
+      \ --include=\"*.py\"\n   (old argparse namespace keys - should be replaced)\n\
+      5. grep -rn \"docs/plans\" modules/AgenticGuidance/assets/ (should be empty)\n\
+      6. grep -rn \"agentic plan\\|agentic plan task\" modules/ --include=\"*.md\"\
+      \n   (should show only deprecated alias docs)\n\nOutput a report of all findings\
+      \ categorized by:\n- Safe to remove (in shim files)\n- Needs update (functional\
+      \ code still using old names)\n- Documentation only (acceptable in backward\
+      \ compat docs)\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/
+    - modules/AgenticGuidance/src/
+    success_criteria:
+    - Audit report produced listing all remaining references
+    - Report categorizes each reference as safe/needs-update/doc-only
+- name: Remove Compatibility Shims
+  execution: sequential
+  description: 'Remove the backward compatibility shim files introduced in the build
+    phase,
+
+    replacing with clean imports and removing deprecated code paths.
+
+    '
+  tasks:
+  - id: clean_02
+    name: Remove plan.py, task.py, plan_repository.py shims
+    description: 'Verify no external code imports these modules directly, then remove
+      them:
+
+      1. Verify no test files import from plan.py directly (only via epic.py)
+
+      2. Verify no CLI code imports from task.py directly (only via ticket.py)
+
+      3. Delete modules/AgenticGuidance/src/agenticguidance/services/plan.py
+
+      4. Delete modules/AgenticGuidance/src/agenticguidance/services/task.py
+
+      5. Delete modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+
+      6. Update services/__init__.py to remove all old-name exports
+
+      7. Run full test suite to verify no regressions
+
+
+      CAUTION: Before deletion, verify the shim file imports are no longer needed.
+
+      If any external module still imports old names, fix that module first.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    success_criteria:
+    - plan.py, task.py, plan_repository.py deleted
+    - __init__.py exports only epic/ticket names
+    - All tests still pass after deletion
+  - id: clean_03
+    name: Remove deprecated CLI plan.py command module
+    description: "After verifying no tests use plan.py command module directly:\n\
+      1. Verify test_plan.py tests only call via agentic plan (CLI, not direct import)\n\
+      2. Remove plan.py delegating shim code (keep file but remove delegation wrapper)\n\
+      \   OR delete entirely if nothing imports it\n3. Update cli.py: Remove the _plan_handle\
+      \ -> epic delegation\n   Replace deprecated plan_app commands with proper error\
+      \ messages:\n   \"Command 'agentic plan ...' removed. Use 'agentic epic ...'\
+      \ instead.\"\n4. Run test suite to verify no regressions\nNote: The plan_app\
+      \ can stay as hidden deprecated commands but must show\nclear error/redirect,\
+      \ not silently delegate.\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    success_criteria:
+    - agentic plan list shows "Removed: use agentic epic list" error
+    - plan.py command module simplified (no complex delegation)
+    - All agentic epic ... commands still work correctly
+  - id: clean_04
+    name: Remove naming utility aliases
+    description: 'Clean up naming.py to remove backward compat aliases:
+
+      1. Remove generate_plan_folder_name alias (keep only generate_epic_folder_name)
+
+      2. Remove validate_plan_folder_name alias
+
+      3. Remove parse_plan_folder_name alias
+
+      4. Update all internal callers in other modules
+
+      5. Run test suite
+
+
+      Also clean up worktree.py:
+
+      - Remove get_live_plan_folders alias
+
+      - Remove create_planning_folder alias
+
+      - Remove --no-plan flag (keep only --no-epic)
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    success_criteria:
+    - generate_plan_folder_name no longer exists
+    - Only generate_epic_folder_name exists in naming.py
+    - --no-plan flag removed from worktree create command
+    - Tests updated and passing
+- name: Clean Up Test Stubs and Backward Compat Test Code
+  execution: sequential
+  description: 'Remove backward compatibility test code that was added during migration.
+
+    '
+  tasks:
+  - id: clean_05
+    name: Remove backward compat test assertions
+    description: "Review and clean up test files:\n1. Remove tests that verify old\
+      \ PlanService import still works\n   (now that plan.py is deleted, these tests\
+      \ would fail anyway)\n2. Remove tests that verify agentic plan ... deprecation\
+      \ warning\n   (now that plan commands show error, update assertions)\n3. Update\
+      \ test_plan.py and test_task*.py to reflect final state:\n   - These files can\
+      \ be left as-is if they test the error messages\n   - Or deleted if no value\
+      \ remains\n4. Remove any test fixtures that create files in docs/plans/ paths\n"
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/test_plan.py
+    - modules/AgenticCLI/tests/test_plan_movement.py
+    - modules/AgenticGuidance/tests/test_services_plan.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan.py
+    - modules/AgenticGuidance/tests/test_services_plan.py
+    success_criteria:
+    - No test fixtures create docs/plans/ directories
+    - Tests for removed commands verify error message output
+    - Full test suite passes
+- name: Final Verification
+  execution: sequential
+  description: 'Run the complete test suite one final time to verify clean state.
+
+    '
+  tasks:
+  - id: clean_06
+    name: Run final test suite verification
+    description: 'Execute complete test suites across both modules:
+
+      1. cd modules/AgenticGuidance && python3 -m pytest tests/ -v
+
+      2. cd modules/AgenticCLI && python3 -m pytest tests/ -v
+
+      3. Run smoke tests: agentic epic list, agentic epic status
+
+      4. Verify no docs/plans/ directory exists in repo (only docs/epics/)
+
+      5. Verify ~/.agentic/epics.db exists and plans.db either deleted or preserved
+      as backup
+
+      '
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - Both test suites pass with 0 failures
+    - No docs/plans/ directory in repository
+    - docs/epics/live/ and docs/epics/completed/ exist with all epics
+    - agentic epic list shows all epics
+    - agentic plan list shows removal error
+- name: Terminology Definitions
+  execution: sequential
+  description: 'Update canonical definition files that are the single source of truth
+    for
+
+    plan/epic terminology used by all agents.
+
+    '
+  tasks:
+  - id: teach_01
+    name: Update plans.yml definition to epic/ticket terminology
+    description: 'Rename and update the canonical plans definition file:
+
+      - Rename docs/plans/ references to docs/epics/
+
+      - Update all "plan folder" to "epic folder" throughout
+
+      - Update file_taxonomy: plan_*.yml -> ticket_*.yml
+
+      - Update cli_usage section with new command syntax
+
+      - Update plan_lifecycle to epic_lifecycle
+
+      - Update phase_types section
+
+      - Update path_conventions
+
+      - Update two_level_completion_pattern (live -> completed)
+
+      - Preserve all fences and validation rules, updating vocabulary
+
+      IMPORTANT: "task" as a generic word (e.g. "your task is to...") is NOT changed.
+
+      Only "task" in the sense of a tracked work item tracked in plan_*.yml becomes
+      "ticket".
+
+      '
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    success_criteria:
+    - All "plan folder" updated to "epic folder"
+    - File taxonomy updated: plan_*.yml -> ticket_*.yml
+    - docs/plans/ path references updated to docs/epics/
+    - plan_lifecycle renamed to epic_lifecycle
+    - CLI examples updated to agentic epic ...
+  - id: teach_02
+    name: Update cli-commands.yml with epic/ticket CLI commands
+    description: 'Update the CLI commands definition file:
+
+      - Replace agentic plan ... with agentic epic ...
+
+      - Replace agentic agent plan task ... with agentic agent epic ticket ...
+
+      - Update all command examples and parameter descriptions
+
+      - Update plan_folder parameter names to epic_folder
+
+      - Add deprecated aliases section documenting old agentic plan ... commands
+
+      '
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    success_criteria:
+    - All primary commands documented as agentic epic ...
+    - ticket sub-commands documented as agentic epic ticket ...
+    - Deprecated aliases section present
+    - JSON output fields updated (plan_folder -> epic_folder, plan_folder_name ->
+      epic_folder_name)
+  - id: teach_03
+    name: Update cli-agent-architecture.yml and agent-categories.yml
+    description: 'cli-agent-architecture.yml: Update responsibilities list - "Task
+      status updates
+
+      in plan files" -> "Ticket status updates in epic folders".
+
+      agent-categories.yml: Update planner category responsibility statements
+
+      to reference epic/ticket model.
+
+      '
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/cli-agent-architecture.yml
+    - modules/AgenticGuidance/assets/definitions/agent-categories.yml
+    success_criteria:
+    - cli-agent-architecture.yml responsibilities updated
+    - agent-categories.yml descriptions use epic/ticket vocabulary
+- name: Guideline Updates
+  execution: sequential
+  description: 'Update all guideline files that reference plan/task vocabulary.
+
+    '
+  tasks:
+  - id: teach_04
+    name: Update planning-standard.yml, plan-completion.yml, plan-inputs.yml
+    description: 'planning-standard.yml: Update all "plan"/"task" vocabulary to "epic"/"ticket".
+
+      Update all CLI command references. Preserve all fences.
+
+      plan-completion.yml (Copy-and-Sync pattern): Update docs/plans/ -> docs/epics/.
+
+      plan-inputs.yml: Update plan_folder parameter name to epic_folder.
+
+      '
+    status: completed
+    agent: teacher-update-guidance
+    target_files:
+    - modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+    - modules/AgenticGuidance/assets/guidelines/plan-completion.yml
+    - modules/AgenticGuidance/assets/guidelines/plan-inputs.yml
+    success_criteria:
+    - planning-standard.yml uses epic/ticket vocabulary throughout
+    - plan-completion.yml path references updated to docs/epics/
+    - plan-inputs.yml uses epic_folder parameter name
+  - id: teach_05
+    name: Update tool-offloading.yml and worktree-and-branching.yml
+    description: 'tool-offloading.yml: Update good_candidates list (task status updates,
+
+      moving files between plan folders). Update CLI examples.
+
+      worktree-and-branching.yml: Update Main-First Planning section to use
+
+      epic terminology. Replace docs/plans/ -> docs/epics/.
+
+      '
+    status: completed
+    agent: teacher-update-guidance
+    target_files:
+    - modules/AgenticGuidance/assets/guidelines/tool-offloading.yml
+    - modules/AgenticGuidance/assets/guidelines/worktree-and-branching.yml
+    success_criteria:
+    - tool-offloading.yml references new CLI commands and epic folders
+    - worktree-and-branching.yml uses epic terminology in Main-First Planning
+- name: Specification Updates
+  execution: sequential
+  description: 'Update formal specifications for the epic/ticket YAML schema.
+
+    '
+  tasks:
+  - id: teach_06
+    name: Update plan-schema.yml and plan-mmd-schema.yml
+    description: 'plan-schema.yml: Update file_types section (plan_build -> ticket_build,
+
+      plan_test -> ticket_test, etc). Update filename_pattern from plan_*.yml
+
+      to ticket_*.yml. Update all path examples and descriptions.
+
+      plan-mmd-schema.yml: Update path examples from docs/plans/ to docs/epics/.
+
+      Update descriptive text to use epic terminology.
+
+      Both files should include a deprecation_note explaining the rename.
+
+      '
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/assets/specifications/plan-schema.yml
+    - modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml
+    success_criteria:
+    - plan-schema.yml file_types updated to ticket_*.yml
+    - Both files use epic/ticket vocabulary
+    - Deprecation notes added
+- name: Planner Agent Guidance Updates
+  execution: sequential
+  description: 'Update all planner agent process.yml, inputs.yml, and manifest.yml
+    files.
+
+    '
+  tasks:
+  - id: teach_07
+    name: Update planner-build and planner-test agent guidance
+    description: "planner-build: process.yml, inputs.yml, manifest.yml\n  - plan_folder_name\
+      \ -> epic_folder_name\n  - docs/plans/live/ -> docs/epics/live/\n  - plan_build.yml\
+      \ -> ticket_build.yml (output file)\n  - All plan vocabulary -> epic/ticket\
+      \ vocabulary\nplanner-test: process.yml, inputs.yml\n  - Same substitutions\n\
+      \  - plan_test.yml -> ticket_test.yml (output file)\n"
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner-test/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
+    success_criteria:
+    - epic_folder_name used in all parameter references
+    - ticket_*.yml used as output filenames
+    - docs/epics/ used in all path examples
+  - id: teach_08
+    name: Update planner-guidance, planner-cleaning, planner-guidance-testing guidance
+    description: "planner-guidance: process.yml, inputs.yml, manifest.yml\n  - plan_teach.yml\
+      \ -> ticket_teach.yml\n  - All plan vocabulary -> epic/ticket\nplanner-cleaning:\
+      \ process.yml, inputs.yml\n  - plan_cleaning.yml -> ticket_cleaning.yml\nplanner-guidance-testing:\
+      \ process.yml, inputs.yml\n  - plan_test_guidance.yml -> ticket_test_guidance.yml\n"
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-guidance/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-guidance/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-guidance-testing/inputs.yml
+    success_criteria:
+    - All ticket_*.yml output names correct
+    - All docs/epics/ paths correct
+  - id: teach_09
+    name: Update planner-audit, planner-reviewer, planner-orchestration, planner-sdk
+      guidance
+    description: "planner-audit: process.yml, inputs.yml, manifest.yml\n  - plan_folder_path\
+      \ -> epic_folder_path\n  - docs/plans/live/ -> docs/epics/live/\nplanner-reviewer:\
+      \ process.yml, inputs.yml\n  - Update review criteria to reference epic/ticket\
+      \ model\n  - ticket_*.yml instead of plan_*.yml\nplanner-orchestration: process.yml,\
+      \ inputs.yml, manifest.yml\n  - path_template: docs/epics/live/{epic_id}/\n\
+      \  - ticket_*.yml -> read from these files\nplanner-sdk: process.yml, inputs.yml,\
+      \ manifest.yml\n  - Same path substitutions\n"
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-audit/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-audit/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-audit/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-orchestration/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-orchestration/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner-sdk/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-sdk/inputs.yml
+    - modules/AgenticGuidance/agents/planner/planner-sdk/manifest.yml
+    success_criteria:
+    - epic_folder_path used consistently
+    - Manifest output paths use docs/epics/ template
+- name: Orchestration, Deploy, Test Agent Guidance Updates
+  execution: sequential
+  description: 'Update orchestration, deploy-worktree, and test agent guidance.
+
+    '
+  tasks:
+  - id: teach_10
+    name: Update orchestration-planning and orchestration-executor guidance
+    description: "orchestration-planning/process.mmd (CRITICAL - this is the main\
+      \ orchestration flowchart):\n  - Replace all plan_folder with epic_folder\n\
+      \  - Replace all docs/plans/ with docs/epics/\n  - Replace all plan_*.yml with\
+      \ ticket_*.yml\n  - Update CLI command references: agentic agent plan init ->\
+      \ agentic agent epic init\n  - Update agentic agent plan task -> agentic agent\
+      \ epic ticket\n  - Update agentic agent plan validate -> agentic agent epic\
+      \ validate\n  - Update all path examples in comments\norchestration-planning/manifest.yml:\
+      \ Update output path_template\norchestration-planning/inputs.yml: Update parameter\
+      \ names\norchestration-executor/process.yml: Update path references\norchestration-executor/inputs.yml:\
+      \ Update parameter names\n"
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    success_criteria:
+    - orchestration-planning/process.mmd uses epic_folder consistently
+    - All agentic agent plan ... CLI references updated to agentic agent epic ...
+    - orchestration-executor reads from docs/epics/ paths
+  - id: teach_11
+    name: Update deploy-worktree and test agent guidance
+    description: "deploy-worktree: process.yml, inputs.yml, manifest.yml\n  - \"planning\
+      \ folder\" -> \"epic folder\"\n  - docs/plans/ -> docs/epics/\n  - JSON output:\
+      \ plan_folder -> epic_folder\ntest agents: test-runner, test-builder, test-user-simulator,\
+      \ test-service inputs.yml\n  - Path references: docs/plans/live/ -> docs/epics/live/\n\
+      \  - Any plan_folder parameter -> epic_folder\n"
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/inputs.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml
+    - modules/AgenticGuidance/agents/test/test-runner/inputs.yml
+    - modules/AgenticGuidance/agents/test/test-builder/inputs.yml
+    - modules/AgenticGuidance/agents/test/test-builder/process.yml
+    - modules/AgenticGuidance/agents/test/test-user-simulator/inputs.yml
+    - modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+    - modules/AgenticGuidance/agents/test/test-service/inputs.yml
+    success_criteria:
+    - All docs/epics/live/ paths used
+    - epic_folder used in deploy-worktree outputs
+- name: Claude Agents Markdown and Documentation Updates
+  execution: sequential
+  description: 'Update .claude/agents/*.md files and top-level documentation.
+
+    '
+  tasks:
+  - id: teach_12
+    name: Update all .claude/agents/*.md orchestration and planner files
+    description: 'Update these agent system prompt files to use epic/ticket vocabulary.
+
+      These files are loaded by Claude Code and directly influence agent behaviour.
+
+      For each file: replace docs/plans/ with docs/epics/, plan_folder with epic_folder,
+
+      plan_*.yml with ticket_*.yml (as output descriptions), agentic plan with agentic
+      epic.
+
+      Files: orchestration-planning.md, orchestration-executor.md,
+
+      orchestration-friction.md, planner-build.md, planner-test.md,
+
+      planner-guidance.md, planner-cleaning.md, planner-audit.md,
+
+      planner-reviewer.md, planner-orchestration.md, planner-guidance-testing.md
+
+      '
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - .claude/agents/orchestration-planning.md
+    - .claude/agents/orchestration-executor.md
+    - .claude/agents/orchestration-friction.md
+    - .claude/agents/planner-build.md
+    - .claude/agents/planner-test.md
+    - .claude/agents/planner-guidance.md
+    - .claude/agents/planner-cleaning.md
+    - .claude/agents/planner-audit.md
+    - .claude/agents/planner-reviewer.md
+    - .claude/agents/planner-orchestration.md
+    - .claude/agents/planner-guidance-testing.md
+    success_criteria:
+    - All docs/epics/ paths used
+    - agentic epic commands referenced
+    - ticket_*.yml as output descriptions
+  - id: teach_13
+    name: Update .claude/agents build, deploy, teacher, test markdown files
+    description: 'Update remaining agent markdown files:
+
+      - build-python.md, build-flutter.md
+
+      - deploy-worktree.md, deploy-cicd.md
+
+      - teacher-update-guidance.md, teacher-update-assets.md, teacher-trace-diagnostics.md
+
+      - test-runner.md, test-builder.md, test-user-simulator.md
+
+      - test-audit.md, test-service.md, test-final-output.md, test-guidance-simulator.md
+
+      Same substitutions: docs/plans/ -> docs/epics/, plan_folder -> epic_folder
+
+      '
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - .claude/agents/build-python.md
+    - .claude/agents/build-flutter.md
+    - .claude/agents/deploy-worktree.md
+    - .claude/agents/deploy-cicd.md
+    - .claude/agents/teacher-update-guidance.md
+    - .claude/agents/teacher-update-assets.md
+    - .claude/agents/teacher-trace-diagnostics.md
+    - .claude/agents/test-runner.md
+    - .claude/agents/test-builder.md
+    - .claude/agents/test-user-simulator.md
+    - .claude/agents/test-audit.md
+    - .claude/agents/test-service.md
+    - .claude/agents/test-final-output.md
+    - .claude/agents/test-guidance-simulator.md
+    success_criteria:
+    - All files use epic/ticket vocabulary where applicable
+    - docs/epics/ used in all path examples
+  - id: teach_14
+    name: Update agents.md and user story files
+    description: "agents.md (Antigravity system reference):\n  - 1.1 Monorepo Structure:\
+      \ docs/plans/ -> docs/epics/\n  - 2. Primary Operating Mode: agentic agent plan\
+      \ -> agentic agent epic\n  - Command tables: agentic plan -> agentic epic\n\
+      \  - Service references: PlanService -> EpicService, TaskService -> TicketService\n\
+      \  - PlanData -> EpicData, PhaseData -> PhaseData (unchanged), TaskData -> TicketData\n\
+      \  - PlanInfo -> EpicInfo, PlanAction -> EpicAction\nUser story files: Update\
+      \ plan/task vocabulary in story content and category tags.\nNote: Story IDs\
+      \ (like CLM-002) are NOT renamed, only content vocabulary.\n"
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - agents.md
+    - docs/userstories/AgenticCLI/02_plan_management.yml
+    - docs/userstories/AgenticCLI/15_planning.yml
+    - docs/userstories/Orchestration/01_planning_workflow.yml
+    - docs/userstories/Orchestration/02_execution_workflow.yml
+    - docs/userstories/AgenticGuidance/04_planning.yml
+    - docs/userstories/AgenticTmux/03_plan_integration.yml
+    - docs/userstories/AgenticBackend/03_plan_state_api.yml
+    - docs/userstories/AgenticFrontend/04_plan_visualization.yml
+    - docs/userstories/AgenticFrontend/06_plan_approval.yml
+    success_criteria:
+    - agents.md uses EpicService/TicketService class names
+    - agents.md commands all use agentic epic ...
+    - User story files use epic/ticket vocabulary in content
+- name: Missing Agent Guidance Files (Audit-Identified)
+  execution: sequential
+  description: 'Agent guidance files identified by post-plan codebase audit that were
+
+    not covered in the original teach tasks. These include orchestration-friction,
+
+    orchestration-loop, all build/teacher/test agent process/inputs/manifest files,
+
+    hierarchical manifests, and supporting assets.
+
+    '
+  tasks:
+  - id: teach_15
+    name: Update orchestration-friction and orchestration-loop agent guidance
+    description: "These orchestration agents were completely omitted from the original\
+      \ plan.\n\norchestration-friction: process.mmd, inputs.yml, manifest.yml\n \
+      \ - Update plan_folder -> epic_folder references\n  - Update docs/plans/ ->\
+      \ docs/epics/ paths\n  - Update any plan/task vocabulary in process steps\n\n\
+      orchestration-loop: process.yml, inputs.yml, manifest.yml\n  - Update plan discovery\
+      \ paths\n  - Update plan_folder -> epic_folder parameters\n  - Update orchestration\
+      \ loop documentation\n"
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-friction/process.mmd
+    - modules/AgenticGuidance/agents/orchestration/orchestration-friction/inputs.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-friction/manifest.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-loop/process.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-loop/inputs.yml
+    - modules/AgenticGuidance/agents/orchestration/orchestration-loop/manifest.yml
+    success_criteria:
+    - All orchestration agent files use epic/ticket vocabulary
+    - docs/epics/ paths used throughout
+  - id: teach_16
+    name: Update build agent guidance (build-python, build-flutter)
+    description: "Build agent process.yml, inputs.yml, manifest.yml files were not\
+      \ covered.\n\nbuild-python: process.yml, inputs.yml, manifest.yml\n  - Update\
+      \ plan_folder -> epic_folder in input parameters\n  - Update docs/plans/ ->\
+      \ docs/epics/ in path references\n  - Update \"plan success criteria\" -> \"\
+      epic success criteria\" where applicable\n\nbuild-flutter: process.yml, inputs.yml,\
+      \ manifest.yml\n  - Same substitutions as build-python\n\nAlso update parent\
+      \ manifest: agents/build/manifest.yml\n"
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/agents/build/build-python/process.yml
+    - modules/AgenticGuidance/agents/build/build-python/inputs.yml
+    - modules/AgenticGuidance/agents/build/build-python/manifest.yml
+    - modules/AgenticGuidance/agents/build/build-flutter/process.yml
+    - modules/AgenticGuidance/agents/build/build-flutter/inputs.yml
+    - modules/AgenticGuidance/agents/build/build-flutter/manifest.yml
+    - modules/AgenticGuidance/agents/build/manifest.yml
+    success_criteria:
+    - All build agent guidance uses epic/ticket vocabulary
+    - Input parameters use epic_folder naming
+  - id: teach_17
+    name: Update teacher and deploy-cicd agent guidance
+    description: "Teacher agents and deploy-cicd were completely omitted.\n\nteacher-update-guidance:\
+      \ process.yml, inputs.yml, manifest.yml\nteacher-update-assets: process.yml,\
+      \ inputs.yml, manifest.yml\nteacher-trace-diagnostics: process.yml, inputs.yml,\
+      \ manifest.yml\n  - Update plan_folder -> epic_folder parameters\n  - Update\
+      \ docs/plans/ -> docs/epics/ paths\n  - Update references to plan/task vocabulary\n\
+      \ndeploy-cicd: process.yml, inputs.yml, manifest.yml\n  - Update plan references\
+      \ in CI/CD context\n\nAlso update parent manifests:\n  - agents/teacher/manifest.yml\n\
+      \  - agents/deploy/manifest.yml\n"
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/manifest.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-update-assets/process.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-update-assets/inputs.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-update-assets/manifest.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/process.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/inputs.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-trace-diagnostics/manifest.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-cicd/process.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-cicd/inputs.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-cicd/manifest.yml
+    - modules/AgenticGuidance/agents/teacher/manifest.yml
+    - modules/AgenticGuidance/agents/deploy/manifest.yml
+    success_criteria:
+    - All teacher agent guidance uses epic/ticket vocabulary
+    - deploy-cicd updated with epic paths
+    - Parent manifests updated
+  - id: teach_18
+    name: Update remaining test agent guidance files
+    description: 'teach_11 only partially covered test agents. These need full updates:
+
+
+      test-runner: process.yml, manifest.yml (inputs.yml already covered)
+
+      test-builder: manifest.yml (process.yml, inputs.yml partially covered)
+
+      test-audit: process.yml, inputs.yml, manifest.yml
+
+      test-final-output: process.yml, inputs.yml, manifest.yml
+
+      test-guidance-simulator: process.yml, inputs.yml, manifest.yml
+
+      test-user-simulator: manifest.yml (process.yml, inputs.yml partially covered)
+
+      test-service: process.yml, manifest.yml (inputs.yml partially covered)
+
+
+      Also: agents/test/manifest.yml (parent), agents/manifest.yml (root)
+
+
+      For each: Update plan_folder -> epic_folder, docs/plans/ -> docs/epics/
+
+      '
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/agents/test/test-runner/process.yml
+    - modules/AgenticGuidance/agents/test/test-runner/manifest.yml
+    - modules/AgenticGuidance/agents/test/test-builder/manifest.yml
+    - modules/AgenticGuidance/agents/test/test-audit/process.yml
+    - modules/AgenticGuidance/agents/test/test-audit/inputs.yml
+    - modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+    - modules/AgenticGuidance/agents/test/test-final-output/process.yml
+    - modules/AgenticGuidance/agents/test/test-final-output/inputs.yml
+    - modules/AgenticGuidance/agents/test/test-final-output/manifest.yml
+    - modules/AgenticGuidance/agents/test/test-guidance-simulator/process.yml
+    - modules/AgenticGuidance/agents/test/test-guidance-simulator/inputs.yml
+    - modules/AgenticGuidance/agents/test/test-guidance-simulator/manifest.yml
+    - modules/AgenticGuidance/agents/test/test-user-simulator/manifest.yml
+    - modules/AgenticGuidance/agents/test/test-service/process.yml
+    - modules/AgenticGuidance/agents/test/test-service/manifest.yml
+    - modules/AgenticGuidance/agents/test/manifest.yml
+    - modules/AgenticGuidance/agents/manifest.yml
+    success_criteria:
+    - All test agent guidance files use epic/ticket vocabulary
+    - Root and parent manifests updated
+    - docs/epics/ paths used consistently
+  - id: teach_19
+    name: Update supporting definition and guideline files
+    description: '13 supporting definition files and 14 guideline files with plan/task
+      references.
+
+
+      DEFINITION FILES to update (vocabulary only, no structural changes):
+
+      - error-driven-planning-protocol.yml: "planning" references
+
+      - path.yml / path-resolution.yml: docs/plans/ path references
+
+      - planner-reviewer-checklists.yml: plan review checklists
+
+      - guidance-quality.yml, guidance-process-requirements.yml: plan references
+
+      - guidance-test-scenarios.yml: plan test scenarios
+
+      - friction-patterns.yml, agent-loops.yml: plan loop references
+
+      - architecture-pattern.yml, agent-context-files.yml: plan path references
+
+      - self-review-criteria.yml, spot-check-checklist.yml: plan validation
+
+
+      GUIDELINE FILES to update:
+
+      - loop-inclusion-for-planners.yml: planning loop references
+
+      - orchestration-policy.yml: plan orchestration references
+
+      - question-workflow.yml: plan question workflow
+
+      - strategy-validation.yml, testing.yml: plan testing references
+
+      - agent-self-review.yml, content-evaluation.yml: plan review
+
+      - cli-error-recovery.yml: plan CLI error references
+
+      - exploration-principles.yml, context-minimisation.yml: plan context
+
+      - file-consolidation.yml, file-reclassification.yml: plan file references
+
+      - component-over-workflow.yml: plan component references
+
+      - reference-management.yml: plan reference management
+
+      - manifest.yml (guidelines manifest): plan references
+
+      '
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+    - modules/AgenticGuidance/assets/definitions/path.yml
+    - modules/AgenticGuidance/assets/definitions/path-resolution.yml
+    - modules/AgenticGuidance/assets/definitions/planner-reviewer-checklists.yml
+    - modules/AgenticGuidance/assets/definitions/guidance-quality.yml
+    - modules/AgenticGuidance/assets/definitions/guidance-process-requirements.yml
+    - modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml
+    - modules/AgenticGuidance/assets/definitions/friction-patterns.yml
+    - modules/AgenticGuidance/assets/definitions/agent-loops.yml
+    - modules/AgenticGuidance/assets/definitions/architecture-pattern.yml
+    - modules/AgenticGuidance/assets/definitions/agent-context-files.yml
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    - modules/AgenticGuidance/assets/definitions/spot-check-checklist.yml
+    - modules/AgenticGuidance/assets/guidelines/loop-inclusion-for-planners.yml
+    - modules/AgenticGuidance/assets/guidelines/orchestration-policy.yml
+    - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
+    - modules/AgenticGuidance/assets/guidelines/strategy-validation.yml
+    - modules/AgenticGuidance/assets/guidelines/testing.yml
+    - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+    - modules/AgenticGuidance/assets/guidelines/content-evaluation.yml
+    - modules/AgenticGuidance/assets/guidelines/cli-error-recovery.yml
+    - modules/AgenticGuidance/assets/guidelines/manifest.yml
+    success_criteria:
+    - All definition files use epic/ticket where plan/task was used for tracked items
+    - All guideline files use epic/ticket vocabulary
+    - docs/epics/ paths used consistently
+  - id: teach_20
+    name: Update asset input files, examples, and additional user stories
+    description: 'ASSET INPUT FILES:
+
+      - planner-core-guidelines.yml: Plan creation guidelines -> epic creation
+
+      - planner-shared.yml: Shared planner context -> shared epic planner context
+
+      - planner-core-system.yml: Core system instructions for planners
+
+
+      EXAMPLE FILES:
+
+      - planner/YYMMDDXX_description/plan_example.yml: Update vocabulary
+
+      - planner/YYMMDDXX_description/plan_completed.yml: Update vocabulary
+
+      - planner/teaching-plan-example.yml: Update vocabulary
+
+      - test/guidance-test-plan.yml: Update vocabulary
+
+
+      ADDITIONAL USER STORIES not in teach_14:
+
+      - docs/userstories/AgenticCLI/04_context_bootstrap.yml
+
+      - docs/userstories/AgenticCLI/06_question_queue.yml
+
+      - docs/userstories/AgenticCLI/08_entrypoints.yml
+
+      - docs/userstories/AgenticCLI/09_worktree.yml
+
+      - docs/userstories/AgenticCLI/10_templates.yml
+
+      - docs/userstories/AgenticCLI/12_ralph.yml
+
+      - docs/userstories/AgenticGuidance/08_services.yml
+
+      - docs/userstories/AgenticGuidance/10_tinydb_migration.yml
+
+      - docs/userstories/DeveloperWorkflows/01_worktree_management.yml
+
+      - docs/userstories/DeveloperWorkflows/03_template_and_scaffolding.yml
+
+      - docs/userstories/DeveloperWorkflows/04_state_and_environment.yml
+
+      - docs/userstories/AgenticLangSmith/04_resolution_planning.yml
+
+
+      AgenticGuidance agents README:
+
+      - modules/AgenticGuidance/agents/README.md
+
+      '
+    status: completed
+    agent: teacher-update-assets
+    target_files:
+    - modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml
+    - modules/AgenticGuidance/assets/inputs/planner-shared.yml
+    - modules/AgenticGuidance/assets/inputs/planner-core-system.yml
+    - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+    - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_completed.yml
+    - modules/AgenticGuidance/assets/examples/planner/teaching-plan-example.yml
+    - modules/AgenticGuidance/assets/examples/test/guidance-test-plan.yml
+    - docs/userstories/AgenticCLI/04_context_bootstrap.yml
+    - docs/userstories/AgenticCLI/06_question_queue.yml
+    - docs/userstories/AgenticCLI/08_entrypoints.yml
+    - docs/userstories/AgenticCLI/09_worktree.yml
+    - docs/userstories/AgenticCLI/10_templates.yml
+    - docs/userstories/AgenticCLI/12_ralph.yml
+    - docs/userstories/AgenticGuidance/08_services.yml
+    - docs/userstories/AgenticGuidance/10_tinydb_migration.yml
+    - docs/userstories/DeveloperWorkflows/01_worktree_management.yml
+    - docs/userstories/DeveloperWorkflows/03_template_and_scaffolding.yml
+    - docs/userstories/DeveloperWorkflows/04_state_and_environment.yml
+    - docs/userstories/AgenticLangSmith/04_resolution_planning.yml
+    - modules/AgenticGuidance/agents/README.md
+    success_criteria:
+    - All asset input files use epic/ticket vocabulary
+    - Example files demonstrate epic/ticket structure
+    - All user story files use epic/ticket vocabulary
+    - Agents README updated
+- name: AgenticGuidance Service Tests Update
+  execution: sequential
+  description: 'Update all AgenticGuidance test files to use the new epic/ticket terminology.
+
+    '
+  tasks:
+  - id: test_01
+    name: Update test_services_plan.py -> test_services_epic.py
+    description: "Rename and update test file:\n- Rename to test_services_epic.py\
+      \ (keep test_services_plan.py as alias if needed)\n- Update all imports: from\
+      \ agenticguidance.services.plan import PlanService ->\n  from agenticguidance.services.epic\
+      \ import EpicService\n- Update all class names: PlanService -> EpicService\n\
+      - Update all method names: create_plan -> create_epic, etc.\n- Update path assertions:\
+      \ docs/plans/ -> docs/epics/\n- Add tests that verify old PlanService still\
+      \ importable (backward compat)\nAlso update test_services_plan_service.py and\
+      \ test_services_plan_service_integration.py\nin the same way.\n"
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_plan.py
+    - modules/AgenticGuidance/tests/test_services_plan_service.py
+    - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
+    - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_epic.py
+    - modules/AgenticGuidance/tests/test_services_plan.py
+    - modules/AgenticGuidance/tests/test_services_plan_service.py
+    - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
+    success_criteria:
+    - test_services_epic.py passes all tests
+    - Backward compat tests: PlanService import succeeds
+    - All create_epic, get_epic methods tested
+    - docs/epics/ paths used in all path assertions
+  - id: test_02
+    name: Update test_services_task.py -> test_services_ticket.py
+    description: 'Rename and update:
+
+      - test_services_ticket.py with TicketService, Ticket, TicketStatus
+
+      - Update all imports and class names
+
+      - Update method assertions: start_ticket, complete_ticket, get_ticket
+
+      - Add backward compat tests: TaskService still importable
+
+      Keep test_services_task.py as backward compat test file.
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_ticket.py
+    - modules/AgenticGuidance/tests/test_services_task.py
+    success_criteria:
+    - test_services_ticket.py covers all TicketService methods
+    - TaskService backward compat test passes
+  - id: test_03
+    name: Update plan_repository and plan_resurrection tests
+    description: 'Update test_plan_repository_filelock.py:
+
+      - Update PlanRepository -> EpicRepository imports
+
+      - Update method names: create_plan -> create_epic, etc.
+
+      - Update table name assertions: "plans" -> "epics", "tasks" -> "tickets"
+
+      - Update path assertions: /plans/ -> /epics/
+
+      - Add migration test: verify old "plans" table in plans.db migrates to "epics"
+      in epics.db
+
+      Update test_plan_resurrection.py:
+
+      - Update path references
+
+      - Update class/method names
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticGuidance/tests/test_plan_repository_filelock.py
+    - modules/AgenticGuidance/tests/test_plan_resurrection.py
+    - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_plan_repository_filelock.py
+    - modules/AgenticGuidance/tests/test_plan_resurrection.py
+    success_criteria:
+    - EpicRepository tests pass
+    - Table name assertions updated to "epics"/"tickets"
+    - Migration test verifies plans.db -> epics.db
+  - id: test_04
+    name: Update ralph, context, and integration test files
+    description: "test_services_ralph.py:\n  - Update EpicInfo/EpicAction imports\n\
+      \  - Update discover_epics method calls\n  - Update path assertions: docs/epics/live\n\
+      test_services_context.py:\n  - Update MainFirstEpicResolver imports\n  - Update\
+      \ resolve_active_epic method calls\ntest_integration_planning_with_stories.py:\n\
+      \  - Update plan/task vocabulary throughout\ntest_planner_build_story_generation.py,\
+      \ test_planner_test_story_validation.py:\n  - Update path references and plan_folder\
+      \ -> epic_folder\n"
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_ralph.py
+    - modules/AgenticGuidance/tests/test_services_context.py
+    - modules/AgenticGuidance/tests/test_integration_planning_with_stories.py
+    - modules/AgenticGuidance/tests/test_planner_build_story_generation.py
+    - modules/AgenticGuidance/tests/test_planner_test_story_validation.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_ralph.py
+    - modules/AgenticGuidance/tests/test_services_context.py
+    - modules/AgenticGuidance/tests/test_integration_planning_with_stories.py
+    - modules/AgenticGuidance/tests/test_planner_build_story_generation.py
+    - modules/AgenticGuidance/tests/test_planner_test_story_validation.py
+    success_criteria:
+    - Ralph service tests pass with EpicInfo/EpicAction
+    - Context service tests pass with MainFirstEpicResolver
+    - Integration tests pass with updated paths
+  - id: test_05
+    name: Update TinyDB UAT tests
+    description: "Update the TinyDB UAT tests added for the migration:\ntest_uat_tinydb_crud.py:\n\
+      \  - Update to use EpicRepository instead of PlanRepository\n  - Update table\
+      \ assertions: \"epics\", \"tickets\"\n  - Update method names\ntest_uat_tinydb_yaml_compat.py:\n\
+      \  - Update path references to docs/epics/\n  - Update class names\n"
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticGuidance/tests/test_uat_tinydb_crud.py
+    - modules/AgenticGuidance/tests/test_uat_tinydb_yaml_compat.py
+    - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_uat_tinydb_crud.py
+    - modules/AgenticGuidance/tests/test_uat_tinydb_yaml_compat.py
+    success_criteria:
+    - Both UAT test files pass with EpicRepository
+    - YAML/TinyDB compatibility verified with ticket_*.yml files
+- name: AgenticCLI Test Updates
+  execution: sequential
+  description: 'Update all AgenticCLI test files for epic/ticket terminology.
+
+    '
+  tasks:
+  - id: test_06
+    name: Update core plan command test files
+    description: "Update the main plan command test files:\ntest_plan.py -> test_epic.py\
+      \ (create new, keep old for backward compat):\n  - CLI invocations: [\"plan\"\
+      , \"status\"] -> [\"epic\", \"status\"]\n  - Path assertions: docs/plans/live\
+      \ -> docs/epics/live\n  - agentic plan task -> agentic epic ticket\ntest_plan_movement.py:\n\
+      \  - EpicMovementWorkflow instead of PlanMovementWorkflow\n  - Method names:\
+      \ archive_epic_folder, etc.\ntest_plan_init.py:\n  - agentic agent epic init\
+      \ instead of plan init\ntest_plan_new.py, test_plan_new_uat.py:\n  - Update\
+      \ path assertions\ntest_plan_bootstrap.py:\n  - agentic agent epic bootstrap\n"
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/tests/test_plan.py
+    - modules/AgenticCLI/tests/test_plan_movement.py
+    - modules/AgenticCLI/tests/test_plan_init.py
+    - modules/AgenticCLI/tests/test_plan_new.py
+    - modules/AgenticCLI/tests/test_plan_new_uat.py
+    - modules/AgenticCLI/tests/test_plan_bootstrap.py
+    target_files:
+    - modules/AgenticCLI/tests/test_epic.py
+    - modules/AgenticCLI/tests/test_plan.py
+    - modules/AgenticCLI/tests/test_plan_movement.py
+    - modules/AgenticCLI/tests/test_plan_init.py
+    - modules/AgenticCLI/tests/test_plan_new.py
+    - modules/AgenticCLI/tests/test_plan_new_uat.py
+    - modules/AgenticCLI/tests/test_plan_bootstrap.py
+    success_criteria:
+    - test_epic.py passes all tests with agentic epic ... commands
+    - test_plan.py tests pass (backward compat via deprecation redirect)
+    - All path assertions use docs/epics/
+  - id: test_07
+    name: Update task/ticket command test files
+    description: 'Update task-related test files:
+
+      test_cli_task.py -> update to use agentic agent epic ticket commands
+
+      test_task_list_commands.py -> update to ticket vocabulary
+
+      test_task_workflow.py -> TicketPresetWorkflow
+
+      test_plan_nested_tasks.py -> test_epic_nested_tickets.py
+
+      integration/test_task_commands.py -> update to ticket sub-commands
+
+      All assertions on task_id, task_action -> ticket_id, ticket_action
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/tests/test_cli_task.py
+    - modules/AgenticCLI/tests/test_task_list_commands.py
+    - modules/AgenticCLI/tests/test_task_workflow.py
+    - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+    - modules/AgenticCLI/tests/integration/test_task_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_cli_task.py
+    - modules/AgenticCLI/tests/test_task_list_commands.py
+    - modules/AgenticCLI/tests/test_task_workflow.py
+    - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+    - modules/AgenticCLI/tests/integration/test_task_commands.py
+    success_criteria:
+    - All ticket command tests pass
+    - agentic agent epic ticket start/complete work in tests
+  - id: test_08
+    name: Update orchestration and planner loop test files
+    description: 'test_plan_orchestration.py -> update path references
+
+      test_orchestrate_command.py -> update --plan -> --epic flag assertions
+
+      test_planner_loop.py -> update epic_folder, plans_dir -> epics_dir
+
+      test_orchestration_workflow.py -> update path assertions
+
+      integration/test_orchestrate_integration.py -> update paths
+
+      integration/test_orchestration_sync.py -> update paths
+
+      integration/test_plan_creation_flow.py -> test_epic_creation_flow.py
+
+      integration/test_plan_path_arguments.py -> test_epic_path_arguments.py
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/tests/test_plan_orchestration.py
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    - modules/AgenticCLI/tests/test_orchestration_workflow.py
+    - modules/AgenticCLI/tests/integration/test_orchestrate_integration.py
+    - modules/AgenticCLI/tests/integration/test_orchestration_sync.py
+    - modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+    - modules/AgenticCLI/tests/integration/test_plan_path_arguments.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_orchestration.py
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    - modules/AgenticCLI/tests/test_orchestration_workflow.py
+    - modules/AgenticCLI/tests/integration/test_orchestrate_integration.py
+    - modules/AgenticCLI/tests/integration/test_orchestration_sync.py
+    - modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+    - modules/AgenticCLI/tests/integration/test_plan_path_arguments.py
+    success_criteria:
+    - All orchestration tests pass
+    - docs/epics/ paths in all assertions
+  - id: test_09
+    name: Update remaining CLI test files with plan references
+    description: 'Update all remaining test files that reference plan terminology:
+
+      test_plan_phase.py, test_plan_question_gate.py, test_plan_validate_fences.py
+
+      test_worktree.py -> update plan_folder -> epic_folder references
+
+      test_worktree_registry.py -> update path assertions
+
+      test_session_commands.py -> update --plan -> --epic references
+
+      test_cli.py, test_cli_restructure.py -> update plan group assertions
+
+      test_naming.py -> update generate_plan_folder_name -> generate_epic_folder_name
+
+      integration/test_auto_archive_trigger.py -> update paths
+
+      integration/test_bootstrap_planner_workflow.py -> update paths
+
+      integration/test_workflow_sequences.py -> update paths
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/tests/test_plan_phase.py
+    - modules/AgenticCLI/tests/test_plan_question_gate.py
+    - modules/AgenticCLI/tests/test_plan_validate_fences.py
+    - modules/AgenticCLI/tests/test_worktree.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/tests/test_cli.py
+    - modules/AgenticCLI/tests/test_naming.py
+    - modules/AgenticCLI/tests/integration/test_auto_archive_trigger.py
+    - modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_phase.py
+    - modules/AgenticCLI/tests/test_plan_question_gate.py
+    - modules/AgenticCLI/tests/test_plan_validate_fences.py
+    - modules/AgenticCLI/tests/test_worktree.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/tests/test_cli.py
+    - modules/AgenticCLI/tests/test_naming.py
+    - modules/AgenticCLI/tests/integration/test_auto_archive_trigger.py
+    success_criteria:
+    - All 80+ test files run without errors
+    - No remaining hardcoded docs/plans/ paths in test assertions
+    - generate_epic_folder_name tested
+- name: Audit-Identified Test Gaps
+  execution: sequential
+  description: 'Test files identified by post-plan codebase audit that were not covered
+
+    in the original test tasks.
+
+    '
+  tasks:
+  - id: test_13
+    name: Update context, ralph, worktree, and workspace test files
+    description: "These test files were missing from the original plan:\n\ntest_context_commands.py:\n\
+      \  - plan_repo, plan_cli_runner fixtures -> epic_repo, epic_cli_runner\n  -\
+      \ Update context command assertions\n\ntest_ralph_commands.py:\n  - Update plan\
+      \ references in Ralph command tests\n  - Update PlanInfo -> EpicInfo assertions\n\
+      \ntest_worktree_registry.py:\n  - Update plan folder name patterns in registry\
+      \ assertions\n\ntest_worktree_reuse.py:\n  - Update plan folder reuse logic\
+      \ assertions\n\ntests/commands/test_workspace_sync.py:\n  - Update plan_folder_name\
+      \ references in workspace sync tests\n\ntest_cli_restructure.py:\n  - Update\
+      \ plan command group restructuring assertions\n"
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    - modules/AgenticCLI/tests/test_ralph_commands.py
+    - modules/AgenticCLI/tests/test_worktree_registry.py
+    - modules/AgenticCLI/tests/test_worktree_reuse.py
+    - modules/AgenticCLI/tests/commands/test_workspace_sync.py
+    - modules/AgenticCLI/tests/test_cli_restructure.py
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    - modules/AgenticCLI/tests/test_ralph_commands.py
+    - modules/AgenticCLI/tests/test_worktree_registry.py
+    - modules/AgenticCLI/tests/test_worktree_reuse.py
+    - modules/AgenticCLI/tests/commands/test_workspace_sync.py
+    - modules/AgenticCLI/tests/test_cli_restructure.py
+    success_criteria:
+    - All context/ralph/worktree test files use epic/ticket vocabulary
+    - Fixtures renamed to epic_repo, epic_cli_runner
+  - id: test_14
+    name: Update conftest.py fixtures and question/story integration tests
+    description: "conftest.py:\n  - temp_repo fixture: docs/plans/live -> docs/epics/live\n\
+      \  - Any plan_folder fixtures -> epic_folder\n  - Update fixture docstrings\n\
+      \nQuestion/story integration test files:\n  - test_preset_templates.py: plan-related\
+      \ preset templates\n  - test_uat_ask_with_suggestions.py: plan_folder fixture\n\
+      \  - test_uat_interactive_answer.py: plan_with_multiple_questions fixture\n\
+      \  - test_interactive_answer.py: plan_with_pending_question fixture\n  - integration/test_question_commands.py:\
+      \ plan_with_question* fixtures\n  - integration/test_workflow_sequences.py:\
+      \ plan workflow sequences\n  - test_stories.py: stories with plan references\n\
+      \  - integration/test_user_stories.py: user stories in plans\n\nAll fixtures\
+      \ named plan_with_* -> epic_with_*\nAll plan_folder fixtures -> epic_folder\n"
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/tests/conftest.py
+    - modules/AgenticCLI/tests/test_preset_templates.py
+    - modules/AgenticCLI/tests/test_uat_ask_with_suggestions.py
+    - modules/AgenticCLI/tests/test_uat_interactive_answer.py
+    - modules/AgenticCLI/tests/test_interactive_answer.py
+    - modules/AgenticCLI/tests/integration/test_question_commands.py
+    - modules/AgenticCLI/tests/integration/test_workflow_sequences.py
+    - modules/AgenticCLI/tests/test_stories.py
+    - modules/AgenticCLI/tests/integration/test_user_stories.py
+    target_files:
+    - modules/AgenticCLI/tests/conftest.py
+    - modules/AgenticCLI/tests/test_preset_templates.py
+    - modules/AgenticCLI/tests/test_uat_ask_with_suggestions.py
+    - modules/AgenticCLI/tests/test_uat_interactive_answer.py
+    - modules/AgenticCLI/tests/test_interactive_answer.py
+    - modules/AgenticCLI/tests/integration/test_question_commands.py
+    - modules/AgenticCLI/tests/integration/test_workflow_sequences.py
+    - modules/AgenticCLI/tests/test_stories.py
+    - modules/AgenticCLI/tests/integration/test_user_stories.py
+    success_criteria:
+    - conftest.py fixtures use docs/epics/live paths
+    - All question/story tests use epic_with_* fixture names
+    - No remaining docs/plans/ references in test fixtures
+  - id: test_15
+    name: Update exception, validation, and new build_16-20 related tests
+    description: "Tests for the new build tasks added by the audit:\n\ntest_exceptions.py:\n\
+      \  - Update PlanFileError -> EpicFileError assertions\n  - Update PlanFolderError\
+      \ -> EpicFolderError assertions\n\ntest_validation.py:\n  - Update validate_plan_*\
+      \ -> validate_epic_* function calls\n  - Update PLAN_REQUIRED_FIELDS -> EPIC_REQUIRED_FIELDS\
+      \ assertions\n\ntest_permission_skip_flag.py:\n  - Update any plan command references\n\
+      \nintegration/test_stop_idempotency_e2e.py:\n  - Update any plan references\n\
+      \ntest_sdk_runner.py:\n  - Update any plan_folder references\n\ntest_uat_phone_notifications.py:\n\
+      \  - Update plan references in UAT\n\nAlso verify new files have tests:\n  -\
+      \ ticket_workflow.py needs test_ticket_workflow.py\n  - epic.py command needs\
+      \ test_epic.py (already in test_06)\n"
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/tests/test_exceptions.py
+    - modules/AgenticCLI/tests/test_validation.py
+    - modules/AgenticCLI/tests/test_permission_skip_flag.py
+    - modules/AgenticCLI/tests/integration/test_stop_idempotency_e2e.py
+    - modules/AgenticCLI/tests/test_sdk_runner.py
+    - modules/AgenticCLI/tests/test_uat_phone_notifications.py
+    target_files:
+    - modules/AgenticCLI/tests/test_exceptions.py
+    - modules/AgenticCLI/tests/test_validation.py
+    - modules/AgenticCLI/tests/test_permission_skip_flag.py
+    - modules/AgenticCLI/tests/integration/test_stop_idempotency_e2e.py
+    - modules/AgenticCLI/tests/test_sdk_runner.py
+    - modules/AgenticCLI/tests/test_uat_phone_notifications.py
+    - modules/AgenticCLI/tests/test_ticket_workflow.py
+    success_criteria:
+    - Exception tests use EpicFileError/EpicFolderError
+    - Validation tests use validate_epic_* functions
+    - ticket_workflow.py has corresponding tests
+    - All test files pass
+- name: Full Test Suite Execution and Coverage
+  execution: sequential
+  description: 'Run the complete test suites and verify coverage.
+
+    '
+  tasks:
+  - id: test_10
+    name: Run AgenticGuidance full test suite
+    description: 'Execute the complete AgenticGuidance test suite:
+
+      cd modules/AgenticGuidance && python3 -m pytest tests/ -v --tb=short
+
+      Fix any remaining failures not addressed in prior tasks.
+
+      Target: all tests pass with 0 errors.
+
+      PROGRESS: First run done. 652 passed, 38 failed. See test_fix_status below. '
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticGuidance/tests/
+    completed_date: '2026-03-03'
+    success_criteria:
+    - All AgenticGuidance tests pass (0 failures, 0 errors)
+    - No test imports old plan.py names directly (only via compat shim)
+  - id: test_11
+    name: Run AgenticCLI full test suite
+    description: 'Execute the complete AgenticCLI test suite:
+
+      cd modules/AgenticCLI && python3 -m pytest tests/ -v --tb=short
+
+      Fix any remaining failures.
+
+      Target: all tests pass with 0 errors.
+
+      Note: Backward compat tests for agentic plan ... should verify
+
+      deprecation warnings are emitted.
+
+      PROGRESS: First run done. 1431 passed, 59 failed. See test_fix_status below. '
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/tests/
+    completed_date: '2026-03-03'
+    success_criteria:
+    - All AgenticCLI tests pass (0 failures, 0 errors)
+    - Deprecation warning tests pass for old plan commands
+  - id: test_12
+    name: Run smoke test for agentic CLI commands
+    description: 'Run end-to-end smoke tests via the installed agentic CLI:
+
+      1. agentic epic list (should work)
+
+      2. agentic plan list (should work with deprecation warning)
+
+      3. agentic epic status (should work)
+
+      4. agentic --version (should show current version)
+
+      5. agentic agent epic init --help (should show help)
+
+      6. agentic agent epic ticket --help (should show help)
+
+      Verify CLI is responsive and commands route correctly.
+
+      '
+    status: completed
+    agent: test-runner
+    completed_date: '2026-03-03'
+    success_criteria:
+    - agentic epic list exits 0
+    - agentic plan list exits 0 with deprecation warning in output
+    - agentic agent epic init --help shows usage
+    - agentic agent epic ticket start --help shows usage
+- name: Core Epic Lifecycle UAT
+  execution: sequential
+  description: 'Validate the complete epic management workflow via CLI.
+
+    '
+  tasks:
+  - id: uat_01
+    name: Validate epic creation workflow
+    description: "Test the complete epic creation workflow:\n1. agentic agent epic\
+      \ init test-branch --description test_epic_uat\n   Verify: exits 0, creates\
+      \ docs/epics/live/YYMMDDTT_test_epic_uat/\n   Verify: JSON output includes epic_folder,\
+      \ epic_folder_name\n2. agentic epic list\n   Verify: Shows the newly created\
+      \ epic\n3. agentic epic status <epic_folder>\n   Verify: Shows ticket counts\
+      \ and status\n4. agentic agent epic validate <epic_folder>\n   Verify: Validates\
+      \ epic structure\n5. Verify epic folder has correct structure:\n   - README.md\
+      \ at root\n   - ticket_build.yml scaffold at root (or no files - empty epic)\n\
+      \   - No docs/plans/ directories created accidentally\n"
+    status: completed
+    agent: test-user-simulator
+    completed_date: '2026-03-03'
+    success_criteria:
+    - agentic agent epic init exits 0
+    - docs/epics/live/YYMMDDTT_test_epic_uat/ created
+    - agentic epic list shows the new epic
+    - Epic structure is flat (ticket files at root)
+  - id: uat_02
+    name: Validate ticket management workflow
+    description: "Given an epic with a ticket_build.yml containing tasks:\n1. agentic\
+      \ agent epic ticket list --epic <epic_folder>\n   Verify: Lists all tickets\n\
+      2. agentic agent epic ticket current --epic <epic_folder>\n   Verify: Returns\
+      \ first pending ticket\n3. agentic agent epic ticket start <ticket_id> --epic\
+      \ <epic_folder>\n   Verify: Marks ticket as in_progress\n4. agentic agent epic\
+      \ ticket complete <ticket_id> --epic <epic_folder>\n   Verify: Marks ticket\
+      \ as completed, triggers auto-archive if last ticket\n5. agentic epic status\
+      \ <epic_folder>\n   Verify: Shows updated ticket counts\n\nAlso verify the OLD\
+      \ commands show errors:\n6. agentic plan task start <task_id> --plan <epic_folder>\n\
+      \   Verify: Shows \"Removed: use agentic epic ticket start\" error (exit 1)\n"
+    status: completed
+    agent: test-user-simulator
+    completed_date: '2026-03-03'
+    success_criteria:
+    - Ticket CRUD operations all work via agentic agent epic ticket
+    - Auto-archive triggered when all tickets complete
+    - Old agentic plan task commands show removal error
+  - id: uat_03
+    name: Validate epic archival and listing workflow
+    description: "Test the complete epic archival workflow:\n1. agentic agent epic\
+      \ archive <epic_folder>\n   Verify: Copies to docs/epics/completed/\n   Verify:\
+      \ TinyDB updated with completed status\n2. agentic epic list\n   Verify: Shows\
+      \ all epics (live and completed)\n3. agentic agent epic unarchive <epic_name>\n\
+      \   Verify: Moves back to docs/epics/live/\n4. agentic epic cancel <epic_folder>\n\
+      \   Verify: Marks epic as cancelled\n5. Verify docs/plans/ directory does NOT\
+      \ exist\n"
+    status: completed
+    agent: test-user-simulator
+    completed_date: '2026-03-03'
+    success_criteria:
+    - Archive/unarchive workflow works
+    - docs/epics/completed/ used (not docs/plans/completed/)
+    - No docs/plans/ directory present
+- name: Agent Integration UAT
+  execution: sequential
+  description: 'Validate that agents correctly use epic terminology when spawned.
+
+    '
+  tasks:
+  - id: uat_04
+    name: Validate agent spawning with epic context
+    description: "Test agent spawn with epic context:\n1. agentic session spawn --role\
+      \ build-python --epic <epic_folder> --dry-run\n   Verify: Prompt includes epic_folder\
+      \ reference, not plan_folder\n   Verify: Prompt uses \"epic\" and \"ticket\"\
+      \ vocabulary\n2. agentic session spawn --role orchestration-planning --epic\
+      \ <epic_folder> --dry-run\n   Verify: Orchestration planning agent receives\
+      \ epic context\n3. agentic agent context bootstrap --role build-python -j\n\
+      \   Verify: Returns epic_folder in JSON (not plan_folder)\nNote: --dry-run mode\
+      \ should show the prompt without actually spawning.\n"
+    status: completed
+    agent: test-user-simulator
+    completed_date: '2026-03-03'
+    success_criteria:
+    - Agent prompts reference epic_folder
+    - Context bootstrap returns epic vocabulary
+    - No "plan_folder" in generated prompts
+  - id: uat_05
+    name: Validate Ralph loop discovers epics
+    description: "Test Ralph loop integration:\n1. Verify docs/epics/live/ is scanned\
+      \ (not docs/plans/live/)\n2. agentic session orchestrate ralph status -j\n \
+      \  Verify: Shows EpicInfo objects with correct paths\n3. Verify Ralph prioritizes\
+      \ epics correctly based on new paths\n4. Create an epic with no MMD, verify\
+      \ Ralph detects it as needs_planning\n"
+    status: completed
+    agent: test-user-simulator
+    completed_date: '2026-03-03'
+    success_criteria:
+    - Ralph discovers epics from docs/epics/live/
+    - EpicInfo objects have correct paths
+    - needs_planning detection works for new epics
+  - id: uat_06
+    name: Validate orchestration planning creates epics with ticket files
+    description: 'Verify the orchestration-planning agent correctly creates epics:
+
+      1. Spawn orchestration-planning with a test objective
+
+      2. Verify it creates docs/epics/live/YYMMDDXX_description/
+
+      3. Verify ticket files are created as ticket_build.yml (not plan_build.yml)
+
+      4. Verify the orchestration MMD is created correctly
+
+      5. Verify planner-reviewer approves the epic structure
+
+      This is a live agent spawn test - verify from output only, do not
+
+      run actual implementation. Use --dry-run if available.
+
+      '
+    status: completed
+    agent: test-user-simulator
+    completed_date: '2026-03-03'
+    success_criteria:
+    - orchestration-planning creates docs/epics/live/ folders
+    - Ticket files named ticket_*.yml
+    - Epic structure validates successfully
+    - Planner-reviewer recognizes ticket files
+- name: Backward Compatibility UAT
+  execution: sequential
+  description: 'Verify that old commands fail gracefully with clear error messages,
+
+    not silently or confusingly.
+
+    '
+  tasks:
+  - id: uat_07
+    name: Validate backward compatibility error messages
+    description: "Test that old plan/task commands give clear, actionable errors:\n\
+      1. agentic plan list\n   Verify: Error message \"Command removed. Use: agentic\
+      \ epic list\"\n   Verify: Exit code 1\n2. agentic plan task start t01 --plan\
+      \ myfolder\n   Verify: Error message pointing to agentic epic ticket start\n\
+      3. agentic agent plan task current --plan myfolder\n   Verify: Clear redirect\
+      \ message\n4. agentic plan status\n   Verify: Redirect to agentic epic status\n\
+      \nAll error messages must be user-friendly and include the\nexact new command\
+      \ to use as a replacement.\n"
+    status: completed
+    agent: test-user-simulator
+    completed_date: '2026-03-03'
+    success_criteria:
+    - All old commands exit 1 with actionable error message
+    - Error messages include exact new command syntax
+    - No silent failures or cryptic error messages
+  - id: low_01
+    name: Rename session spawn --plan flag to --epic for consistency with epic terminology
+      migration
+    description: Rename session spawn --plan flag to --epic for consistency with epic
+      terminology migration
+    status: completed
+    agent: null
+    completed_date: '2026-03-03'
+  - id: low_02
+    name: 'Update agent epic init JSON output keys: rename plan_folder to epic_folder
+      and plan_folder_name to epic_folder_name in JSON responses'
+    description: 'Update agent epic init JSON output keys: rename plan_folder to epic_folder
+      and plan_folder_name to epic_folder_name in JSON responses'
+    status: completed
+    agent: null
+    completed_date: '2026-03-03'
+  - id: low_03
+    name: 'Fix TinyDB aggregate counts: import_from_yaml used dict.update overwriting
+      phases key, and _get_repo used wrong DB path (home vs repo-local). Both fixed
+      - verify no regressions'
+    description: 'Fix TinyDB aggregate counts: import_from_yaml used dict.update overwriting
+      phases key, and _get_repo used wrong DB path (home vs repo-local). Both fixed
+      - verify no regressions'
+    status: completed
+    agent: null
+    completed_date: '2026-03-03'
+  - id: low_04
+    name: 'Update 11 guidance agent config files: rename {plan_folder_name} template
+      variable to {epic_folder_name} in planner agent process.yml and inputs.yml configs'
+    description: 'Update 11 guidance agent config files: rename {plan_folder_name}
+      template variable to {epic_folder_name} in planner agent process.yml and inputs.yml
+      configs'
+    status: completed
+    agent: null
+    completed_date: '2026-03-03'
+  - id: low_05
+    name: 'Fix test DB isolation: added autouse _isolate_tinydb fixture in conftest.py
+      to prevent test pollution of repo-local TinyDB. Cleaned 50+ stale /tmp/ entries
+      from both DBs.'
+    description: 'Fix test DB isolation: added autouse _isolate_tinydb fixture in
+      conftest.py to prevent test pollution of repo-local TinyDB. Cleaned 50+ stale
+      /tmp/ entries from both DBs.'
+    status: completed
+    agent: null
+    completed_date: '2026-03-03'

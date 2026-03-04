@@ -22,7 +22,7 @@ class TestSlugifyObjective:
     """Tests for branch name auto-generation from objective strings."""
 
     def _slugify(self, objective: str) -> str:
-        from agenticcli.commands.plan import _slugify_objective
+        from agenticcli.commands.epic import _slugify_objective
         return _slugify_objective(objective)
 
     def test_basic_objective(self):
@@ -98,7 +98,7 @@ def create_worktree_for_test(temp_repo: Path, branch: str, base: str = "main") -
 
 @pytest.fixture(autouse=False)
 def mock_claude_subprocess():
-    """Mock subprocess.run in plan.py so claude calls don't hang.
+    """Mock subprocess.run in epic.py so claude calls don't hang.
 
     Also mocks the SDK path so run_agent_sync creates plan_build.yml.
     Git calls pass through to the real subprocess.run.
@@ -140,7 +140,7 @@ phases:
         # created should use the subprocess path (mock SDK_AVAILABLE=False) or create it manually.
         return SessionResult(status="completed", result="Mock SDK planner output")
 
-    with patch("agenticcli.commands.plan.subprocess.run", side_effect=patched_run):
+    with patch("agenticcli.commands.epic.subprocess.run", side_effect=patched_run):
         with patch("agenticcli.utils.sdk_runner.run_agent_sync", side_effect=mock_sdk_run):
             yield
 
@@ -151,12 +151,12 @@ class TestPlanNew:
 
     def test_new_requires_objective(self, cli_runner):
         """Test 'plan new' with no args shows error."""
-        stdout, stderr, code = cli_runner(["agent", "plan", "new"])
+        stdout, stderr, code = cli_runner(["agent", "epic", "new"])
         assert code != 0
 
     def test_new_help_shows_all_args(self, cli_runner):
         """Test 'plan new --help' lists all expected arguments."""
-        stdout, stderr, code = cli_runner(["agent", "plan", "new", "--help"])
+        stdout, stderr, code = cli_runner(["agent", "epic", "new", "--help"])
         assert code == 0
         combined = stdout + stderr
         assert "--branch" in combined or "-b" in combined
@@ -173,14 +173,14 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", "Test feature", "--branch", branch]
+            ["agent", "epic", "new", "Test feature", "--branch", branch]
         )
 
         assert code == 0
-        assert "Plan created" in stdout or "Plan initialized" in stdout
+        assert "Epic created" in stdout or "Plan initialized" in stdout
 
         # Verify plan folder was created
-        plans_dir = temp_repo / "docs" / "plans" / "live"
+        plans_dir = temp_repo / "docs" / "epics" / "live"
         plan_folders = [p for p in plans_dir.iterdir() if p.is_dir() and "test_feature" in p.name]
         assert len(plan_folders) >= 1
 
@@ -191,12 +191,12 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", "Add dark mode"]
+            ["agent", "epic", "new", "Add dark mode"]
         )
 
         assert code == 0
         combined = stdout + stderr
-        assert "plan-add-dark-mode" in combined.lower() or "Plan created" in stdout
+        assert "plan-add-dark-mode" in combined.lower() or "Epic created" in stdout
 
     def test_new_branch_override(self, cli_runner, temp_repo):
         """Test --branch overrides auto-generation."""
@@ -204,7 +204,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", "Some objective", "--branch", "my-custom-branch"]
+            ["agent", "epic", "new", "Some objective", "--branch", "my-custom-branch"]
         )
 
         assert code == 0
@@ -215,7 +215,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "JSON test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "JSON test", "--branch", branch]
         )
 
         assert code == 0
@@ -232,7 +232,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "Execute test", "--branch", branch, "--execute"]
+            ["-j", "agent", "epic", "new", "Execute test", "--branch", branch, "--execute"]
         )
 
         assert code == 0
@@ -245,7 +245,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "No execute test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "No execute test", "--branch", branch]
         )
 
         assert code == 0
@@ -258,7 +258,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "Turns test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "Turns test", "--branch", branch]
         )
 
         assert code == 0
@@ -271,7 +271,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "Turns custom", "--branch", branch, "--max-turns", "50"]
+            ["-j", "agent", "epic", "new", "Turns custom", "--branch", branch, "--max-turns", "50"]
         )
 
         assert code == 0
@@ -284,7 +284,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "Build yml test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "Build yml test", "--branch", branch]
         )
 
         assert code == 0
@@ -298,7 +298,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", "Next steps test", "--branch", branch]
+            ["agent", "epic", "new", "Next steps test", "--branch", branch]
         )
 
         assert code == 0
@@ -310,7 +310,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "My long objective", "--branch", branch,
+            ["-j", "agent", "epic", "new", "My long objective", "--branch", branch,
              "--description", "short desc"]
         )
 
@@ -331,13 +331,13 @@ class TestPlanNewErrorCases:
 
         # First creation
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", "Dup test", "--branch", branch]
+            ["agent", "epic", "new", "Dup test", "--branch", branch]
         )
         assert code == 0
 
         # Second creation with same params should fail
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", "Dup test", "--branch", branch]
+            ["agent", "epic", "new", "Dup test", "--branch", branch]
         )
         assert code == 2  # Plan folder already exists
 
@@ -374,7 +374,7 @@ class TestBuildPlannerPrompt:
         prompt = build_planner_prompt(objective, plan_folder)
 
         assert str(plan_folder) in prompt
-        assert "PLAN FOLDER:" in prompt
+        assert "EPIC FOLDER:" in prompt
 
     def test_prompt_includes_story_discovery_instruction(self, tmp_path):
         """Test prompt instructs planner to run agentic stories find."""
@@ -419,7 +419,7 @@ class TestBuildPlannerPrompt:
         assert "WRITE README.md" in prompt
 
     def test_prompt_includes_plan_build_instruction(self, tmp_path):
-        """Test prompt instructs planner to write plan_build.yml."""
+        """Test prompt instructs planner to write ticket_build.yml."""
         from agenticcli.utils.planner_prompt import build_planner_prompt
 
         objective = "Test objective"
@@ -428,8 +428,8 @@ class TestBuildPlannerPrompt:
 
         prompt = build_planner_prompt(objective, plan_folder)
 
-        assert "plan_build.yml" in prompt
-        assert "WRITE plan_build.yml" in prompt
+        assert "ticket_build.yml" in prompt
+        assert "WRITE ticket_build.yml" in prompt
 
     def test_prompt_includes_story_first_fence(self, tmp_path):
         """Test prompt includes STORY-FIRST PLANNING fence."""
@@ -513,9 +513,9 @@ class TestPlanNewPlannerSpawn:
                     plan_build.write_text("name: Mock Plan\nphases: []")
             return mock_result
 
-        with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
+        with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
             stdout, stderr, code = cli_runner(
-                ["agent", "plan", "new", "Spawn test", "--branch", branch]
+                ["agent", "epic", "new", "Spawn test", "--branch", branch]
             )
 
         assert code == 0
@@ -540,9 +540,9 @@ class TestPlanNewPlannerSpawn:
                 return real_subprocess_run(cmd, *a, **kwargs)
             return mock_result
 
-        with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
+        with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
             stdout, stderr, code = cli_runner(
-                ["agent", "plan", "new", "Validate test", "--branch", branch]
+                ["agent", "epic", "new", "Validate test", "--branch", branch]
             )
 
         # cmd_new should still succeed (plan folder created) but report planner failure
@@ -577,9 +577,9 @@ class TestPlanNewPlannerSpawn:
 
         # Force subprocess path by marking SDK unavailable
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
-            with patch("agenticcli.commands.plan.subprocess.run", side_effect=capture_run):
+            with patch("agenticcli.commands.epic.subprocess.run", side_effect=capture_run):
                 stdout, stderr, code = cli_runner(
-                    ["agent", "plan", "new", "Max turns test", "--branch", branch, "--max-turns", "15"]
+                    ["agent", "epic", "new", "Max turns test", "--branch", branch, "--max-turns", "15"]
                 )
 
         assert code == 0
@@ -618,9 +618,9 @@ class TestPlanNewPlannerSpawn:
 
         # Force subprocess path by marking SDK unavailable
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
-            with patch("agenticcli.commands.plan.subprocess.run", side_effect=capture_run):
+            with patch("agenticcli.commands.epic.subprocess.run", side_effect=capture_run):
                 stdout, stderr, code = cli_runner(
-                    ["agent", "plan", "new", "Skip perms test", "--branch", branch,
+                    ["agent", "epic", "new", "Skip perms test", "--branch", branch,
                      "--dangerously-skip-permissions"]
                 )
 
@@ -647,7 +647,7 @@ class TestPlanNewOrchestration:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "Orchestration test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "Orchestration test", "--branch", branch]
         )
 
         assert code == 0
@@ -694,18 +694,19 @@ phases:
             return mock_result
 
         # Patch cmd_orchestration_validate to track calls
-        from agenticcli.commands import plan as plan_module
+        # epic.py calls its own cmd_orchestration_validate, so patch it in the epic module
+        from agenticcli.commands import epic as epic_module
 
-        original_validate = plan_module.cmd_orchestration_validate
+        original_validate = epic_module.cmd_orchestration_validate
 
         def track_validate(*args, **kwargs):
             validate_called.append(True)
             return original_validate(*args, **kwargs)
 
-        with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
-            with patch.object(plan_module, "cmd_orchestration_validate", side_effect=track_validate):
+        with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
+            with patch.object(epic_module, "cmd_orchestration_validate", side_effect=track_validate):
                 stdout, stderr, code = cli_runner(
-                    ["agent", "plan", "new", "Validate orch", "--branch", branch]
+                    ["agent", "epic", "new", "Validate orch", "--branch", branch]
                 )
 
         assert code == 0
@@ -735,15 +736,15 @@ phases:
             mock_result.returncode = 0
             return mock_result
 
-        with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
+        with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
             stdout, stderr, code = cli_runner(
-                ["agent", "plan", "new", "Orch fail test", "--branch", branch]
+                ["agent", "epic", "new", "Orch fail test", "--branch", branch]
             )
 
         # Should still succeed even if orchestration fails
         combined = stdout + stderr
         # Either succeeds with warning or fails cleanly
-        assert "Plan created" in combined or code != 0
+        assert "Epic created" in combined or code != 0
 
     def test_new_without_execute_stops_after_orchestration(self, cli_runner, temp_repo):
         """Test plan new without --execute stops after orchestration generation."""
@@ -751,7 +752,7 @@ phases:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "plan", "new", "No exec test", "--branch", branch]
+            ["agent", "epic", "new", "No exec test", "--branch", branch]
         )
 
         assert code == 0
@@ -826,10 +827,10 @@ phases:
 
         # Force subprocess path for task spawning (SDK_AVAILABLE=False -> Popen path)
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
-            with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
-                with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
+            with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
+                with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["agent", "plan", "new", "Exec test", "--branch", branch, "--execute"]
+                        ["agent", "epic", "new", "Exec test", "--branch", branch, "--execute"]
                     )
 
         assert code == 0
@@ -900,10 +901,10 @@ phases:
 
         # Force subprocess path for task spawning (SDK_AVAILABLE=False -> Popen path)
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
-            with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
-                with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
+            with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
+                with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["agent", "plan", "new", "Sequential", "--branch", branch, "--execute"]
+                        ["agent", "epic", "new", "Sequential", "--branch", branch, "--execute"]
                     )
 
         assert code == 0
@@ -963,10 +964,10 @@ phases:
 
         # Force subprocess path for task spawning (SDK_AVAILABLE=False -> Popen path)
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
-            with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
-                with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
+            with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
+                with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["agent", "plan", "new", "Skip test", "--branch", branch, "--execute"]
+                        ["agent", "epic", "new", "Skip test", "--branch", branch, "--execute"]
                     )
 
         assert code == 0
@@ -1002,10 +1003,8 @@ phases:
                     plan_build.write_text("name: Empty\n")
             return mock_result
 
-        # Make validation fail
-        from agenticcli.commands import plan as plan_module
-
-        original_validate = plan_module.cmd_orchestration_validate
+        # Make validation fail - cmd_orchestration_validate is now in epic module
+        from agenticcli.commands import epic as epic_module
 
         def failing_validate(*args, **kwargs):
             raise SystemExit(1)  # Simulate validation failure
@@ -1029,11 +1028,11 @@ phases:
 
         # Force subprocess path for task spawning (SDK_AVAILABLE=False -> Popen path)
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
-            with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
-                with patch.object(plan_module, "cmd_orchestration_validate", side_effect=failing_validate):
-                    with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
+            with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
+                with patch.object(epic_module, "cmd_orchestration_validate", side_effect=failing_validate):
+                    with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                         stdout, stderr, code = cli_runner(
-                            ["agent", "plan", "new", "Block test", "--branch", branch, "--execute"]
+                            ["agent", "epic", "new", "Block test", "--branch", branch, "--execute"]
                         )
 
         # Should not spawn any builders if validation failed
@@ -1055,7 +1054,7 @@ class TestPlanNewIntegration:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "plan", "new", "End to end test", "--branch", branch]
+            ["-j", "agent", "epic", "new", "End to end test", "--branch", branch]
         )
 
         assert code == 0
@@ -1117,10 +1116,10 @@ phases:
 
         # Force subprocess path for task spawning (SDK_AVAILABLE=False -> Popen path)
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
-            with patch("agenticcli.commands.plan.subprocess.run", side_effect=mock_run):
-                with patch("agenticcli.commands.plan.subprocess.Popen", side_effect=mock_popen):
+            with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
+                with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["-j", "agent", "plan", "new", "E2E exec", "--branch", branch, "--execute"]
+                        ["-j", "agent", "epic", "new", "E2E exec", "--branch", branch, "--execute"]
                     )
 
         assert code == 0

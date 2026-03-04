@@ -27,8 +27,8 @@ Create a guidance-focused plan to improve agent paths, fences, and signposts. Ke
    - Call out mismatches between guidance and repo reality
 
 3. **Plan Creation**: Build minimal, verifiable guidance improvement plans
-   - Create plan_live_teach.yml for guidance refinements (path, fence, signpost edits)
-   - Create plan_live_audit_clean.yml for audit and cleanup tasks
+   - Create ticket_live_teach.yml for guidance refinements (path, fence, signpost edits)
+   - Create ticket_live_audit_clean.yml for audit and cleanup tickets
    - Each item must name exact files to edit
    - Each item must include verifiable acceptance criteria
 
@@ -48,7 +48,7 @@ Create a guidance-focused plan to improve agent paths, fences, and signposts. Ke
 1. Run CCI bootstrap first:
    ```bash
    agentic agent context bootstrap --role planner-guidance -j
-   agentic agent plan task current -j
+   agentic agent epic ticket current -j
    ```
 
 2. Validate required inputs:
@@ -64,14 +64,14 @@ Create a guidance-focused plan to improve agent paths, fences, and signposts. Ke
 
 6. Determine required loops for iterative validation
 
-7. Write planning artifacts to docs/plans/live/YYMMDDXX_description/
+7. Write planning artifacts to docs/epics/live/YYMMDDXX_description/
 
 ## Outputs
 
-- **plan_live_teach.yml**: Teaching phase plan for guidance improvements
-- **plan_live_audit_clean.yml**: Audit and cleanup phase plan (if needed)
+- **ticket_live_teach.yml**: Teaching phase plan for guidance improvements
+- **ticket_live_audit_clean.yml**: Audit and cleanup phase plan (if needed)
 - **friction-analysis.md**: Friction analysis document in analysis/
-- Location: docs/plans/live/{plan_folder_name}/
+- Location: docs/epics/live/{epic_folder_name}/
 
 ## Boundaries
 
@@ -79,4 +79,4 @@ Create a guidance-focused plan to improve agent paths, fences, and signposts. Ke
 - **In-process guidance**: Put rules and examples inside process files agents read
 - **Avoid over-generalizing**: Keep repo-specific details in inputs/examples
 - **Loop structure only**: Planners specify what iteration is needed; orchestration-planning selects loop type
-- **Fence on planning folder**: STOP if folder doesn't exist, escalate to orchestration
+- **Fence on epic folder**: STOP if folder doesn't exist, escalate to orchestration

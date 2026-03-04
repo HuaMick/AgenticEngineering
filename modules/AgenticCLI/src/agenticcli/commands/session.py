@@ -48,7 +48,7 @@ def _get_context_dir() -> Path:
 def _compile_spawn_context(
     prompt: str,
     role: str | None,
-    plan_folder: Path | None,
+    epic_folder: Path | None,
 ) -> str:
     """Compile full context for a spawned session into a markdown document.
 
@@ -57,9 +57,9 @@ def _compile_spawn_context(
     ``agentic -j context bootstrap``.
 
     Args:
-        prompt: The base prompt (from _build_role_prompt or _build_task_prompt).
+        prompt: The base prompt (from _build_role_prompt or _build_ticket_prompt).
         role: Agent role identifier, if known.
-        plan_folder: Optional plan folder path.
+        epic_folder: Optional epic folder path.
 
     Returns:
         Compiled context as a markdown string.
@@ -97,21 +97,21 @@ def _compile_spawn_context(
                 if location:
                     sections.append(f"  Location: `{location}`")
 
-        # Get current task from plan if available
-        if plan_folder:
+        # Get current ticket from epic if available
+        if epic_folder:
             try:
                 from agenticguidance.services import MainFirstPlanResolver
                 resolver = MainFirstPlanResolver()
-                current_task = resolver.extract_current_task(plan_folder)
+                current_task = resolver.extract_current_task(epic_folder)
                 if current_task:
-                    sections.append("\n---\n## Current Task\n")
+                    sections.append("\n---\n## Current Ticket\n")
                     sections.append(f"- **ID**: {current_task.get('id', 'N/A')}")
                     sections.append(f"- **Name**: {current_task.get('name', 'N/A')}")
                     sections.append(f"- **Status**: {current_task.get('status', 'N/A')}")
                     if current_task.get("description"):
                         sections.append(f"- **Description**: {current_task['description']}")
             except Exception:
-                pass  # Plan task lookup is best-effort
+                pass  # Epic ticket lookup is best-effort
 
     except Exception as e:
         # If bootstrap fails, the agent can still bootstrap manually
@@ -519,31 +519,35 @@ def handle(args, ctx=None):
         sys.exit(1)
 
 
-def _resolve_plan_folder(plan_name: str) -> Path | None:
-    """Resolve a plan folder name to its full path.
+def _resolve_epic_folder(epic_name: str) -> Path | None:
+    """Resolve an epic folder name to its full path.
 
-    Searches docs/plans/live/ for the matching plan folder.
+    Searches docs/epics/live/ for the matching epic folder.
 
     Args:
-        plan_name: Plan folder name (e.g., '260207TA_cli_task_spawn').
+        epic_name: Epic folder name (e.g., '260207TA_cli_task_spawn').
 
     Returns:
-        Path to plan folder, or None if not found.
+        Path to epic folder, or None if not found.
     """
-    # Try common plan locations
+    # Try common epic locations
     search_dirs = [
-        Path.cwd() / "docs" / "plans" / "live",
-        Path.cwd() / "docs" / "plans" / "completed",
+        Path.cwd() / "docs" / "epics" / "live",
+        Path.cwd() / "docs" / "epics" / "completed",
     ]
 
     for search_dir in search_dirs:
         if not search_dir.exists():
             continue
-        candidate = search_dir / plan_name
+        candidate = search_dir / epic_name
         if candidate.exists() and candidate.is_dir():
             return candidate
 
     return None
+
+
+# Backward compatibility alias
+_resolve_plan_folder = _resolve_epic_folder
 
 
 _DOGFOOD_STRATEGY = """
@@ -560,14 +564,14 @@ This ensures gaps are tracked and fixed systematically rather than patched ad-ho
 """.strip()
 
 
-def _build_role_prompt(role: str, plan_folder: Path | None) -> str:
+def _build_role_prompt(role: str, epic_folder: Path | None) -> str:
     """Build a prompt for spawning an agent by role.
 
-    Constructs a prompt that tells the agent its role and provides plan context.
+    Constructs a prompt that tells the agent its role and provides epic context.
 
     Args:
         role: Agent role identifier (e.g., 'build-python').
-        plan_folder: Optional path to plan folder for additional context.
+        epic_folder: Optional path to epic folder for additional context.
 
     Returns:
         Constructed prompt string.
@@ -577,12 +581,12 @@ def _build_role_prompt(role: str, plan_folder: Path | None) -> str:
         f"Initialize your context by running: agentic -j context bootstrap --role {role}",
     ]
 
-    if plan_folder:
-        plan_name = plan_folder.name
-        parts.append(f"Your active plan is: {plan_name}")
-        parts.append(f"Plan path: {plan_folder}")
-        parts.append(f"List tasks with: agentic -j plan task list --plan {plan_name}")
-        parts.append("Start by loading your bootstrap context, then work through the plan tasks.")
+    if epic_folder:
+        epic_name = epic_folder.name
+        parts.append(f"Your active epic is: {epic_name}")
+        parts.append(f"Epic path: {epic_folder}")
+        parts.append(f"List tickets with: agentic -j epic ticket list --epic {epic_name}")
+        parts.append("Start by loading your bootstrap context, then work through the epic tickets.")
 
     parts.append("")
     parts.append(_DOGFOOD_STRATEGY)
@@ -590,49 +594,53 @@ def _build_role_prompt(role: str, plan_folder: Path | None) -> str:
     return "\n".join(parts)
 
 
-def _build_task_prompt(task_id: str, plan_folder: Path) -> str | None:
-    """Build a prompt for spawning an agent for a specific task.
+def _build_ticket_prompt(ticket_id: str, epic_folder: Path) -> str | None:
+    """Build a prompt for spawning an agent for a specific ticket.
 
-    Loads task details from the plan and constructs a focused prompt.
+    Loads ticket details from the epic and constructs a focused prompt.
 
     Args:
-        task_id: Task identifier (e.g., 'CLI_001').
-        plan_folder: Path to plan folder containing plan_build.yml.
+        ticket_id: Ticket identifier (e.g., 'CLI_001').
+        epic_folder: Path to epic folder containing ticket_build.yml.
 
     Returns:
-        Constructed prompt string, or None if task not found.
+        Constructed prompt string, or None if ticket not found.
     """
-    from agenticguidance.services.task import TaskService
+    from agenticguidance.services.ticket import TicketService
 
-    service = TaskService(plan_folder)
-    task = service.get_task(task_id)
+    service = TicketService(epic_folder)
+    ticket = service.get_ticket(ticket_id)
 
-    if not task:
+    if not ticket:
         return None
 
-    plan_name = plan_folder.name
+    epic_name = epic_folder.name
     parts = [
-        f"You are being spawned to work on task {task.id}: {task.name}",
-        f"Plan: {plan_name}",
+        f"You are being spawned to work on ticket {ticket.id}: {ticket.name}",
+        f"Epic: {epic_name}",
         "",
-        f"Description: {task.description}",
+        f"Description: {ticket.description}",
     ]
 
-    if task.guidance:
-        parts.append(f"\nGuidance:\n{task.guidance}")
+    if ticket.guidance:
+        parts.append(f"\nGuidance:\n{ticket.guidance}")
 
-    if task.target_files:
-        parts.append(f"\nTarget files: {', '.join(task.target_files)}")
+    if ticket.target_files:
+        parts.append(f"\nTarget files: {', '.join(ticket.target_files)}")
 
-    if task.inputs:
-        parts.append(f"\nReference inputs: {', '.join(task.inputs)}")
+    if ticket.inputs:
+        parts.append(f"\nReference inputs: {', '.join(ticket.inputs)}")
 
-    parts.append(f"\nWhen done, mark the task complete: agentic plan task complete {task_id} --plan {plan_name}")
+    parts.append(f"\nWhen done, mark the ticket complete: agentic epic ticket complete {ticket_id} --epic {epic_name}")
 
     parts.append("")
     parts.append(_DOGFOOD_STRATEGY)
 
     return "\n".join(parts)
+
+
+# Backward compatibility alias
+_build_task_prompt = _build_ticket_prompt
 
 
 def cmd_spawn(args, ctx=None):
@@ -654,33 +662,33 @@ def cmd_spawn(args, ctx=None):
     task_id = getattr(args, "task", None)
     plan_name = getattr(args, "plan", None)
 
-    # Resolve plan folder if provided
-    plan_folder = None
+    # Resolve epic folder if provided
+    epic_folder = None
     if plan_name:
-        plan_folder = _resolve_plan_folder(plan_name)
-        if not plan_folder:
-            print_error(f"Plan folder not found: {plan_name}")
+        epic_folder = _resolve_epic_folder(plan_name)
+        if not epic_folder:
+            print_error(f"Epic folder not found: {plan_name}")
             sys.exit(1)
 
-    # Warn if plan has pending questions (informational only)
-    if plan_folder:
+    # Warn if epic has pending questions (informational only)
+    if epic_folder:
         from agenticcli.commands.plan import has_pending_questions
-        if has_pending_questions(plan_folder):
-            print_warning(f"Plan {plan_folder.name} has pending questions. Check: agentic question list --plan {plan_folder.name}")
+        if has_pending_questions(epic_folder):
+            print_warning(f"Epic {epic_folder.name} has pending questions. Check: agentic question list --plan {epic_folder.name}")
 
     # Validate: --task requires --plan
-    if task_id and not plan_folder:
+    if task_id and not epic_folder:
         print_error("--task requires --plan to be set.")
         sys.exit(1)
 
-    # Build prompt from role or task if --prompt not provided
+    # Build prompt from role or ticket if --prompt not provided
     if not prompt:
         if role:
-            prompt = _build_role_prompt(role, plan_folder)
+            prompt = _build_role_prompt(role, epic_folder)
         elif task_id:
-            prompt = _build_task_prompt(task_id, plan_folder)
+            prompt = _build_ticket_prompt(task_id, epic_folder)
             if not prompt:
-                print_error(f"Task not found: {task_id} in plan {plan_name}")
+                print_error(f"Ticket not found: {task_id} in epic {plan_name}")
                 sys.exit(1)
         else:
             print_error("Prompt is required. Use --prompt, --role, or --task to specify.")
@@ -697,7 +705,7 @@ def cmd_spawn(args, ctx=None):
     # Compile full context (prompt + bootstrap data) into a temp file
     # This avoids OS argument length limits and removes the need for
     # agents to manually run `agentic -j context bootstrap`
-    compiled_context = _compile_spawn_context(prompt, role, plan_folder)
+    compiled_context = _compile_spawn_context(prompt, role, epic_folder)
     context_dir = _get_context_dir()
     context_file = context_dir / f"{session_id}.md"
     context_file.write_text(compiled_context)
@@ -827,13 +835,13 @@ def cmd_spawn(args, ctx=None):
             session_data["stderr_log"] = str(logs_dir / f"{session_id}.stderr.log")
             _store.save(session_data)
 
-            # Auto-start ntfy question watch-daemon for this plan
-            if plan_folder:
+            # Auto-start ntfy question watch-daemon for this epic
+            if epic_folder:
                 try:
                     from agenticcli.commands.question import _ensure_watch_daemon
-                    started, reason = _ensure_watch_daemon(plan_folder)
+                    started, reason = _ensure_watch_daemon(epic_folder)
                     if started:
-                        logger.info("Auto-started question watch-daemon for %s", plan_folder.name)
+                        logger.info("Auto-started question watch-daemon for %s", epic_folder.name)
                 except Exception as e:
                     logger.debug("Failed to auto-start watch-daemon: %s", e)
 
@@ -873,13 +881,13 @@ def cmd_spawn(args, ctx=None):
             session_data["status"] = "running"
             _store.save(session_data)
 
-            # Auto-start ntfy question watch-daemon for this plan
-            if plan_folder:
+            # Auto-start ntfy question watch-daemon for this epic
+            if epic_folder:
                 try:
                     from agenticcli.commands.question import _ensure_watch_daemon
-                    started, reason = _ensure_watch_daemon(plan_folder)
+                    started, reason = _ensure_watch_daemon(epic_folder)
                     if started:
-                        logger.info("Auto-started question watch-daemon for %s", plan_folder.name)
+                        logger.info("Auto-started question watch-daemon for %s", epic_folder.name)
                 except Exception as e:
                     logger.debug("Failed to auto-start watch-daemon: %s", e)
 

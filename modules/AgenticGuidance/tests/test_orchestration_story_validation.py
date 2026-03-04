@@ -126,8 +126,8 @@ def test_orchestration_has_story_lifecycle_comment():
         "Comment should distinguish Discovery, Generation, and Validation"
 
     # Check for key concepts in comment
-    assert "`agentic stories find`" in content, \
-        "Comment should mention agentic stories find command"
+    assert "`agentic agent stories find`" in content, \
+        "Comment should mention agentic agent stories find command"
 
     assert "success_criteria" in content and "journey" in content, \
         "Comment should mention required fields for validation"
@@ -199,8 +199,8 @@ def test_planning_standard_story_lifecycle_content():
     lifecycle_section = content[lifecycle_start:lifecycle_end]
 
     # Check discovery content
-    assert "agentic stories find" in lifecycle_section, \
-        "Discovery should mention agentic stories find command"
+    assert "agentic agent stories find" in lifecycle_section, \
+        "Discovery should mention agentic agent stories find command"
 
     # Check generation content
     assert "planner-build" in lifecycle_section, \

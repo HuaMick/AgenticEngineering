@@ -65,7 +65,7 @@ You participate in **documentation-loop** and **test-fix-loop** as the validator
    - Note differences between local and Docker behavior
 
 7. **Report Results**:
-   - If in test-fix-loop: Update live plan with failures
+   - If in test-fix-loop: Update live epic ticket with failures
    - Report to orchestration agent
    - Include documentation gaps
 

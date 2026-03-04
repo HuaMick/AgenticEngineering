@@ -69,13 +69,13 @@ ROLE_TIMEOUT_SECONDS: dict[str, int] = {
 }
 
 
-def _build_agent_prompt(role: str, plan_folder: str, plans_dir: Path) -> str:
-    """Build a prompt for an agent with role and plan context.
+def _build_agent_prompt(role: str, epic_folder: str, epics_dir: Path) -> str:
+    """Build a prompt for an agent with role and epic context.
 
     Args:
         role: Agent role identifier.
-        plan_folder: Plan folder name.
-        plans_dir: Path to the plans directory.
+        epic_folder: Epic folder name.
+        epics_dir: Path to the epics directory.
 
     Returns:
         Prompt string for the agent.
@@ -83,10 +83,10 @@ def _build_agent_prompt(role: str, plan_folder: str, plans_dir: Path) -> str:
     parts = [
         f"You are being spawned as a {role} agent.",
         f"Initialize your context by running: agentic -j agent context bootstrap --role {role}",
-        f"Your active plan is: {plan_folder}",
-        f"Plan path: {plans_dir / plan_folder}",
-        f"List tasks with: agentic -j agent plan task list --plan {plan_folder}",
-        "Start by loading your bootstrap context, then work through the plan tasks.",
+        f"Your active epic is: {epic_folder}",
+        f"Epic path: {epics_dir / epic_folder}",
+        f"List tasks with: agentic -j agent plan task list --plan {epic_folder}",
+        "Start by loading your bootstrap context, then work through the epic tasks.",
     ]
     return "\n".join(parts)
 
@@ -132,8 +132,8 @@ class PlannerLoopWorkflow:
     falling back to subprocess spawning otherwise.
     """
 
-    def __init__(self, plans_dir: Optional[Path] = None, working_dir: Optional[str] = None):
-        self.plans_dir = plans_dir or Path.cwd() / "docs" / "plans" / "live"
+    def __init__(self, epics_dir: Optional[Path] = None, working_dir: Optional[str] = None):
+        self.epics_dir = epics_dir or Path.cwd() / "docs" / "epics" / "live"
         self.working_dir = working_dir or str(Path.cwd())
 
     def run_health_check(self) -> None:
@@ -160,73 +160,73 @@ class PlannerLoopWorkflow:
         logger.info("Health check passed")
 
     def discover_plans_needing_orchestration(self) -> list[str]:
-        """Find live plans that lack orchestration MMD files.
+        """Find live epics that lack orchestration MMD files.
 
         Returns:
-            List of plan folder names needing orchestration.
+            List of epic folder names needing orchestration.
         """
-        if not self.plans_dir.exists():
-            logger.warning("Plans directory does not exist: %s", self.plans_dir)
+        if not self.epics_dir.exists():
+            logger.warning("Epics directory does not exist: %s", self.epics_dir)
             return []
 
         needs_work = []
-        for plan_dir in sorted(self.plans_dir.iterdir()):
-            if not plan_dir.is_dir():
+        for epic_dir in sorted(self.epics_dir.iterdir()):
+            if not epic_dir.is_dir():
                 continue
             # Check for existing orchestration_*.mmd files
-            mmds = list(plan_dir.glob("orchestration_*.mmd"))
+            mmds = list(epic_dir.glob("orchestration_*.mmd"))
             if not mmds:
-                needs_work.append(plan_dir.name)
+                needs_work.append(epic_dir.name)
 
-        logger.info("Found %d plans needing orchestration: %s", len(needs_work), needs_work)
+        logger.info("Found %d epics needing orchestration: %s", len(needs_work), needs_work)
         return needs_work
 
-    def determine_plan_type(self, plan_folder: str) -> Optional[str]:
+    def determine_plan_type(self, epic_folder: str) -> Optional[str]:
         """Determine plan type from plan_*.yml files.
 
-        If the plan type is "build", checks the plan context for SDK-related
+        If the plan type is "build", checks the epic context for SDK-related
         keywords and returns "sdk" instead when detected.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             Plan type string (build, test, sdk, etc.) or None if not found.
         """
-        plan_dir = self.plans_dir / plan_folder
-        if not plan_dir.exists():
+        epic_dir = self.epics_dir / epic_folder
+        if not epic_dir.exists():
             return None
 
-        for plan_file in plan_dir.glob("plan_*.yml"):
+        for plan_file in epic_dir.glob("plan_*.yml"):
             # Extract type from filename: plan_build.yml -> build
             stem = plan_file.stem  # plan_build
             if stem.startswith("plan_"):
                 plan_type = stem[5:]  # build
                 if plan_type:
                     # If type is "build", check if SDK routing applies
-                    if plan_type == "build" and self.detect_sdk_objective(plan_folder):
-                        logger.info("Plan %s detected as SDK-related, routing to planner-sdk", plan_folder)
+                    if plan_type == "build" and self.detect_sdk_objective(epic_folder):
+                        logger.info("Epic %s detected as SDK-related, routing to planner-sdk", epic_folder)
                         return "sdk"
                     return plan_type
 
         return None
 
-    def detect_sdk_objective(self, plan_folder: str) -> bool:
-        """Detect if a plan's objective is SDK-related by checking its context.
+    def detect_sdk_objective(self, epic_folder: str) -> bool:
+        """Detect if an epic's objective is SDK-related by checking its context.
 
         Reads plan_build.yml and checks the context field for SDK-related
-        keywords. This enables automatic routing to planner-sdk for plans
+        keywords. This enables automatic routing to planner-sdk for epics
         that describe SDK migration or integration work.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
-            True if the plan context contains SDK-related keywords.
+            True if the epic context contains SDK-related keywords.
         """
         import yaml
 
-        plan_build = self.plans_dir / plan_folder / "plan_build.yml"
+        plan_build = self.epics_dir / epic_folder / "plan_build.yml"
         if not plan_build.exists():
             return False
 
@@ -243,14 +243,14 @@ class PlannerLoopWorkflow:
         context_lower = context.lower()
         for keyword in SDK_CONTEXT_KEYWORDS:
             if keyword.lower() in context_lower:
-                logger.debug("SDK keyword '%s' found in %s context", keyword, plan_folder)
+                logger.debug("SDK keyword '%s' found in %s context", keyword, epic_folder)
                 return True
 
         return False
 
     # ── SDK-first agent execution ──────────────────────────────────────
 
-    def _run_role_agent(self, role: str, plan_folder: str) -> SessionResult:
+    def _run_role_agent(self, role: str, epic_folder: str) -> SessionResult:
         """Run an agent with the given role via the SDK.
 
         Builds the prompt and options, invokes run_agent_sync(), and
@@ -260,24 +260,24 @@ class PlannerLoopWorkflow:
 
         Args:
             role: Agent role identifier.
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             SessionResult with status and metadata.
         """
         session_id = str(uuid.uuid4())
-        prompt = _build_agent_prompt(role, plan_folder, self.plans_dir)
+        prompt = _build_agent_prompt(role, epic_folder, self.epics_dir)
 
         if SDK_AVAILABLE:
-            return self._run_via_sdk(session_id, role, plan_folder, prompt)
+            return self._run_via_sdk(session_id, role, epic_folder, prompt)
         else:
-            return self._run_via_subprocess(session_id, role, plan_folder)
+            return self._run_via_subprocess(session_id, role, epic_folder)
 
     def _run_via_sdk(
         self,
         session_id: str,
         role: str,
-        plan_folder: str,
+        epic_folder: str,
         prompt: str,
         max_retries: int = 3,
     ) -> SessionResult:
@@ -290,7 +290,7 @@ class PlannerLoopWorkflow:
         Args:
             session_id: Pre-generated session ID for state tracking.
             role: Agent role identifier.
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
             prompt: Compiled prompt for the agent.
             max_retries: Maximum number of attempts (default: 3).
 
@@ -311,13 +311,13 @@ class PlannerLoopWorkflow:
             "background": False,
             "working_dir": self.working_dir,
             "role": role,
-            "plan_folder": plan_folder,
+            "epic_folder": epic_folder,
             "transport": "sdk",
         }
         _session_store.save(session_data)
         logger.info(
             "Running %s agent for %s via SDK (session %s, timeout=%ds)",
-            role, plan_folder, session_id[:8], timeout,
+            role, epic_folder, session_id[:8], timeout,
         )
 
         result: SessionResult = SessionResult(status="failed", result="No attempt made")
@@ -341,7 +341,7 @@ class PlannerLoopWorkflow:
 
             logger.info(
                 "SDK agent attempt %d/%d failed for %s/%s: %s",
-                attempt, max_retries, role, plan_folder, result.result[:100],
+                attempt, max_retries, role, epic_folder, result.result[:100],
             )
 
         # Update session state with SDK-determined status
@@ -354,12 +354,12 @@ class PlannerLoopWorkflow:
 
         logger.info(
             "%s agent for %s finished: status=%s, cost=$%.4f, duration=%dms",
-            role, plan_folder, result.status, result.cost_usd, result.duration_ms,
+            role, epic_folder, result.status, result.cost_usd, result.duration_ms,
         )
         return result
 
     def _run_via_subprocess(
-        self, session_id: str, role: str, plan_folder: str,
+        self, session_id: str, role: str, epic_folder: str,
     ) -> SessionResult:
         """Fallback: spawn an agent via subprocess and wait for completion.
 
@@ -367,7 +367,7 @@ class PlannerLoopWorkflow:
             session_id: Pre-generated session ID (unused in subprocess path,
                         actual session ID comes from CLI output).
             role: Agent role identifier.
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             SessionResult synthesized from subprocess outcome.
@@ -375,7 +375,7 @@ class PlannerLoopWorkflow:
         cmd = [
             "agentic", "-j", "session", "spawn",
             "--role", role,
-            "--plan", plan_folder,
+            "--plan", epic_folder,
             "-b",
             "--dangerously-skip-permissions",
         ]
@@ -385,7 +385,7 @@ class PlannerLoopWorkflow:
             cwd=self.working_dir,
         )
         if spawn_result.returncode != 0:
-            logger.error("Failed to spawn %s agent for %s: %s", role, plan_folder, spawn_result.stderr)
+            logger.error("Failed to spawn %s agent for %s: %s", role, epic_folder, spawn_result.stderr)
             return SessionResult(
                 status="failed",
                 result=f"Spawn failed: {spawn_result.stderr}",
@@ -396,14 +396,14 @@ class PlannerLoopWorkflow:
             data = json.loads(spawn_result.stdout)
             spawned_session_id = data.get("session_id", session_id)
         except (json.JSONDecodeError, KeyError):
-            logger.error("Could not parse spawn output for %s/%s", role, plan_folder)
+            logger.error("Could not parse spawn output for %s/%s", role, epic_folder)
             return SessionResult(
                 status="failed",
                 result="Could not parse spawn output",
                 is_error=True,
             )
 
-        logger.info("Spawned %s for %s via subprocess: session %s", role, plan_folder, spawned_session_id[:8])
+        logger.info("Spawned %s for %s via subprocess: session %s", role, epic_folder, spawned_session_id[:8])
 
         # Wait for subprocess session to complete
         final_status = self.wait_for_session(spawned_session_id)
@@ -416,57 +416,57 @@ class PlannerLoopWorkflow:
 
     # ── Public spawn methods (now delegates to _run_role_agent) ────────
 
-    def spawn_explore_agent(self, plan_folder: str) -> SessionResult:
-        """Run an explore agent to analyze the codebase and update the plan YAML.
+    def spawn_explore_agent(self, epic_folder: str) -> SessionResult:
+        """Run an explore agent to analyze the codebase and update the epic YAML.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             SessionResult with completion status.
         """
-        return self._run_role_agent("explore", plan_folder)
+        return self._run_role_agent("explore", epic_folder)
 
-    def spawn_story_agent(self, plan_folder: str) -> SessionResult:
+    def spawn_story_agent(self, epic_folder: str) -> SessionResult:
         """Run a story-generator agent for user story generation.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             SessionResult with completion status.
         """
-        return self._run_role_agent("story-generator", plan_folder)
+        return self._run_role_agent("story-generator", epic_folder)
 
-    def spawn_planner(self, plan_folder: str, plan_type: str) -> SessionResult:
-        """Run appropriate planner agent for a plan.
+    def spawn_planner(self, epic_folder: str, plan_type: str) -> SessionResult:
+        """Run appropriate planner agent for an epic.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
             plan_type: Plan type (build, test, etc.).
 
         Returns:
             SessionResult with completion status.
         """
         planner_role = PLAN_TYPE_TO_PLANNER.get(plan_type, "planner-build")
-        return self._run_role_agent(planner_role, plan_folder)
+        return self._run_role_agent(planner_role, epic_folder)
 
-    def spawn_reviewer(self, plan_folder: str) -> SessionResult:
-        """Run planner-reviewer agent for a plan.
+    def spawn_reviewer(self, epic_folder: str) -> SessionResult:
+        """Run planner-reviewer agent for an epic.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             SessionResult with completion status.
         """
-        return self._run_role_agent("planner-reviewer", plan_folder)
+        return self._run_role_agent("planner-reviewer", epic_folder)
 
-    def discover_stories(self, plan_folder: str, project: Optional[str] = None) -> list[dict]:
-        """Run story discovery for a plan.
+    def discover_stories(self, epic_folder: str, project: Optional[str] = None) -> list[dict]:
+        """Run story discovery for an epic.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
             project: Optional project filter.
 
         Returns:
@@ -481,16 +481,16 @@ class PlannerLoopWorkflow:
             cwd=self.working_dir,
         )
         if result.returncode != 0:
-            logger.warning("Story discovery failed for %s: %s", plan_folder, result.stderr)
+            logger.warning("Story discovery failed for %s: %s", epic_folder, result.stderr)
             return []
 
         try:
             data = json.loads(result.stdout)
             stories = data if isinstance(data, list) else data.get("stories", [])
-            logger.info("Discovered %d stories for %s", len(stories), plan_folder)
+            logger.info("Discovered %d stories for %s", len(stories), epic_folder)
             return stories
         except (json.JSONDecodeError, KeyError):
-            logger.warning("Could not parse story discovery output for %s", plan_folder)
+            logger.warning("Could not parse story discovery output for %s", epic_folder)
             return []
 
     def wait_for_session(self, session_id: str, timeout: int = 600, poll_interval: int = 10) -> Optional[str]:
@@ -580,70 +580,70 @@ class PlannerLoopWorkflow:
         status = self._get_session_status(session_id)
         return status in ("running", "starting")
 
-    def run_review_cycle(self, plan_folder: str, max_reviews: int = 3) -> tuple[bool, int, str]:
+    def run_review_cycle(self, epic_folder: str, max_reviews: int = 3) -> tuple[bool, int, str]:
         """Run review loop: run reviewer agent, handle approve/reject.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
             max_reviews: Maximum review iterations.
 
         Returns:
             Tuple of (approved, iterations_used, feedback).
         """
         for attempt in range(1, max_reviews + 1):
-            logger.info("Review cycle %d/%d for %s", attempt, max_reviews, plan_folder)
+            logger.info("Review cycle %d/%d for %s", attempt, max_reviews, epic_folder)
 
-            result = self.spawn_reviewer(plan_folder)
+            result = self.spawn_reviewer(epic_folder)
             if result.status != "completed":
                 return False, attempt, f"Reviewer session ended with status: {result.status}"
 
-            logger.info("Review cycle %d approved for %s", attempt, plan_folder)
+            logger.info("Review cycle %d approved for %s", attempt, epic_folder)
             return True, attempt, "approved"
 
-        logger.warning("Max review iterations reached for %s", plan_folder)
+        logger.warning("Max review iterations reached for %s", epic_folder)
         return False, max_reviews, "Max review iterations reached"
 
-    def generate_mmd(self, plan_folder: str) -> bool:
-        """Generate orchestration MMD for a plan.
+    def generate_mmd(self, epic_folder: str) -> bool:
+        """Generate orchestration MMD for an epic.
 
         Tries CLI first, falls back to planner-orchestration agent.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             True if generation succeeded.
         """
         # Check if MMD already exists (planner may have generated it)
-        plan_dir = self.plans_dir / plan_folder
-        existing_mmds = list(plan_dir.glob("orchestration_*.mmd")) if plan_dir.exists() else []
+        epic_dir = self.epics_dir / epic_folder
+        existing_mmds = list(epic_dir.glob("orchestration_*.mmd")) if epic_dir.exists() else []
         if existing_mmds:
-            logger.info("MMD already exists for %s, skipping generation", plan_folder)
+            logger.info("MMD already exists for %s, skipping generation", epic_folder)
             return True
 
         # Try CLI generation first
         cmd = [
             "agentic", "agent", "plan", "orchestration", "generate",
-            "--plan", plan_folder,
+            "--plan", epic_folder,
         ]
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=120,
             cwd=self.working_dir,
         )
         if result.returncode == 0:
-            logger.info("Generated MMD for %s via CLI", plan_folder)
+            logger.info("Generated MMD for %s via CLI", epic_folder)
             return True
 
         # Fall back to planner-orchestration agent
-        logger.warning("CLI MMD generation failed for %s, trying planner-orchestration", plan_folder)
-        agent_result = self._run_role_agent("planner-orchestration", plan_folder)
+        logger.warning("CLI MMD generation failed for %s, trying planner-orchestration", epic_folder)
+        agent_result = self._run_role_agent("planner-orchestration", epic_folder)
         return agent_result.status == "completed"
 
-    def validate_mmd(self, plan_folder: str, max_retries: int = 3) -> bool:
+    def validate_mmd(self, epic_folder: str, max_retries: int = 3) -> bool:
         """Validate orchestration MMD with retries.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
             max_retries: Maximum validation attempts.
 
         Returns:
@@ -651,7 +651,7 @@ class PlannerLoopWorkflow:
         """
         cmd = [
             "agentic", "agent", "plan", "orchestration", "validate",
-            "--plan", plan_folder,
+            "--plan", epic_folder,
         ]
 
         for attempt in range(1, max_retries + 1):
@@ -660,22 +660,22 @@ class PlannerLoopWorkflow:
                 cwd=self.working_dir,
             )
             if result.returncode == 0:
-                logger.info("MMD validation passed for %s (attempt %d)", plan_folder, attempt)
+                logger.info("MMD validation passed for %s (attempt %d)", epic_folder, attempt)
                 return True
             logger.warning("MMD validation failed for %s (attempt %d/%d): %s",
-                           plan_folder, attempt, max_retries, result.stderr)
+                           epic_folder, attempt, max_retries, result.stderr)
             if attempt < max_retries:
                 time.sleep(2)
 
         return False
 
-    def update_task_status(self, task_id: str, action: str, plan_folder: str) -> bool:
+    def update_task_status(self, task_id: str, action: str, epic_folder: str) -> bool:
         """Update task status via CLI.
 
         Args:
             task_id: Task identifier.
             action: 'start' or 'complete'.
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             True if update succeeded.
@@ -683,7 +683,7 @@ class PlannerLoopWorkflow:
         cmd = [
             "agentic", "agent", "plan", "task", action,
             task_id,
-            "--plan", plan_folder,
+            "--plan", epic_folder,
         ]
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=30,
@@ -694,12 +694,12 @@ class PlannerLoopWorkflow:
             return False
         return True
 
-    def get_plan_status(self, plan_folder: str) -> Optional[str]:
-        """Get the status of a plan.
+    def get_plan_status(self, epic_folder: str) -> Optional[str]:
+        """Get the status of an epic.
 
         The YAML ``status:`` field takes priority.  Task-completion counting is
         used only as a fallback when the YAML status is absent or already set to
-        ``"completed"``.  This prevents a fully-tasked-out plan that still has
+        ``"completed"``.  This prevents a fully-tasked-out epic that still has
         ``status: active`` from being prematurely archived.
 
         Priority order:
@@ -712,17 +712,17 @@ class PlannerLoopWorkflow:
            be ``None`` when the field is absent).
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             The resolved status string, or None if not found.
         """
         import yaml
-        plan_dir = self.plans_dir / plan_folder
-        if not plan_dir.exists():
+        epic_dir = self.epics_dir / epic_folder
+        if not epic_dir.exists():
             return None
 
-        plan_build = plan_dir / "plan_build.yml"
+        plan_build = epic_dir / "plan_build.yml"
         if plan_build.exists():
             try:
                 content = yaml.safe_load(plan_build.read_text()) or {}
@@ -755,39 +755,39 @@ class PlannerLoopWorkflow:
 
         return None
 
-    def archive_plan(self, plan_folder: str) -> bool:
-        """Archive a completed plan via API.
+    def archive_plan(self, epic_folder: str) -> bool:
+        """Archive a completed epic via API.
 
         Handles the case where a prior archive attempt copied to completed/
         but failed to remove the live source (interrupted operation).
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
             True if archived successfully.
         """
         try:
             import shutil
-            from agenticguidance.services.plan import PlanMovementWorkflow, MoveResult
-            plan_path = self.plans_dir / plan_folder
-            workflow = PlanMovementWorkflow(plan_path)
+            from agenticguidance.services.epic import EpicMovementWorkflow, MoveResult
+            epic_path = self.epics_dir / epic_folder
+            workflow = EpicMovementWorkflow(epic_path)
             result = workflow.archive_plan_folder(force=True)
             if result.result == MoveResult.SUCCESS:
-                logger.info("Archived plan %s", plan_folder)
+                logger.info("Archived epic %s", epic_folder)
                 return True
             elif result.result == MoveResult.SKIPPED and "already exists" in result.message:
                 # Prior archive copied to completed/ but didn't delete live source
-                if plan_path.exists():
-                    shutil.rmtree(plan_path)
-                    logger.info("Cleaned up stale live folder for already-archived plan %s", plan_folder)
+                if epic_path.exists():
+                    shutil.rmtree(epic_path)
+                    logger.info("Cleaned up stale live folder for already-archived epic %s", epic_folder)
                     return True
                 return True
             else:
-                logger.error("Failed to archive plan %s: %s", plan_folder, result.message)
+                logger.error("Failed to archive epic %s: %s", epic_folder, result.message)
                 return False
         except Exception as e:
-            logger.error("Exception archiving plan %s: %s", plan_folder, e)
+            logger.error("Exception archiving epic %s: %s", epic_folder, e)
             return False
 
     def _validate_result(self, result: SessionResult, role_name: str) -> None:
@@ -855,11 +855,11 @@ class PlannerLoopRunner:
         self,
         workflow: Optional[PlannerLoopWorkflow] = None,
         project: Optional[str] = None,
-        plan_folder: Optional[str] = None,
+        epic_folder: Optional[str] = None,
     ):
         self.workflow = workflow or PlannerLoopWorkflow()
         self.project = project
-        self.plan_folder = plan_folder
+        self.epic_folder = epic_folder
         self.state = {
             "iteration": 0,
             "plans_processed": [],
@@ -899,39 +899,39 @@ class PlannerLoopRunner:
             self.state["iteration"] = iteration
             logger.info("=== Planner loop iteration %d/%d ===", iteration, max_iterations)
 
-            # Archive completed plans so they aren't left pending
-            if not self.plan_folder:
-                for plan_dir in sorted(self.workflow.plans_dir.iterdir()):
-                    if plan_dir.is_dir() and self.workflow.get_plan_status(plan_dir.name) == "completed":
-                        logger.info("Archiving completed plan: %s", plan_dir.name)
-                        self.workflow.archive_plan(plan_dir.name)
-            elif self.workflow.get_plan_status(self.plan_folder) == "completed":
-                logger.info("Archiving single completed plan: %s", self.plan_folder)
-                self.workflow.archive_plan(self.plan_folder)
+            # Archive completed epics so they aren't left pending
+            if not self.epic_folder:
+                for epic_dir in sorted(self.workflow.epics_dir.iterdir()):
+                    if epic_dir.is_dir() and self.workflow.get_plan_status(epic_dir.name) == "completed":
+                        logger.info("Archiving completed epic: %s", epic_dir.name)
+                        self.workflow.archive_plan(epic_dir.name)
+            elif self.workflow.get_plan_status(self.epic_folder) == "completed":
+                logger.info("Archiving single completed epic: %s", self.epic_folder)
+                self.workflow.archive_plan(self.epic_folder)
 
-            if self.plan_folder:
-                # Single-plan mode: check if plan already has MMD
-                plan_dir = self.workflow.plans_dir / self.plan_folder
-                existing_mmds = list(plan_dir.glob("orchestration_*.mmd")) if plan_dir.exists() else []
+            if self.epic_folder:
+                # Single-epic mode: check if epic already has MMD
+                epic_dir = self.workflow.epics_dir / self.epic_folder
+                existing_mmds = list(epic_dir.glob("orchestration_*.mmd")) if epic_dir.exists() else []
                 if existing_mmds:
-                    logger.info("Plan %s already has MMD. %s", self.plan_folder, promise)
+                    logger.info("Epic %s already has MMD. %s", self.epic_folder, promise)
                     print(promise)
                     return True
-                plans = [self.plan_folder]
+                plans = [self.epic_folder]
             else:
                 plans = self.workflow.discover_plans_needing_orchestration()
             if not plans:
-                logger.info("All plans have orchestration MMDs. %s", promise)
+                logger.info("All epics have orchestration MMDs. %s", promise)
                 print(promise)
                 return True
 
-            for plan_folder in plans:
-                self.state["current_plan"] = plan_folder
-                success = self._process_plan(plan_folder)
+            for epic_folder in plans:
+                self.state["current_plan"] = epic_folder
+                success = self._process_plan(epic_folder)
                 if success:
-                    self.state["plans_processed"].append(plan_folder)
+                    self.state["plans_processed"].append(epic_folder)
                 else:
-                    self.state["plans_skipped"].append(plan_folder)
+                    self.state["plans_skipped"].append(epic_folder)
 
             self.state["current_plan"] = None
             logger.info("Iteration %d complete: processed=%d, skipped=%d",
@@ -942,93 +942,93 @@ class PlannerLoopRunner:
         logger.warning("Max iterations (%d) reached without completion", max_iterations)
         return False
 
-    def _process_plan(self, plan_folder: str) -> bool:
-        """Process a single plan through the full workflow.
+    def _process_plan(self, epic_folder: str) -> bool:
+        """Process a single epic through the full workflow.
 
         Uses SDK-first agent execution — no spawn+wait pattern needed.
         Each agent call blocks until completion and returns a SessionResult.
 
         Args:
-            plan_folder: Plan folder name.
+            epic_folder: Epic folder name.
 
         Returns:
-            True if plan was processed successfully.
+            True if epic was processed successfully.
         """
-        logger.info("Processing plan: %s", plan_folder)
+        logger.info("Processing epic: %s", epic_folder)
 
         # 1. Explore: run explore agent to analyze codebase
-        explore_result = self.workflow.spawn_explore_agent(plan_folder)
+        explore_result = self.workflow.spawn_explore_agent(epic_folder)
         self.workflow._validate_result(explore_result, "explore")
         if explore_result.status != "completed":
             self.state["errors"].append({
-                "plan": plan_folder,
+                "plan": epic_folder,
                 "error": f"Explore agent failed: {explore_result.result[:200]}",
                 "phase": "explore",
             })
             return False
 
         # 2. Story generation: run story agent
-        story_result = self.workflow.spawn_story_agent(plan_folder)
+        story_result = self.workflow.spawn_story_agent(epic_folder)
         self.workflow._validate_result(story_result, "story-generator")
         if story_result.status != "completed":
             self.state["errors"].append({
-                "plan": plan_folder,
+                "plan": epic_folder,
                 "error": f"Story agent failed: {story_result.result[:200]}",
                 "phase": "story_generation",
             })
             return False
 
         # 3. Determine plan type
-        plan_type = self.workflow.determine_plan_type(plan_folder)
+        plan_type = self.workflow.determine_plan_type(epic_folder)
         if not plan_type:
-            logger.warning("No plan YAML found for %s, skipping", plan_folder)
+            logger.warning("No plan YAML found for %s, skipping", epic_folder)
             self.state["errors"].append({
-                "plan": plan_folder,
+                "plan": epic_folder,
                 "error": "No plan YAML found",
                 "phase": "determine_type",
             })
             return False
 
         # 4. Run planner (type-specific: build, test, etc.)
-        planner_result = self.workflow.spawn_planner(plan_folder, plan_type)
+        planner_result = self.workflow.spawn_planner(epic_folder, plan_type)
         self.workflow._validate_result(planner_result, f"planner-{plan_type}")
         if planner_result.status != "completed":
             self.state["errors"].append({
-                "plan": plan_folder,
+                "plan": epic_folder,
                 "error": f"Planner failed: {planner_result.result[:200]}",
                 "phase": "planner",
             })
             return False
 
         # 5. Review cycle
-        approved, review_iters, feedback = self.workflow.run_review_cycle(plan_folder)
+        approved, review_iters, feedback = self.workflow.run_review_cycle(epic_folder)
         if not approved:
-            logger.warning("Plan %s not approved after %d reviews: %s",
-                           plan_folder, review_iters, feedback)
+            logger.warning("Epic %s not approved after %d reviews: %s",
+                           epic_folder, review_iters, feedback)
             self.state["errors"].append({
-                "plan": plan_folder,
+                "plan": epic_folder,
                 "error": f"Review rejected: {feedback}",
                 "phase": "review",
             })
             return False
 
         # 6. Generate MMD
-        if not self.workflow.generate_mmd(plan_folder):
+        if not self.workflow.generate_mmd(epic_folder):
             self.state["errors"].append({
-                "plan": plan_folder,
+                "plan": epic_folder,
                 "error": "MMD generation failed",
                 "phase": "generate_mmd",
             })
             return False
 
         # 7. Validate MMD
-        if not self.workflow.validate_mmd(plan_folder):
+        if not self.workflow.validate_mmd(epic_folder):
             self.state["errors"].append({
-                "plan": plan_folder,
+                "plan": epic_folder,
                 "error": "MMD validation failed after retries",
                 "phase": "validate_mmd",
             })
             return False
 
-        logger.info("Plan %s processed successfully", plan_folder)
+        logger.info("Epic %s processed successfully", epic_folder)
         return True

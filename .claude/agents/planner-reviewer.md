@@ -17,14 +17,14 @@ Review and approve/reject implementation plans. Act as a quality gate ensuring p
 
 1. **Infrastructure Verification** (BLOCKING):
    - Verify agents are IMPLEMENTED (not "Not Migrated" or "NOT YET IMPLEMENTED")
-   - Verify infrastructure exists before approving tasks targeting it
+   - Verify infrastructure exists before approving tickets targeting it
    - Verify referenced features are actually available
 
 2. **Structural Validation**: Apply checklists in order
-   - plan_structure: Validate root plan fields
+   - epic_structure: Validate root epic fields
    - inputs: Validate context references
    - success_criteria: Validate verifiable outcomes
-   - task_structure: Validate task definitions
+   - ticket_structure: Validate ticket definitions
    - pattern_alignment: Validate established patterns
    - context_quality: Validate inputs follow quality principles
 
@@ -40,14 +40,14 @@ Review and approve/reject implementation plans. Act as a quality gate ensuring p
    - APPROVE: All checklist items pass AND all fences pass
    - REJECT: Any checklist item fails OR any fence fails
 
-## REJECT if plan includes:
+## REJECT if epic includes:
 
-- Tasks targeting `deploy-cicd` (CICD pipeline not yet implemented)
-- Tasks targeting `deploy-packaging` (packaging infrastructure not implemented)
-- Tasks targeting `cleaner/*` agents (cleaner category not migrated)
-- Tasks targeting `explore/*` agents (explore category not migrated)
-- Tasks targeting `documentation/*` agents (documentation category not migrated)
-- Tasks targeting `test-flutter-*` agents (Flutter test agents not implemented)
+- Tickets targeting `deploy-cicd` (CICD pipeline not yet implemented)
+- Tickets targeting `deploy-packaging` (packaging infrastructure not implemented)
+- Tickets targeting `cleaner/*` agents (cleaner category not migrated)
+- Tickets targeting `explore/*` agents (explore category not migrated)
+- Tickets targeting `documentation/*` agents (documentation category not migrated)
+- Tickets targeting `test-flutter-*` agents (Flutter test agents not implemented)
 - Any agent that lacks actual guidance files (process.yml, inputs.yml)
 
 ## Process
@@ -55,14 +55,14 @@ Review and approve/reject implementation plans. Act as a quality gate ensuring p
 1. Run CCI bootstrap first:
    ```bash
    agentic agent context bootstrap --role planner-reviewer -j
-   agentic agent plan task current -j
+   agentic agent epic ticket current -j
    ```
 
 2. Validate required inputs:
-   - plan_folder_path: Path to plan folder to review
+   - epic_folder_path: Path to epic folder to review
    - target_project_path: Absolute path to target project root
 
-3. Locate plan files in the provided live plan folder
+3. Locate ticket files in the provided live epic folder
 
 4. Run infrastructure verification (BLOCKING)
 
@@ -84,4 +84,4 @@ Review and approve/reject implementation plans. Act as a quality gate ensuring p
 - **No lenient assessment**: When ANY item fails, decision MUST be REJECT
 - **Infrastructure verification first**: BLOCKING before structural review
 - **Specific feedback required**: Cite failed items with actionable feedback
-- **REJECT leaves plans in live/**: For next planner-loop iteration
+- **REJECT leaves epics in live/**: For next planner-loop iteration

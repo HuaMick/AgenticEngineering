@@ -127,6 +127,97 @@ class PlanError(AgenticError):
         )
 
 
+class EpicFileError(AgenticError):
+    """Errors related to epic file operations."""
+
+    default_exit_code: int = 20
+
+    @classmethod
+    def not_found(cls, path: str) -> "EpicFileError":
+        """Create error for missing epic file."""
+        return cls(
+            message=f"Epic file not found: {path}",
+            recovery_hint="Create an epic with 'agentic epic scaffold' or check the file path",
+            context=ErrorContext(file_path=path, operation="epic_read"),
+        )
+
+    @classmethod
+    def invalid_yaml(cls, path: str, error: str, line: Optional[int] = None) -> "EpicFileError":
+        """Create error for invalid YAML in epic file."""
+        return cls(
+            message=f"Invalid YAML in epic file: {error}",
+            recovery_hint="Check the YAML syntax at the indicated location",
+            context=ErrorContext(
+                file_path=path,
+                line_number=line,
+                operation="epic_parse",
+                details={"parse_error": error},
+            ),
+        )
+
+    @classmethod
+    def invalid_structure(cls, path: str, missing_field: str) -> "EpicFileError":
+        """Create error for invalid epic structure."""
+        return cls(
+            message=f"Invalid epic structure: missing required field '{missing_field}'",
+            recovery_hint=f"Add the '{missing_field}' field to your epic file",
+            context=ErrorContext(
+                file_path=path,
+                operation="epic_validate",
+                details={"missing_field": missing_field},
+            ),
+        )
+
+    @classmethod
+    def ticket_not_found(cls, ticket_id: str, epic_path: str) -> "EpicFileError":
+        """Create error for missing ticket in epic."""
+        return cls(
+            message=f"Ticket '{ticket_id}' not found in epic",
+            recovery_hint="Check the ticket ID or list tickets with 'agentic epic status'",
+            context=ErrorContext(
+                file_path=epic_path,
+                operation="epic_ticket",
+                details={"ticket_id": ticket_id},
+            ),
+        )
+
+
+# Backward compatibility alias
+PlanFileError = EpicFileError
+
+
+class EpicFolderError(AgenticError):
+    """Errors related to epic folder operations."""
+
+    default_exit_code: int = 20
+
+    @classmethod
+    def not_found(cls, path: str) -> "EpicFolderError":
+        """Create error for missing epic folder."""
+        return cls(
+            message=f"Epic folder not found: {path}",
+            recovery_hint="Create an epic folder with 'agentic epic scaffold' or check the path",
+            context=ErrorContext(file_path=path, operation="epic_folder_read"),
+        )
+
+    @classmethod
+    def invalid_structure(cls, path: str, reason: str) -> "EpicFolderError":
+        """Create error for invalid epic folder structure."""
+        return cls(
+            message=f"Invalid epic folder structure: {reason}",
+            recovery_hint="Use 'agentic epic scaffold' to create a valid epic folder structure",
+            context=ErrorContext(
+                file_path=path,
+                operation="epic_folder_validate",
+                details={"reason": reason},
+            ),
+        )
+
+
+# Backward compatibility alias
+PlanFolderError = EpicFolderError
+
+
 class ConfigError(AgenticError):
     """Errors related to configuration operations."""
 
@@ -178,13 +269,21 @@ class ValidationError(AgenticError):
         )
 
     @classmethod
-    def invalid_plan_folder(cls, path: str, reason: str) -> "ValidationError":
-        """Create error for invalid plan folder structure."""
+    def invalid_epic_folder(cls, path: str, reason: str) -> "ValidationError":
+        """Create error for invalid epic folder structure."""
         return cls(
-            message=f"Invalid plan folder structure: {reason}",
-            recovery_hint="Use 'agentic plan scaffold' to create a valid plan folder structure",
-            context=ErrorContext(file_path=path, operation="validate_plan_folder", details={"reason": reason}),
+            message=f"Invalid epic folder structure: {reason}",
+            recovery_hint="Use 'agentic epic scaffold' to create a valid epic folder structure",
+            context=ErrorContext(file_path=path, operation="validate_epic_folder", details={"reason": reason}),
         )
+
+    @classmethod
+    def invalid_plan_folder(cls, path: str, reason: str) -> "ValidationError":
+        """Create error for invalid plan folder structure.
+
+        Deprecated: use invalid_epic_folder instead.
+        """
+        return cls.invalid_epic_folder(path, reason)
 
     @classmethod
     def schema_violation(cls, path: str, violations: list) -> "ValidationError":
@@ -194,7 +293,7 @@ class ValidationError(AgenticError):
             violations_str += f" (and {len(violations) - 3} more)"
         return cls(
             message=f"Schema validation failed: {violations_str}",
-            recovery_hint="Check the plan file format against the schema requirements",
+            recovery_hint="Check the epic file format against the schema requirements",
             context=ErrorContext(
                 file_path=path,
                 operation="validate_schema",
@@ -261,6 +360,10 @@ class TemplateError(AgenticError):
 # Mapping of exception types to their exit codes for reference
 EXIT_CODES = {
     "AgenticError": 1,
+    "EpicFileError": 20,
+    "EpicFolderError": 20,
+    "PlanFileError": 20,
+    "PlanFolderError": 20,
     "PlanError": 20,
     "ConfigError": 30,
     "ValidationError": 40,

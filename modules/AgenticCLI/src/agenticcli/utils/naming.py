@@ -1,6 +1,6 @@
-"""Plan folder naming utilities.
+"""Epic folder naming utilities.
 
-Implements the YYMMDDXX_description naming convention for plan folders.
+Implements the YYMMDDXX_description naming convention for epic folders.
 Tool-offloading pattern: deterministic naming belongs in CLI, not agent guidance.
 """
 
@@ -110,17 +110,17 @@ def sanitize_description(description: str) -> str:
     return result
 
 
-def generate_plan_folder_name(
+def generate_epic_folder_name(
     worktree_path: Path,
     description: str,
     date: datetime | None = None,
     branch: str | None = None,
 ) -> str:
-    """Generate plan folder name in YYMMDDXX_description format.
+    """Generate epic folder name in YYMMDDXX_description format.
 
     Args:
         worktree_path: Path to the worktree directory.
-        description: Human-readable description of the plan.
+        description: Human-readable description of the epic.
         date: Optional date to use (defaults to today).
         branch: Optional branch name for worktree registry lookup.
 
@@ -128,12 +128,12 @@ def generate_plan_folder_name(
         Folder name matching pattern YYMMDDXX_description.
 
     Examples:
-        >>> generate_plan_folder_name(
+        >>> generate_epic_folder_name(
         ...     Path("/home/code/AgenticEngineering-agenticguidance"),
         ...     "naming convention audit"
         ... )
         '260115AG_naming_convention_audit'
-        >>> generate_plan_folder_name(
+        >>> generate_epic_folder_name(
         ...     Path("/home/code/AgenticEngineering-260208PN"),
         ...     "phone notifications",
         ...     branch="260208PN"
@@ -150,20 +150,20 @@ def generate_plan_folder_name(
     return f"{date_prefix}{worktree_id}_{sanitized_desc}"
 
 
-def validate_plan_folder_name(name: str) -> tuple[bool, str | None]:
+def validate_epic_folder_name(name: str) -> tuple[bool, str | None]:
     """Validate that a folder name matches the YYMMDDXX_description pattern.
 
     Args:
-        name: Folder name to validate.
+        name: Epic folder name to validate.
 
     Returns:
         Tuple of (is_valid, error_message).
         If valid, error_message is None.
 
     Examples:
-        >>> validate_plan_folder_name("260115AG_naming_convention_audit")
+        >>> validate_epic_folder_name("260115AG_naming_convention_audit")
         (True, None)
-        >>> validate_plan_folder_name("invalid-name")
+        >>> validate_epic_folder_name("invalid-name")
         (False, "Name must match pattern YYMMDDXX_description")
     """
     # Pattern: 6 digits + 2 uppercase letters + underscore + lowercase/digits/underscores
@@ -175,20 +175,20 @@ def validate_plan_folder_name(name: str) -> tuple[bool, str | None]:
         return False, "Name must match pattern YYMMDDXX_description (e.g., 260115AG_my_feature)"
 
 
-def parse_plan_folder_name(name: str) -> dict[str, str] | None:
-    """Parse a plan folder name into its components.
+def parse_epic_folder_name(name: str) -> dict[str, str] | None:
+    """Parse an epic folder name into its components.
 
     Args:
-        name: Folder name to parse.
+        name: Epic folder name to parse.
 
     Returns:
         Dictionary with date, worktree_id, description keys, or None if invalid.
 
     Examples:
-        >>> parse_plan_folder_name("260115AG_naming_convention_audit")
+        >>> parse_epic_folder_name("260115AG_naming_convention_audit")
         {'date': '260115', 'worktree_id': 'AG', 'description': 'naming_convention_audit'}
     """
-    is_valid, _ = validate_plan_folder_name(name)
+    is_valid, _ = validate_epic_folder_name(name)
     if not is_valid:
         return None
 
@@ -197,3 +197,5 @@ def parse_plan_folder_name(name: str) -> dict[str, str] | None:
         "worktree_id": name[6:8],
         "description": name[9:],
     }
+
+
