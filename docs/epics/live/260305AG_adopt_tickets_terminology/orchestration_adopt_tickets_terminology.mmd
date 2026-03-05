@@ -1,7 +1,7 @@
 flowchart LR
-    %% GOAL: Fix 'tickets' key adoption in service files and validate with tests.
+    %% GOAL: Fix 'tickets' key adoption in service files, validate, then clean break to remove all fallback patterns.
     %% PROFILE: Orchestration-Builder
-    %% OUTPUT: Fixed service files (ticket.py, context.py, ralph.py) + updated tests
+    %% OUTPUT: All code uses phase.get("tickets", []) only — zero fallback patterns remain
     %% GUIDELINE: BUILD FOCUS policy - code implementation and testing only.
     %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
 
@@ -9,8 +9,8 @@ flowchart LR
     %% MAX_ITERATIONS: 3 (per test-fix-loop definition)
     %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
 
-    # AGENT_ROUTING: Implementation -> build-python, TestUpdates -> build-python, Validation -> test-runner, UAT -> test-runner
-    # STATUS: Implementation=pending, TestUpdates=pending, Validation=pending, UAT=pending
+    # AGENT_ROUTING: Implementation -> build-python, TestUpdates -> build-python, Validation -> test-runner, UAT -> test-runner, CleanBreak -> build-python, FinalValidation -> test-runner
+    # STATUS: Implementation=pending, TestUpdates=pending, Validation=pending, UAT=pending, CleanBreak=pending, FinalValidation=pending
 
     Start((Start)) --> LoadInputs[Load Context Inputs]
 
@@ -25,13 +25,13 @@ flowchart LR
     %% ========================================
     %% IMPLEMENTATION PHASE
     %% ========================================
-    %% Fix the 3 service files that use ONLY phase.get("tasks", []).
-    %% These are independent files so tickets could run in parallel.
+    %% Fix the 4 files that use ONLY phase.get("tasks", []).
 
     subgraph Implementation_SG ["Implementation Phase Subgraph"]
         Implementation[Enter Implementation Phase] --> Build001[Fix ticket.py - build_001]
         Build001 --> Build002[Fix context.py - build_002]
         Build002 --> Build003[Fix ralph.py - build_003]
+        Build003 --> Build003b[Fix planner_loop.py - build_003b]
     end
 
     %% ========================================
@@ -40,7 +40,7 @@ flowchart LR
     %% Update test fixtures to use canonical 'tickets' key.
 
     subgraph TestUpdates_SG ["Test Updates Phase Subgraph"]
-        Build003 --> TestUpdates[Enter Test Updates Phase]
+        Build003b --> TestUpdates[Enter Test Updates Phase]
         TestUpdates --> Build004[Update AgenticGuidance tests - build_004]
         Build004 --> Build005[Update AgenticCLI tests - build_005]
     end
@@ -67,13 +67,39 @@ flowchart LR
     %% UAT PHASE
     %% ========================================
     %% CLI smoke test: verify epic list shows correct ticket counts.
-    %% AGENT_ROUTING: uat_001 -> test-runner
 
     subgraph UAT_SG ["UAT Phase Subgraph"]
         UAT[Enter UAT Phase] --> Uat001[CLI smoke test: epic list ticket counts - uat_001]
         Uat001 --> UatPassed{UAT Passed?}
         UatPassed -- "No: Escalate" --> AskUser
-        UatPassed -- "Yes: Accepted" --> Output
+        UatPassed -- "Yes: Accepted" --> CleanBreak
+    end
+
+    %% ========================================
+    %% CLEAN BREAK PHASE
+    %% ========================================
+    %% Remove ALL fallback patterns. Replace phase.get("tickets", phase.get("tasks", []))
+    %% with phase.get("tickets", []) across the entire codebase.
+
+    subgraph CleanBreak_SG ["Clean Break Phase Subgraph"]
+        CleanBreak[Enter Clean Break Phase] --> Clean001[Clean epic.py CLI 13 locs - clean_001]
+        Clean001 --> Clean002[Clean epic.py service 3 locs - clean_002]
+        Clean002 --> Clean003[Clean remaining 5 files - clean_003]
+        Clean003 --> Clean004[Clean all test fixtures - clean_004]
+    end
+
+    %% ========================================
+    %% FINAL VALIDATION PHASE
+    %% ========================================
+    # FEEDBACK_TRIGGER: TEST_FAILURE -> CleanBreak
+
+    subgraph FinalValidation_SG ["Final Validation Phase Subgraph"]
+        Clean004 --> FinalVal[Enter Final Validation Phase]
+        FinalVal --> FinalVal001[Run full test suites - final_val_001]
+        FinalVal001 --> FinalPassed{Tests Passed?}
+        FinalPassed -- "No: Fix in Iteration" --> CleanBreak
+        FinalPassed -- "No: Escalate" --> AskUser
+        FinalPassed -- "Yes: All Clear" --> Output
     end
 
     %% ========================================
@@ -92,5 +118,6 @@ flowchart LR
     %% STYLING
     %% ========================================
     classDef dashedstroke stroke-dasharray: 5 5;
-    linkStyle 15 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
-    linkStyle 20 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
+    linkStyle 16 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
+    linkStyle 22 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
+    linkStyle 28 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
