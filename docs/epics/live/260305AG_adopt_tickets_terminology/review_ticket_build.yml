@@ -1,0 +1,303 @@
+# Review: ticket_build.yml
+# Epic: 260305AG_adopt_tickets_terminology
+# Reviewer: planner-reviewer
+# Date: 2026-03-05
+
+decision: "NEEDS_REVISION"
+
+feedback: |
+  The ticket is well-structured, has an accurate code diagnosis (verified against
+  actual codebase), clear guidance per ticket, and proper infrastructure targets.
+  However, there are TWO blocking issues that must be resolved before approval.
+
+  ISSUE 1 — STORY VALIDATION FENCE FAILURE (BLOCKING):
+    The ticket has plan_type: "build" and lists affected_stories (US-CLI-012, US-CLI-013),
+    but there is NO UAT phase in the ticket. Per planning-standard.yml:
+      "Tickets with affected_stories MUST have corresponding UAT tasks"
+      "UAT Phase Mandatory (FENCE, mandatory): Every orchestration epic MUST include UAT"
+
+    The val_003 ticket ("End-to-end epic list verification") partially satisfies UAT intent
+    but is placed in "Validation Phase" assigned to test-runner, not structured as a proper
+    UAT phase. Since this epic lists US-CLI-012 and US-CLI-013, a UAT phase with story-
+    anchored acceptance tests is required.
+
+    REMEDIATION: Either:
+    a) Add a UAT phase after Validation with tickets that trace to US-CLI-012 and US-CLI-013
+       using real CLI binary execution (per CLI Smoke Test Requirement fence), OR
+    b) Rename val_003 to a UAT ticket in a dedicated UAT phase and anchor it to the stories.
+
+  ISSUE 2 — CONTRADICTORY STORY METADATA:
+    The ticket contains BOTH `affected_stories` AND `no_stories_rationale`. These are
+    mutually exclusive. The `no_stories_rationale` field is an escape hatch for epics
+    WITHOUT stories; this epic HAS stories. The rationale text even acknowledges the
+    stories exist: "Affected stories exist (US-CLI-012, US-CLI-013) and are listed above."
+
+    REMEDIATION: Remove the `no_stories_rationale` field entirely. The `affected_stories`
+    field is sufficient and correct.
+
+checklist_results:
+  # ==============================
+  # CHECKLIST: epic_structure
+  # ==============================
+  epic_structure:
+    status: "PASS"
+    items:
+      - item: "Epic has unique name at root level"
+        result: "PASS"
+        note: "name: adopt_tickets_terminology"
+      - item: "Epic folder follows YYMMDDXX_description naming"
+        result: "PASS"
+        note: "260305AG_adopt_tickets_terminology — valid format"
+      - item: "Epic objective clearly states improvement"
+        result: "PASS"
+        note: "Clear objective about migrating tasks->tickets key"
+      - item: "Epic files at folder root, not in subdirectories"
+        result: "PASS"
+        note: "ticket_build.yml, plan_build.yml, README.md, orchestration_*.mmd all at root"
+      - item: "No ticket_live_ prefix in filenames"
+        result: "PASS"
+        note: "Uses ticket_build.yml naming correctly"
+      - item: "No nested live/completed/analysis/audit folders containing epic files"
+        result: "PASS"
+        note: "Flat folder structure confirmed"
+
+  # ==============================
+  # CHECKLIST: inputs
+  # ==============================
+  inputs:
+    status: "PASS"
+    items:
+      - item: "Context references are file-level or directory-level"
+        result: "PASS"
+        note: "All inputs reference specific .py files"
+      - item: "Each input has location and description"
+        result: "PASS"
+        note: "Inputs are listed under each ticket with target_files and inputs fields"
+      - item: "Referenced files exist in repository"
+        result: "PASS"
+        note: "All 10 referenced files verified to exist"
+
+  # ==============================
+  # CHECKLIST: success_criteria
+  # ==============================
+  success_criteria:
+    status: "PASS"
+    items:
+      - item: "Each phase has measurable success criteria"
+        result: "PASS"
+        note: "All 8 tickets have specific success_criteria fields"
+      - item: "Success criteria include user-focused validation"
+        result: "PASS"
+        note: "val_003 verifies end-to-end user-visible behavior (epic list counts)"
+      - item: "Technical validation criteria are verifiable"
+        result: "PASS"
+        note: "Criteria reference specific code patterns, test pass/fail, and command outputs"
+      - item: "Criteria define observable outcomes"
+        result: "PASS"
+        note: "All criteria describe what should be true, not how to implement"
+
+  # ==============================
+  # CHECKLIST: ticket_structure
+  # ==============================
+  ticket_structure:
+    status: "PASS"
+    items:
+      - item: "Each ticket specifies exact target files"
+        result: "PASS"
+        note: "All build tickets have target_files; val tickets appropriately reference test dirs"
+      - item: "Agent types correctly allocated"
+        result: "PASS"
+        note: "build_001-005 -> builder (implementation); val_001-003 -> test-runner (validation)"
+      - item: "Operations properly ordered"
+        result: "PASS"
+        note: "Implementation -> Test Updates -> Validation (correct dependency order)"
+      - item: "Each ticket has concrete acceptance criteria"
+        result: "PASS"
+        note: "All tickets have success_criteria with specific verifiable items"
+
+  # ==============================
+  # CHECKLIST: pattern_alignment
+  # ==============================
+  pattern_alignment:
+    status: "PASS"
+    items:
+      - item: "Tickets follow Domain->Workflow->Entrypoint patterns"
+        result: "PASS"
+        note: "Service-level changes in domain layer (ticket.py, context.py, ralph.py)"
+      - item: "Phase dependencies explicitly declared"
+        result: "PASS"
+        note: "Sequential execution declared; phases logically ordered"
+      - item: "All mandatory loops included"
+        result: "PASS"
+        note: "test-fix-loop included for Validation Phase with max_iterations: 3 and escalation"
+
+  # ==============================
+  # CHECKLIST: loop_structure
+  # ==============================
+  loop_structure:
+    status: "PASS"
+    items:
+      - item: "loop_structure section exists"
+        result: "PASS"
+        note: "loop_structures section with loop_build_validation defined"
+      - item: "Loop type matches phase type"
+        result: "PASS"
+        note: "test-fix-loop for Validation Phase is appropriate"
+      - item: "Exit criteria explicit and verifiable"
+        result: "PASS"
+        note: "success: All existing tests pass + new tests for tickets key pass"
+      - item: "Max iterations with escalation"
+        result: "PASS"
+        note: "max_iterations: 3, escalation: Escalate to user with test results"
+
+  # ==============================
+  # CHECKLIST: context_quality
+  # ==============================
+  context_quality:
+    status: "PASS"
+    items:
+      - item: "No inline definitions that duplicate shared assets"
+        result: "PASS"
+        note: "Ticket guidance is specific to this epic, not duplicating shared assets"
+      - item: "No duplicate definitions across inputs.yml files"
+        result: "PASS"
+        note: "N/A — single ticket file, no cross-file duplication"
+      - item: "Layer references use transitive loading"
+        result: "PASS"
+        note: "N/A — ticket does not define layers"
+      - item: "File references resolve to existing targets"
+        result: "PASS"
+        note: "All file references verified to exist"
+
+  # ==============================
+  # FENCE: infrastructure_implementation
+  # ==============================
+  infrastructure_implementation:
+    status: "PASS"
+    items:
+      - item: "No tickets target unimplemented agents"
+        result: "PASS"
+        note: "Agents: builder (build-python, IMPLEMENTED), test-runner (IMPLEMENTED)"
+      - item: "No tickets target deploy-cicd"
+        result: "PASS"
+        note: "No CICD tasks"
+      - item: "No tickets target placeholder agents"
+        result: "PASS"
+        note: "All targeted agents have full guidance files"
+
+  # ==============================
+  # FENCE: mmd_presence
+  # ==============================
+  mmd_presence:
+    status: "PASS"
+    items:
+      - item: "orchestration_*.mmd file exists"
+        result: "PASS"
+        note: "orchestration_adopt_tickets_terminology.mmd present"
+      - item: "MMD contains GOAL header"
+        result: "PASS"
+        note: "GOAL comment on line 2"
+      - item: "MMD contains AGENT_ROUTING"
+        result: "PASS"
+        note: "AGENT_ROUTING on line 12"
+      - item: "MMD contains PHASES"
+        result: "PASS"
+        note: "Three phase subgraphs defined"
+
+  # ==============================
+  # FENCE: file_placement
+  # ==============================
+  file_placement:
+    status: "PASS"
+    items:
+      - item: "Only allowed files at root"
+        result: "PASS"
+        note: "ticket_build.yml, plan_build.yml, README.md, orchestration_*.mmd — all allowed"
+      - item: "No forbidden file patterns"
+        result: "PASS"
+        note: "No ticket_live_*.yml, no nested epic files"
+
+  # ==============================
+  # FENCE: codebase_verification
+  # ==============================
+  codebase_verification:
+    status: "PASS"
+    items:
+      - item: "Target files exist"
+        result: "PASS"
+        note: "All target files verified: ticket.py, context.py, ralph.py, all test files"
+      - item: "Pending tickets not already implemented"
+        result: "PASS"
+        note: "Verified all 6 broken locations still use phase.get('tasks', []) only"
+      - item: "No stale tickets"
+        result: "PASS"
+        note: "0 of 8 tickets implemented — all work is pending"
+
+  # ==============================
+  # FENCE: self_review_validation (SSR-004)
+  # ==============================
+  self_review_validation:
+    status: "PASS"
+    items:
+      - item: "Inputs don't duplicate shared assets"
+        result: "PASS"
+      - item: "All file references resolve"
+        result: "PASS"
+      - item: "No deprecated patterns without migration notes"
+        result: "PASS"
+
+  # ==============================
+  # FENCE: story_validation (BLOCKING — FAIL)
+  # ==============================
+  story_validation:
+    status: "FAIL"
+    items:
+      - item: "Build tickets have affected_stories or no_stories_rationale"
+        result: "PASS"
+        note: "affected_stories lists US-CLI-012, US-CLI-013"
+      - item: "Tickets with affected_stories have corresponding UAT tasks"
+        result: "FAIL"
+        note: |
+          BLOCKING: affected_stories lists US-CLI-012 and US-CLI-013 but there is
+          no UAT phase. val_003 tests the behavior but is in Validation Phase, not
+          a proper UAT phase with story anchoring.
+      - item: "Story rationale quality"
+        result: "FAIL"
+        note: |
+          CONTRADICTORY: Both affected_stories AND no_stories_rationale are present.
+          These are mutually exclusive. Remove no_stories_rationale since stories exist.
+      - item: "UAT tests trace to specific story IDs"
+        result: "FAIL"
+        note: "No UAT phase exists to trace stories to"
+
+  # ==============================
+  # FENCE: open_questions_validation
+  # ==============================
+  open_questions_validation:
+    status: "PASS"
+    note: "No open_questions section — valid, not all plans require human questions"
+
+summary: |
+  VERDICT: NEEDS_REVISION
+
+  STRENGTHS:
+  - Excellent code diagnosis: all 6 broken locations verified against actual codebase
+  - Clear, specific guidance per ticket with exact line numbers and before/after patterns
+  - Proper reference to epic.py as the canonical pattern to follow
+  - Good backward compatibility strategy (fallback to "tasks" key)
+  - Well-structured MMD orchestration with feedback loop
+  - All infrastructure targets are implemented and available
+  - Test update phase correctly addresses test fixture gap
+
+  BLOCKING ISSUES (2):
+  1. Missing UAT phase — affected_stories listed but no UAT phase validates them
+  2. Contradictory story metadata — both affected_stories and no_stories_rationale present
+
+  RECOMMENDED FIX:
+  1. Remove no_stories_rationale (stories exist, escape hatch not needed)
+  2. Add a UAT phase after Validation with a CLI smoke test ticket that:
+     - Runs real `agentic epic list` binary (not mocked)
+     - Traces to US-CLI-012 and US-CLI-013
+     - Verifies pending/done counts are correct for a real epic
+     - val_003 content can be moved/repurposed into this UAT ticket
+  3. Update the orchestration MMD to include the UAT phase

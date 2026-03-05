@@ -345,7 +345,7 @@ class TestUS_GD_202_RoundTrip:
 
         all_tickets = []
         for phase in exported["phases"]:
-            all_tickets.extend(phase.get("tasks", []))
+            all_tickets.extend(phase.get("tickets", phase.get("tasks", [])))
 
         ticket_ids = {t["id"] for t in all_tickets}
         assert "A001" in ticket_ids, "Ticket A001 should survive round-trip"

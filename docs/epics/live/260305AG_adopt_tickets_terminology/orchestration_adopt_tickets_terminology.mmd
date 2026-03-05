@@ -1,0 +1,96 @@
+flowchart LR
+    %% GOAL: Fix 'tickets' key adoption in service files and validate with tests.
+    %% PROFILE: Orchestration-Builder
+    %% OUTPUT: Fixed service files (ticket.py, context.py, ralph.py) + updated tests
+    %% GUIDELINE: BUILD FOCUS policy - code implementation and testing only.
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 3 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+
+    # AGENT_ROUTING: Implementation -> build-python, TestUpdates -> build-python, Validation -> test-runner, UAT -> test-runner
+    # STATUS: Implementation=pending, TestUpdates=pending, Validation=pending, UAT=pending
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review ticket_build.yml and affected files]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+    CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+    CheckInputs -- "Yes: Verified" --> Implementation
+
+    %% ========================================
+    %% IMPLEMENTATION PHASE
+    %% ========================================
+    %% Fix the 3 service files that use ONLY phase.get("tasks", []).
+    %% These are independent files so tickets could run in parallel.
+
+    subgraph Implementation_SG ["Implementation Phase Subgraph"]
+        Implementation[Enter Implementation Phase] --> Build001[Fix ticket.py - build_001]
+        Build001 --> Build002[Fix context.py - build_002]
+        Build002 --> Build003[Fix ralph.py - build_003]
+    end
+
+    %% ========================================
+    %% TEST UPDATES PHASE
+    %% ========================================
+    %% Update test fixtures to use canonical 'tickets' key.
+
+    subgraph TestUpdates_SG ["Test Updates Phase Subgraph"]
+        Build003 --> TestUpdates[Enter Test Updates Phase]
+        TestUpdates --> Build004[Update AgenticGuidance tests - build_004]
+        Build004 --> Build005[Update AgenticCLI tests - build_005]
+    end
+
+    %% ========================================
+    %% VALIDATION PHASE
+    %% ========================================
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 3 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+    # FEEDBACK_TRIGGER: TEST_FAILURE -> Implementation
+
+    subgraph Validation_SG ["Validation Phase Subgraph"]
+        Build005 --> Validation[Enter Validation Phase]
+        Validation --> Val001[Run AgenticGuidance tests - val_001]
+        Val001 --> Val002[Run AgenticCLI tests - val_002]
+        Val002 --> TestsPassed{Tests Passed?}
+        TestsPassed -- "No: Fix in Iteration" --> Implementation
+        TestsPassed -- "No: Escalate" --> AskUser
+        TestsPassed -- "Yes: Passed" --> UAT
+    end
+
+    %% ========================================
+    %% UAT PHASE
+    %% ========================================
+    %% CLI smoke test: verify epic list shows correct ticket counts.
+    %% AGENT_ROUTING: uat_001 -> test-runner
+
+    subgraph UAT_SG ["UAT Phase Subgraph"]
+        UAT[Enter UAT Phase] --> Uat001[CLI smoke test: epic list ticket counts - uat_001]
+        Uat001 --> UatPassed{UAT Passed?}
+        UatPassed -- "No: Escalate" --> AskUser
+        UatPassed -- "Yes: Accepted" --> Output
+    end
+
+    %% ========================================
+    %% OUTPUT PHASE
+    %% ========================================
+    subgraph Output_SG ["Output Subgraph"]
+        Output[Generate Completion Report] --> ArchiveCheck{All Tickets Complete?}
+        ArchiveCheck -- "Yes" --> MarkComplete[Mark Epic Complete]
+        ArchiveCheck -- "No" --> Report[Report Remaining Work]
+    end
+
+    MarkComplete --> End((End))
+    Report --> End
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef dashedstroke stroke-dasharray: 5 5;
+    linkStyle 15 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;
+    linkStyle 20 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5;

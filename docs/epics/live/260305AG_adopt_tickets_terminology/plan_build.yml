@@ -1,0 +1,55 @@
+# Epic: Adopt Tickets Terminology
+# Epic ID: 260305AG
+# Created: 2026-03-05
+# Status: superseded — see ticket_build.yml for the active plan
+# NOTE: This file is the original specification stub. The planner-build
+# agent created ticket_build.yml with detailed implementation phases.
+
+name: "adopt_tickets_terminology"
+branch: "main"
+status: "active"
+priority: "high"
+plan_type: "build"
+no_stories_rationale: |
+  This is an internal terminology fix affecting data extraction code paths.
+  No user-facing features are introduced. Falls under internal_tooling
+  escape hatch in planning-standard.yml.
+
+objective: |
+  Migrate the codebase from using the 'tasks' key to 'tickets' key as the
+  canonical terminology for work items within epic phases. The YAML schema
+  already uses 'tickets' but all code paths look for 'tasks', causing
+  tickets to be invisible. Also simplify `agentic epic list` to show only
+  pending and done counts (dropping the in_progress column).
+
+context: |
+  Diagnosed in conversation on 2026-03-05. The plan_build.yml for epic
+  260303AG_reduce_orchestration_context_overflow has 8 pending tickets
+  under phases[].tickets[], but `agentic epic list` shows 0 pending
+  because all code paths use phase.get("tasks", []) instead of
+  phase.get("tickets", []).
+
+  Affected code locations:
+    - modules/AgenticCLI/src/agenticcli/commands/epic.py
+      - _get_phases_from_content() — iterates phases looking for "tasks"
+      - cmd_list() — counts tasks per phase, displays In Prog column
+    - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+      - _get_epic_from_yaml() — phase.get("tasks", [])
+      - EpicMovementWorkflow._remove_task_from_source() — phase.get("tasks", [])
+      - EpicMovementWorkflow.get_completed_tasks() — checks "tasks" key
+      - EpicMovementWorkflow.move_all_completed_tasks() — checks "tasks" key
+    - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+      - import_from_yaml() — phase.get("tasks", [])
+      - export_to_yaml() — writes "tasks" key
+
+  Secondary change: remove the In Prog column from `agentic epic list`.
+  Tickets are either pending or done. In-progress should be treated as
+  pending for reporting purposes.
+
+impacted_files:
+  - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+  - "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
+  - "modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py"
+  - "modules/AgenticCLI/tests/test_task_list_commands.py"
+  - "modules/AgenticCLI/tests/test_plan_orchestration.py"
+  - "modules/AgenticGuidance/tests/"

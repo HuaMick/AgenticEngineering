@@ -377,7 +377,7 @@ class PlanningRunner:
             planner_runner = PlannerLoopRunner(
                 workflow=self.workflow,
                 project=self.project,
-                plan_folder=plan,
+                epic_folder=plan,
             )
 
             try:

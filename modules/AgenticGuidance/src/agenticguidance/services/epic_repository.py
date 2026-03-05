@@ -1012,7 +1012,7 @@ class EpicRepository:
                         }
                     )
 
-                for task in phase.get("tasks", []):
+                for task in phase.get("tickets", phase.get("tasks", [])):
                     task_id = task.get("id") or task.get("task_id", "")
                     if not task_id or task_id in seen_tickets:
                         continue
@@ -1087,7 +1087,7 @@ class EpicRepository:
                 phase_dict["execution"] = pd["execution"]
             if pd.get("description"):
                 phase_dict["description"] = pd["description"]
-            phase_dict["tasks"] = tickets_by_phase.get(phase_name, [])
+            phase_dict["tickets"] = tickets_by_phase.get(phase_name, [])
             phases_out.append(phase_dict)
 
         epic_out = {

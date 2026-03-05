@@ -137,7 +137,7 @@ class PlannerLoopWorkflow:
         self.working_dir = working_dir or str(Path.cwd())
 
     def run_health_check(self) -> None:
-        """Run health check: agentic --version && agentic plan list.
+        """Run health check: agentic --version && agentic epic list.
 
         Raises:
             RuntimeError: If health check fails.
@@ -150,12 +150,12 @@ class PlannerLoopWorkflow:
             raise RuntimeError(f"Health check failed: agentic --version returned {result.returncode}")
 
         result = subprocess.run(
-            ["agentic", "plan", "list"],
+            ["agentic", "epic", "list"],
             capture_output=True, text=True, timeout=30,
             cwd=self.working_dir,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"Health check failed: agentic plan list returned {result.returncode}")
+            raise RuntimeError(f"Health check failed: agentic epic list returned {result.returncode}")
 
         logger.info("Health check passed")
 

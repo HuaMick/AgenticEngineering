@@ -245,7 +245,7 @@ def is_epic_fully_completed(plan_folder: Path) -> bool:
         # Count tasks from phases structure
         phases = _get_phases_from_content(content)
         for phase in phases:
-            tasks = phase.get("tasks", [])
+            tasks = phase.get("tickets", phase.get("tasks", []))
             for task in tasks:
                 total_tasks += 1
                 status = task.get("status", "pending")
@@ -926,7 +926,7 @@ def cmd_new(args, ctx=None):
                 for phase_idx, phase in enumerate(phases, 1):
                     phase_name = phase.get("name", f"Phase {phase_idx}")
                     execution_mode = phase.get("execution", "sequential")
-                    tasks = phase.get("tasks", [])
+                    tasks = phase.get("tickets", phase.get("tasks", []))
 
                     if not tasks:
                         continue
@@ -1049,7 +1049,7 @@ def cmd_new(args, ctx=None):
                         # Count remaining tasks
                         remaining = []
                         for phase in phases:
-                            for task in phase.get("tasks", []):
+                            for task in phase.get("tickets", phase.get("tasks", [])):
                                 if task.get("status", "pending") != "completed":
                                     remaining.append(task.get("id", "unknown"))
 
@@ -1281,7 +1281,6 @@ def cmd_status(args):
         sys.exit(1)
 
     total_pending = 0
-    total_in_progress = 0
     total_completed = 0
     file_stats = []
     plan_status = "unknown"
@@ -1303,8 +1302,8 @@ def cmd_status(args):
 
     plan_status = plan_data_obj.status or "unknown"
     tasks = plan_data_obj.tasks or []
-    total_pending = sum(1 for t in tasks if t.status == "pending")
-    total_in_progress = sum(1 for t in tasks if t.status == "in_progress")
+    # Treat in_progress as pending for display (tickets are either pending or done)
+    total_pending = sum(1 for t in tasks if t.status in ("pending", "in_progress"))
     total_completed = sum(1 for t in tasks if t.status == "completed")
     has_tasks = len(tasks) > 0
 
@@ -1314,7 +1313,6 @@ def cmd_status(args):
             {
                 "file": "(via EpicService)",
                 "pending": total_pending,
-                "in_progress": total_in_progress,
                 "completed": total_completed,
             }
         )
@@ -1323,7 +1321,7 @@ def cmd_status(args):
     if plan_status == "deferred":
         deferred_reason = plan_data_obj.deferred_reason
 
-    total = total_pending + total_in_progress + total_completed
+    total = total_pending + total_completed
     pct = (total_completed / total) * 100 if total > 0 else 0
 
     # EN-005: Determine next action and command
@@ -1339,7 +1337,7 @@ def cmd_status(args):
         action_required = "needs_planning"
         next_action = "Define tasks in plan"
         next_command = "agentic entrypoint execute _plan_build --compile"
-    elif total_pending > 0 or total_in_progress > 0:
+    elif total_pending > 0:
         action_required = "execute"
         next_action = "Execute current task"
         next_command = f"agentic epic ticket current --plan {plan_path}"
@@ -1367,7 +1365,6 @@ def cmd_status(args):
                 "files": file_stats,
                 "totals": {
                     "pending": total_pending,
-                    "in_progress": total_in_progress,
                     "completed": total_completed,
                 },
                 "progress_percent": round(pct, 1),
@@ -1395,25 +1392,23 @@ def cmd_status(args):
         rows = []
         for stat in file_stats:
             if "error" in stat:
-                rows.append([stat["file"], "[red]ERROR[/red]", "", ""])
+                rows.append([stat["file"], "[red]ERROR[/red]", ""])
             else:
                 rows.append(
                     [
                         stat["file"],
                         f"[dim]{stat['pending']}[/dim]",
-                        f"[yellow]{stat['in_progress']}[/yellow]",
                         f"[green]{stat['completed']}[/green]",
                     ]
                 )
 
         if rows:
-            print_table("Files", ["File", "Pending", "In Progress", "Completed"], rows)
+            print_table("Files", ["File", "Pending", "Done"], rows)
 
         console.print()
         console.print(
             f"[bold]Total:[/bold] [dim]{total_pending} pending[/dim], "
-            f"[yellow]{total_in_progress} in progress[/yellow], "
-            f"[green]{total_completed} completed[/green]"
+            f"[green]{total_completed} done[/green]"
         )
         console.print(f"[bold]Progress:[/bold] [cyan]{pct:.1f}%[/cyan]")
 
@@ -1755,7 +1750,7 @@ def cmd_validate(args):
                             phase_id = _get_phase_id(phase)
                             if phase_id:
                                 yaml_phases.add(phase_id.upper())
-                            for task in phase.get("tasks", []):
+                            for task in phase.get("tickets", phase.get("tasks", [])):
                                 task_id = task.get("id") or task.get("task_id", "")
                                 if task_id:
                                     yaml_tasks.add(task_id.upper())
@@ -2146,7 +2141,7 @@ def cmd_task_list(args, ctx=None):
             for phase in phases:
                 phase_id = _get_phase_id(phase)
                 phase_name = phase.get("name", "")
-                tasks = phase.get("tasks", [])
+                tasks = phase.get("tickets", phase.get("tasks", []))
 
                 for task in tasks:
                     task_status = task.get("status", "pending")
@@ -2271,7 +2266,7 @@ def cmd_task_status(args, ctx=None):
 
             phases = _get_phases_from_content(content)
             for phase in phases:
-                tasks = phase.get("tasks", [])
+                tasks = phase.get("tickets", phase.get("tasks", []))
                 for task in tasks:
                     if task.get("id") == task_id or task.get("task_id") == task_id:
                         task_data = task
@@ -2459,15 +2454,16 @@ def cmd_task_add(args, ctx=None):
                 content["phases"] = phases
 
         if not new_task_id:
-            existing_ids = [t.get("task_id", "") for t in target_phase.get("tasks", [])]
+            existing_ids = [t.get("task_id", "") for t in target_phase.get("tickets", target_phase.get("tasks", []))]
             phase_prefix = _get_phase_id(target_phase) or "task"
             task_num = len(existing_ids) + 1
             new_task_id = f"{phase_prefix}_{task_num:03d}"
 
         new_task = {"task_id": new_task_id, "description": description, "status": "pending", "priority": priority}
-        if "tasks" not in target_phase:
-            target_phase["tasks"] = []
-        target_phase["tasks"].append(new_task)
+        if "tickets" not in target_phase and "tasks" not in target_phase:
+            target_phase["tickets"] = []
+        ticket_key = "tickets" if "tickets" in target_phase else "tasks"
+        target_phase[ticket_key].append(new_task)
 
         with open(target_file, "w") as f:
             yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
@@ -2898,8 +2894,8 @@ def cmd_list(args):
         except Exception:
             tasks = []
 
-        total_pending = sum(1 for t in tasks if t.status == "pending")
-        total_in_progress = sum(1 for t in tasks if t.status == "in_progress")
+        # Treat in_progress as pending for display (tickets are either pending or done)
+        total_pending = sum(1 for t in tasks if t.status in ("pending", "in_progress"))
         total_completed = sum(1 for t in tasks if t.status == "completed")
         has_tasks = len(tasks) > 0
         plan_status = meta.status or "unknown"
@@ -2908,7 +2904,7 @@ def cmd_list(args):
         mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
         has_orchestration = len(mmd_files) > 0
 
-        total = total_pending + total_in_progress + total_completed
+        total = total_pending + total_completed
 
         # EN-002: Determine action_required based on plan state
         # Priority order matters - check from most blocking to least
@@ -2918,7 +2914,7 @@ def cmd_list(args):
             action_required = "needs_planning"
         elif not has_tasks or total == 0:
             action_required = "needs_planning"
-        elif total_pending > 0 or total_in_progress > 0:
+        elif total_pending > 0:
             action_required = "execute"
         elif total_completed == total and total > 0:
             action_required = "archive"
@@ -2935,7 +2931,6 @@ def cmd_list(args):
                 "has_tasks": has_tasks,
                 "action_required": action_required,
                 "pending": total_pending,
-                "in_progress": total_in_progress,
                 "completed": total_completed,
                 "progress_percent": round(pct, 1),
             }
@@ -2975,13 +2970,12 @@ def cmd_list(args):
                     orch,
                     action_fmt,
                     f"[dim]{plan['pending']}[/dim]",
-                    f"[yellow]{plan['in_progress']}[/yellow]",
                     f"[green]{plan['completed']}[/green]",
                     f"[cyan]{progress}[/cyan]",
                 ]
             )
 
-        print_table("", ["Epic", "Status", "Orch", "Action", "Pending", "In Prog", "Done", "Progress"], rows)
+        print_table("", ["Epic", "Status", "Orch", "Action", "Pending", "Done", "Progress"], rows)
 
 
 def cmd_move(args, ctx=None):
@@ -3178,7 +3172,7 @@ def cmd_task_update(args, ctx=None):
 
             phases = _get_phases_from_content(content)
             for phase in phases:
-                tasks = phase.get("tasks", [])
+                tasks = phase.get("tickets", phase.get("tasks", []))
                 for task in tasks:
                     tid = task.get("id") or task.get("task_id") or ""
                     if tid == task_id:
@@ -3319,7 +3313,7 @@ def cmd_task_current(args, ctx=None):
             for phase in phases:
                 phase_name = phase.get("name", "")
                 phase_id = _get_phase_id(phase)
-                tasks = phase.get("tasks", [])
+                tasks = phase.get("tickets", phase.get("tasks", []))
 
                 for task in tasks:
                     task_info = {
@@ -3610,7 +3604,7 @@ def cmd_phase_list(args, ctx=None):
             phase_id = _get_phase_id(phase)
             phase_name = phase.get("name", "")
             phase_status = phase.get("status", "pending")
-            tasks = phase.get("tasks", [])
+            tasks = phase.get("tickets", phase.get("tasks", []))
             task_count = len(tasks)
 
             phases_data.append({
@@ -3859,7 +3853,7 @@ def _generate_phase_subgraph(phase: dict, phase_index: int) -> list[str]:
     phase_id = _get_phase_id(phase) or f"P{phase_index}"
     phase_name = phase.get("name", f"Phase {phase_index}")
     agent_type = _determine_agent_type(phase_name, phase_id)
-    tasks = phase.get("tasks", [])
+    tasks = phase.get("tickets", phase.get("tasks", []))
 
     # Create a safe subgraph ID (alphanumeric only)
     sg_id = f"{phase_id.replace('-', '_')}_SG"
@@ -4101,7 +4095,7 @@ def cmd_orchestration_generate(args, ctx=None):
         else:
             # Generate standard phase subgraph
             agent_type = _determine_agent_type(phase_name, phase_id)
-            tasks = phase.get("tasks", [])
+            tasks = phase.get("tickets", phase.get("tasks", []))
             task_ids = [t.get("id") or t.get("task_id", "") for t in tasks]
 
             mmd_lines.append(f"    %% AGENT_ROUTING: {agent_type} agent")
@@ -4277,7 +4271,7 @@ def cmd_orchestration_validate(args, ctx=None):
                     yaml_phase_ids.add(phase_id)
 
                 # Collect tasks from this phase
-                tasks = phase.get("tasks", [])
+                tasks = phase.get("tickets", phase.get("tasks", []))
                 for task in tasks:
                     task_id = task.get("id") or task.get("task_id", "")
                     if task_id:
