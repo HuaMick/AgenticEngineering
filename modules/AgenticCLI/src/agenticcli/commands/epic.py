@@ -2993,10 +2993,10 @@ def cmd_move(args, ctx=None):
         print_success,
         print_warning,
     )
-    from agenticguidance.services import MoveResult, PlanMovementWorkflow
+    from agenticguidance.services import MoveResult, EpicMovementWorkflow
 
     plan_path = find_epic_folder(getattr(args, "plan", None))
-    workflow = PlanMovementWorkflow(plan_path)
+    workflow = EpicMovementWorkflow(plan_path)
 
     dry_run = getattr(args, "dry_run", False)
     force = getattr(args, "force", False)
@@ -3055,7 +3055,7 @@ def cmd_move(args, ctx=None):
                 console.print("[dim]No completed tasks found to move.[/dim]")
 
     elif move_type == "folder":
-        result = workflow.archive_plan_folder(dry_run=dry_run, force=force)
+        result = workflow.archive_epic_folder(dry_run=dry_run, force=force)
 
         if is_json_output():
             print_json({
@@ -4036,7 +4036,7 @@ def cmd_orchestration_generate(args, ctx=None):
     mmd_lines.append(f"%% GOAL: {plan_objective or 'Execute plan tasks'}")
     mmd_lines.append("%% =============================================================================")
     mmd_lines.append(f"%% PROFILE: Orchestration-{plan_name or plan_path.name}")
-    mmd_lines.append(f"%% INPUT_PATH: {plan_path}/plan_build.yml")
+    mmd_lines.append(f"%% INPUT_PATH: {plan_path}/ticket_build.yml")
     mmd_lines.append("%%")
     mmd_lines.append("%% PHASES:")
     for pn in phase_names:
@@ -4229,15 +4229,20 @@ def cmd_orchestration_validate(args, ctx=None):
         if (plan_data_obj and plan_data_obj.phases
                 and plan_data_obj.epic_folder == plan_path):
             source = "(via TinyDB)"
-            for phase in plan_data_obj.phases:
+            for idx, phase in enumerate(plan_data_obj.phases):
                 phase_name = phase.name or ""
-                # PhaseData doesn't carry explicit phase_id; downstream
-                # comparison only uses IDs when present
+                phase_id = f"P{idx + 1}"
+                yaml_phases.append({
+                    "id": phase_id,
+                    "name": phase_name,
+                    "source": source,
+                })
+                yaml_phase_ids.add(phase_id)
                 for task in (phase.tasks or []):
                     if task.id:
                         yaml_tasks.append({
                             "id": task.id,
-                            "phase_id": "",
+                            "phase_id": phase_id,
                             "name": task.name or "",
                             "source": source,
                         })
