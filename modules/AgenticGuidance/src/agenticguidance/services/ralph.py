@@ -31,8 +31,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-import yaml
-
 logger = logging.getLogger(__name__)
 
 
@@ -208,6 +206,21 @@ class RalphLoopService:
         self.state_dir = Path.home() / ".agentic" / "ralph"
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
+        # Initialize EpicRepository for TinyDB-based lookups
+        self._repository = None
+        try:
+            from .epic_repository import EpicRepository
+            # Derive db_path from epics_dir's repo root
+            repo_root = epics_dir
+            while repo_root != repo_root.parent:
+                if (repo_root / ".git").exists():
+                    break
+                repo_root = repo_root.parent
+            db_path = repo_root / ".agentic" / "epics.db"
+            self._repository = EpicRepository(db_path=db_path)
+        except Exception:
+            logger.warning("Failed to initialize EpicRepository for RalphService")
+
     def _has_orchestration_file(self, plan_path: Path) -> bool:
         """Check if plan has orchestration MMD file.
 
@@ -269,7 +282,7 @@ class RalphLoopService:
             return {}
 
     def _analyze_plan_file(self, plan_path: Path) -> tuple[int, int, Optional[str]]:
-        """Analyze plan_build.yml for task counts and current task.
+        """Analyze epic for task counts and current task using TinyDB.
 
         Args:
             plan_path: Path to plan folder.
@@ -277,96 +290,48 @@ class RalphLoopService:
         Returns:
             Tuple of (pending_tasks, completed_tasks, current_task_id).
         """
-        plan_build = plan_path / "plan_build.yml"
-        if not plan_build.exists():
+        if self._repository is None:
             return (0, 0, None)
 
+        epic_folder_name = plan_path.name
         try:
-            content = yaml.safe_load(plan_build.read_text())
-        except yaml.YAMLError:
+            all_tickets = self._repository.get_tickets(epic_folder_name)
+        except Exception:
             return (0, 0, None)
 
-        if not content:
+        if not all_tickets:
             return (0, 0, None)
 
         pending = 0
         completed = 0
         current_task = None
 
-        # Extract tasks from phases structure
-        phases = content.get("phases", [])
-        for phase in phases:
-            tasks = phase.get("tickets", [])
-            for task in tasks:
-                status = task.get("status", "pending")
-                if status == "completed":
-                    completed += 1
-                elif status == "in_progress":
-                    pending += 1
-                    if current_task is None:
-                        current_task = task.get("id")
-                else:  # pending
-                    pending += 1
-                    if current_task is None and status == "pending":
-                        current_task = task.get("id")
+        for ticket in all_tickets:
+            status = ticket.status or "pending"
+            if status == "completed":
+                completed += 1
+            else:
+                pending += 1
+                if current_task is None:
+                    current_task = ticket.id
 
         return (pending, completed, current_task)
 
     def _parse_dependencies(self, plan_path: Path) -> list[str]:
-        """Parse depends_on from plan YAML files.
+        """Parse depends_on for an epic.
 
-        Looks for:
-        - dependencies.depends_on in plan_build.yml
-        - Returns list of plan IDs that must complete first
+        Dependencies are not currently stored in TinyDB. Returns empty list.
+        If dependency tracking is needed, it should be added to the
+        EpicRepository schema.
 
         Args:
             plan_path: Path to plan folder.
 
         Returns:
             List of plan IDs (folder names) that this plan depends on.
+            Currently always returns empty list.
         """
-        plan_build = plan_path / "plan_build.yml"
-        if not plan_build.exists():
-            return []
-
-        try:
-            content = yaml.safe_load(plan_build.read_text())
-        except yaml.YAMLError:
-            return []
-
-        if not content:
-            return []
-
-        dependencies_section = content.get("dependencies", {})
-
-        # Handle different formats:
-        # 1. dependencies: {depends_on: [...], required_by: [...]}  <- most common
-        # 2. dependencies: [...]  <- code dependencies (not plan dependencies)
-        if isinstance(dependencies_section, list):
-            # This is a code dependencies list, not plan dependencies
-            return []
-
-        if not isinstance(dependencies_section, dict):
-            return []
-
-        depends_on = dependencies_section.get("depends_on", [])
-
-        if not depends_on:
-            return []
-
-        # Handle both formats:
-        # 1. List of strings: ["260203QF", "260203PS"]
-        # 2. List of dicts: [{"plan_id": "260203QF", "description": "..."}]
-        plan_ids = []
-        for dep in depends_on:
-            if isinstance(dep, str):
-                plan_ids.append(dep)
-            elif isinstance(dep, dict):
-                plan_id = dep.get("plan_id")
-                if plan_id:
-                    plan_ids.append(plan_id)
-
-        return plan_ids
+        return []
 
     def _dependencies_met(
         self, plan_name: str, dependencies: list[str], completed_plans: set[str]
@@ -469,42 +434,44 @@ class RalphLoopService:
     def _get_completed_epics(self) -> set[str]:
         """Get set of plan names that are completed.
 
+        Uses TinyDB to find epics where all tickets are completed.
+
         Returns:
             Set of plan folder names that have all tasks completed.
         """
         completed = set()
 
-        if not self.epics_dir.exists():
+        if self._repository is None:
             return completed
 
-        for epic_dir in self.epics_dir.iterdir():
-            if not epic_dir.is_dir():
+        try:
+            all_epics = self._repository.list_epics()
+        except Exception:
+            return completed
+
+        for epic_data in all_epics:
+            epic_name = epic_data.epic_folder_name
+            try:
+                tickets = self._repository.get_tickets(epic_name)
+            except Exception:
                 continue
 
-            # Skip hidden directories
-            if epic_dir.name.startswith("."):
+            if not tickets:
+                # No tickets - check orchestration for needs_planning vs completed
+                epic_path = Path(epic_data.epic_folder) if epic_data.epic_folder else None
+                if epic_path and epic_path.exists():
+                    has_orchestration = self._has_orchestration_file(epic_path)
+                    if not has_orchestration:
+                        continue  # needs_planning
+                completed.add(epic_name)
                 continue
 
-            # Check if it has plan_build.yml
-            plan_build = epic_dir / "plan_build.yml"
-            if not plan_build.exists():
-                continue
-
-            # Analyze for completion
-            pending_tasks, completed_tasks, _ = self._analyze_plan_file(epic_dir)
-
-            # Also check has_orchestration
-            has_orchestration = self._has_orchestration_file(epic_dir)
-
-            # Determine action
-            action = self._determine_action_required(
-                has_orchestration,
-                pending_tasks,
-                completed_tasks,
+            # Check if all tickets are completed
+            all_done = all(
+                (t.status or "pending") == "completed" for t in tickets
             )
-
-            if action == "completed":
-                completed.add(epic_dir.name)
+            if all_done:
+                completed.add(epic_name)
 
         return completed
 
@@ -553,34 +520,36 @@ class RalphLoopService:
         return "needs_planning"
 
     def discover_epics(self) -> list[EpicInfo]:
-        """Discover all epics in live/ directory.
+        """Discover all epics using TinyDB.
 
         Returns:
             List of EpicInfo with status, has_orchestration, action_required, etc.
         """
         epics = []
 
-        if not self.epics_dir.exists():
+        if self._repository is None:
             return epics
 
-        for epic_dir in self.epics_dir.iterdir():
-            if not epic_dir.is_dir():
-                continue
+        try:
+            all_epic_data = self._repository.list_epics()
+        except Exception:
+            return epics
 
-            # Skip hidden directories and non-epic folders
-            if epic_dir.name.startswith("."):
-                continue
+        for epic_data in all_epic_data:
+            epic_name = epic_data.epic_folder_name
+            epic_path = Path(epic_data.epic_folder) if epic_data.epic_folder else None
 
-            # Check if it has plan_build.yml (or any plan_*.yml)
-            has_plan_file = len(list(epic_dir.glob("plan_*.yml"))) > 0
-            if not has_plan_file:
+            # Only include epics in the live directory
+            if epic_path is None or not epic_path.exists():
+                continue
+            if self.epics_dir.exists() and self.epics_dir.resolve() not in epic_path.resolve().parents:
                 continue
 
             # Check for orchestration file
-            has_orchestration = self._has_orchestration_file(epic_dir)
+            has_orchestration = self._has_orchestration_file(epic_path)
 
-            # Analyze plan file for task counts
-            pending_tasks, completed_tasks, current_task = self._analyze_plan_file(epic_dir)
+            # Analyze tickets from TinyDB
+            pending_tasks, completed_tasks, current_task = self._analyze_plan_file(epic_path)
 
             # Determine action required
             action_required = self._determine_action_required(
@@ -589,34 +558,25 @@ class RalphLoopService:
                 completed_tasks,
             )
 
-            # Get status from plan_build.yml
-            plan_build = epic_dir / "plan_build.yml"
-            status = "active"
-            if plan_build.exists():
-                try:
-                    content = yaml.safe_load(plan_build.read_text())
-                    if content:
-                        status = content.get("status", "active")
-                except yaml.YAMLError:
-                    pass
+            # Get status from TinyDB
+            status = epic_data.status or "active"
 
-            # Parse dependencies
-            dependencies = self._parse_dependencies(epic_dir)
+            # Parse dependencies (currently returns [])
+            dependencies = self._parse_dependencies(epic_path)
 
             # Check if dependencies are met
             completed_epics = self._get_completed_epics()
-            if not self._dependencies_met(epic_dir.name, dependencies, completed_epics):
-                # Override action to blocked if dependencies not met
+            if not self._dependencies_met(epic_name, dependencies, completed_epics):
                 action_required = "blocked"
 
             # Check for blocking questions
-            has_blocking, blocking_count = self._has_blocking_questions(epic_dir)
+            has_blocking, blocking_count = self._has_blocking_questions(epic_path)
             if has_blocking and action_required not in ("completed",):
                 action_required = "blocked"
 
             epic_info = EpicInfo(
-                name=epic_dir.name,
-                path=epic_dir,
+                name=epic_name,
+                path=epic_path,
                 status=status,
                 has_orchestration=has_orchestration,
                 action_required=action_required,

@@ -170,7 +170,8 @@ def start(
         from agenticcli.utils.sdk_runner import run_agent_sync as _ralph_sdk_run
         try:
             from claude_agent_sdk import ClaudeAgentOptions as _RalphOptions
-            sdk_options = _RalphOptions(permission_mode="bypassPermissions")
+            from agenticcli.utils.subprocess_utils import get_clean_env
+            sdk_options = _RalphOptions(permission_mode="bypassPermissions", env=get_clean_env())
         except ImportError:
             sdk_options = None
 

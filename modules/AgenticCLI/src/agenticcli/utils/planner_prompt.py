@@ -3,7 +3,7 @@
 Generates structured prompts for planner agents that instruct them to:
 1. Discover affected user stories
 2. Write README.md with objective and phases
-3. Write ticket_build.yml following planning-standard format
+3. Create tickets in TinyDB via CLI following planning-standard format
 4. Include UAT phase (mandatory per planning-standard.yml)
 5. Define success_criteria at epic level
 """
@@ -23,6 +23,7 @@ def build_planner_prompt(objective: str, epic_folder: Path, context: str | None 
         Formatted prompt string instructing the planner agent.
     """
     epic_folder_str = str(epic_folder)
+    epic_folder_name = epic_folder.name
 
     prompt_parts = [
         "You are a planner agent. Your task is to create a comprehensive implementation plan.",
@@ -30,6 +31,7 @@ def build_planner_prompt(objective: str, epic_folder: Path, context: str | None 
         f"OBJECTIVE: {objective}",
         "",
         f"EPIC FOLDER: {epic_folder_str}",
+        f"EPIC NAME: {epic_folder_name}",
         "",
         "INSTRUCTIONS:",
         "",
@@ -47,14 +49,17 @@ def build_planner_prompt(objective: str, epic_folder: Path, context: str | None 
         "   - Dependencies and prerequisites",
         "   - Success criteria",
         "",
-        "3. WRITE ticket_build.yml:",
-        "   Create ticket_build.yml following planning-standard.yml format with:",
-        "   - Epic-level metadata (name, branch, status, affected_stories)",
-        "   - Phases with tickets (each ticket must have: id, name, guidance, target_files, inputs)",
-        "   - Success criteria defined at epic level",
-        "   - Each ticket MUST declare target_files for parallelization decisions",
-        "   - Each ticket MUST declare inputs (project-specific context files to pre-read)",
+        "3. CREATE TICKETS IN TinyDB via CLI:",
+        "   Use the `agentic` CLI to create phases and tickets in TinyDB:",
+        f"   - Add phases: `agentic epic phase add --epic {epic_folder_name} --name '<phase_name>'`",
+        f"   - Add tickets: `agentic epic ticket add --epic {epic_folder_name} --phase '<phase_name>' --id '<ticket_id>' --name '<ticket_name>'`",
+        "   Each ticket must have: id, name, guidance, target_files, inputs",
+        "   Success criteria should be defined at epic level in README.md",
+        "   Each ticket MUST declare target_files for parallelization decisions",
+        "   Each ticket MUST declare inputs (project-specific context files to pre-read)",
         "   Reference: modules/AgenticGuidance/assets/guidelines/planning-standard.yml",
+        "   NOTE: Do NOT create plan_build.yml or ticket_build.yml files on disk.",
+        "         TinyDB is the sole data store for epic/ticket data.",
         "",
         "4. UAT PHASE (MANDATORY FENCE):",
         "   Every epic MUST include a User Acceptance Testing (UAT) phase.",
@@ -74,7 +79,7 @@ def build_planner_prompt(objective: str, epic_folder: Path, context: str | None 
         "",
         "REQUIRED OUTPUTS:",
         f"- {epic_folder_str}/README.md",
-        f"- {epic_folder_str}/ticket_build.yml",
+        f"- Tickets created in TinyDB for epic '{epic_folder_name}'",
         "",
         "PLANNING GUIDELINES:",
         "- Reference planning-standard.yml for structure and format",
@@ -94,9 +99,9 @@ def build_planner_prompt(objective: str, epic_folder: Path, context: str | None 
 
     prompt_parts.extend([
         "Start by running `agentic stories find` to discover affected user stories.",
-        "Then create the epic files in the specified folder.",
+        "Then create tickets via the CLI in the specified epic.",
         "",
-        "When complete, report the files you created and their paths.",
+        "When complete, report the tickets you created and their IDs.",
     ])
 
     return "\n".join(prompt_parts)

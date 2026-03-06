@@ -1,9 +1,10 @@
 """Epic Movement Workflow - automated ticket and folder movement.
 
-Handles physical movement of completed tickets to epic_completed.yml and
-folder archival with git status verification and file locking.
+Handles ticket status management via TinyDB and folder archival with
+git status verification.
 """
 
+import logging
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ from typing import Optional
 import yaml
 
 from .state import FileLock
+
+logger = logging.getLogger(__name__)
 
 
 class MoveResult(Enum):
@@ -117,10 +120,11 @@ class GitSafetyChecker:
 
 
 class EpicMovementWorkflow:
-    """Workflow for moving completed tickets and archiving epic folders.
+    """Workflow for managing ticket completion and archiving epic folders.
 
-    Provides safe operations for:
-    - Moving completed tickets to epic_completed.yml
+    Uses TinyDB as the sole data source for ticket status. Provides safe
+    operations for:
+    - Confirming ticket completion status in TinyDB
     - Archiving epic folders to completed/ directory
     - Validating git status before moves
     """
@@ -134,12 +138,20 @@ class EpicMovementWorkflow:
         """
         self.plan_path = epic_path  # Keep internal attribute for compatibility
         self.epic_path = epic_path
-        # Flattened structure: YAML files are directly in epic_path, not nested
-        self.completed_file = epic_path / "epic_completed.yml"
 
         # Find repo root
         self.repo_path = repo_path or self._find_repo_root(epic_path)
         self.git_checker = GitSafetyChecker(self.repo_path)
+
+        # Initialize EpicRepository for TinyDB-based lookups
+        self._repository = None
+        try:
+            from .epic_repository import EpicRepository
+
+            db_path = self.repo_path / ".agentic" / "epics.db"
+            self._repository = EpicRepository(db_path=db_path)
+        except Exception:
+            logger.warning("Failed to initialize EpicRepository for EpicMovementWorkflow")
 
     @staticmethod
     def _find_repo_root(start: Path) -> Path:
@@ -158,210 +170,71 @@ class EpicMovementWorkflow:
         force: bool = False,
         silent: bool = False,
     ) -> TicketMoveResult:
-        """Move a completed ticket to epic_completed.yml.
+        """Confirm a ticket is completed in TinyDB.
+
+        In the TinyDB-only model, ticket status is already tracked in
+        the database. This method verifies the ticket has 'completed'
+        status and returns a result.
 
         Args:
-            task_id: ID of the ticket to move.
+            task_id: ID of the ticket to verify.
             dry_run: If True, don't make any changes.
-            force: If True, move even if git status is unclean.
+            force: If True, skip git status checks.
             silent: If True, run without any user interaction (implies force=True).
-                   Skips confirmation prompts and uses sensible defaults.
 
         Returns:
             TicketMoveResult with operation outcome.
         """
-        # Silent mode implies force mode - no prompts, no git checks
         if silent:
             force = True
-        # Find the ticket in epic files (directly in epic_path, flattened structure)
-        task_data = None
-        source_file = None
 
-        for yaml_file in self.epic_path.glob("*.yml"):
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError:
-                continue
+        epic_folder_name = self.epic_path.name
 
-            if not content:
-                continue
-
-            plan = content.get("plan", content.get("feature", {}))
-            for key in ["phases", "implementation_steps", "tasks"]:
-                items = plan.get(key, [])
-                for i, item in enumerate(items):
-                    if item.get("id") == task_id:
-                        if item.get("status") != "completed":
-                            return TicketMoveResult(
-                                task_id=task_id,
-                                result=MoveResult.SKIPPED,
-                                message=f"Ticket status is '{item.get('status', 'unknown')}', not 'completed'",
-                                source_file=yaml_file.name,
-                            )
-                        task_data = item.copy()
-                        task_data["moved_at"] = datetime.now().isoformat()
-                        task_data["moved_from"] = yaml_file.name
-                        source_file = yaml_file
-                        break
-                if task_data:
-                    break
-            if task_data:
-                break
-
-        if not task_data:
+        if self._repository is None:
             return TicketMoveResult(
                 task_id=task_id,
                 result=MoveResult.FAILED,
-                message=f"Ticket '{task_id}' not found in any epic file",
+                message="TinyDB repository not available",
             )
 
-        # Check git status if not forcing
-        if not force and self.git_checker.has_uncommitted_changes(source_file):
+        try:
+            ticket = self._repository.get_ticket(epic_folder_name, task_id)
+        except Exception as e:
+            return TicketMoveResult(
+                task_id=task_id,
+                result=MoveResult.FAILED,
+                message=f"Failed to look up ticket: {e}",
+            )
+
+        if not ticket:
+            return TicketMoveResult(
+                task_id=task_id,
+                result=MoveResult.FAILED,
+                message=f"Ticket '{task_id}' not found in TinyDB for epic '{epic_folder_name}'",
+            )
+
+        if ticket.status != "completed":
             return TicketMoveResult(
                 task_id=task_id,
                 result=MoveResult.SKIPPED,
-                message="Uncommitted changes in source file. Use --force to override.",
-                source_file=source_file.name,
+                message=f"Ticket status is '{ticket.status or 'unknown'}', not 'completed'",
+                source_file="(TinyDB)",
             )
 
         if dry_run:
             return TicketMoveResult(
                 task_id=task_id,
                 result=MoveResult.SUCCESS,
-                message="[dry-run] Would move ticket to epic_completed.yml",
-                source_file=source_file.name,
-                target_file="epic_completed.yml",
-            )
-
-        # Ensure epic_path exists (flattened structure)
-        self.epic_path.mkdir(parents=True, exist_ok=True)
-
-        # Use file lock for atomic operation
-        with FileLock(self.completed_file):
-            # Load or create completed file
-            if self.completed_file.exists():
-                try:
-                    completed_data = yaml.safe_load(self.completed_file.read_text())
-                except yaml.YAMLError:
-                    completed_data = None
-            else:
-                completed_data = None
-
-            if completed_data is None:
-                completed_data = {
-                    "completed_tasks": [],
-                    "metadata": {
-                        "created_at": datetime.now().isoformat(),
-                        "version": 1,
-                    },
-                }
-
-            if "completed_tasks" not in completed_data:
-                completed_data["completed_tasks"] = []
-
-            # Check for duplicate before appending
-            existing_ids = {t.get("id") for t in completed_data["completed_tasks"] if t.get("id")}
-            if task_id in existing_ids:
-                return TicketMoveResult(
-                    task_id=task_id,
-                    result=MoveResult.SKIPPED,
-                    message=f"Ticket '{task_id}' already exists in epic_completed.yml",
-                    source_file=source_file.name,
-                    target_file="epic_completed.yml",
-                )
-
-            # Add the ticket
-            completed_data["completed_tasks"].append(task_data)
-            completed_data["metadata"] = completed_data.get("metadata", {})
-            completed_data["metadata"]["last_updated"] = datetime.now().isoformat()
-
-            # Write completed file
-            with open(self.completed_file, "w") as f:
-                yaml.dump(completed_data, f, default_flow_style=False, sort_keys=False)
-
-        # Remove the ticket from the source file to prevent duplicates
-        removal_error = self._remove_task_from_source(source_file, task_id)
-        if removal_error:
-            return TicketMoveResult(
-                task_id=task_id,
-                result=MoveResult.SUCCESS,
-                message=f"Ticket moved to epic_completed.yml (warning: {removal_error})",
-                source_file=source_file.name,
-                target_file="epic_completed.yml",
+                message="[dry-run] Ticket is already completed in TinyDB",
+                source_file="(TinyDB)",
             )
 
         return TicketMoveResult(
             task_id=task_id,
             result=MoveResult.SUCCESS,
-            message="Ticket moved to epic_completed.yml and removed from source",
-            source_file=source_file.name,
-            target_file="epic_completed.yml",
+            message="Ticket confirmed completed in TinyDB",
+            source_file="(TinyDB)",
         )
-
-    def _remove_task_from_source(self, source_file: Path, task_id: str) -> Optional[str]:
-        """Remove a ticket from the source YAML file.
-
-        Handles both flat ticket lists (epic.tasks, epic.implementation_steps)
-        and nested tickets in phases (epic.phases[].tasks[]).
-
-        Args:
-            source_file: Path to the source YAML file.
-            task_id: ID of the ticket to remove.
-
-        Returns:
-            None on success, error message string on failure.
-        """
-        try:
-            content = yaml.safe_load(source_file.read_text())
-        except yaml.YAMLError as e:
-            return f"failed to parse source file: {e}"
-
-        if not content:
-            return "source file is empty"
-
-        plan = content.get("plan", content.get("feature", {}))
-        task_removed = False
-
-        # Handle flat ticket lists (epic.tasks, epic.implementation_steps)
-        for key in ["tasks", "implementation_steps"]:
-            items = plan.get(key, [])
-            if items:
-                original_len = len(items)
-                plan[key] = [item for item in items if item.get("id") != task_id]
-                if len(plan[key]) < original_len:
-                    task_removed = True
-                    break
-
-        # Handle nested tickets in phases (epic.phases[].tickets[])
-        if not task_removed:
-            phases = plan.get("phases", [])
-            for phase in phases:
-                phase_tasks = phase.get("tickets", [])
-                if phase_tasks:
-                    original_len = len(phase_tasks)
-                    phase["tickets"] = [t for t in phase_tasks if t.get("id") != task_id]
-                    if len(phase["tickets"]) < original_len:
-                        task_removed = True
-                        break
-
-        if not task_removed:
-            return f"ticket '{task_id}' not found in source file for removal"
-
-        # Write back the modified content
-        try:
-            with open(source_file, "w") as f:
-                yaml.dump(
-                    content,
-                    f,
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                    width=120,
-                )
-        except OSError as e:
-            return f"failed to write source file: {e}"
-
-        return None
 
     def move_all_completed_tasks(
         self,
@@ -369,43 +242,35 @@ class EpicMovementWorkflow:
         force: bool = False,
         silent: bool = False,
     ) -> list[TicketMoveResult]:
-        """Move all completed tickets to epic_completed.yml.
+        """Confirm all completed tickets in TinyDB.
 
         Args:
             dry_run: If True, don't make any changes.
-            force: If True, move even if git status is unclean.
+            force: If True, skip git status checks.
             silent: If True, run without any user interaction (implies force=True).
-                   Skips confirmation prompts and uses sensible defaults.
 
         Returns:
-            List of TicketMoveResult for each ticket.
+            List of TicketMoveResult for each completed ticket.
         """
-        # Silent mode implies force mode
         if silent:
             force = True
         results = []
-        completed_task_ids = []
+        epic_folder_name = self.epic_path.name
 
-        # Find all completed tickets (directly in epic_path, flattened structure)
-        for yaml_file in self.epic_path.glob("*.yml"):
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError:
-                continue
+        if self._repository is None:
+            return results
 
-            if not content:
-                continue
+        try:
+            completed_tickets = self._repository.get_tickets(
+                epic_folder_name, status_filter="completed"
+            )
+        except Exception:
+            return results
 
-            plan = content.get("plan", content.get("feature", {}))
-            for key in ["phases", "implementation_steps", "tasks"]:
-                items = plan.get(key, [])
-                for item in items:
-                    if item.get("status") == "completed" and item.get("id"):
-                        completed_task_ids.append(item["id"])
-
-        # Move each one
-        for task_id in completed_task_ids:
-            result = self.move_task_to_completed(task_id, dry_run=dry_run, force=force, silent=silent)
+        for ticket in completed_tickets:
+            result = self.move_task_to_completed(
+                ticket.id, dry_run=dry_run, force=force, silent=silent
+            )
             results.append(result)
 
         return results
@@ -418,20 +283,19 @@ class EpicMovementWorkflow:
     ) -> FolderMoveResult:
         """Archive the epic folder to docs/epics/completed/.
 
+        Moves the folder on disk and updates TinyDB status to 'completed'.
+
         Args:
             dry_run: If True, don't make any changes.
             force: If True, archive even if git status is unclean.
             silent: If True, run without any user interaction (implies force=True).
-                   Skips confirmation prompts and uses sensible defaults.
 
         Returns:
             FolderMoveResult with operation outcome.
         """
-        # Silent mode implies force mode - no prompts, no git checks
         if silent:
             force = True
-        # Determine destination
-        # Go up from docs/epics/live/FOLDER to docs/epics/completed/FOLDER
+
         dest_dir = self.epic_path.parent.parent / "completed" / self.epic_path.name
 
         # Check git status if not forcing
@@ -461,24 +325,18 @@ class EpicMovementWorkflow:
             )
 
         try:
-            # Copy the folder
+            # Copy the folder (keeps non-YAML artifacts like .mmd files)
             shutil.copytree(self.epic_path, dest_dir)
 
-            # Update archive metadata (flattened structure: epic_completed.yml in dest_dir)
-            archive_meta_file = dest_dir / "epic_completed.yml"
-            if archive_meta_file.exists():
+            # Update TinyDB status to completed
+            if self._repository:
                 try:
-                    data = yaml.safe_load(archive_meta_file.read_text())
-                    if data is None:
-                        data = {}
-                except yaml.YAMLError:
-                    data = {}
-
-                data["archived_date"] = datetime.now().strftime("%Y-%m-%d")
-                data["archived_from"] = str(self.epic_path)
-
-                with open(archive_meta_file, "w") as f:
-                    yaml.dump(data, f, default_flow_style=False)
+                    self._repository.archive_epic(self.epic_path.name)
+                except Exception:
+                    logger.warning(
+                        "Failed to update TinyDB status for archived epic %s",
+                        self.epic_path.name,
+                    )
 
             # Remove the source folder after successful copy
             rmtree_error = None
@@ -510,48 +368,48 @@ class EpicMovementWorkflow:
                 message=f"Archive failed: {e}",
             )
 
+    # Backward compatibility alias
+    archive_plan_folder = archive_epic_folder
+
     def get_completed_tasks(self) -> list[dict]:
-        """Get list of tickets marked as completed.
+        """Get list of tickets marked as completed from TinyDB.
 
         Returns:
             List of ticket dictionaries with status='completed'.
         """
-        completed = []
+        epic_folder_name = self.epic_path.name
 
-        for yaml_file in self.epic_path.glob("*.yml"):
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError:
-                continue
-
-            if not content:
-                continue
-
-            plan = content.get("plan", content.get("feature", {}))
-            for key in ["phases", "implementation_steps", "tasks"]:
-                items = plan.get(key, [])
-                for item in items:
-                    if item.get("status") == "completed":
-                        task = item.copy()
-                        task["_source_file"] = yaml_file.name
-                        completed.append(task)
-
-        return completed
-
-    def get_archived_tasks(self) -> list[dict]:
-        """Get list of tickets already in epic_completed.yml.
-
-        Returns:
-            List of archived ticket dictionaries.
-        """
-        if not self.completed_file.exists():
+        if self._repository is None:
             return []
 
         try:
-            data = yaml.safe_load(self.completed_file.read_text())
-            return data.get("completed_tasks", []) if data else []
-        except yaml.YAMLError:
+            completed = self._repository.get_tickets(
+                epic_folder_name, status_filter="completed"
+            )
+            return [
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "description": t.description or "",
+                    "status": "completed",
+                    "completed_date": t.completed_date,
+                    "_source": "TinyDB",
+                }
+                for t in completed
+            ]
+        except Exception:
             return []
+
+    def get_archived_tasks(self) -> list[dict]:
+        """Get list of completed tickets (same as get_completed_tasks in TinyDB model).
+
+        In the TinyDB-only model, there is no separate epic_completed.yml.
+        Completed tickets are simply those with status='completed' in TinyDB.
+
+        Returns:
+            List of completed ticket dictionaries.
+        """
+        return self.get_completed_tasks()
 
 
 # Data models for EpicService
@@ -752,24 +610,21 @@ class EpicService:
         ...     print(validation.errors)
     """
 
-    def __init__(self, repo_path: Optional[Path] = None, yaml_sync_enabled: bool = True):
+    def __init__(self, repo_path: Optional[Path] = None, yaml_sync_enabled: bool = False):
         """Initialize epic service.
 
-        TinyDB is the primary data store. YAML files are optionally kept in sync
-        for git-committed state. If TinyDB is unavailable (import failure),
-        YAML serves as emergency fallback.
+        TinyDB is the sole data store. YAML sync is disabled.
 
         Args:
             repo_path: Path to git repository. Defaults to auto-detected repo root.
-            yaml_sync_enabled: If True, keep YAML files in sync with TinyDB for
-                              git commits. Defaults to True.
+            yaml_sync_enabled: Deprecated, ignored. Kept for API compatibility.
         """
         self.repo_path = repo_path or self._find_repo_root()
         self.epics_base = self.repo_path / "docs" / "epics"
         # Keep plans_base as internal alias for compatibility with shared repository logic
         self.plans_base = self.epics_base
         self.git_checker = GitSafetyChecker(self.repo_path)
-        self._yaml_sync_enabled = yaml_sync_enabled
+        self._yaml_sync_enabled = False  # YAML sync permanently disabled
         self._repository = None
         try:
             from .epic_repository import EpicRepository
@@ -780,7 +635,7 @@ class EpicService:
                 epics_base=self.epics_base,
             )
         except Exception:
-            pass  # Emergency: fall back to pure YAML
+            pass
 
     @staticmethod
     def _find_repo_root(start: Optional[Path] = None) -> Path:
@@ -914,34 +769,10 @@ class EpicService:
                     "created": epic_scaffold["created"],
                 })
             except Exception:
-                pass  # Continue with YAML sync
+                pass
 
-        # YAML sync: create filesystem scaffold for git commits
-        if self._yaml_sync_enabled:
-            epic_folder.mkdir(parents=True, exist_ok=True)
-
-            readme_content = f"""# {folder_name}
-
-## Objective
-
-{objective}
-
-## Status
-
-pending
-
-## Branch
-
-{branch}
-
-## Created
-
-{datetime.now().strftime("%Y-%m-%d")}
-"""
-            (epic_folder / "README.md").write_text(readme_content)
-
-            with open(epic_folder / "plan_build.yml", "w") as f:
-                yaml.dump(epic_scaffold, f, default_flow_style=False, sort_keys=False)
+        # Create epic folder on disk (for orchestration MMD files, etc.)
+        epic_folder.mkdir(parents=True, exist_ok=True)
 
         return EpicCreateResult(
             epic_folder=epic_folder,
@@ -991,74 +822,9 @@ pending
                         result.epic_folder = live_path
                 return result
 
-            # Read-through: epic may exist on disk but not in TinyDB yet
-            # (e.g., created externally, git pull, or test fixture)
-            epic_folder = self._resolve_epic_folder(epic_id_or_path)
-            if epic_folder and epic_folder.exists():
-                self._repository.import_from_yaml(epic_folder)
-                return self._repository.get_epic(epic_folder.name)
-
             return None
 
-        # Emergency YAML fallback (only when repository import failed)
-        return self._get_epic_from_yaml(epic_id_or_path)
-
-    def _get_epic_from_yaml(self, epic_id_or_path: str) -> Optional[EpicData]:
-        """Emergency YAML fallback for get_epic when TinyDB is unavailable."""
-        epic_folder = self._resolve_epic_folder(epic_id_or_path)
-        if not epic_folder or not epic_folder.exists():
-            return None
-
-        epic_data = {}
-        for epic_file in epic_folder.glob("plan_*.yml"):
-            try:
-                with open(epic_file) as f:
-                    data = yaml.safe_load(f)
-                if data:
-                    epic_data.update(data)
-            except (yaml.YAMLError, IOError):
-                continue
-
-        if not epic_data:
-            return None
-
-        phases_data = epic_data.get("phases", [])
-        phases = []
-        all_tasks = []
-
-        for phase in phases_data:
-            phase_tasks = phase.get("tickets", [])
-            task_data_list = []
-
-            for task in phase_tasks:
-                task_obj = TicketData(
-                    id=task.get("id", ""),
-                    name=task.get("name", ""),
-                    description=task.get("description"),
-                    status=task.get("status"),
-                    agent=task.get("agent"),
-                    phase_name=phase.get("name"),
-                )
-                task_data_list.append(task_obj)
-                all_tasks.append(task_obj)
-
-            phases.append(PhaseData(
-                name=phase.get("name", ""),
-                description=phase.get("description"),
-                execution=phase.get("execution"),
-                status=phase.get("status"),
-                tasks=task_data_list,
-            ))
-
-        return EpicData(
-            epic_folder=epic_folder,
-            epic_folder_name=epic_folder.name,
-            objective=epic_data.get("objective"),
-            status=epic_data.get("status"),
-            branch=epic_data.get("branch"),
-            phases=phases,
-            tasks=all_tasks,
-        )
+        return None
 
     def _resolve_epic_folder(self, epic_id_or_path: str) -> Optional[Path]:
         """Resolve epic identifier or path to actual epic folder.
@@ -1098,8 +864,7 @@ pending
     def list_epics(self, status: str = "live") -> list[EpicMetadata]:
         """List all epics with a given status.
 
-        TinyDB is the primary store. YAML scan is only used as emergency
-        fallback when TinyDB is unavailable.
+        TinyDB is the sole data store.
 
         Args:
             status: Epic status folder (live, completed, deferred).
@@ -1110,23 +875,9 @@ pending
         if self._repository is not None:
             results = self._repository.list_epics(status=status)
 
-            # Reconcile with filesystem: check for epics on disk that TinyDB
-            # doesn't know about, and fix stale paths (resurrection detection)
+            # Fix stale paths (resurrection detection)
             epics_dir = self.epics_base / status
             if epics_dir.exists():
-                known_names = {r.epic_folder_name for r in results}
-                disk_epics = []
-                for folder in sorted(epics_dir.iterdir(), reverse=True):
-                    if not folder.is_dir() or not (
-                        list(folder.glob("plan_*.yml")) or list(folder.glob("ticket_*.yml"))
-                    ):
-                        continue
-                    if folder.name not in known_names:
-                        # Epic on disk but not in TinyDB for this status
-                        self._repository.import_from_yaml(folder)
-                        disk_epics.append(folder)
-
-                # Also check if any TinyDB results have stale paths
                 for r in results:
                     if r.epic_folder and f"/epics/{status}/" not in str(r.epic_folder):
                         correct_path = epics_dir / r.epic_folder_name
@@ -1136,63 +887,9 @@ pending
                             )
                             r.epic_folder = correct_path
 
-                if disk_epics:
-                    # Re-fetch to include newly imported epics
-                    fresh = self._repository.list_epics(status=status)
-                    fresh_names = {f.epic_folder_name for f in fresh}
-                    # Merge fresh results
-                    for f in fresh:
-                        if f.epic_folder_name not in known_names:
-                            results.append(f)
-                    # For any disk epics still missing from fresh (mock scenario),
-                    # create minimal metadata entries
-                    for folder in disk_epics:
-                        if folder.name not in known_names and folder.name not in fresh_names:
-                            results.append(EpicMetadata(
-                                epic_folder=folder,
-                                epic_folder_name=folder.name,
-                            ))
-
             return results
 
-        # Emergency YAML fallback (only when repository import failed)
-        return self._list_epics_from_yaml(status)
-
-    def _list_epics_from_yaml(self, status: str) -> list[EpicMetadata]:
-        """Emergency YAML fallback for list_epics when TinyDB is unavailable."""
-        epics_dir = self.epics_base / status
-        if not epics_dir.exists():
-            return []
-
-        results = []
-
-        for folder in sorted(epics_dir.iterdir(), key=lambda x: x.name, reverse=True):
-            if not folder.is_dir():
-                continue
-
-            if not self._is_valid_epic_folder_name(folder.name):
-                continue
-
-            epic_meta = EpicMetadata(
-                epic_folder=folder,
-                epic_folder_name=folder.name,
-            )
-
-            for epic_file in folder.glob("plan_*.yml"):
-                try:
-                    with open(epic_file) as f:
-                        data = yaml.safe_load(f)
-                    if data:
-                        epic_meta.objective = data.get("objective", epic_meta.objective)
-                        epic_meta.status = data.get("status", epic_meta.status)
-                        epic_meta.created = data.get("created", epic_meta.created)
-                        break
-                except (yaml.YAMLError, IOError):
-                    continue
-
-            results.append(epic_meta)
-
-        return results
+        return []
 
     def _is_valid_epic_folder_name(self, name: str) -> bool:
         """Check if folder name matches YYMMDDXX_description pattern.
@@ -1241,12 +938,6 @@ pending
             lookup_key = self._normalize_epic_id(epic_id)
             epic_data = self._repository.get_epic(lookup_key)
             if epic_data is None:
-                # Read-through: try YAML import if epic exists on disk
-                epic_folder = self._resolve_epic_folder(epic_id)
-                if epic_folder and epic_folder.exists():
-                    self._repository.import_from_yaml(epic_folder)
-                    epic_data = self._repository.get_epic(epic_folder.name)
-            if epic_data is None:
                 return EpicUpdateResult(
                     success=False,
                     message=f"Epic not found: {epic_id}",
@@ -1288,20 +979,6 @@ pending
                 {"status": new_status},
             )
 
-        # YAML sync: update all epic files on disk
-        if self._yaml_sync_enabled and epic_folder.exists():
-            for epic_file in epic_folder.glob("plan_*.yml"):
-                with FileLock(epic_file):
-                    try:
-                        with open(epic_file) as f:
-                            data = yaml.safe_load(f)
-                        if data:
-                            data["status"] = new_status
-                            with open(epic_file, "w") as f:
-                                yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-                    except (yaml.YAMLError, IOError):
-                        continue
-
         return EpicUpdateResult(
             success=True,
             message=f"Updated status from {old_status} to {new_status}",
@@ -1330,26 +1007,12 @@ pending
             lookup_key = self._normalize_epic_id(epic_id)
             epic = self._repository.get_epic(lookup_key)
             if epic is None:
-                # Read-through: try YAML import
-                epic_folder = self._resolve_epic_folder(epic_id)
-                if epic_folder and epic_folder.exists():
-                    self._repository.import_from_yaml(epic_folder)
-                    epic = self._repository.get_epic(epic_folder.name)
-            if epic is None:
                 return []
             return self._repository.get_tickets(
                 epic.epic_folder_name, status_filter=status_filter
             )
 
-        # Emergency YAML fallback
-        epic_data = self._get_epic_from_yaml(epic_id)
-        if not epic_data:
-            return []
-
-        tasks = epic_data.tasks
-        if status_filter:
-            tasks = [t for t in tasks if t.status == status_filter]
-        return tasks
+        return []
 
     def validate_epic_structure(self, epic_path: Path) -> ValidationResult:
         """Validate epic folder structure and content.

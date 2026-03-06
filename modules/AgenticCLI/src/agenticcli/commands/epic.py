@@ -124,22 +124,6 @@ def get_valid_loop_types(loops_file: Path | None = None) -> set[str]:
     return loop_types
 
 
-def _get_phases_from_content(content: dict) -> list:
-    """Get phases from either root or nested under plan.
-
-    Supports both structures:
-    - Root level: content["phases"]
-    - Nested: content["plan"]["phases"]
-
-    Args:
-        content: Parsed YAML content from a plan file.
-
-    Returns:
-        List of phases, empty list if none found.
-    """
-    return content.get("phases", []) or content.get("plan", {}).get("phases", [])
-
-
 def _get_phase_id(phase: dict) -> str:
     """Get phase ID from either phase_id or id field.
 
@@ -175,98 +159,29 @@ def _get_repo():
     return EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
 
 
-def _get_epic_yaml_files(folder: Path) -> list:
-    """Get all ticket/plan YAML files from an epic folder.
-
-    Supports both new (ticket_*.yml) and legacy (plan_*.yml) naming.
-
-    Args:
-        folder: Path to the epic folder to scan.
-
-    Returns:
-        Sorted list of Path objects for all ticket/plan YAML files found.
-    """
-    files = list(folder.glob("ticket_*.yml"))
-    files.extend(f for f in folder.glob("plan_*.yml") if f not in files)
-    return sorted(files)
-
 
 def is_epic_fully_completed(plan_folder: Path) -> bool:
     """Check if all tasks across all plan files are completed.
 
-    Tries PlanRepository (TinyDB) first for fast lookup, then falls back
-    to reading plan_*.yml files if TinyDB is unavailable.
+    Uses TinyDB as the sole data source.
 
     Args:
-        plan_folder: Path to the plan folder containing plan_*.yml files.
+        plan_folder: Path to the plan folder.
 
     Returns:
-        True if ALL tasks across ALL plan files have status "completed",
-        False otherwise. Returns False if no plan files are found or
-        if there are no tasks defined.
-
-    Edge cases:
-        - No plan_*.yml files found: Returns False
-        - Plan files with no tasks: Returns False (nothing to complete)
-        - Mixed statuses across files: Returns False
-        - YAML parse errors: Skips the file (counts as incomplete)
+        True if ALL tasks have status "completed",
+        False otherwise. Returns False if no tasks are found.
     """
-    # TinyDB path: fast lookup via PlanRepository
     try:
         repo = _get_repo()
         if repo is not None:
-            # Only trust repo result if the plan actually has tasks in DB
             counts = repo.get_ticket_counts(plan_folder.name)
             if counts["total"] > 0:
                 return repo.check_all_tickets_complete(plan_folder.name)
     except Exception:
-        pass  # Fall through to YAML
+        pass
 
-    # YAML fallback
-    yaml_files = _get_epic_yaml_files(plan_folder)
-
-    # No plan files found - not completed
-    if not yaml_files:
-        return False
-
-    total_tasks = 0
-    completed_tasks = 0
-
-    for yaml_file in yaml_files:
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-        except yaml.YAMLError:
-            # Parse error - treat as incomplete
-            return False
-
-        if not content:
-            continue
-
-        # Count tasks from phases structure
-        phases = _get_phases_from_content(content)
-        for phase in phases:
-            tasks = phase.get("tickets", [])
-            for task in tasks:
-                total_tasks += 1
-                status = task.get("status", "pending")
-                if status == "completed":
-                    completed_tasks += 1
-
-        # Legacy: implementation_steps
-        plan_data = content.get("plan", content.get("feature", {}))
-        steps = plan_data.get("implementation_steps", [])
-        for item in steps:
-            total_tasks += 1
-            status = item.get("status", "pending")
-            if status == "completed":
-                completed_tasks += 1
-
-    # No tasks defined - not completed
-    if total_tasks == 0:
-        return False
-
-    # All tasks must be completed
-    return completed_tasks == total_tasks
+    return False
 
 
 def has_pending_questions(plan_path: Path) -> bool:
@@ -296,7 +211,6 @@ def _get_epic_branch(plan_path: Path) -> str | None:
     Returns:
         Branch name string, or None if not determinable.
     """
-    # TinyDB path: fast lookup via PlanRepository
     try:
         repo = _get_repo()
         if repo is not None:
@@ -304,32 +218,7 @@ def _get_epic_branch(plan_path: Path) -> str | None:
             if branch is not None:
                 return branch
     except Exception:
-        pass  # Fall through to YAML
-
-    # YAML fallback: Try ticket_build.yml / plan_build.yml first (most likely to have branch info)
-    for yaml_name in ["ticket_build.yml", "plan_build.yml", "ticket_teach.yml", "plan_teach.yml"]:
-        yaml_file = plan_path / yaml_name
-        if not yaml_file.exists():
-            continue
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-            if not content:
-                continue
-
-            # Check root-level branch field
-            branch = content.get("branch")
-            if branch and branch.strip() and branch.strip() not in ("main", "master", ""):
-                return branch.strip().strip('"').strip("'")
-
-            # Check nested under plan:
-            plan_data = content.get("plan", {})
-            if plan_data:
-                branch = plan_data.get("branch")
-                if branch and branch.strip() and branch.strip() not in ("main", "master", ""):
-                    return branch.strip().strip('"').strip("'")
-
-        except yaml.YAMLError:
-            continue
+        pass
 
     return None
 
@@ -524,19 +413,33 @@ def find_epic_folder(path: str | None = None) -> Path:
         print(f"Error: Plan folder '{path}' not found.", file=sys.stderr)
         sys.exit(1)
 
-    # Auto-detect: look for docs/epics/live/ in current directory tree
+    # Auto-detect: check if we're in an epic folder or find one via TinyDB
     cwd = Path.cwd()
 
-    # Check if we're in a plan folder (flattened structure: ticket_*.yml/plan_*.yml directly in cwd)
-    if _get_epic_yaml_files(cwd):
-        return cwd
+    # Check if we're in a plan folder (check TinyDB for current directory)
+    try:
+        repo = _get_repo()
+        if repo is not None:
+            # Check if cwd IS an epic folder known to TinyDB
+            epic_doc = repo.get_epic(cwd.name)
+            if epic_doc is not None and epic_doc.epic_folder.resolve() == cwd.resolve():
+                return cwd
 
-    # Check if we're in a repo with epics
+            # Find first live epic from TinyDB
+            from agenticguidance.services.epic import EpicService
+            svc = EpicService()
+            metas = svc.list_epics(status="live")
+            for meta in metas:
+                if meta.epic_folder.is_dir():
+                    return meta.epic_folder
+    except Exception:
+        pass
+
+    # Filesystem fallback: check docs/epics/live/ for any epic subdirectory
     epics_dir = cwd / "docs" / "epics" / "live"
     if epics_dir.exists():
-        # Return first epic folder found (flattened: has ticket_*.yml/plan_*.yml files)
-        for item in epics_dir.iterdir():
-            if item.is_dir() and _get_epic_yaml_files(item):
+        for item in sorted(epics_dir.iterdir()):
+            if item.is_dir():
                 return item
 
     print("Error: Could not find a plan folder. Specify path explicitly.", file=sys.stderr)
@@ -709,9 +612,11 @@ def cmd_new(args, ctx=None):
         # SDK path: run planner agent via SDK (no subprocess needed)
         try:
             from claude_agent_sdk import ClaudeAgentOptions
+            from agenticcli.utils.subprocess_utils import get_clean_env
             sdk_options = ClaudeAgentOptions(
                 permission_mode="bypassPermissions",
                 cwd=str(plan_folder),
+                env=get_clean_env(),
             )
         except ImportError:
             sdk_options = None
@@ -768,13 +673,23 @@ def cmd_new(args, ctx=None):
             print_error(f"Failed to spawn planner: {e}")
             sys.exit(1)
 
-    # Validate that plan_build.yml or ticket_build.yml was created by the planner
-    plan_build_file = plan_folder / "plan_build.yml"
-    if not plan_build_file.exists():
-        plan_build_file = plan_folder / "ticket_build.yml"
-    if not plan_build_file.exists() or plan_build_file.stat().st_size == 0:
+    # Validate that the planner created tickets in TinyDB
+    planner_created_tickets = False
+    try:
+        from agenticguidance.services.epic_repository import EpicRepository
+        _repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
+        _tickets = _repo.get_tickets(plan_folder.name)
+        # Check if planner added tickets beyond the initial IM_001 stub
+        planner_created_tickets = len(_tickets) > 1 or (
+            len(_tickets) == 1 and _tickets[0].id != "IM_001"
+        )
+        _repo.close()
+    except Exception:
+        pass
+
+    if not planner_created_tickets:
         if not is_json_output():
-            print_error("Planner did not create plan_build.yml")
+            print_error("Planner did not create tickets in TinyDB")
             if planner_stdout:
                 console.print("[yellow]Planner output:[/yellow]")
                 console.print(planner_stdout)
@@ -790,15 +705,6 @@ def cmd_new(args, ctx=None):
             print_error(f"Planner agent failed with exit code {planner_exitcode}")
             if planner_stderr:
                 console.print(f"[red]{planner_stderr}[/red]")
-
-    # Re-sync plan to TinyDB now that planner has populated plan_build.yml (non-fatal)
-    try:
-        from agenticguidance.services.epic_repository import EpicRepository
-        repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
-        repo.import_from_yaml(plan_folder)
-        repo.close()
-    except Exception:
-        pass
 
     # Step 3: Generate orchestration MMD (Phase 3)
     if not is_json_output():
@@ -900,22 +806,9 @@ def cmd_new(args, ctx=None):
             pass
 
         if phases is None:
-            # Fallback: read plan_build.yml / ticket_build.yml directly.
-            # Prioritise plan_build.yml first because the planner agent writes
-            # there; ticket_build.yml may still hold the initial stub content.
-            plan_build_file = plan_folder / "plan_build.yml"
-            if not plan_build_file.exists():
-                plan_build_file = plan_folder / "ticket_build.yml"
-            if not plan_build_file.exists():
-                if not is_json_output():
-                    print_error("plan_build.yml not found - cannot spawn builders")
-                phases = []
-            else:
-                try:
-                    plan_data = yaml.safe_load(plan_build_file.read_text())
-                    phases = _get_phases_from_content(plan_data) if plan_data else []
-                except (yaml.YAMLError, Exception):
-                    phases = []
+            if not is_json_output():
+                print_error("No phase data found in TinyDB for this epic - cannot spawn builders")
+            phases = []
 
         if phases:
             try:
@@ -963,10 +856,15 @@ def cmd_new(args, ctx=None):
                                     f"Run: agentic -j agent plan task start {task_id} --plan {str(plan_folder).split('/')[-1]}\n"
                                     "Then complete the task as described in the plan."
                                 )
+                                from agenticcli.utils.subprocess_utils import get_clean_env as _get_clean
+                                from claude_agent_sdk import ClaudeAgentOptions as _TaskOptions
                                 phase_sessions.append({
                                     "task_id": task_id,
                                     "sdk_prompt": task_prompt,
-                                    "sdk_options": None,
+                                    "sdk_options": _TaskOptions(
+                                        permission_mode="bypassPermissions",
+                                        env=_get_clean(),
+                                    ),
                                     "command": " ".join(spawn_cmd),
                                     "use_sdk": True,
                                 })
@@ -1151,37 +1049,42 @@ def cmd_init(args, ctx=None):
     # Create the folder structure
     plan_path.mkdir(parents=True, exist_ok=True)
 
-    # If --objective provided, write plan_build.yml with objective
+    # Create epic in TinyDB
     objective = getattr(args, "objective", None)
-    if objective:
-        created_date = datetime.now().strftime("%Y-%m-%d")
-        plan_build_content = f"""# Implementation Plan: {description}
-# Plan ID: {plan_folder_name.split('_')[0]}
-# Created: {created_date}
 
-name: "{description}"
-branch: "{branch}"
-status: "active"
-priority: "high"
-
-context: |
-  {objective}
-
-phases:
-  - name: "Initial Research and Planning"
-    tickets:
-      - id: "IM_001"
-        name: "Research existing implementation"
-        status: "pending"
-        description: "Analyze the codebase to understand how to implement the objective."
-"""
-        (plan_path / "plan_build.yml").write_text(plan_build_content)
-
-    # Sync new plan to TinyDB (non-fatal)
+    # Create epic in TinyDB (primary data store)
     try:
         from agenticguidance.services.epic_repository import EpicRepository
         repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
-        repo.import_from_yaml(plan_path)
+        epic_data = {
+            "epic_folder_name": plan_folder_name,
+            "epic_folder": str(plan_path),
+            "name": description,
+            "branch": branch,
+            "status": "active",
+            "priority": "high",
+        }
+        if objective:
+            epic_data["context"] = objective
+        repo.create_epic(epic_data)
+        # Also create a default ticket for the initial phase
+        if objective:
+            repo.add_phase(
+                plan_folder_name,
+                {
+                    "name": "Initial Research and Planning",
+                },
+            )
+            repo.add_ticket(
+                plan_folder_name,
+                "Initial Research and Planning",
+                {
+                    "task_id": "IM_001",
+                    "name": "Research existing implementation",
+                    "description": "Analyze the codebase to understand how to implement the objective.",
+                    "status": "pending",
+                },
+            )
         repo.close()
     except Exception:
         pass
@@ -1199,12 +1102,12 @@ phases:
     if is_json_output():
         print_json(result_data)
     else:
-        console.print(f"  [green]Created plan folder[/green] at {plan_path}")
+        console.print(f"  [green]Created epic folder[/green] at {plan_path}")
         if objective:
-            console.print(f"  [green]Wrote plan_build.yml[/green] with objective")
+            console.print(f"  [green]Epic created in TinyDB[/green] with objective")
         console.print()
         print_success(f"Epic initialized: {plan_folder_name}")
-        console.print(f"[dim]Plan folder:[/dim] {plan_path}")
+        console.print(f"[dim]Epic folder:[/dim] {plan_path}")
         console.print()
         console.print("[dim]Link related user stories in inputs.yml:[/dim]")
         console.print(f"[dim]  agentic stories find --project <name>[/dim]")
@@ -1231,21 +1134,26 @@ def cmd_scaffold(args):
         sys.exit(1)
 
     plan_path.mkdir(parents=True, exist_ok=True)
-    # Create a minimal stub plan_build.yml
-    stub_content = f"""# Plan: {name}
-# Created by: agentic plan scaffold (DEPRECATED)
-_template_status: stub
-name: "{name}"
-status: "planning"
-phases: []
-"""
-    (plan_path / "plan_build.yml").write_text(stub_content)
+
+    # Create epic in TinyDB (primary data store)
+    try:
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
+        repo.create_epic({
+            "epic_folder_name": name,
+            "epic_folder": str(plan_path),
+            "name": name,
+            "status": "planning",
+        })
+        repo.close()
+    except Exception:
+        pass
 
     if is_json_output():
         print_json({"name": name, "path": str(plan_path), "folder": str(plan_path), "deprecated": True})
     else:
         print(f"Created planning folder: {plan_path}")
-        print(f"  (flattened structure: plan files directly in folder)")
+        print(f"  (epic data stored in TinyDB)")
         print("\n[RECOMMENDED] Next time, use: agentic epic init <branch> --description <description>")
 
 
@@ -1273,12 +1181,6 @@ def cmd_status(args):
     mmd_files = list(plan_path.glob("orchestration_*.mmd"))
     has_orchestration = len(mmd_files) > 0
     orchestration_file = mmd_files[0].name if mmd_files else None
-
-    # Flattened structure: YAML files directly in plan_path
-    yaml_files = _get_epic_yaml_files(plan_path)
-    if not yaml_files:
-        print_error(f"No plan/ticket files (ticket_*.yml/plan_*.yml) found in {plan_path}")
-        sys.exit(1)
 
     total_pending = 0
     total_completed = 0
@@ -1418,36 +1320,6 @@ def cmd_status(args):
         if next_command:
             console.print(f"  [dim]Command: {next_command}[/dim]")
 
-
-def is_stub_template(content: dict) -> bool:
-    """Check if content is an unpopulated stub template.
-
-    Stub templates are scaffolds created by `agentic epic init` that need
-    to be populated with actual content or deleted.
-
-    Args:
-        content: Parsed YAML content from a plan file.
-
-    Returns:
-        True if the file is a stub template, False otherwise.
-    """
-    if not content:
-        return False
-
-    # Check explicit template status field
-    if content.get("_template_status") == "stub":
-        return True
-
-    # Check for legacy empty stub patterns (before _template_status was added)
-    plan = content.get("plan", content.get("feature", {}))
-    phases = plan.get("phases", [])
-    objective = str(plan.get("objective", ""))
-
-    # Empty phases array with TODO in objective indicates legacy stub
-    if not phases and "TODO" in objective:
-        return True
-
-    return False
 
 
 def _parse_mmd_phases(mmd_content: str) -> list[str]:
@@ -1672,37 +1544,15 @@ def cmd_validate(args):
         print(f"Error: Path does not exist: {plan_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Flattened structure: ticket_*.yml/plan_*.yml files directly in plan_path
-    yaml_files = _get_epic_yaml_files(plan_path)
-    if not yaml_files:
-        errors.append("No ticket files (ticket_*.yml/plan_*.yml) in directory")
-
-    # Validate YAML syntax and check for stub templates
-    for yaml_file in yaml_files:
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-            if content is None:
-                warnings.append(f"{yaml_file.name}: Empty file")
-            elif is_stub_template(content):
-                stub_files.append(yaml_file.name)
-        except yaml.YAMLError as e:
-            errors.append(f"{yaml_file.name}: Invalid YAML - {e}")
-
-    # Check for ticket_completed.yml or plan_completed.yml (optional in flattened structure)
-    completed_file = plan_path / "ticket_completed.yml"
-    if not completed_file.exists():
-        completed_file = plan_path / "plan_completed.yml"
-    if not completed_file.exists():
-        warnings.append("Missing ticket_completed.yml (optional for new plans)")
-
-    # Handle stub files - promote to errors in strict mode
-    if stub_files:
-        stub_message = "Stub template - needs population or deletion"
-        for stub_file in stub_files:
-            if strict:
-                errors.append(f"{stub_file}: {stub_message}")
-            else:
-                warnings.append(f"{stub_file}: {stub_message}")
+    # Validate epic exists in TinyDB
+    yaml_files = []  # No longer used, kept for compatibility with fence checks below
+    try:
+        repo = _get_repo()
+        plan_data_obj = repo.get_epic(plan_path.name)
+        if plan_data_obj is None:
+            errors.append(f"Epic '{plan_path.name}' not found in TinyDB")
+    except Exception as e:
+        errors.append(f"Failed to query TinyDB: {e}")
 
     # EN-007: Orchestration validation
     mmd_files = list(plan_path.glob("orchestration_*.mmd"))
@@ -1739,23 +1589,7 @@ def cmd_validate(args):
                             if task.id:
                                 yaml_tasks.add(task.id.upper())
             except Exception:
-                # Fallback: read YAML files directly
-                for yaml_file in yaml_files:
-                    try:
-                        content = yaml.safe_load(yaml_file.read_text())
-                        if not content:
-                            continue
-                        phases = _get_phases_from_content(content)
-                        for phase in phases:
-                            phase_id = _get_phase_id(phase)
-                            if phase_id:
-                                yaml_phases.add(phase_id.upper())
-                            for task in phase.get("tickets", []):
-                                task_id = task.get("id") or task.get("task_id", "")
-                                if task_id:
-                                    yaml_tasks.add(task_id.upper())
-                    except yaml.YAMLError:
-                        continue
+                pass  # TinyDB is the sole data source
 
             # Compare phases
             mmd_phase_set = set(p.upper() for p in mmd_phases)
@@ -1961,48 +1795,11 @@ def _update_task_status(plan_path: Path, task_id: str, new_status: str):
             if folder_matches:
                 updated = repo.update_ticket_status(plan_path.name, task_id, new_status)
                 if updated:
-                    try:
-                        repo.sync_to_yaml(plan_path.name)
-                    except Exception:
-                        pass
                     return
     except Exception:
         pass
 
-    # YAML fallback: direct file mutation
-    for yaml_file in _get_epic_yaml_files(plan_path):
-        content = yaml_file.read_text()
-        data = yaml.safe_load(content)
-        if not data:
-            continue
-
-        plan = data.get("plan", data.get("feature", {}))
-        modified = False
-
-        for key in ["phases", "implementation_steps"]:
-            items = plan.get(key, []) or data.get(key, [])
-            for item in items:
-                nested_tasks = item.get("tickets", [])
-                for task in nested_tasks:
-                    if task.get("id") == task_id or task.get("task_id") == task_id:
-                        task["status"] = new_status
-                        modified = True
-                        break
-                if modified:
-                    break
-                if item.get("id") == task_id or item.get("task_id") == task_id:
-                    item["status"] = new_status
-                    modified = True
-                    break
-            if modified:
-                break
-
-        if modified:
-            with open(yaml_file, "w") as f:
-                yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-            return
-
-    print(f"Error: Task {task_id} not found in plan files", file=sys.stderr)
+    print(f"Error: Task {task_id} not found in TinyDB", file=sys.stderr)
     sys.exit(1)
 
 
@@ -2119,49 +1916,8 @@ def cmd_task_list(args, ctx=None):
         all_tasks = None
 
     if all_tasks is None:
-        # Fallback: existing YAML scanning logic
-        yaml_files = _get_epic_yaml_files(plan_path)
-        if not yaml_files:
-            print_error(f"No plan/ticket files (ticket_*.yml/plan_*.yml) found in {plan_path}")
-            sys.exit(1)
-
-        all_tasks = []
-
-        for yaml_file in sorted(yaml_files):
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError:
-                continue
-
-            if not content:
-                continue
-
-            # Extract tasks from phases structure (check both root and nested under plan)
-            phases = _get_phases_from_content(content)
-            for phase in phases:
-                phase_id = _get_phase_id(phase)
-                phase_name = phase.get("name", "")
-                tasks = phase.get("tickets", [])
-
-                for task in tasks:
-                    task_status = task.get("status", "pending")
-                    if status_filter != "all" and task_status != status_filter:
-                        continue
-
-                    task_info = {
-                        "id": task.get("id") or task.get("task_id", ""),
-                        "description": task.get("description", ""),
-                        "status": task_status,
-                        "phase_id": phase_id,
-                        "phase_name": phase_name,
-                        "source_file": yaml_file.name,
-                    }
-
-                    if verbose:
-                        task_info["guidance"] = task.get("guidance", "")
-                        task_info["success_criteria"] = task.get("success_criteria", [])
-
-                    all_tasks.append(task_info)
+        print_error(f"No task data found in TinyDB for epic: {plan_path.name}")
+        sys.exit(1)
 
     if is_json_output():
         print_json({"tasks": all_tasks, "count": len(all_tasks)})
@@ -2252,35 +2008,6 @@ def cmd_task_status(args, ctx=None):
             repo.close()
     except Exception:
         task_data = None
-
-    # YAML fallback
-    if task_data is None:
-        for yaml_file in _get_epic_yaml_files(plan_path):
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError:
-                continue
-
-            if not content:
-                continue
-
-            phases = _get_phases_from_content(content)
-            for phase in phases:
-                tasks = phase.get("tickets", [])
-                for task in tasks:
-                    if task.get("id") == task_id or task.get("task_id") == task_id:
-                        task_data = task
-                        source_file = yaml_file.name
-                        phase_info = {
-                            "phase_id": _get_phase_id(phase),
-                            "name": phase.get("name"),
-                            "status": phase.get("status"),
-                        }
-                        break
-                if task_data:
-                    break
-            if task_data:
-                break
 
     if not task_data:
         print_error(f"Task '{task_id}' not found")
@@ -2405,79 +2132,22 @@ def cmd_task_add(args, ctx=None):
             })
             if added:
                 tinydb_done = True
-                # Sync to YAML for git visibility
-                try:
-                    repo.sync_to_yaml(plan_path.name)
-                except Exception:
-                    pass
     except Exception:
         pass
 
-    # YAML fallback if TinyDB path failed
     if not tinydb_done:
-        target_file = None
-        for pattern in ["ticket_build*.yml", "plan_build*.yml", "ticket_*.yml", "plan_*.yml"]:
-            files = list(plan_path.glob(pattern))
-            if files:
-                target_file = files[0]
-                break
-
-        if not target_file:
-            print_error("No plan/ticket files (ticket_*.yml/plan_*.yml) found in plan directory")
-            sys.exit(1)
-
-        try:
-            content = yaml.safe_load(target_file.read_text())
-        except yaml.YAMLError as e:
-            print_error(f"Failed to parse {target_file.name}: {e}")
-            sys.exit(1)
-
-        if not content:
-            content = {"phases": []}
-
-        phases = _get_phases_from_content(content)
-        target_phase = None
-        if phase_id:
-            for phase in phases:
-                if _get_phase_id(phase) == phase_id:
-                    target_phase = phase
-                    break
-            if not target_phase:
-                print_error(f"Phase '{phase_id}' not found")
-                sys.exit(1)
-        else:
-            if phases:
-                target_phase = phases[-1]
-            else:
-                target_phase = {"phase_id": "adhoc_01", "name": "Ad-hoc Tasks", "status": "pending", "tickets": []}
-                phases.append(target_phase)
-                content["phases"] = phases
-
-        if not new_task_id:
-            existing_ids = [t.get("task_id", "") for t in target_phase.get("tickets", [])]
-            phase_prefix = _get_phase_id(target_phase) or "task"
-            task_num = len(existing_ids) + 1
-            new_task_id = f"{phase_prefix}_{task_num:03d}"
-
-        new_task = {"task_id": new_task_id, "description": description, "status": "pending", "priority": priority}
-        if "tickets" not in target_phase:
-            target_phase["tickets"] = []
-        target_phase["tickets"].append(new_task)
-
-        with open(target_file, "w") as f:
-            yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-        phase_name_used = target_phase.get("name", "")
+        print_error("Failed to add task via TinyDB")
+        sys.exit(1)
 
     if is_json_output():
         print_json({
             "task_id": new_task_id,
             "description": description,
             "phase": phase_name_used,
-            "source": "TinyDB" if tinydb_done else "YAML",
+            "source": "TinyDB",
         })
     else:
-        source = "TinyDB" if tinydb_done else "YAML"
-        print_success(f"Added task '{new_task_id}' to phase '{phase_name_used}' ({source})")
+        print_success(f"Added task '{new_task_id}' to phase '{phase_name_used}' (TinyDB)")
 
 
 def cmd_archive(args):
@@ -2759,17 +2429,6 @@ def cmd_cancel(args, ctx=None):
     except Exception:
         pass
 
-    if current_status == "unknown":
-        build_file = plan_folder / "ticket_build.yml"
-        if not build_file.exists():
-            build_file = plan_folder / "plan_build.yml"
-        if build_file.exists():
-            try:
-                data = yaml.safe_load(build_file.read_text()) or {}
-                current_status = data.get("status", "unknown")
-            except yaml.YAMLError:
-                pass
-
     if current_status == "cancelled":
         print_warning(f"Plan is already cancelled: {plan_folder.name}")
         return
@@ -2794,30 +2453,12 @@ def cmd_cancel(args, ctx=None):
             result = repo.cancel_epic(plan_folder.name)
             if result.success:
                 tinydb_done = True
-                try:
-                    repo.sync_to_yaml(plan_folder.name)
-                except Exception:
-                    pass
     except Exception:
         pass
 
-    # YAML fallback
     if not tinydb_done:
-        build_file = plan_folder / "ticket_build.yml"
-        if not build_file.exists():
-            build_file = plan_folder / "plan_build.yml"
-        if not build_file.exists():
-            print_error(f"No ticket_build.yml or plan_build.yml found in {plan_folder}")
-            sys.exit(1)
-        try:
-            data = yaml.safe_load(build_file.read_text()) or {}
-        except yaml.YAMLError as e:
-            print_error(f"Failed to parse {build_file.name}: {e}")
-            sys.exit(1)
-        data["status"] = "cancelled"
-        data["cancelled_date"] = datetime.now().strftime("%Y-%m-%d")
-        with open(build_file, "w") as f:
-            yaml.dump(data, f, default_flow_style=False)
+        print_error(f"Failed to cancel plan via TinyDB: {plan_folder.name}")
+        sys.exit(1)
 
     if is_json_output():
         print_json({
@@ -2879,11 +2520,6 @@ def cmd_list(args):
     for meta in plan_metas:
         plan_folder = meta.epic_folder
         if not plan_folder.is_dir():
-            continue
-
-        # Only include plans that have ticket_*.yml/plan_*.yml files (skip empty scaffolds)
-        yaml_files = _get_epic_yaml_files(plan_folder)
-        if not yaml_files:
             continue
 
         # Get task counts via PlanService
@@ -3145,74 +2781,8 @@ def cmd_task_update(args, ctx=None):
                 if updated:
                     task_found = True
                     updated_file = "(via TinyDB)"
-                    # Sync to YAML for git visibility
-                    try:
-                        repo.sync_to_yaml(plan_path.name)
-                    except Exception:
-                        pass
     except Exception:
         pass
-
-    # YAML fallback
-    if not task_found:
-        yaml_files = _get_epic_yaml_files(plan_path)
-        if not yaml_files:
-            print_error(f"No plan/ticket files (ticket_*.yml/plan_*.yml) found in {plan_path}")
-            sys.exit(1)
-
-        for yaml_file in yaml_files:
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError:
-                continue
-
-            if not content:
-                continue
-
-            phases = _get_phases_from_content(content)
-            for phase in phases:
-                tasks = phase.get("tickets", [])
-                for task in tasks:
-                    tid = task.get("id") or task.get("task_id") or ""
-                    if tid == task_id:
-                        old_status = task.get("status", "pending")
-
-                        valid_transitions = {
-                            "pending": ["in_progress", "blocked"],
-                            "in_progress": ["completed", "blocked", "pending"],
-                            "completed": ["pending", "in_progress"],
-                            "blocked": ["pending", "in_progress"],
-                        }
-
-                        if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
-                            if is_json_output():
-                                print_json({
-                                    "error": f"Invalid transition from {old_status} to {new_status}",
-                                    "task_id": task_id,
-                                    "current_status": old_status,
-                                })
-                            else:
-                                print_warning(f"Status transition from '{old_status}' to '{new_status}' for task {task_id}")
-
-                        task["status"] = new_status
-                        if note:
-                            task["completion_note"] = note
-                        if new_status == "completed":
-                            task["completed_at"] = datetime.now().isoformat()
-
-                        task_found = True
-                        updated_file = yaml_file
-                        break
-                if task_found:
-                    break
-
-            if task_found:
-                try:
-                    yaml_file.write_text(yaml.dump(content, default_flow_style=False, sort_keys=False))
-                except IOError as e:
-                    print_error(f"Failed to write {yaml_file}: {e}")
-                    sys.exit(1)
-                break
 
     if not task_found:
         if is_json_output():
@@ -3291,63 +2861,10 @@ def cmd_task_current(args, ctx=None):
         current_task = None
         all_tasks = None
 
-    # YAML fallback: scan plan files for full task details
     if current_task is None and all_tasks is None:
-        yaml_files = _get_epic_yaml_files(plan_path)
-        if not yaml_files:
-            print_error(f"No plan/ticket files (ticket_*.yml/plan_*.yml) found in {plan_path}")
-            sys.exit(1)
-
-        yaml_tasks = []
-        for yaml_file in sorted(yaml_files):
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError:
-                continue
-
-            if not content:
-                continue
-
-            phases = _get_phases_from_content(content)
-            for phase in phases:
-                phase_name = phase.get("name", "")
-                phase_id = _get_phase_id(phase)
-                tasks = phase.get("tickets", [])
-
-                for task in tasks:
-                    task_info = {
-                        "id": task.get("id") or task.get("task_id", ""),
-                        "name": task.get("name", ""),
-                        "description": task.get("description", ""),
-                        "status": task.get("status", "pending"),
-                        "phase": phase_name,
-                        "phase_id": phase_id,
-                        "inputs": task.get("inputs", []),
-                        "target_files": task.get("target_files", []),
-                        "guidance": task.get("guidance", ""),
-                        "success_criteria": task.get("success_criteria", []),
-                        "agent_type": task.get("agent_type", ""),
-                        "source_file": yaml_file.name,
-                    }
-                    yaml_tasks.append(task_info)
-
-        # Find current task from YAML scan
-        for task in yaml_tasks:
-            if task["status"] == "in_progress":
-                current_task = task
-                break
-        if not current_task:
-            for task in yaml_tasks:
-                if task["status"] == "pending":
-                    current_task = task
-                    break
-
-        # Build completion stats from YAML tasks
-        completed_count = sum(1 for t in yaml_tasks if t["status"] == "completed")
-        all_tasks = {
-            "total": len(yaml_tasks),
-            "completed": completed_count,
-        }
+        from agenticcli.console import print_error
+        print_error(f"No task data found in TinyDB for epic: {plan_path.name}")
+        sys.exit(1)
 
     if is_json_output():
         if current_task:
@@ -3451,71 +2968,14 @@ def cmd_phase_add(args, ctx=None):
                 })
                 if added:
                     tinydb_done = True
-                    try:
-                        repo.sync_to_yaml(plan_path.name)
-                    except Exception:
-                        pass
     except Exception:
         pass
 
-    # YAML fallback
     if not tinydb_done:
-        build_file = plan_path / "ticket_build.yml"
-        if not build_file.exists():
-            build_file = plan_path / "plan_build.yml"
+        print_error("Failed to add phase via TinyDB")
+        sys.exit(1)
 
-        if build_file.exists():
-            try:
-                content = yaml.safe_load(build_file.read_text())
-                if content is None:
-                    content = {}
-            except yaml.YAMLError as e:
-                print_error(f"Failed to parse {build_file.name}: {e}")
-                sys.exit(1)
-        else:
-            print_error(f"plan_build.yml not found in {plan_path}")
-            print("Hint: Create a plan first with 'agentic epic init' or 'agentic plan scaffold'", file=sys.stderr)
-            sys.exit(1)
-
-        if "phases" in content:
-            phases = content["phases"]
-        elif "plan" in content and "phases" in content["plan"]:
-            phases = content["plan"]["phases"]
-        else:
-            phases = []
-            content["phases"] = phases
-
-        for existing_phase in phases:
-            existing_id = _get_phase_id(existing_phase)
-            if existing_id == phase_id:
-                print_error(f"Phase with ID '{phase_id}' already exists")
-                sys.exit(1)
-
-        new_phase = {
-            "phase_id": phase_id,
-            "name": phase_name,
-            "status": "pending",
-            "tickets": [],
-        }
-        if phase_description:
-            new_phase["description"] = phase_description
-
-        phases.append(new_phase)
-
-        # Update the content (handle both structures)
-        if "plan" in content and "phases" in content["plan"]:
-            content["plan"]["phases"] = phases
-        else:
-            content["phases"] = phases
-
-        try:
-            with open(build_file, "w") as f:
-                yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-        except IOError as e:
-            print_error(f"Failed to write {build_file}: {e}")
-            sys.exit(1)
-
-    source = "TinyDB" if tinydb_done else "YAML"
+    source = "TinyDB"
     if is_json_output():
         print_json({
             "phase_id": phase_id,
@@ -3569,49 +3029,8 @@ def cmd_phase_list(args, ctx=None):
         phases_data = None
 
     if phases_data is None:
-        # Fallback: Load ticket_build.yml / plan_build.yml directly
-        build_file = plan_path / "ticket_build.yml"
-        if not build_file.exists():
-            build_file = plan_path / "plan_build.yml"
-        if not build_file.exists():
-            print_error(f"plan_build.yml not found in {plan_path}")
-            sys.exit(1)
-
-        try:
-            content = yaml.safe_load(build_file.read_text())
-        except yaml.YAMLError as e:
-            print_error(f"Failed to parse {build_file.name}: {e}")
-            sys.exit(1)
-
-        if not content:
-            print_error(f"{build_file.name} is empty")
-            sys.exit(1)
-
-        # Get phases from content
-        phases = _get_phases_from_content(content)
-
-        if not phases:
-            if is_json_output():
-                print_json({"phases": [], "count": 0})
-            else:
-                console.print("[dim]No phases found in ticket_build.yml[/dim]")
-            return
-
-        # Build phase data with task counts
-        phases_data = []
-        for phase in phases:
-            phase_id = _get_phase_id(phase)
-            phase_name = phase.get("name", "")
-            phase_status = phase.get("status", "pending")
-            tasks = phase.get("tickets", [])
-            task_count = len(tasks)
-
-            phases_data.append({
-                "id": phase_id,
-                "name": phase_name,
-                "status": phase_status,
-                "tasks": task_count,
-            })
+        print_error(f"No phase data found in TinyDB for epic: {plan_path.name}")
+        sys.exit(1)
 
     if not phases_data:
         if is_json_output():
@@ -3706,86 +3125,20 @@ def cmd_phase_update(args, ctx=None):
                     updated = repo.update_phase(plan_path.name, phase_id, updates)
                     if updated:
                         phase_found = True
-                        try:
-                            repo.sync_to_yaml(plan_path.name)
-                        except Exception:
-                            pass
     except Exception:
         pass
 
-    # YAML fallback
     if not phase_found:
-        build_file = plan_path / "ticket_build.yml"
-        if not build_file.exists():
-            build_file = plan_path / "plan_build.yml"
-        if not build_file.exists():
-            print_error(f"plan_build.yml not found in {plan_path}")
-            sys.exit(1)
-
-        try:
-            content = yaml.safe_load(build_file.read_text())
-            if content is None:
-                content = {}
-        except yaml.YAMLError as e:
-            print_error(f"Failed to parse {build_file.name}: {e}")
-            sys.exit(1)
-
-        if "phases" in content:
-            phases = content["phases"]
-            phases_location = "root"
-        elif "plan" in content and "phases" in content["plan"]:
-            phases = content["plan"]["phases"]
-            phases_location = "nested"
+        if is_json_output():
+            print_json({"error": f"Phase not found: {phase_id}"})
         else:
-            print_error("No phases found in ticket_build.yml")
-            sys.exit(1)
-
-        for phase in phases:
-            existing_id = _get_phase_id(phase)
-            if existing_id == phase_id:
-                phase_found = True
-                old_status = phase.get("status", "pending")
-                old_name = phase.get("name", "")
-
-                if new_status:
-                    valid_transitions = {
-                        "pending": ["in_progress", "blocked"],
-                        "in_progress": ["completed", "blocked", "pending"],
-                        "completed": ["pending", "in_progress"],
-                        "blocked": ["pending", "in_progress"],
-                    }
-                    if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
-                        if not is_json_output():
-                            print_warning(f"Status transition from '{old_status}' to '{new_status}' for phase {phase_id}")
-                    phase["status"] = new_status
-                if new_name:
-                    phase["name"] = new_name
-                break
-
-        if not phase_found:
-            if is_json_output():
-                print_json({"error": f"Phase not found: {phase_id}"})
-            else:
-                print_error(f"Phase not found: {phase_id}")
-                print("Hint: Use 'agentic epic phase list' to see available phase IDs", file=sys.stderr)
-            sys.exit(1)
-        # YAML write-back (only in fallback path)
-        if phases_location == "nested":
-            content["plan"]["phases"] = phases
-        else:
-            content["phases"] = phases
-
-        try:
-            with open(build_file, "w") as f:
-                yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-        except IOError as e:
-            print_error(f"Failed to write {build_file}: {e}")
-            sys.exit(1)
+            print_error(f"Phase not found: {phase_id}")
+            print("Hint: Use 'agentic epic phase list' to see available phase IDs", file=sys.stderr)
+        sys.exit(1)
 
     if is_json_output():
         result = {
             "phase_id": phase_id,
-            "file": build_file.name,
             "plan_path": str(plan_path),
         }
         if new_status:
@@ -3963,32 +3316,6 @@ def cmd_orchestration_generate(args, ctx=None):
                 })
     except Exception:
         pass
-
-    if not all_phases:
-        # Fallback: read plan YAML files directly
-        yaml_files = _get_epic_yaml_files(plan_path)
-        if not yaml_files:
-            print_error(f"No plan/ticket files (ticket_*.yml/plan_*.yml) found in {plan_path}")
-            sys.exit(1)
-
-        for yaml_file in sorted(yaml_files):
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError as e:
-                print_warning(f"Skipping {yaml_file.name}: {e}")
-                continue
-
-            if not content:
-                continue
-
-            if not plan_name:
-                plan_name = content.get("name", "")
-            if not plan_objective:
-                plan_objective = content.get("objective", "")
-
-            phases = _get_phases_from_content(content)
-            for phase in phases:
-                all_phases.append(phase)
 
     if not all_phases:
         print_error("No phases found in plan YAML files")
@@ -4221,7 +3548,7 @@ def cmd_orchestration_validate(args, ctx=None):
     yaml_phases = []
     yaml_tasks = []
     yaml_phase_ids = set()
-    yaml_files = _get_epic_yaml_files(plan_path)
+    yaml_files = []  # No longer used, kept for output compatibility
 
     try:
         repo = _get_repo()
@@ -4250,41 +3577,8 @@ def cmd_orchestration_validate(args, ctx=None):
         pass
 
     if not yaml_tasks:
-        # Fallback: read plan YAML files
-        if not yaml_files:
-            print_error(f"No plan/ticket files (ticket_*.yml/plan_*.yml) found in {plan_path}")
-            sys.exit(2)
-
-        for yaml_file in sorted(yaml_files):
-            try:
-                content = yaml.safe_load(yaml_file.read_text())
-            except yaml.YAMLError as e:
-                print_warning(f"Skipping {yaml_file.name}: YAML parse error - {e}")
-                continue
-
-            if not content:
-                continue
-
-            # Collect phases
-            phases = _get_phases_from_content(content)
-            for phase in phases:
-                phase_id = _get_phase_id(phase)
-                phase_name = phase.get("name", "")
-                if phase_id:
-                    yaml_phases.append({"id": phase_id, "name": phase_name, "source": yaml_file.name})
-                    yaml_phase_ids.add(phase_id)
-
-                # Collect tasks from this phase
-                tasks = phase.get("tickets", [])
-                for task in tasks:
-                    task_id = task.get("id") or task.get("task_id", "")
-                    if task_id:
-                        yaml_tasks.append({
-                            "id": task_id,
-                            "phase_id": phase_id,
-                            "name": task.get("name", ""),
-                            "source": yaml_file.name,
-                        })
+        print_error(f"No task data found in TinyDB for epic: {plan_path.name}")
+        sys.exit(2)
 
     # Validation results
     errors = []
@@ -4478,68 +3772,14 @@ def cmd_stories_list(args, ctx=None):
 
     plan_path = find_epic_folder(getattr(args, "plan", None))
 
-    # Flattened structure: YAML files directly in plan_path
-    yaml_files = _get_epic_yaml_files(plan_path)
-    if not yaml_files:
-        print_error(f"No plan/ticket files (ticket_*.yml/plan_*.yml) found in {plan_path}")
-        sys.exit(1)
-
+    # User stories are not stored in TinyDB - feature needs migration
     all_stories = []
-
-    for yaml_file in sorted(yaml_files):
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-        except yaml.YAMLError:
-            continue
-
-        if not content:
-            continue
-
-        # Extract user_stories from content
-        # Can be at root level or nested under plan/feature
-        user_stories = content.get("user_stories", [])
-        if not user_stories:
-            plan_data = content.get("plan", content.get("feature", {}))
-            user_stories = plan_data.get("user_stories", [])
-
-        for story in user_stories:
-            story_info = {
-                "id": story.get("id", ""),
-                "as": story.get("as", ""),
-                "i_want": story.get("i_want", ""),
-                "so_that": story.get("so_that", ""),
-                "command": story.get("command", ""),
-                "acceptance": story.get("acceptance", ""),
-                "source_file": yaml_file.name,
-            }
-            all_stories.append(story_info)
 
     if is_json_output():
         print_json({"user_stories": all_stories, "count": len(all_stories)})
     else:
         print_header(f"User Stories in {plan_path.name}")
-
-        if not all_stories:
-            console.print("[dim]No user stories found.[/dim]")
-            return
-
-        rows = []
-        for story in all_stories:
-            # Truncate i_want to fit in table
-            i_want = story["i_want"]
-            if len(i_want) > 40:
-                i_want = i_want[:37] + "..."
-
-            rows.append([
-                f"[bold]{story['id']}[/bold]",
-                story["as"],
-                i_want,
-                f"[dim]{story['command']}[/dim]" if story["command"] else "[dim]-[/dim]",
-            ])
-
-        print_table("", ["ID", "As", "I Want", "Command"], rows)
-
-        console.print(f"\n[dim]Total: {len(all_stories)} user stories[/dim]")
+        console.print("[dim]No user stories found. User stories are not yet stored in TinyDB.[/dim]")
 
 
 def cmd_stories_test(args, ctx=None):
@@ -4574,41 +3814,8 @@ def cmd_stories_test(args, ctx=None):
     output_file = getattr(args, "output", None)
     output_format = getattr(args, "format", "yaml")
 
-    # Flattened structure: YAML files directly in plan_path
-    yaml_files = _get_epic_yaml_files(plan_path)
-    if not yaml_files:
-        print_error(f"No plan/ticket files (ticket_*.yml/plan_*.yml) found in {plan_path}")
-        sys.exit(1)
-
+    # User stories are not stored in TinyDB - feature needs migration
     all_stories = []
-
-    for yaml_file in sorted(yaml_files):
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-        except yaml.YAMLError:
-            continue
-
-        if not content:
-            continue
-
-        # Extract user_stories from content
-        # Can be at root level or nested under plan/feature
-        user_stories = content.get("user_stories", [])
-        if not user_stories:
-            plan_data = content.get("plan", content.get("feature", {}))
-            user_stories = plan_data.get("user_stories", [])
-
-        for story in user_stories:
-            story_info = {
-                "id": story.get("id", ""),
-                "as": story.get("as", ""),
-                "i_want": story.get("i_want", ""),
-                "so_that": story.get("so_that", ""),
-                "command": story.get("command", ""),
-                "acceptance": story.get("acceptance", ""),
-                "source_file": yaml_file.name,
-            }
-            all_stories.append(story_info)
 
     if not all_stories:
         print_error("No user stories found in plan files")
@@ -4842,62 +4049,19 @@ def _find_epics_base() -> Optional[Path]:
 
 
 def cmd_db_sync(args):
-    """Rebuild TinyDB from YAML files or export DB to YAML.
+    """db sync is disabled. TinyDB is the sole data store.
 
-    With --export: writes TinyDB state back to YAML files (reverse sync).
-    Without --export: imports all YAML plan files into TinyDB.
+    YAML epic files are no longer used for data storage.
     """
-    from agenticguidance.services.epic_repository import EpicRepository
-
     json_output = getattr(args, "json", False)
-    export_mode = getattr(args, "export", False)
 
-    try:
-        repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
-
-        if export_mode:
-            # Export TinyDB to YAML
-            plans = repo.list_epics()
-            exported = 0
-            failed = 0
-            for plan_meta in plans:
-                ok = repo.sync_to_yaml(plan_meta.epic_folder_name)
-                if ok:
-                    exported += 1
-                else:
-                    failed += 1
-            result = {"exported": exported, "failed": failed}
-            if json_output:
-                import json
-                print(json.dumps(result))
-            else:
-                print(f"Exported {exported} plans to YAML ({failed} failed)")
-        else:
-            # Import YAML to TinyDB
-            plans_base = _find_epics_base()
-            if not plans_base:
-                if json_output:
-                    import json
-                    print(json.dumps({"error": "Could not find docs/plans directory"}))
-                else:
-                    print("Error: Could not find docs/plans directory", file=sys.stderr)
-                sys.exit(1)
-
-            stats = repo.import_all_yaml(plans_base)
-            if json_output:
-                import json
-                print(json.dumps(stats))
-            else:
-                print(f"Sync complete: {stats['imported']} imported, {stats['skipped']} skipped, {stats['failed']} failed")
-
-        repo.close()
-    except Exception as e:
-        if json_output:
-            import json
-            print(json.dumps({"error": str(e)}))
-        else:
-            print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    error_msg = "Error: db sync is disabled. TinyDB is the sole data store. YAML epic files are no longer used."
+    if json_output:
+        import json
+        print(json.dumps({"error": error_msg}))
+    else:
+        print(error_msg, file=sys.stderr)
+    sys.exit(1)
 
 
 def cmd_db_status(args):

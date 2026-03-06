@@ -108,12 +108,9 @@ validate_plan_folder_exists = validate_epic_folder_exists
 def validate_epic_folder_structure(path: Path) -> tuple[bool, list[str]]:
     """Validate an epic folder has the required structure.
 
-    Expected structure:
-        epic_folder/
-        ├── live/           # Required
-        │   └── *.yml       # At least one epic file
-        ├── completed/      # Optional
-        └── analysis/       # Optional
+    Validates that the epic folder exists as a directory and that
+    the epic is registered in TinyDB. YAML plan files are no longer
+    required.
 
     Args:
         path: Path to the epic folder.
@@ -131,10 +128,31 @@ def validate_epic_folder_structure(path: Path) -> tuple[bool, list[str]]:
     if not path.is_dir():
         return False, [f"path is not a directory: {path}"]
 
-    # Flattened structure: check for plan_*.yml files directly in path
-    yaml_files = list(path.glob("plan_*.yml")) + list(path.glob("plan_*.yaml"))
-    if not yaml_files:
-        issues.append("no plan_*.yml files in directory")
+    # Check if epic exists in TinyDB
+    try:
+        from agenticguidance.services.epic_repository import EpicRepository
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, check=True,
+                cwd=str(path),
+            )
+            repo_root = Path(result.stdout.strip())
+        except subprocess.CalledProcessError:
+            repo_root = path
+        db_path = repo_root / ".agentic" / "epics.db"
+        repo = EpicRepository(db_path=db_path)
+        epic = repo.get_epic(path.name)
+        repo.close()
+        if not epic:
+            issues.append(f"epic '{path.name}' not found in TinyDB")
+    except ImportError:
+        # EpicRepository not available, just check folder exists
+        pass
+    except Exception:
+        pass
 
     return len(issues) == 0, issues
 

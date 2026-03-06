@@ -1,7 +1,7 @@
 """Epic Repository - TinyDB-backed storage for epic data.
 
-Provides a repository abstraction over TinyDB for fast epic/ticket/phase
-queries while keeping YAML files as the git-committed source of truth.
+Provides a repository abstraction over TinyDB as the sole data store for
+epic/ticket/phase data. YAML files are no longer used as a data source.
 
 Replaces the legacy PlanRepository (plan_repository.py) with renamed
 tables, fields, and methods aligned to the epic/ticket terminology.
@@ -12,7 +12,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import yaml
 from tinydb import Query, TinyDB
 
 from .state import FileLock
@@ -72,15 +71,9 @@ class EpicRepository:
         # Migrate legacy "plans" / "tasks" tables if they exist
         self._migrate_from_plans_table()
 
-        if auto_bootstrap and len(self._epics) == 0:
-            base = epics_base
-            if base is None:
-                from .epic import EpicService
-                base = EpicService._find_repo_root() / "docs" / "epics"
-
-            if base.exists():
-                logger.debug("Auto-bootstrapping EpicRepository from %s", base)
-                self.import_all_yaml(base)
+        # auto_bootstrap parameter kept for API compat but no longer imports YAML.
+        # TinyDB is the sole data store; if the DB is empty, it stays empty until
+        # epics are created through the normal create_epic() API.
 
     def close(self):
         """Close the database."""
@@ -533,13 +526,6 @@ class EpicRepository:
                 Epic.epic_folder_name == actual_name,
             )
 
-        try:
-            self.import_from_yaml(new_path)
-        except Exception:
-            logger.warning(
-                "resync_epic_folder: re-import failed for %s", actual_name, exc_info=True
-            )
-
         return True
 
     # ------------------------------------------------------------------
@@ -918,267 +904,6 @@ class EpicRepository:
             execution=d.get("execution"),
             status=d.get("status"),
         )
-
-    # ------------------------------------------------------------------
-    # Import / Export
-    # ------------------------------------------------------------------
-
-    def import_from_yaml(self, epic_folder: Path) -> bool:
-        """Import a single epic from its YAML files into TinyDB.
-
-        Reads all ticket_*.yml files in the folder, extracts epic metadata,
-        phases, and tickets, and upserts them into the database.
-
-        Args:
-            epic_folder: Path to an epic folder containing ticket_*.yml files.
-
-        Returns:
-            True if import succeeded, False on error.
-        """
-        if not epic_folder.is_dir():
-            return False
-
-        epic_folder_name = epic_folder.name
-        # Read both ticket_*.yml and plan_*.yml (migration period may have both)
-        epic_files = sorted(
-            set(epic_folder.glob("ticket_*.yml")) | set(epic_folder.glob("plan_*.yml"))
-        )
-        if not epic_files:
-            return False
-
-        # Merge all YAML files, concatenating list-valued keys (phases, tasks)
-        # instead of overwriting them.
-        merged: dict = {}
-        for ef in epic_files:
-            try:
-                data = yaml.safe_load(ef.read_text())
-                if data and isinstance(data, dict):
-                    for key, value in data.items():
-                        if key in merged and isinstance(merged[key], list) and isinstance(value, list):
-                            merged[key].extend(value)
-                        else:
-                            merged[key] = value
-            except (yaml.YAMLError, OSError):
-                continue
-
-        if not merged:
-            return False
-
-        # ------ Upsert epic document, phases, and tickets under lock ------
-        with self._lock:
-            Epic = Query()
-            epic_doc = {
-                "epic_folder_name": epic_folder_name,
-                "epic_folder": str(epic_folder),
-                "name": merged.get("name", epic_folder_name),
-                "worktree_path": merged.get("worktree_path", ""),
-                "branch": merged.get("branch", ""),
-                "status": merged.get("status", "pending"),
-                "priority": merged.get("priority", "medium"),
-                "objective": merged.get("objective", merged.get("context", "")),
-                "created": merged.get("created", ""),
-                "context": merged.get("context", ""),
-            }
-
-            existing = self._epics.search(Epic.epic_folder_name == epic_folder_name)
-            if existing:
-                self._epics.update(epic_doc, Epic.epic_folder_name == epic_folder_name)
-            else:
-                self._epics.insert(epic_doc)
-
-            # Remove old phases/tickets for this epic (idempotent reimport)
-            Q = Query()
-            self._phases.remove(Q.epic_folder_name == epic_folder_name)
-            self._tickets.remove(Q.epic_folder_name == epic_folder_name)
-
-            phases_data = merged.get("phases", [])
-            seen_phases: set[str] = set()
-            seen_tickets: set[str] = set()
-            for order, phase in enumerate(phases_data):
-                if not isinstance(phase, dict):
-                    continue
-                phase_name = phase.get("name", f"Phase {order + 1}")
-
-                if phase_name not in seen_phases:
-                    seen_phases.add(phase_name)
-                    self._phases.insert(
-                        {
-                            "epic_folder_name": epic_folder_name,
-                            "phase_name": phase_name,
-                            "execution": phase.get("execution"),
-                            "description": phase.get("description"),
-                            "status": phase.get("status"),
-                            "_order": order,
-                        }
-                    )
-
-                for task in phase.get("tickets", []):
-                    task_id = task.get("id") or task.get("task_id", "")
-                    if not task_id or task_id in seen_tickets:
-                        continue
-                    seen_tickets.add(task_id)
-                    self._tickets.insert(
-                        {
-                            "epic_folder_name": epic_folder_name,
-                            "phase_name": phase_name,
-                            "task_id": task_id,
-                            "name": task.get("name", ""),
-                            "description": task.get("description", ""),
-                            "status": task.get("status", "pending"),
-                            "agent": task.get("agent"),
-                            "inputs": task.get("inputs", []),
-                            "target_files": task.get("target_files", []),
-                            "guidance": task.get("guidance"),
-                            "completed_date": task.get("completed_date"),
-                            "success_criteria": task.get("success_criteria"),
-                        }
-                    )
-
-        return True
-
-    def export_to_yaml(self, epic_folder_name: str, output_folder: Path) -> bool:
-        """Export an epic from TinyDB to YAML files.
-
-        Writes a ticket_build.yml containing all epic data, phases, and tickets.
-
-        Args:
-            epic_folder_name: Epic folder name in the database.
-            output_folder: Directory to write YAML files into.
-
-        Returns:
-            True if export succeeded, False on error.
-        """
-        doc = self._find_epic_doc(epic_folder_name)
-        if not doc:
-            return False
-
-        actual_name = doc["epic_folder_name"]
-        output_folder.mkdir(parents=True, exist_ok=True)
-
-        Phase = Query()
-        phase_docs = self._phases.search(Phase.epic_folder_name == actual_name)
-        phase_docs.sort(key=lambda d: d.get("_order", 0))
-
-        Ticket = Query()
-        ticket_docs = self._tickets.search(Ticket.epic_folder_name == actual_name)
-
-        # Group tickets by phase
-        tickets_by_phase: dict[str, list[dict]] = {}
-        for td in ticket_docs:
-            phase_key = td.get("phase_name", "")
-            ticket_dict = {
-                "id": td.get("task_id", ""),
-                "name": td.get("name", ""),
-                "description": td.get("description", ""),
-                "status": td.get("status", "pending"),
-                "agent": td.get("agent"),
-            }
-            for key in ("inputs", "target_files", "guidance", "completed_date", "success_criteria"):
-                val = td.get(key)
-                if val:
-                    ticket_dict[key] = val
-            tickets_by_phase.setdefault(phase_key, []).append(ticket_dict)
-
-        phases_out = []
-        for pd in phase_docs:
-            phase_name = pd.get("phase_name", "")
-            phase_dict: dict = {"name": phase_name}
-            if pd.get("execution"):
-                phase_dict["execution"] = pd["execution"]
-            if pd.get("description"):
-                phase_dict["description"] = pd["description"]
-            phase_dict["tickets"] = tickets_by_phase.get(phase_name, [])
-            phases_out.append(phase_dict)
-
-        epic_out = {
-            "name": doc.get("name", actual_name),
-            "worktree_path": doc.get("worktree_path", ""),
-            "branch": doc.get("branch", ""),
-            "status": doc.get("status", "pending"),
-            "priority": doc.get("priority", "medium"),
-            "objective": doc.get("objective", ""),
-            "created": doc.get("created", ""),
-            "phases": phases_out,
-        }
-        for key in ("context", "deferred_reason", "cancelled_date"):
-            val = doc.get(key)
-            if val:
-                epic_out[key] = val
-
-        out_file = output_folder / "ticket_build.yml"
-        try:
-            with open(out_file, "w") as f:
-                yaml.dump(
-                    epic_out,
-                    f,
-                    default_flow_style=False,
-                    sort_keys=False,
-                    allow_unicode=True,
-                )
-            return True
-        except OSError:
-            return False
-
-    def import_all_yaml(self, epics_base: Path) -> dict:
-        """Import all epic folders under an epics base directory.
-
-        Scans live/, completed/, and deferred/ subdirectories.
-
-        Args:
-            epics_base: Base path (e.g. <repo>/docs/epics).
-
-        Returns:
-            Stats dict: {'imported': N, 'skipped': N, 'failed': N}.
-        """
-        stats = {"imported": 0, "skipped": 0, "failed": 0}
-
-        for status_dir in ("live", "completed", "deferred"):
-            scan_dir = epics_base / status_dir
-            if not scan_dir.is_dir():
-                continue
-
-            for folder in sorted(scan_dir.iterdir()):
-                if not folder.is_dir():
-                    continue
-                # Must have at least one ticket_*.yml or plan_*.yml
-                if not list(folder.glob("ticket_*.yml")) and not list(folder.glob("plan_*.yml")):
-                    stats["skipped"] += 1
-                    continue
-
-                try:
-                    ok = self.import_from_yaml(folder)
-                    if ok:
-                        stats["imported"] += 1
-                    else:
-                        stats["skipped"] += 1
-                except Exception:
-                    logger.warning(
-                        "Failed to import epic: %s", folder.name, exc_info=True
-                    )
-                    stats["failed"] += 1
-
-        return stats
-
-    def sync_to_yaml(self, epic_folder_name: str) -> bool:
-        """Write current DB state for an epic back to its YAML folder.
-
-        Uses the stored epic_folder path and writes ticket_build.yml.
-
-        Args:
-            epic_folder_name: Epic folder name in the database.
-
-        Returns:
-            True if sync succeeded.
-        """
-        doc = self._find_epic_doc(epic_folder_name)
-        if not doc:
-            return False
-
-        epic_folder = Path(doc.get("epic_folder", ""))
-        if not epic_folder.is_dir():
-            return False
-
-        return self.export_to_yaml(epic_folder_name, epic_folder)
 
     # ------------------------------------------------------------------
     # Internal helpers

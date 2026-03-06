@@ -760,6 +760,7 @@ def cmd_spawn(args, ctx=None):
             sdk_options = ClaudeAgentOptions(
                 permission_mode="bypassPermissions",
                 cwd=working_dir,
+                env=get_clean_env(),
             )
             if max_turns:
                 sdk_options.max_turns = max_turns

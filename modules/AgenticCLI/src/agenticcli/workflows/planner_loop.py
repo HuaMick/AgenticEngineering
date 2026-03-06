@@ -98,6 +98,9 @@ def _build_sdk_options(working_dir: str, role: str | None = None) -> object:
     allowed_tools list is passed to ClaudeAgentOptions to restrict what the
     agent can invoke. Unknown roles default to all tools (no restriction).
 
+    Passes a clean environment (CLAUDECODE vars stripped) so spawned agents
+    don't trigger the nested-session guard.
+
     Args:
         working_dir: Working directory for the agent.
         role: Optional agent role identifier used to look up tool restrictions.
@@ -111,17 +114,20 @@ def _build_sdk_options(working_dir: str, role: str | None = None) -> object:
     from claude_agent_sdk import ClaudeAgentOptions
 
     allowed_tools = get_allowed_tools_for_role(role) if role else None
+    clean_env = get_clean_env()
 
     if allowed_tools is not None:
         return ClaudeAgentOptions(
             permission_mode="bypassPermissions",
             cwd=working_dir,
             allowed_tools=allowed_tools,
+            env=clean_env,
         )
     else:
         return ClaudeAgentOptions(
             permission_mode="bypassPermissions",
             cwd=working_dir,
+            env=clean_env,
         )
 
 
@@ -135,6 +141,21 @@ class PlannerLoopWorkflow:
     def __init__(self, epics_dir: Optional[Path] = None, working_dir: Optional[str] = None):
         self.epics_dir = epics_dir or Path.cwd() / "docs" / "epics" / "live"
         self.working_dir = working_dir or str(Path.cwd())
+
+        # Initialize EpicRepository for TinyDB-based lookups
+        self._repository = None
+        try:
+            from agenticguidance.services.epic_repository import EpicRepository
+
+            repo_root = self.epics_dir
+            while repo_root != repo_root.parent:
+                if (repo_root / ".git").exists():
+                    break
+                repo_root = repo_root.parent
+            db_path = repo_root / ".agentic" / "epics.db"
+            self._repository = EpicRepository(db_path=db_path)
+        except Exception:
+            logger.warning("Failed to initialize EpicRepository for PlannerLoopWorkflow")
 
     def run_health_check(self) -> None:
         """Run health check: agentic --version && agentic epic list.
@@ -181,11 +202,30 @@ class PlannerLoopWorkflow:
         logger.info("Found %d epics needing orchestration: %s", len(needs_work), needs_work)
         return needs_work
 
-    def determine_plan_type(self, epic_folder: str) -> Optional[str]:
-        """Determine plan type from plan_*.yml files.
+    # Agent-to-plan-type mapping for inferring plan type from ticket agents
+    _AGENT_TO_PLAN_TYPE = {
+        "build": "build",
+        "builder": "build",
+        "build-python": "build",
+        "test": "test",
+        "tester": "test",
+        "test-runner": "test",
+        "test-audit": "test",
+        "test-builder": "test",
+        "test-user-simulator": "test",
+        "teacher": "guidance",
+        "teacher-update-assets": "guidance",
+        "teacher-update-guidance": "guidance",
+        "cleaning": "cleaning",
+        "planner-reviewer": "build",
+    }
 
-        If the plan type is "build", checks the epic context for SDK-related
-        keywords and returns "sdk" instead when detected.
+    def determine_plan_type(self, epic_folder: str) -> Optional[str]:
+        """Determine plan type for an epic using TinyDB.
+
+        Infers the plan type from ticket agent types stored in TinyDB.
+        Defaults to "build" when tickets exist but agent type is ambiguous.
+        Routes to "sdk" when SDK-related keywords are found in epic context.
 
         Args:
             epic_folder: Epic folder name.
@@ -193,30 +233,39 @@ class PlannerLoopWorkflow:
         Returns:
             Plan type string (build, test, sdk, etc.) or None if not found.
         """
-        epic_dir = self.epics_dir / epic_folder
-        if not epic_dir.exists():
+        if self._repository is None:
             return None
 
-        for plan_file in epic_dir.glob("plan_*.yml"):
-            # Extract type from filename: plan_build.yml -> build
-            stem = plan_file.stem  # plan_build
-            if stem.startswith("plan_"):
-                plan_type = stem[5:]  # build
-                if plan_type:
-                    # If type is "build", check if SDK routing applies
-                    if plan_type == "build" and self.detect_sdk_objective(epic_folder):
-                        logger.info("Epic %s detected as SDK-related, routing to planner-sdk", epic_folder)
-                        return "sdk"
-                    return plan_type
+        try:
+            tickets = self._repository.get_tickets(epic_folder)
+        except Exception:
+            return None
 
-        return None
+        if not tickets:
+            return None
+
+        # Infer plan type from ticket agent values
+        plan_type = "build"  # Default
+        for ticket in tickets:
+            agent = ticket.agent or ""
+            agent_lower = agent.lower()
+            if agent_lower in self._AGENT_TO_PLAN_TYPE:
+                plan_type = self._AGENT_TO_PLAN_TYPE[agent_lower]
+                break
+
+        # If type is "build", check if SDK routing applies
+        if plan_type == "build" and self.detect_sdk_objective(epic_folder):
+            logger.info("Epic %s detected as SDK-related, routing to planner-sdk", epic_folder)
+            return "sdk"
+
+        return plan_type
 
     def detect_sdk_objective(self, epic_folder: str) -> bool:
         """Detect if an epic's objective is SDK-related by checking its context.
 
-        Reads plan_build.yml and checks the context field for SDK-related
-        keywords. This enables automatic routing to planner-sdk for epics
-        that describe SDK migration or integration work.
+        Reads the epic context from TinyDB and checks for SDK-related keywords.
+        This enables automatic routing to planner-sdk for epics that describe
+        SDK migration or integration work.
 
         Args:
             epic_folder: Epic folder name.
@@ -224,19 +273,19 @@ class PlannerLoopWorkflow:
         Returns:
             True if the epic context contains SDK-related keywords.
         """
-        import yaml
-
-        plan_build = self.epics_dir / epic_folder / "plan_build.yml"
-        if not plan_build.exists():
+        if self._repository is None:
             return False
 
         try:
-            content = yaml.safe_load(plan_build.read_text()) or {}
+            epic_data = self._repository.get_epic(epic_folder)
         except Exception:
-            logger.debug("Could not parse %s for SDK detection", plan_build)
+            logger.debug("Could not look up epic %s for SDK detection", epic_folder)
             return False
 
-        context = content.get("context", "")
+        if not epic_data:
+            return False
+
+        context = epic_data.context or ""
         if not isinstance(context, str):
             return False
 
@@ -695,21 +744,21 @@ class PlannerLoopWorkflow:
         return True
 
     def get_plan_status(self, epic_folder: str) -> Optional[str]:
-        """Get the status of an epic.
+        """Get the status of an epic from TinyDB.
 
-        The YAML ``status:`` field takes priority.  Task-completion counting is
-        used only as a fallback when the YAML status is absent or already set to
+        The epic ``status`` field takes priority.  Task-completion counting is
+        used only as a fallback when the status is absent or already set to
         ``"completed"``.  This prevents a fully-tasked-out epic that still has
         ``status: active`` from being prematurely archived.
 
         Priority order:
-        1. If the YAML ``status:`` field is present and is NOT ``"completed"``,
+        1. If the epic status is present and is NOT ``"completed"``,
            return it as-is (e.g. ``"active"`` is respected).
-        2. If the YAML ``status:`` field is ``"completed"``, or is absent, fall
-           back to task-counting: return ``"completed"`` when all tasks are done
+        2. If the status is ``"completed"``, or is absent, fall back to
+           task-counting: return ``"completed"`` when all tasks are done
            (pending == 0 and completed > 0).
-        3. If task counts are inconclusive, return whatever the YAML says (may
-           be ``None`` when the field is absent).
+        3. If task counts are inconclusive, return whatever the status says
+           (may be ``None`` when absent).
 
         Args:
             epic_folder: Epic folder name.
@@ -717,43 +766,38 @@ class PlannerLoopWorkflow:
         Returns:
             The resolved status string, or None if not found.
         """
-        import yaml
-        epic_dir = self.epics_dir / epic_folder
-        if not epic_dir.exists():
+        if self._repository is None:
             return None
 
-        plan_build = epic_dir / "plan_build.yml"
-        if plan_build.exists():
-            try:
-                content = yaml.safe_load(plan_build.read_text()) or {}
-                yaml_status = content.get("status")
+        try:
+            epic_data = self._repository.get_epic(epic_folder)
+        except Exception:
+            return None
 
-                # If the YAML explicitly declares a non-completed status, honour it
-                # and skip task-counting entirely.
-                if yaml_status is not None and yaml_status != "completed":
-                    return yaml_status
+        if not epic_data:
+            return None
 
-                # YAML status is absent or already "completed" – use task counting
-                # as a secondary signal to detect completion.
-                pending = 0
-                completed = 0
-                for phase in content.get("phases", []):
-                    for task in phase.get("tickets", []):
-                        status = task.get("status", "pending")
-                        if status == "completed":
-                            completed += 1
-                        else:
-                            pending += 1
+        epic_status = epic_data.status
 
-                if pending == 0 and completed > 0:
-                    return "completed"
+        # If the epic explicitly declares a non-completed status, honour it
+        # and skip task-counting entirely.
+        if epic_status is not None and epic_status != "completed":
+            return epic_status
 
-                # Task counts are inconclusive – fall back to whatever YAML says.
-                return yaml_status
-            except (yaml.YAMLError, Exception):
-                pass
+        # Status is absent or already "completed" – use task counting
+        # as a secondary signal to detect completion.
+        try:
+            counts = self._repository.get_ticket_counts(epic_folder)
+            pending = counts.get("pending", 0) + counts.get("in_progress", 0)
+            completed = counts.get("completed", 0)
 
-        return None
+            if pending == 0 and completed > 0:
+                return "completed"
+        except Exception:
+            pass
+
+        # Task counts are inconclusive – fall back to whatever status says.
+        return epic_status
 
     def archive_plan(self, epic_folder: str) -> bool:
         """Archive a completed epic via API.

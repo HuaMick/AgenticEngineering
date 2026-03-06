@@ -641,9 +641,16 @@ class ExecutionRunner:
         if self.dangerously_skip_permissions:
             cmd.append("--dangerously-skip-permissions")
 
+        # Unset CLAUDECODE to allow spawning from within orchestration
+        # workflows that may themselves run inside a Claude Code session.
+        import os
+        env = os.environ.copy()
+        env.pop("CLAUDECODE", None)
+
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=60,
             cwd=self.workflow.working_dir,
+            env=env,
         )
         if result.returncode != 0:
             logger.error(

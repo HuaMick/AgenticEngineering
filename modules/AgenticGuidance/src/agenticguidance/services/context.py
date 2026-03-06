@@ -4,11 +4,14 @@ Implements Main-First epic resolution and role context loading
 for the CCI Pull-based context architecture.
 """
 
+import logging
 import subprocess
 from pathlib import Path
 from typing import Optional
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class MainFirstEpicResolver:
@@ -28,6 +31,28 @@ class MainFirstEpicResolver:
         self.cwd = cwd or Path.cwd()
         self._main_worktree: Optional[Path] = None
         self._current_branch: Optional[str] = None
+
+        # Initialize EpicRepository for TinyDB-based lookups
+        self._repository = None
+        try:
+            from agenticguidance.services.epic_repository import EpicRepository
+
+            # Derive db_path from repo root
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--show-toplevel"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    cwd=self.cwd,
+                )
+                repo_root = Path(result.stdout.strip())
+            except subprocess.CalledProcessError:
+                repo_root = self.cwd
+            db_path = repo_root / ".agentic" / "epics.db"
+            self._repository = EpicRepository(db_path=db_path)
+        except Exception:
+            logger.warning("Failed to initialize EpicRepository for MainFirstEpicResolver")
 
     def find_main_worktree(self) -> Optional[Path]:
         """Find the main worktree path (branch main or master).
@@ -91,7 +116,8 @@ class MainFirstEpicResolver:
     def resolve_active_epic(self, branch: Optional[str] = None) -> Optional[dict]:
         """Find the active epic for a branch.
 
-        Scans main_worktree/docs/epics/live/ for folders matching the branch.
+        Uses TinyDB to look up epic data. Falls back to folder-name matching
+        when TinyDB branch data is unavailable.
 
         Args:
             branch: Branch name to find epic for, defaults to current branch.
@@ -115,88 +141,92 @@ class MainFirstEpicResolver:
             return None
 
         plans_live = main_wt / "docs" / "epics" / "live"
-        if not plans_live.exists():
-            return None
 
-        # Search strategies:
-        # 1. Exact branch match in folder name (e.g., 261115CL_agenticcli matches agenticcli)
-        # 2. Folder with matching branch field in plan.yml
-        # 3. Most recent folder if on main/master (return first with live/ content)
+        matching_epic = None
+        matching_folder = None
 
-        matching_plan = None
+        # Strategy 1: Use TinyDB to find epic by branch
+        if self._repository is not None:
+            try:
+                all_epics = self._repository.list_epics()
+                for epic_meta in all_epics:
+                    epic_data = self._repository.get_epic(epic_meta.epic_folder_name)
+                    if not epic_data:
+                        continue
 
-        for folder in sorted(plans_live.iterdir(), key=lambda x: x.name, reverse=True):
-            if not folder.is_dir():
-                continue
-
-            # Strategy 1: Check folder name contains branch
-            folder_name = folder.name.lower()
-            branch_lower = branch.lower().replace("-", "").replace("_", "")
-
-            # Extract the description part of YYMMDDXX_description
-            if "_" in folder.name and len(folder.name) > 9:
-                folder_desc = folder.name[9:].lower().replace("-", "").replace("_", "")
-                if branch_lower in folder_desc or folder_desc in branch_lower:
-                    matching_plan = folder
-                    break
-
-            # Strategy 2: Check plan.yml for branch field (flattened structure)
-            plan_yml = folder / "plan.yml"
-            if not plan_yml.exists():
-                # Try plan_*.yml files directly in folder
-                for pf in folder.glob("plan_*.yml"):
-                    plan_yml = pf
-                    break
-
-            if plan_yml.exists():
-                try:
-                    with open(plan_yml) as f:
-                        plan_data = yaml.safe_load(f)
-                    if plan_data:
-                        plan_branch = plan_data.get("branch", "")
-                        if plan_branch and branch_lower in plan_branch.lower():
-                            matching_plan = folder
-                            break
-                except (yaml.YAMLError, IOError):
-                    pass
-
-        # Strategy 3: If on main/master, return most recent active plan (flattened structure)
-        if not matching_plan and branch in ("main", "master"):
-            for folder in sorted(plans_live.iterdir(), key=lambda x: x.name, reverse=True):
-                if folder.is_dir():
-                    # Check if there are actual plan files directly in the folder (flattened)
-                    plan_files = list(folder.glob("plan_*.yml"))
-                    if plan_files:
-                        matching_plan = folder
+                    # Check branch field match
+                    epic_branch = epic_data.branch or ""
+                    branch_lower = branch.lower().replace("-", "").replace("_", "")
+                    if epic_branch and branch_lower in epic_branch.lower():
+                        matching_epic = epic_data
+                        matching_folder = plans_live / epic_data.epic_folder_name
                         break
 
-        if not matching_plan:
+                    # Check folder name contains branch
+                    folder_name = epic_data.epic_folder_name
+                    if "_" in folder_name and len(folder_name) > 9:
+                        folder_desc = folder_name[9:].lower().replace("-", "").replace("_", "")
+                        if branch_lower in folder_desc or folder_desc in branch_lower:
+                            matching_epic = epic_data
+                            matching_folder = plans_live / epic_data.epic_folder_name
+                            break
+
+                # Strategy 2: If on main/master, return most recent live epic
+                if not matching_epic and branch in ("main", "master"):
+                    for epic_meta in sorted(
+                        all_epics, key=lambda e: e.epic_folder_name, reverse=True
+                    ):
+                        epic_folder_path = Path(str(epic_meta.epic_folder))
+                        if "/epics/live/" in str(epic_folder_path):
+                            epic_data = self._repository.get_epic(epic_meta.epic_folder_name)
+                            if epic_data:
+                                matching_epic = epic_data
+                                matching_folder = plans_live / epic_data.epic_folder_name
+                                break
+            except Exception:
+                logger.debug("TinyDB lookup failed in resolve_active_epic", exc_info=True)
+
+        # Strategy 3: Folder-name matching on disk (fallback if TinyDB missed)
+        if not matching_epic and plans_live.exists():
+            branch_lower = branch.lower().replace("-", "").replace("_", "")
+            for folder in sorted(plans_live.iterdir(), key=lambda x: x.name, reverse=True):
+                if not folder.is_dir():
+                    continue
+                if "_" in folder.name and len(folder.name) > 9:
+                    folder_desc = folder.name[9:].lower().replace("-", "").replace("_", "")
+                    if branch_lower in folder_desc or folder_desc in branch_lower:
+                        matching_folder = folder
+                        # Try to get epic data from TinyDB for this folder
+                        if self._repository:
+                            try:
+                                matching_epic = self._repository.get_epic(folder.name)
+                            except Exception:
+                                pass
+                        break
+
+            # On main/master, return most recent folder
+            if not matching_folder and branch in ("main", "master"):
+                for folder in sorted(plans_live.iterdir(), key=lambda x: x.name, reverse=True):
+                    if folder.is_dir():
+                        matching_folder = folder
+                        if self._repository:
+                            try:
+                                matching_epic = self._repository.get_epic(folder.name)
+                            except Exception:
+                                pass
+                        break
+
+        if not matching_folder:
             return None
 
-        # Extract plan info
+        # Build plan info from TinyDB data or defaults
         plan_info = {
-            "plan_folder": matching_plan,
-            "plan_folder_name": matching_plan.name,
+            "plan_folder": matching_folder,
+            "plan_folder_name": matching_folder.name,
             "main_worktree": main_wt,
-            "objective": None,
-            "status": None,
+            "objective": matching_epic.objective if matching_epic else None,
+            "status": matching_epic.status if matching_epic else None,
         }
-
-        # Try to extract objective from plan files (flattened: directly in matching_plan)
-        for plan_file in matching_plan.glob("plan_*.yml"):
-            try:
-                with open(plan_file) as f:
-                    plan_data = yaml.safe_load(f)
-                if plan_data:
-                    if "objective" in plan_data:
-                        plan_info["objective"] = plan_data["objective"]
-                    elif "plan" in plan_data and "objective" in plan_data["plan"]:
-                        plan_info["objective"] = plan_data["plan"]["objective"]
-                    if "status" in plan_data:
-                        plan_info["status"] = plan_data["status"]
-                    break
-            except (yaml.YAMLError, IOError):
-                pass
 
         return plan_info
 
@@ -209,6 +239,30 @@ class MainFirstEpicResolver:
         Returns:
             Ticket dict or None.
         """
+        # Try TinyDB first for current ticket
+        if self._repository is not None:
+            epic_folder_name = plan_folder.name
+            try:
+                current = self._repository.get_current_ticket(epic_folder_name)
+                if current:
+                    return {
+                        "id": current.id,
+                        "name": current.name,
+                        "description": current.description or "",
+                        "status": current.status or "pending",
+                        "phase": current.phase_name or "Unknown Phase",
+                        "phase_id": current.phase_name or "",
+                        "agent_type": current.agent or "",
+                        "inputs": current.inputs or [],
+                        "target_files": current.target_files or [],
+                        "guidance": current.guidance or "",
+                        "success_criteria": current.success_criteria or [],
+                        "source_file": "(via TinyDB)",
+                    }
+            except Exception:
+                logger.debug("TinyDB current ticket lookup failed", exc_info=True)
+
+        # Fallback to full ticket list scan
         tasks = self.extract_all_tickets(plan_folder)
 
         # First: find in_progress
@@ -224,58 +278,43 @@ class MainFirstEpicResolver:
         return None
 
     def extract_all_tickets(self, plan_folder: Path) -> list:
-        """Extract all tickets from plan files in a folder.
+        """Extract all tickets for an epic from TinyDB.
 
         Args:
-            plan_folder: Path to the plan folder (flattened structure).
+            plan_folder: Path to the plan folder (used to derive epic name).
 
         Returns:
             List of ticket dicts.
         """
-        tasks = []
+        epic_folder_name = plan_folder.name
 
-        if not plan_folder.exists():
-            return tasks
-
-        # Flattened structure: plan files directly in plan_folder
-        for plan_file in plan_folder.glob("plan_*.yml"):
+        # Use TinyDB as the primary source
+        if self._repository is not None:
             try:
-                with open(plan_file) as f:
-                    plan_data = yaml.safe_load(f)
-
-                if not plan_data:
-                    continue
-
-                # Extract phases
-                phases = plan_data.get("phases", [])
-                if not phases and "plan" in plan_data:
-                    phases = plan_data["plan"].get("phases", [])
-
-                for phase in phases:
-                    phase_name = phase.get("name", "Unknown Phase")
-                    phase_id = phase.get("id", "")
-
-                    for task in phase.get("tickets", []):
+                tickets = self._repository.get_tickets(epic_folder_name)
+                if tickets:
+                    tasks = []
+                    for ticket in tickets:
                         task_info = {
-                            "id": task.get("id", ""),
-                            "name": task.get("name", ""),
-                            "description": task.get("description", ""),
-                            "status": task.get("status", "pending"),
-                            "phase": phase_name,
-                            "phase_id": phase_id,
-                            "agent_type": task.get("agent_type", ""),
-                            "inputs": task.get("inputs", []),
-                            "target_files": task.get("target_files", []),
-                            "guidance": task.get("guidance", ""),
-                            "success_criteria": task.get("success_criteria", []),
-                            "source_file": str(plan_file),
+                            "id": ticket.id,
+                            "name": ticket.name,
+                            "description": ticket.description or "",
+                            "status": ticket.status or "pending",
+                            "phase": ticket.phase_name or "Unknown Phase",
+                            "phase_id": ticket.phase_name or "",
+                            "agent_type": ticket.agent or "",
+                            "inputs": ticket.inputs or [],
+                            "target_files": ticket.target_files or [],
+                            "guidance": ticket.guidance or "",
+                            "success_criteria": ticket.success_criteria or [],
+                            "source_file": "(via TinyDB)",
                         }
                         tasks.append(task_info)
+                    return tasks
+            except Exception:
+                logger.debug("TinyDB ticket lookup failed for %s", epic_folder_name, exc_info=True)
 
-            except (yaml.YAMLError, IOError):
-                pass
-
-        return tasks
+        return []
 
 
 # Backward compatibility alias

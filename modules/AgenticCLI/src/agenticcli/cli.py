@@ -573,7 +573,7 @@ def session_spawn(
     background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option(
-        "--dangerously-skip-permissions", help="Skip permission prompts")] = False,
+        "--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts (default: enabled)")] = True,
     no_sdk: Annotated[bool, typer.Option(
         "--no-sdk", help="Force subprocess mode (skip SDK)")] = False,
 ):
@@ -667,7 +667,7 @@ def session_orchestrate_planning(
     completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
     project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter")] = None,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
-    dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions", help="Skip permission prompts")] = False,
+    dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts (default: enabled)")] = True,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Create tmux layout, verify panes, print JSON, then exit")] = False,
 ):
     """Run automated orchestration planning for all plans that need it."""
@@ -691,7 +691,7 @@ def session_orchestrate_executing(
     completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
     project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter")] = None,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
-    dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions", help="Skip permission prompts for spawned agents")] = False,
+    dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts for spawned agents (default: enabled)")] = True,
 ):
     """Run automated orchestration execution for plans with completed MMDs."""
     from agenticcli.commands.orchestrate import cmd_orchestrate

@@ -2,10 +2,11 @@
 
 Provides TicketPresetWorkflow with CLI-specific conventions:
 - PRESETS_DIR class attribute for monkeypatching in tests
-- live_dir instance attribute pointing to epic's live subdirectory
-- File operations target live_dir instead of epic_path directly
+- Loads ticket presets into TinyDB via EpicRepository
 """
 
+import logging
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -13,13 +14,14 @@ import yaml
 
 from agenticguidance.services.preset import PresetLoadResult
 
+logger = logging.getLogger(__name__)
+
 
 class TicketPresetWorkflow:
-    """CLI-adapted workflow for loading ticket presets into epic files.
+    """CLI-adapted workflow for loading ticket presets into TinyDB.
 
-    Differences from agenticguidance.services.preset.TaskPresetWorkflow:
-    - PRESETS_DIR class attribute for preset discovery
-    - live_dir for file output (epic_path / "live")
+    Loads preset template YAML files and adds their tickets to TinyDB
+    via EpicRepository.
     """
 
     PRESETS_DIR: Path = Path(__file__).parent.parent.parent.parent.parent / "AgenticGuidance" / "assets" / "templates" / "presets"
@@ -28,6 +30,25 @@ class TicketPresetWorkflow:
         self.plan_path = plan_path
         self.live_dir = plan_path / "live"
         self.live_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize EpicRepository for TinyDB-based operations
+        self._repository = None
+        try:
+            from agenticguidance.services.epic_repository import EpicRepository
+
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--show-toplevel"],
+                    capture_output=True, text=True, check=True,
+                    cwd=str(plan_path),
+                )
+                repo_root = Path(result.stdout.strip())
+            except subprocess.CalledProcessError:
+                repo_root = plan_path
+            db_path = repo_root / ".agentic" / "epics.db"
+            self._repository = EpicRepository(db_path=db_path)
+        except Exception:
+            logger.warning("Failed to initialize EpicRepository for TicketPresetWorkflow")
 
     @property
     def presets_dir(self) -> Path:
@@ -49,6 +70,15 @@ class TicketPresetWorkflow:
         raise FileNotFoundError(f"Preset '{preset_name}' not found")
 
     def load_preset(self, preset_name: str, dry_run: bool = False) -> PresetLoadResult:
+        """Load a preset template and add its tickets to TinyDB.
+
+        Args:
+            preset_name: Name of the preset template to load.
+            dry_run: If True, don't actually add tickets.
+
+        Returns:
+            PresetLoadResult with operation outcome.
+        """
         preset_path = self.get_preset_path(preset_name)
         preset_data = yaml.safe_load(preset_path.read_text())
         tasks = preset_data.get("tasks", [])
@@ -61,48 +91,63 @@ class TicketPresetWorkflow:
                 dry_run=True,
             )
 
-        target_file = self._find_or_create_task_file()
+        epic_folder_name = self.plan_path.name
 
-        if target_file.exists():
-            content = yaml.safe_load(target_file.read_text()) or {}
-        else:
-            content = {
-                "name": f"tasks-{self.plan_path.name}",
-                "preset_source": preset_name,
-                "tasks": [],
-            }
+        if self._repository is None:
+            return PresetLoadResult(
+                preset_name=preset_name,
+                tasks_added=0,
+                tasks=tasks,
+                target_file="(TinyDB unavailable)",
+            )
 
-        existing_tasks = content.get("tasks", [])
-        existing_ids = {t.get("id") for t in existing_tasks}
+        # Get existing ticket IDs to avoid duplicates
+        try:
+            existing_tickets = self._repository.get_tickets(epic_folder_name)
+            existing_ids = {t.id for t in existing_tickets}
+        except Exception:
+            existing_ids = set()
 
         added_count = 0
+        phase_name = preset_data.get("phase_name", f"Preset: {preset_name}")
+
+        # Ensure the phase exists
+        try:
+            self._repository.add_phase(
+                epic_folder_name,
+                {"phase_name": phase_name, "description": f"Loaded from preset: {preset_name}"},
+            )
+        except Exception:
+            pass  # Phase may already exist
+
         for task in tasks:
-            if task.get("id") not in existing_ids:
-                existing_tasks.append(task)
-                added_count += 1
-
-        content["tasks"] = existing_tasks
-
-        with open(target_file, "w") as f:
-            yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            task_id = task.get("id", "")
+            if task_id and task_id not in existing_ids:
+                try:
+                    self._repository.add_ticket(
+                        epic_folder_name,
+                        phase_name,
+                        {
+                            "task_id": task_id,
+                            "name": task.get("name", ""),
+                            "description": task.get("description", ""),
+                            "status": task.get("status", "pending"),
+                            "agent": task.get("agent_type", ""),
+                            "inputs": task.get("inputs", []),
+                            "target_files": task.get("target_files", []),
+                            "guidance": task.get("guidance", ""),
+                        },
+                    )
+                    added_count += 1
+                except Exception:
+                    logger.warning("Failed to add ticket %s to TinyDB", task_id)
 
         return PresetLoadResult(
             preset_name=preset_name,
             tasks_added=added_count,
             tasks=tasks,
-            target_file=target_file.name,
+            target_file="(TinyDB)",
         )
-
-    def _find_or_create_task_file(self) -> Path:
-        task_file = self.live_dir / "plan_tasks.yml"
-        if task_file.exists():
-            return task_file
-
-        for f in self.live_dir.glob("plan_*.yml"):
-            return f
-
-        self.live_dir.mkdir(parents=True, exist_ok=True)
-        return task_file
 
 
 __all__ = [

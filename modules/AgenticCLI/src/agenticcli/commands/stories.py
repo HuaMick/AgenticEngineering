@@ -658,41 +658,41 @@ def cmd_untested(args):
 
 
 def _find_affected_story_ids(plan_folder: str) -> list[str]:
-    """Find affected story IDs for a plan by reading plan YAML files.
+    """Find affected story IDs for an epic.
 
-    Searches plan_build.yml, plan_test.yml, and user_stories.yml for
-    affected_stories lists.
+    Checks user_stories.yml in the epic folder for affected_stories lists.
+    Epic/ticket data is stored in TinyDB; this function only looks for
+    the standalone user_stories.yml artifact.
     """
-    plan_dir = None
-    for base in [Path.cwd() / "docs" / "plans" / "live",
+    epic_dir = None
+    for base in [Path.cwd() / "docs" / "epics" / "live",
+                 Path.cwd() / "docs" / "epics" / "completed",
+                 # Legacy paths for backward compatibility
+                 Path.cwd() / "docs" / "plans" / "live",
                  Path.cwd() / "docs" / "plans" / "completed"]:
         candidate = base / plan_folder
         if candidate.exists():
-            plan_dir = candidate
+            epic_dir = candidate
             break
 
-    if not plan_dir:
+    if not epic_dir:
         return []
 
     story_ids = []
-    # Check plan_build.yml, plan_test.yml, user_stories.yml
-    for filename in ["plan_build.yml", "plan_test.yml", "user_stories.yml"]:
-        f = plan_dir / filename
-        if not f.exists():
-            continue
+    # Check user_stories.yml (standalone artifact, not plan YAML)
+    stories_file = epic_dir / "user_stories.yml"
+    if stories_file.exists():
         try:
-            content = yaml.safe_load(f.read_text())
+            content = yaml.safe_load(stories_file.read_text())
         except yaml.YAMLError:
-            continue
-        if not content or not isinstance(content, dict):
-            continue
-        affected = content.get("affected_stories", [])
-        if isinstance(affected, list):
-            for item in affected:
-                # Items may be plain IDs or "ID: description" strings
-                sid = str(item).split(":")[0].strip().strip('"').strip("'")
-                if sid and sid not in story_ids:
-                    story_ids.append(sid)
+            content = None
+        if content and isinstance(content, dict):
+            affected = content.get("affected_stories", [])
+            if isinstance(affected, list):
+                for item in affected:
+                    sid = str(item).split(":")[0].strip().strip('"').strip("'")
+                    if sid and sid not in story_ids:
+                        story_ids.append(sid)
 
     return story_ids
 

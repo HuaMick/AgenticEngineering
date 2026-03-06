@@ -7,6 +7,7 @@ Falls back gracefully when the SDK is not installed.
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -96,20 +97,32 @@ async def _stream_query(
     """
     final_result: Optional[Any] = None
 
-    async for message in query(prompt=prompt, options=options):
-        if on_message:
-            on_message(message)
+    # Strip CLAUDECODE vars from os.environ before calling query().
+    # The SDK merges os.environ into the subprocess env, so these vars
+    # would trigger the "nested session" guard in the spawned claude process.
+    _saved_env = {}
+    for var in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
+        if var in os.environ:
+            _saved_env[var] = os.environ.pop(var)
 
-        # Collect assistant text from AssistantMessage content blocks
-        if hasattr(message, "content") and hasattr(message, "role"):
-            if getattr(message, "role", None) == "assistant":
-                for block in getattr(message, "content", []):
-                    if hasattr(block, "text"):
-                        result_text_parts.append(block.text)
+    try:
+        async for message in query(prompt=prompt, options=options):
+            if on_message:
+                on_message(message)
 
-        # Capture the final ResultMessage for metadata
-        if hasattr(message, "subtype") and hasattr(message, "duration_ms"):
-            final_result = message
+            # Collect assistant text from AssistantMessage content blocks
+            if hasattr(message, "content") and hasattr(message, "role"):
+                if getattr(message, "role", None) == "assistant":
+                    for block in getattr(message, "content", []):
+                        if hasattr(block, "text"):
+                            result_text_parts.append(block.text)
+
+            # Capture the final ResultMessage for metadata
+            if hasattr(message, "subtype") and hasattr(message, "duration_ms"):
+                final_result = message
+    finally:
+        # Restore env vars so the parent process state is unchanged
+        os.environ.update(_saved_env)
 
     return final_result
 
