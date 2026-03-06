@@ -214,7 +214,7 @@ class TestGetEpic:
                 {
                     "name": "Phase 1",
                     "description": "Test phase",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "task_001",
                             "name": "Test task",
@@ -362,7 +362,7 @@ class TestGetEpic:
                 {
                     "name": "Phase 1",
                     "description": "First phase",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "task_001",
                             "name": "Task 1",
@@ -380,7 +380,7 @@ class TestGetEpic:
                 {
                     "name": "Phase 2",
                     "description": "Second phase",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "task_003",
                             "name": "Task 3",
@@ -752,7 +752,7 @@ class TestGetEpicTickets:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {"id": "task_001", "name": "Task 1", "status": "pending"},
                         {"id": "task_002", "name": "Task 2", "status": "completed"},
                         {"id": "task_003", "name": "Task 3", "status": "in_progress"},
@@ -788,7 +788,7 @@ class TestGetEpicTickets:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {"id": "task_001", "name": "Task 1", "status": "pending"},
                         {"id": "task_002", "name": "Task 2", "status": "completed"},
                         {"id": "task_003", "name": "Task 3", "status": "pending"},
@@ -841,7 +841,7 @@ class TestValidateEpicStructure:
                 {
                     "id": "phase_001",
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "task_001",
                             "name": "Task 1",
@@ -962,7 +962,7 @@ class TestValidateEpicStructure:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {"id": "task_001", "name": "Task 1"},
                         {"id": "task_001", "name": "Task 2"},  # Duplicate ID
                     ],
@@ -997,7 +997,7 @@ class TestValidateEpicStructure:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "task_001",
                             "name": "Task 1",
@@ -1122,7 +1122,7 @@ class TestValidateTicketNesting:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {"id": "T2", "name": "nested task", "status": "pending"},
                     ],
                 },
@@ -1150,7 +1150,7 @@ class TestValidateTicketNesting:
             "phases": [
                 {
                     "name": "Phase with tasks",
-                    "tasks": [
+                    "tickets": [
                         {"id": "T1", "name": "a task", "status": "pending"},
                     ],
                 },
@@ -1177,7 +1177,7 @@ class TestValidateTicketNesting:
             "phases": [
                 {
                     "name": "Phase with tasks",
-                    "tasks": [
+                    "tickets": [
                         {"id": "T1", "name": "a task", "status": "pending",
                          "description": "desc", "success_criteria": ["ok"]},
                     ],
@@ -1202,14 +1202,14 @@ class TestValidateTicketNesting:
             "phases": [
                 {
                     "name": "Good Phase",
-                    "tasks": [
+                    "tickets": [
                         {"id": "T1", "name": "task", "status": "pending"},
                     ],
                 },
                 {"name": "Empty Phase A"},
                 {
                     "name": "Another Good Phase",
-                    "tasks": [
+                    "tickets": [
                         {"id": "T2", "name": "task 2", "status": "pending"},
                     ],
                 },
@@ -1269,7 +1269,7 @@ class TestValidateTicketNesting:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "T1",
                             "name": "proper task",
@@ -1295,7 +1295,7 @@ class TestValidateTicketNesting:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {"id": "T1", "name": "task 1", "description": "d1",
                          "status": "pending", "success_criteria": ["ok"]},
                         {"id": "T2", "name": "task 2", "description": "d2",
@@ -1304,7 +1304,7 @@ class TestValidateTicketNesting:
                 },
                 {
                     "name": "Phase 2",
-                    "tasks": [
+                    "tickets": [
                         {"id": "T3", "name": "task 3", "description": "d3",
                          "status": "pending", "success_criteria": ["ok"]},
                     ],
@@ -1336,7 +1336,7 @@ class TestValidateTicketNesting:
                 "phases": [
                     {
                         "name": "Phase 1",
-                        "tasks": [
+                        "tickets": [
                             {"id": "T1", "name": "task", "description": "d",
                              "status": "pending", "success_criteria": ["ok"]},
                         ],

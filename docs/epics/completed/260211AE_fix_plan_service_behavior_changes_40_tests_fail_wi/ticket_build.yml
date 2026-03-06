@@ -1,0 +1,161 @@
+name: 260211AE_fix_plan_service_behavior_changes_40_tests_fail_wi
+worktree_path: ''
+branch: main
+status: approved
+priority: medium
+objective: 'Fix ~40 tests failing due to plan service behavior changes. Main issues:
+  1. Flattened plan folder structure (no more live/completed subdirs) - tests expect
+  old nested structure 2. Plan init auto-creates worktrees now (tests expect failure)
+  3. Naming bug in get_worktree_id() extracts too many characters 4. Orchestration
+  sync validation rules changed 5. Plan new --execute builder spawning not triggered
+
+  '
+created: ''
+phases:
+- name: Fix Naming Bug
+  tickets:
+  - id: build_01_01
+    name: ''
+    description: Fix get_worktree_id() to extract 2-letter code correctly
+    status: completed
+    agent: null
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/naming.py
+    guidance: 'In naming.py, get_worktree_id() extracts worktree suffix from path.
+      When worktree path is /home/code/AgenticEngineering-260210WU, it should extract
+      just "WU" (2-letter code) not "260210WU" (full suffix).
+
+      The function has special-case logic around lines 40-75 for parsing YYMMDDXX
+      patterns from branch names. Fix the extraction to: 1. Parse the worktree path
+      suffix (after the last dash) 2. If it matches YYMMDDXX pattern, extract just
+      the XX (last 2 chars) 3. Otherwise fall back to generating a new 2-letter code
+
+      Verify with: generate_plan_folder_name() produces valid YYMMDDXX_description
+      names.
+
+      '
+    success_criteria:
+    - get_worktree_id returns 2 uppercase letters (not 8+ chars)
+    - generate_plan_folder_name produces names matching YYMMDDXX_description pattern
+    - Existing test_naming.py tests still pass
+- name: Update Test Fixtures for Flattened Structure
+  tickets:
+  - id: build_02_01
+    name: ''
+    description: Update test_plan_movement.py fixtures to use flattened structure
+    status: completed
+    agent: null
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_movement.py
+    guidance: 'Tests create plan folders with nested structure (live/*.yml, completed/*.yml).
+      Update to use flattened structure where YAML files are directly in plan_folder/.
+      PlanMovementWorkflow.plan_path.glob("*.yml") expects files directly in folder.
+      self.completed_file = plan_path / "plan_completed.yml" (no nested completed/
+      dir).
+
+      '
+    success_criteria:
+    - All 6 tests in test_plan_movement.py pass
+  - id: build_02_02
+    name: ''
+    description: Update test_plan_creation_flow.py for flattened structure
+    status: completed
+    agent: null
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+    guidance: 'Remove assertions checking for live/ and completed/ subdirectories.
+      Update to check for plan_build.yml directly in plan folder instead. Line 154:
+      assert (plan_path / "live").exists() should become assert (plan_path / "plan_build.yml").exists()
+      or similar.
+
+      '
+    success_criteria:
+    - All 6 tests in test_plan_creation_flow.py pass
+  - id: build_02_03
+    name: ''
+    description: Update test_orchestration_sync.py for new validation rules
+    status: completed
+    agent: null
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_orchestration_sync.py
+    guidance: 'Validation rules have changed. The test creates plan files that now
+      fail validation with "2 errors, 0 warnings". Investigate what the current validation
+      checks and update test plan files to pass validation, OR update assertions to
+      match new validation behavior.
+
+      '
+    success_criteria:
+    - All 7 tests in test_orchestration_sync.py pass
+- name: Update Tests for Changed Behaviors
+  tickets:
+  - id: build_03_01
+    name: ''
+    description: Update test_plan_init.py for auto-worktree creation
+    status: completed
+    agent: null
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_init.py
+    guidance: 'Plan init now auto-creates worktrees instead of erroring on nonexistent
+      branches. Update test_init_requires_existing_worktree to expect success (exit
+      code 0) and verify worktree was created. Also update test_init_error_message_includes_worktree_create_hint
+      - the hint may no longer be needed since init auto-creates.
+
+      '
+    success_criteria:
+    - Both test_plan_init.py tests pass
+  - id: build_03_02
+    name: ''
+    description: Update test_bootstrap_planner_workflow.py for naming and behavior
+    status: completed
+    agent: null
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py
+    guidance: 'After build_01_01 fixes the naming bug, these tests should generate
+      valid plan names. Update test expectations to match current plan init behavior
+      (auto-worktree creation, flattened structure, new naming format).
+
+      '
+    success_criteria:
+    - All 9 tests in test_bootstrap_planner_workflow.py pass
+  - id: build_03_03
+    name: ''
+    description: Update test_plan_new.py builder spawning tests
+    status: pending
+    agent: null
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_new.py
+    guidance: '3 tests fail for --execute builder spawning (44 pass). Investigate
+      why spawned_commands list is empty. The mock or subprocess setup may need updating
+      to match current session spawn implementation. Check if the builder spawning
+      logic in cmd_new/cmd_execute changed.
+
+      '
+    success_criteria:
+    - All 3 failing test_plan_new.py tests pass (47/47 total)
+- name: Verify All Tests Pass
+  tickets:
+  - id: test_01_01
+    name: ''
+    description: Run all affected test files
+    status: pending
+    agent: null
+    guidance: 'Run: cd /home/code/AgenticEngineering/modules/AgenticCLI && python3
+      -m pytest tests/test_plan_movement.py tests/test_plan_init.py tests/test_plan_new.py
+      tests/integration/test_bootstrap_planner_workflow.py tests/integration/test_orchestration_sync.py
+      tests/integration/test_plan_creation_flow.py -v
+
+      '
+    success_criteria:
+    - All ~40 previously failing tests pass
+    - No regressions
+context: 'The codebase moved from nested plan structure (plan_folder/live/*.yml, plan_folder/completed/*.yml)
+  to flattened structure (plan_folder/*.yml directly). Tests were written for the
+  old structure.
+
+  Plan init now auto-creates worktrees instead of failing on missing branches. This
+  is intentional per the worktree reuse feature (260208WR).
+
+  The naming utility get_worktree_id() has a bug where it extracts the full worktree
+  suffix (e.g. 260210WU) instead of just the 2-letter code (WU).
+
+  '

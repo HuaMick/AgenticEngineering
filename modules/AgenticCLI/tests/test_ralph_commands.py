@@ -36,7 +36,7 @@ def ralph_plans_dir(temp_dir):
             {
                 "phase_id": "build_01",
                 "name": "Build Phase",
-                "tasks": [
+                "tickets": [
                     {"task_id": "QC_001", "description": "Task 1", "status": "pending"},
                     {"task_id": "QC_002", "description": "Task 2", "status": "pending"},
                 ]
@@ -55,7 +55,7 @@ def ralph_plans_dir(temp_dir):
             {
                 "phase_id": "build_01",
                 "name": "Build Phase",
-                "tasks": [
+                "tickets": [
                     {"task_id": "QG_001", "description": "Task 1", "status": "pending"},
                 ]
             }
@@ -74,7 +74,7 @@ def ralph_plans_dir(temp_dir):
             {
                 "phase_id": "build_01",
                 "name": "Build Phase",
-                "tasks": [
+                "tickets": [
                     {"task_id": "PS_001", "description": "Task 1", "status": "completed"},
                 ]
             }
@@ -96,7 +96,7 @@ def ralph_plans_dir(temp_dir):
             {
                 "phase_id": "build_01",
                 "name": "Build Phase",
-                "tasks": [
+                "tickets": [
                     {"task_id": "VP_001", "description": "Task 1", "status": "pending"},
                 ]
             }

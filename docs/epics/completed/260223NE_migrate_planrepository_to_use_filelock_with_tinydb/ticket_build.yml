@@ -1,24 +1,589 @@
-name: Make TinyDB the first-class planning datastore with filelock concurrency
+name: TinyDB-First Migration - User Story Validation & Testing
 worktree_path: /home/code/AgenticEngineering
 branch: main
 status: completed
 priority: high
-affected_stories:
-- US-GD-200  # TinyDB Plan Repository - CRUD Operations
-- US-GD-201  # TinyDB Task Storage and Queries
-- US-GD-202  # YAML Import/Export for Human Readability
-- US-GD-203  # CLI Plan Commands Use PlanRepository
-- US-GD-204  # Data Migration from YAML to TinyDB
-- US-GD-205  # TinyDB Database Location and Lifecycle
-- US-GD-206  # Backward Compatibility During Migration
-- US-CLI-013  # View Plan Status
-- US-CLI-014  # List Plan Tasks
-- US-CLI-015  # Get Current Task
-- US-CLI-016  # Start/Complete Tasks
-- US-CLI-017  # Add Task
-- US-CLI-018  # Update Task Status
-- US-CLI-020  # Manage Plan Phases
-- US-CLI-021  # Archive Plan
+objective: 'Validate the TinyDB-first migration against user stories US-GD-200 through
+
+  US-GD-206 and affected CLI plan management stories. Verify all acceptance
+
+  criteria are met, update story test_status fields, and fix any gaps.
+
+  '
+created: ''
+phases:
+- name: Phase 1 - FileLock Concurrency Protection
+  execution: sequential
+  description: Add FileLock to all PlanRepository write operations for multi-agent
+    safety
+  tickets:
+  - id: FL_001
+    name: Add FileLock to PlanRepository write methods
+    description: Wrapped all PlanRepository write operations with FileLock.
+    status: completed
+    agent: build-python
+    completed_date: '2026-02-23'
+  - id: FL_002
+    name: Add FileLock unit tests
+    description: Created test_plan_repository_filelock.py with concurrency tests.
+    status: completed
+    agent: build-python
+    completed_date: '2026-02-23'
+- name: Phase 2 - TinyDB as Primary Store
+  execution: sequential
+  description: Flipped PlanService from YAML-first to TinyDB-first with read-through
+    pattern.
+  tickets:
+  - id: PR_001
+    name: Refactor PlanService to be TinyDB-first
+    description: PlanService uses TinyDB as primary with read-through and resurrection
+      detection.
+    status: completed
+    agent: build-python
+    completed_date: '2026-02-23'
+  - id: PR_002
+    name: Update TaskService to use PlanRepository for all writes
+    description: TaskService writes to TinyDB first, optionally syncs YAML.
+    status: completed
+    agent: build-python
+    completed_date: '2026-02-23'
+- name: Phase 3 - Expand PlanRepository & Dataclass API
+  execution: sequential
+  description: 'Add missing fields to PlanData/TaskData dataclasses and missing operations
+    to PlanRepository that CLI commands need. This phase is a prerequisite for replacing
+    YAML calls in the CLI.
+
+    '
+  tickets:
+  - id: API_001
+    name: Expand PlanData, TaskData, and PlanMetadata with missing fields
+    description: 'Add fields that CLI currently reads from YAML but PlanData/TaskData
+      don''t carry. This is blocking Phase 4+5 since CLI commands fall back to YAML
+      when dataclasses lack fields.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    guidance: "CRITICAL: Only modify the dataclass definitions (~line 558-656) and\
+      \ PlanRepository,\nNOT PlanService methods or PlanMovementWorkflow.\n\n1. Expand\
+      \ PlanData (line 568):\n   Add: name, worktree_path, priority, context, created,\
+      \ deferred_reason, cancelled_date\n   These are all Optional[str] fields with\
+      \ None defaults.\n\n2. Expand PlanMetadata (line 587):\n   Add: name, priority,\
+      \ worktree_path, branch\n   These enable cmd_list to show full plan info without\
+      \ YAML reads.\n\n3. Expand TaskData (line 646):\n   Add: inputs (list), target_files\
+      \ (list), guidance (Optional[str]),\n        completed_date (Optional[str]),\
+      \ success_criteria (Optional[str])\n   These enable cmd_task_list/status to\
+      \ show full task info.\n\n4. Update PlanRepository.get_plan() (plan_repository.py\
+      \ line 130):\n   Populate the new PlanData fields from the stored document:\n\
+      \     name=doc.get(\"name\"), worktree_path=doc.get(\"worktree_path\"),\n  \
+      \   priority=doc.get(\"priority\"), context=doc.get(\"context\"),\n     created=doc.get(\"\
+      created\"), deferred_reason=doc.get(\"deferred_reason\"),\n     cancelled_date=doc.get(\"\
+      cancelled_date\")\n\n5. Update PlanRepository.get_tasks() (plan_repository.py\
+      \ line 332):\n   Populate the new TaskData fields from stored documents:\n \
+      \    inputs=d.get(\"inputs\", []), target_files=d.get(\"target_files\", []),\n\
+      \     guidance=d.get(\"guidance\"), completed_date=d.get(\"completed_date\"\
+      )\n\n6. Update PlanRepository.list_plans() (plan_repository.py line 192):\n\
+      \   Populate new PlanMetadata fields: name, priority, worktree_path, branch\n\
+      \n7. Update all other places in plan_repository.py that construct TaskData\n\
+      \   (get_task, get_current_task) to include the new fields.\n\n8. Update TaskService._taskdata_to_task()\
+      \ (task.py line 150) to populate\n   the expanded fields from TaskData.\n"
+  - id: API_002
+    name: Add phase CRUD operations to PlanRepository
+    description: 'Add add_phase, update_phase, and list_phases methods to PlanRepository.
+      CLI''s cmd_phase_add and cmd_phase_update currently do YAML read+modify+dump.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    guidance: "Add these methods to PlanRepository (after the Task CRUD section):\n\
+      \n1. add_phase(plan_folder_name: str, phase_data: dict) -> bool:\n   - Insert\
+      \ a new phase document with plan_folder_name, phase_name,\n     execution, description,\
+      \ status, and _order fields.\n   - Check for duplicate phase_name within the\
+      \ same plan.\n   - Use FileLock for the insert.\n\n2. update_phase(plan_folder_name:\
+      \ str, phase_name: str, updates: dict) -> bool:\n   - Update fields on an existing\
+      \ phase document.\n   - Use FileLock for the update.\n\n3. list_phases(plan_folder_name:\
+      \ str) -> list[PhaseData]:\n   - Return all phases for a plan, sorted by _order.\n\
+      \   - No locking needed (read-only).\n\n4. get_phase(plan_folder_name: str,\
+      \ phase_name: str) -> Optional[PhaseData]:\n   - Get a single phase by name.\n\
+      \   - No locking needed (read-only).\n\nPattern for add_phase:\n  def add_phase(self,\
+      \ plan_folder_name: str, phase_data: dict) -> bool:\n      phase_name = phase_data.get(\"\
+      name\", \"\")\n      if not phase_name:\n          return False\n      with\
+      \ self._lock:\n          Phase = Query()\n          existing = self._phases.search(\n\
+      \              (Phase.plan_folder_name == plan_folder_name) &\n            \
+      \  (Phase.phase_name == phase_name)\n          )\n          if existing:\n \
+      \             return False\n          # Determine order\n          all_phases\
+      \ = self._phases.search(Phase.plan_folder_name == plan_folder_name)\n      \
+      \    max_order = max((p.get(\"_order\", 0) for p in all_phases), default=-1)\n\
+      \          self._phases.insert({\n              \"plan_folder_name\": plan_folder_name,\n\
+      \              \"phase_name\": phase_name,\n              \"execution\": phase_data.get(\"\
+      execution\", \"sequential\"),\n              \"description\": phase_data.get(\"\
+      description\", \"\"),\n              \"status\": phase_data.get(\"status\",\
+      \ \"pending\"),\n              \"_order\": max_order + 1,\n          })\n  \
+      \    return True\n"
+  - id: API_003
+    name: Add archive, unarchive, and cancel operations to PlanRepository
+    description: 'Add plan lifecycle operations that CLI currently does via YAML manipulation.
+      cmd_archive moves folder + updates plan_completed.yml. cmd_unarchive reverses
+      it. cmd_cancel marks plan cancelled.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    guidance: "Add these methods to PlanRepository:\n\n1. archive_plan(plan_folder_name:\
+      \ str, completed_date: str = None) -> bool:\n   - Update plan status to \"completed\"\
+      \ in DB.\n   - Set plan_folder to the completed/ path.\n   - Add completed_date\
+      \ (default: today's date).\n   - If yaml_sync is needed, that's handled by caller.\n\
+      \   - Use FileLock for updates.\n\n2. unarchive_plan(plan_folder_name: str)\
+      \ -> bool:\n   - Update plan status from \"completed\" back to \"active\".\n\
+      \   - Set plan_folder to the live/ path.\n   - Clear completed_date.\n   - Use\
+      \ FileLock.\n\n3. cancel_plan(plan_folder_name: str, reason: str = \"\") ->\
+      \ bool:\n   - Update plan status to \"cancelled\".\n   - Set cancelled_date.\n\
+      \   - Optionally store cancellation reason.\n   - Use FileLock.\n\nThese are\
+      \ convenience wrappers around update_plan() that enforce\ncorrect status transitions\
+      \ and metadata updates.\n"
+  - id: API_004
+    name: Add helper query methods to PlanRepository
+    description: 'Add check_all_tasks_complete and get_plan_branch methods that CLI
+      helper functions currently implement via YAML reads.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    guidance: "Add these convenience methods:\n\n1. check_all_tasks_complete(plan_folder_name:\
+      \ str) -> bool:\n   - Query all tasks for the plan.\n   - Return True if all\
+      \ have status == \"completed\".\n   - Return False if no tasks exist.\n\n2.\
+      \ get_plan_branch(plan_folder_name: str) -> Optional[str]:\n   - Get the branch\
+      \ field from the plan document.\n   - Return None if not set or \"main\"/\"\
+      master\".\n\n3. get_task_counts(plan_folder_name: str) -> dict:\n   - Return\
+      \ {\"pending\": N, \"in_progress\": N, \"completed\": N, \"total\": N}\n   -\
+      \ Used by cmd_status for progress display.\n\nThese replace the YAML-reading\
+      \ helper functions at lines 175-280 of\nplan.py CLI.\n"
+- name: Phase 4 - Replace Plan-Data YAML Reads in CLI
+  execution: sequential
+  description: 'Replace all yaml.safe_load calls that read plan data in CLI plan.py
+    with PlanService/PlanRepository calls. This handles the read-only side. After
+    this phase, only mutation YAML calls should remain.
+
+    '
+  tickets:
+  - id: RD_001
+    name: Replace YAML reads in helper functions and cmd_status
+    description: 'Replace yaml.safe_load in _check_all_tasks_complete(), _get_plan_branch(),
+      and cmd_status() with PlanRepository calls.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Create a module-level helper to get a PlanRepository instance:\n\n\
+      \  def _get_repo(plan_path: Path = None):\n      \"\"\"Get PlanRepository for\
+      \ the current repo.\"\"\"\n      from agenticguidance.services.plan import PlanService\n\
+      \      svc = PlanService()\n      if svc._repository is not None:\n        \
+      \  return svc._repository\n      return None\n\nThen replace these functions:\n\
+      \n1. _check_all_tasks_complete(plan_folder) at ~line 175:\n   CURRENT: Reads\
+      \ all plan_*.yml, counts tasks, checks all completed.\n   NEW: repo = _get_repo();\
+      \ return repo.check_all_tasks_complete(plan_folder.name)\n   Keep YAML fallback\
+      \ if repo is None.\n\n2. _get_plan_branch(plan_path) at ~line 245:\n   CURRENT:\
+      \ Reads plan_build.yml and plan_teach.yml for branch field.\n   NEW: repo =\
+      \ _get_repo(); return repo.get_plan_branch(plan_path.name)\n   Keep YAML fallback.\n\
+      \n3. cmd_status() at ~line 1336:\n   CURRENT: Reads plan_*.yml to count tasks\
+      \ (lines 1380-1420).\n   NEW: Use repo.get_task_counts(plan_folder_name) for\
+      \ task summary.\n   Also use repo.get_plan() for deferred_reason (line 1410)\
+      \ instead of YAML read.\n\nIMPORTANT: Always keep a YAML fallback for when repo\
+      \ is None:\n  repo = _get_repo()\n  if repo is not None:\n      # TinyDB path\n\
+      \  else:\n      # existing YAML code\n"
+  - id: RD_002
+    name: Replace YAML reads in task query commands
+    description: 'Replace yaml.safe_load in cmd_task_list, cmd_task_status, and cmd_task_current
+      with PlanRepository/TaskService calls.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. cmd_task_list() at ~line 2152:\n   CURRENT: Line 2221 - yaml.safe_load\
+      \ to get tasks from plan files.\n   NEW: Use repo.get_tasks(plan_folder_name)\
+      \ to get all tasks.\n   Map TaskData objects to the display format the function\
+      \ already uses.\n\n2. cmd_task_status() at ~line 2282:\n   CURRENT: Line 2312\
+      \ - yaml.safe_load to find a specific task.\n   NEW: Use repo.get_task(plan_folder_name,\
+      \ task_id).\n\n3. cmd_task_current() at ~line 3189:\n   CURRENT: Line 3241 -\
+      \ yaml.safe_load to find current task.\n   NEW: Use repo.get_current_task(plan_folder_name).\n\
+      \nFor all three: Keep YAML fallback if repo is None.\nThe display/output formatting\
+      \ should remain unchanged.\n"
+  - id: RD_003
+    name: Replace YAML reads in validate, phase_list, and orchestration commands
+    description: 'Replace yaml.safe_load in cmd_validate, cmd_phase_list, cmd_orchestration_generate,
+      and cmd_orchestration_validate.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. cmd_validate() at ~line 1754:\n   Lines 1642, 1784, 1833, 1901 -\
+      \ multiple yaml.safe_load calls.\n   CURRENT: Reads each plan_*.yml to validate\
+      \ structure.\n   NEW: Use repo.get_plan(plan_folder_name) to get PlanData with\
+      \ phases/tasks.\n   Validate the PlanData structure instead of raw YAML.\n \
+      \  NOTE: Line 1658 reads user_stories - DO NOT migrate that one.\n\n2. cmd_phase_list()\
+      \ at ~line 3455:\n   Line 3503 - yaml.safe_load to read phases.\n   NEW: Use\
+      \ repo.list_phases(plan_folder_name).\n\n3. cmd_orchestration_generate() at\
+      \ ~line 3812:\n   Line 3853 - yaml.safe_load to read plan structure for MMD\
+      \ generation.\n   NEW: Use repo.get_plan(plan_folder_name) for phases/tasks.\n\
+      \n4. cmd_orchestration_validate() at ~line 4050:\n   Line 4112 - yaml.safe_load\
+      \ to read plan for validation.\n   NEW: Use repo.get_plan(plan_folder_name).\n\
+      \n5. cmd_init() at ~line 1051:\n   Line 915 - yaml.safe_load in builder spawning\
+      \ section.\n   NEW: Use repo.get_plan(plan_folder_name) for phases/tasks.\n"
+- name: Phase 5 - Replace Plan-Data YAML Mutations in CLI
+  execution: sequential
+  description: 'Replace all yaml.safe_load + yaml.dump (read-modify-write) patterns
+    in CLI plan.py with PlanRepository write operations. This is the hardest phase
+    as mutations require proper locking and data integrity.
+
+    '
+  tickets:
+  - id: MU_001
+    name: Replace task mutation YAML calls
+    description: 'Replace yaml read+modify+dump in _update_task_status, cmd_task_add,
+      and cmd_task_update with PlanRepository methods.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. _update_task_status() at ~line 2032:\n   Lines 2047, 2082 - yaml.safe_load\
+      \ + yaml.dump.\n   NEW: repo.update_task_status(plan_folder_name, task_id, new_status)\n\
+      \   Then optionally repo.sync_to_yaml(plan_folder_name).\n   IMPORTANT: Keep\
+      \ the auto-archive trigger logic that follows the status update.\n\n2. cmd_task_add()\
+      \ at ~line 2379:\n   Lines 2415, 2472 - yaml.safe_load + yaml.dump.\n   NEW:\
+      \ repo.add_task(plan_folder_name, phase_name, task_data)\n   Then optionally\
+      \ repo.sync_to_yaml(plan_folder_name).\n\n3. cmd_task_update() at ~line 3063:\n\
+      \   Lines 3099, 3154 - yaml.safe_load + yaml.dump.\n   NEW: For status changes,\
+      \ use repo.update_task_status().\n   For other field changes (name, description,\
+      \ etc.), need a new\n   repo.update_task() method or use repo._tasks.update()\
+      \ directly.\n   Add update_task(plan_folder_name, task_id, updates) to PlanRepository\n\
+      \   if it doesn't exist yet.\n"
+    completed_date: '2026-02-24'
+  - id: MU_002
+    name: Replace phase mutation YAML calls
+    description: 'Replace yaml read+modify+dump in cmd_phase_add and cmd_phase_update
+      with PlanRepository phase methods.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. cmd_phase_add() at ~line 3349:\n   Lines 3377, 3429 - yaml.safe_load\
+      \ + yaml.dump.\n   NEW: repo.add_phase(plan_folder_name, phase_data)\n   Then\
+      \ repo.sync_to_yaml(plan_folder_name) for git visibility.\n\n2. cmd_phase_update()\
+      \ at ~line 3564:\n   Lines 3600, 3669 - yaml.safe_load + yaml.dump.\n   NEW:\
+      \ repo.update_phase(plan_folder_name, phase_name, updates)\n   Then repo.sync_to_yaml(plan_folder_name).\n"
+    completed_date: '2026-02-24'
+  - id: MU_003
+    name: Replace archive, unarchive, and cancel YAML mutations
+    description: 'Replace yaml read+modify+dump in cmd_archive, cmd_unarchive, and
+      cmd_cancel with PlanRepository operations.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. cmd_archive() at ~line 2500:\n   Lines 2525, 2530 - reads/writes\
+      \ plan_completed.yml.\n   NEW: repo.archive_plan(plan_folder_name, completed_date=today)\n\
+      \   The physical folder move (shutil.move) should REMAIN as-is.\n   After moving,\
+      \ call repo.resync_plan_folder() with the new path.\n   Then repo.sync_to_yaml()\
+      \ for git visibility.\n\n2. cmd_unarchive() at ~line 2546:\n   Lines 2702, 2708\
+      \ - reads/writes plan_completed.yml.\n   NEW: repo.unarchive_plan(plan_folder_name)\n\
+      \   Physical folder move REMAINS. After moving, resync_plan_folder().\n\n3.\
+      \ cmd_cancel() at ~line 2733:\n   Lines 2768, 2791 - reads/writes plan build\
+      \ file.\n   NEW: repo.cancel_plan(plan_folder_name, reason=args.reason)\n  \
+      \ After cancelling in DB, sync to YAML for git visibility.\n"
+    completed_date: '2026-02-24'
+  - id: MU_004
+    name: Add TinyDB import after plan creation in cmd_new and cmd_init
+    description: 'After cmd_new/cmd_init create YAML scaffold files, import the new
+      plan into TinyDB so it''s immediately queryable.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. cmd_new() at ~line 634:\n   After creating the plan folder and writing\
+      \ YAML files, add:\n     repo = _get_repo()\n     if repo:\n         repo.import_from_yaml(plan_folder)\n\
+      \n2. cmd_init() at ~line 1051:\n   Same pattern - after plan folder creation,\
+      \ import to TinyDB.\n\n3. cmd_bootstrap() at ~line 4657:\n   After bootstrap\
+      \ creates plan files, import to TinyDB.\n\nThis ensures newly created plans\
+      \ are immediately available via TinyDB\nwithout relying on auto-bootstrap or\
+      \ read-through.\n"
+    completed_date: '2026-02-24'
+- name: Phase 6 - Testing, Cleanup & Validation
+  execution: sequential
+  description: 'Fix test failures, run full suite, and validate that zero plan-data
+    YAML calls remain in CLI plan.py.
+
+    '
+  tickets:
+  - id: TC_001
+    name: Fix pre-existing test failures
+    description: 'Fix the 12 pre-existing test failures across AgenticGuidance and
+      AgenticCLI.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/tests/
+    - modules/AgenticCLI/tests/
+    target_files:
+    - modules/AgenticCLI/tests/test_orchestration_workflow.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticGuidance/tests/test_deploy_worktree_guidance.py
+    - modules/AgenticGuidance/tests/test_orchestration_story_validation.py
+    - modules/AgenticGuidance/tests/test_planner_build_story_generation.py
+    - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
+    guidance: "Run tests and fix failures:\n\nAgenticCLI failures (7):\n- TestPlanningRunner\
+      \ (5 tests) - mock missing `plans_dir` attribute.\n  Fix: Add plans_dir to the\
+      \ mock PlanService in the test fixture.\n- TestSessionHelperFunctions (2 tests)\
+      \ - test_is_process_running_for_nonexistent_process\n  and test_update_session_status_marks_completed.\n\
+      \  Investigate and fix the specific assertion failures.\n\nAgenticGuidance failures\
+      \ (5):\n- test_deploy_worktree_guidance (2 tests) - guidance file content assertions.\n\
+      - test_orchestration_story_validation - story lifecycle comment check.\n- test_planner_build_story_generation\
+      \ - fence block validation.\n- test_services_plan_service_integration - plan\
+      \ structure validation.\n  This may be a YAML syntax error in a live plan file.\n\
+      \nRun: python3 -m pytest <test_file> -x -v to investigate each.\n"
+    completed_date: '2026-02-24'
+  - id: TC_002
+    name: Run full test suite and fix migration regressions
+    description: Run complete test suites, fix any failures caused by Phase 3-5 changes.
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/tests/
+    - modules/AgenticCLI/tests/
+    target_files:
+    - modules/AgenticGuidance/tests/
+    - modules/AgenticCLI/tests/
+    guidance: "Run full test suites:\n  python3 -m pytest modules/AgenticGuidance/tests/\
+      \ -v --tb=short\n  python3 -m pytest modules/AgenticCLI/tests/ -v --tb=short\n\
+      \nCommon regressions to watch for:\n- Tests that mock yaml.safe_load expecting\
+      \ it to be called (remove mocks)\n- Tests that create YAML files expecting them\
+      \ to be source of truth\n  (add TinyDB import step or use PlanService)\n- Tests\
+      \ that check for yaml.dump side effects\n- Import errors from changed PlanData/TaskData\
+      \ constructors\n- Tests using PlanData/TaskData without new required fields\n\
+      \nFix all failures. Target: zero failures.\n"
+    completed_date: '2026-02-24'
+  - id: TC_003
+    name: Audit and verify zero plan-data YAML in CLI
+    description: 'Verify that no plan-data yaml.safe_load/dump calls remain in plan.py.
+      Only non-plan YAML calls should survive.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: 'Run: grep -n "yaml.safe_load\|yaml.dump" plan.py
+
+
+      EXPECTED remaining YAML calls (non-plan data, DO NOT remove):
+
+      - _get_loop_types() reads agent-loops.yml
+
+      - cmd_validate reads user_stories YAML
+
+      - cmd_stories_list reads user stories
+
+      - cmd_stories_test reads/writes stories test output
+
+
+      If any plan-data YAML calls remain, replace them with PlanRepository calls.
+
+
+      Target: Maximum 6 yaml calls remaining (all non-plan-data).
+
+      Report the final count and which lines they are on.
+
+      '
+    completed_date: '2026-02-24'
+- name: Phase 1 - Update User Stories
+  execution: sequential
+  description: 'Update user stories to reflect actual implementation. Key corrections:
+
+    - US-GD-205: DB location is repo-local .agentic/plans.db (not ~/.agentic/)
+
+    - US-GD-203: CLI uses TinyDB-first with YAML fallback (not full replacement)
+
+    - US-GD-200: Add FileLock concurrency to acceptance criteria
+
+    - Add new stories for: folder_matches guard, read-through pattern, resurrection
+
+    '
+  tickets:
+  - id: USU_001
+    name: Update US-GD-200 through US-GD-206 to match implementation
+    description: 'Read each story in docs/userstories/AgenticGuidance/10_tinydb_migration.yml
+
+      and update acceptance criteria to match what was actually built.
+
+      '
+    status: completed
+    agent: build-python
+    target_files:
+    - docs/userstories/AgenticGuidance/10_tinydb_migration.yml
+    completed_date: '2026-02-24'
+  - id: USU_002
+    name: Verify CLI plan management stories still accurate
+    description: 'Check docs/userstories/AgenticCLI/02_plan_management.yml stories
+
+      US-CLI-013 through US-CLI-021 to confirm acceptance criteria
+
+      still hold with TinyDB-first architecture.
+
+      '
+    status: completed
+    agent: build-python
+    target_files:
+    - docs/userstories/AgenticCLI/02_plan_management.yml
+    completed_date: '2026-02-24'
+- name: Phase 2 - User Story Acceptance Testing
+  execution: sequential
+  description: 'Run acceptance tests for each user story. 129 total UAT tests created
+    and passed.
+
+    Defect found: .agentic/ missing from .gitignore (fixed).
+
+    '
+  tickets:
+  - id: UAT_001
+    name: Test US-GD-200 - PlanRepository CRUD Operations
+    description: '101 tests in test_uat_tinydb_crud.py covering all CRUD, phase CRUD,
+
+      lifecycle operations, helper queries, and FileLock verification.
+
+      '
+    status: completed
+    agent: test-builder
+    completed_date: '2026-02-24'
+  - id: UAT_002
+    name: Test US-GD-201 - Task Storage and Queries
+    description: 'Covered in test_uat_tinydb_crud.py - task add/get/update/filter,
+
+      get_current_task priority, task counts, expanded fields.
+
+      '
+    status: completed
+    agent: test-builder
+    completed_date: '2026-02-24'
+  - id: UAT_003
+    name: Test US-GD-202 - YAML Import/Export
+    description: '11 tests in test_uat_tinydb_yaml_compat.py covering sync_to_yaml,
+
+      read-through auto-import, and round-trip preservation.
+
+      '
+    status: completed
+    agent: test-builder
+    completed_date: '2026-02-24'
+  - id: UAT_004
+    name: Test US-GD-203 - CLI Commands Use PlanRepository
+    description: 'Full CLI test suite: 1616 passed, 0 failed, 8 skipped.
+
+      '
+    status: completed
+    agent: test-runner
+    completed_date: '2026-02-24'
+  - id: UAT_005
+    name: Test US-GD-205 - Database Location (repo-local)
+    description: '7 tests in test_uat_tinydb_yaml_compat.py. Defect found and fixed:
+
+      .agentic/ was missing from .gitignore.
+
+      '
+    status: completed
+    agent: test-builder
+    completed_date: '2026-02-24'
+  - id: UAT_006
+    name: Test US-GD-206 - Backward Compatibility
+    description: '10 tests in test_uat_tinydb_yaml_compat.py covering YAML fallback,
+
+      folder_matches guard, resurrection detection, yaml_sync_enabled flag.
+
+      '
+    status: completed
+    agent: test-builder
+    completed_date: '2026-02-24'
+- name: Phase 3 - Update Story Status
+  execution: sequential
+  description: 'After all acceptance tests pass, update the test_status and
+
+    last_tested fields in the user story YAML files.
+
+    '
+  tickets:
+  - id: STS_001
+    name: Mark tested stories as passing
+    description: 'Updated test_status: passing, last_tested: 2026-02-24, and
+
+      tested_by_plan fields in both user story files.
+
+      '
+    status: completed
+    agent: build-python
+    target_files:
+    - docs/userstories/AgenticGuidance/10_tinydb_migration.yml
+    - docs/userstories/AgenticCLI/02_plan_management.yml
+    completed_date: '2026-02-24'
 context: 'ARCHITECTURE DIRECTION:
 
   - TinyDB is the PRIMARY and FIRST-CLASS data store for all plan operations
@@ -86,448 +651,3 @@ context: 'ARCHITECTURE DIRECTION:
   - modules/AgenticCLI/src/agenticcli/commands/plan.py (36 YAML calls)
 
   '
-phases:
-- name: Phase 1 - FileLock Concurrency Protection
-  execution: sequential
-  description: Add FileLock to all PlanRepository write operations for multi-agent
-    safety
-  tasks:
-  - id: FL_001
-    name: Add FileLock to PlanRepository write methods
-    status: completed
-    agent: build-python
-    description: Wrapped all PlanRepository write operations with FileLock.
-    completed_date: '2026-02-23'
-  - id: FL_002
-    name: Add FileLock unit tests
-    status: completed
-    agent: build-python
-    description: Created test_plan_repository_filelock.py with concurrency tests.
-    completed_date: '2026-02-23'
-- name: Phase 2 - TinyDB as Primary Store
-  execution: sequential
-  description: Flipped PlanService from YAML-first to TinyDB-first with read-through
-    pattern.
-  tasks:
-  - id: PR_001
-    name: Refactor PlanService to be TinyDB-first
-    status: completed
-    agent: build-python
-    description: PlanService uses TinyDB as primary with read-through and resurrection
-      detection.
-    completed_date: '2026-02-23'
-  - id: PR_002
-    name: Update TaskService to use PlanRepository for all writes
-    status: completed
-    agent: build-python
-    description: TaskService writes to TinyDB first, optionally syncs YAML.
-    completed_date: '2026-02-23'
-- name: Phase 3 - Expand PlanRepository & Dataclass API
-  execution: sequential
-  description: 'Add missing fields to PlanData/TaskData dataclasses and missing operations
-    to PlanRepository that CLI commands need. This phase is a prerequisite for replacing
-    YAML calls in the CLI.
-
-    '
-  tasks:
-  - id: API_001
-    name: Expand PlanData, TaskData, and PlanMetadata with missing fields
-    status: completed
-    agent: build-python
-    description: 'Add fields that CLI currently reads from YAML but PlanData/TaskData
-      don''t carry. This is blocking Phase 4+5 since CLI commands fall back to YAML
-      when dataclasses lack fields.
-
-      '
-    inputs:
-    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    target_files:
-    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    guidance: "CRITICAL: Only modify the dataclass definitions (~line 558-656) and\
-      \ PlanRepository,\nNOT PlanService methods or PlanMovementWorkflow.\n\n1. Expand\
-      \ PlanData (line 568):\n   Add: name, worktree_path, priority, context, created,\
-      \ deferred_reason, cancelled_date\n   These are all Optional[str] fields with\
-      \ None defaults.\n\n2. Expand PlanMetadata (line 587):\n   Add: name, priority,\
-      \ worktree_path, branch\n   These enable cmd_list to show full plan info without\
-      \ YAML reads.\n\n3. Expand TaskData (line 646):\n   Add: inputs (list), target_files\
-      \ (list), guidance (Optional[str]),\n        completed_date (Optional[str]),\
-      \ success_criteria (Optional[str])\n   These enable cmd_task_list/status to\
-      \ show full task info.\n\n4. Update PlanRepository.get_plan() (plan_repository.py\
-      \ line 130):\n   Populate the new PlanData fields from the stored document:\n\
-      \     name=doc.get(\"name\"), worktree_path=doc.get(\"worktree_path\"),\n  \
-      \   priority=doc.get(\"priority\"), context=doc.get(\"context\"),\n     created=doc.get(\"\
-      created\"), deferred_reason=doc.get(\"deferred_reason\"),\n     cancelled_date=doc.get(\"\
-      cancelled_date\")\n\n5. Update PlanRepository.get_tasks() (plan_repository.py\
-      \ line 332):\n   Populate the new TaskData fields from stored documents:\n \
-      \    inputs=d.get(\"inputs\", []), target_files=d.get(\"target_files\", []),\n\
-      \     guidance=d.get(\"guidance\"), completed_date=d.get(\"completed_date\"\
-      )\n\n6. Update PlanRepository.list_plans() (plan_repository.py line 192):\n\
-      \   Populate new PlanMetadata fields: name, priority, worktree_path, branch\n\
-      \n7. Update all other places in plan_repository.py that construct TaskData\n\
-      \   (get_task, get_current_task) to include the new fields.\n\n8. Update TaskService._taskdata_to_task()\
-      \ (task.py line 150) to populate\n   the expanded fields from TaskData.\n"
-  - id: API_002
-    name: Add phase CRUD operations to PlanRepository
-    status: completed
-    agent: build-python
-    description: 'Add add_phase, update_phase, and list_phases methods to PlanRepository.
-      CLI''s cmd_phase_add and cmd_phase_update currently do YAML read+modify+dump.
-
-      '
-    inputs:
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    target_files:
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    guidance: "Add these methods to PlanRepository (after the Task CRUD section):\n\
-      \n1. add_phase(plan_folder_name: str, phase_data: dict) -> bool:\n   - Insert\
-      \ a new phase document with plan_folder_name, phase_name,\n     execution, description,\
-      \ status, and _order fields.\n   - Check for duplicate phase_name within the\
-      \ same plan.\n   - Use FileLock for the insert.\n\n2. update_phase(plan_folder_name:\
-      \ str, phase_name: str, updates: dict) -> bool:\n   - Update fields on an existing\
-      \ phase document.\n   - Use FileLock for the update.\n\n3. list_phases(plan_folder_name:\
-      \ str) -> list[PhaseData]:\n   - Return all phases for a plan, sorted by _order.\n\
-      \   - No locking needed (read-only).\n\n4. get_phase(plan_folder_name: str,\
-      \ phase_name: str) -> Optional[PhaseData]:\n   - Get a single phase by name.\n\
-      \   - No locking needed (read-only).\n\nPattern for add_phase:\n  def add_phase(self,\
-      \ plan_folder_name: str, phase_data: dict) -> bool:\n      phase_name = phase_data.get(\"\
-      name\", \"\")\n      if not phase_name:\n          return False\n      with\
-      \ self._lock:\n          Phase = Query()\n          existing = self._phases.search(\n\
-      \              (Phase.plan_folder_name == plan_folder_name) &\n            \
-      \  (Phase.phase_name == phase_name)\n          )\n          if existing:\n \
-      \             return False\n          # Determine order\n          all_phases\
-      \ = self._phases.search(Phase.plan_folder_name == plan_folder_name)\n      \
-      \    max_order = max((p.get(\"_order\", 0) for p in all_phases), default=-1)\n\
-      \          self._phases.insert({\n              \"plan_folder_name\": plan_folder_name,\n\
-      \              \"phase_name\": phase_name,\n              \"execution\": phase_data.get(\"\
-      execution\", \"sequential\"),\n              \"description\": phase_data.get(\"\
-      description\", \"\"),\n              \"status\": phase_data.get(\"status\",\
-      \ \"pending\"),\n              \"_order\": max_order + 1,\n          })\n  \
-      \    return True\n"
-  - id: API_003
-    name: Add archive, unarchive, and cancel operations to PlanRepository
-    status: completed
-    agent: build-python
-    description: 'Add plan lifecycle operations that CLI currently does via YAML manipulation.
-      cmd_archive moves folder + updates plan_completed.yml. cmd_unarchive reverses
-      it. cmd_cancel marks plan cancelled.
-
-      '
-    inputs:
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    target_files:
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    guidance: "Add these methods to PlanRepository:\n\n1. archive_plan(plan_folder_name:\
-      \ str, completed_date: str = None) -> bool:\n   - Update plan status to \"completed\"\
-      \ in DB.\n   - Set plan_folder to the completed/ path.\n   - Add completed_date\
-      \ (default: today's date).\n   - If yaml_sync is needed, that's handled by caller.\n\
-      \   - Use FileLock for updates.\n\n2. unarchive_plan(plan_folder_name: str)\
-      \ -> bool:\n   - Update plan status from \"completed\" back to \"active\".\n\
-      \   - Set plan_folder to the live/ path.\n   - Clear completed_date.\n   - Use\
-      \ FileLock.\n\n3. cancel_plan(plan_folder_name: str, reason: str = \"\") ->\
-      \ bool:\n   - Update plan status to \"cancelled\".\n   - Set cancelled_date.\n\
-      \   - Optionally store cancellation reason.\n   - Use FileLock.\n\nThese are\
-      \ convenience wrappers around update_plan() that enforce\ncorrect status transitions\
-      \ and metadata updates.\n"
-  - id: API_004
-    name: Add helper query methods to PlanRepository
-    status: completed
-    agent: build-python
-    description: 'Add check_all_tasks_complete and get_plan_branch methods that CLI
-      helper functions currently implement via YAML reads.
-
-      '
-    inputs:
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    target_files:
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    guidance: "Add these convenience methods:\n\n1. check_all_tasks_complete(plan_folder_name:\
-      \ str) -> bool:\n   - Query all tasks for the plan.\n   - Return True if all\
-      \ have status == \"completed\".\n   - Return False if no tasks exist.\n\n2.\
-      \ get_plan_branch(plan_folder_name: str) -> Optional[str]:\n   - Get the branch\
-      \ field from the plan document.\n   - Return None if not set or \"main\"/\"\
-      master\".\n\n3. get_task_counts(plan_folder_name: str) -> dict:\n   - Return\
-      \ {\"pending\": N, \"in_progress\": N, \"completed\": N, \"total\": N}\n   -\
-      \ Used by cmd_status for progress display.\n\nThese replace the YAML-reading\
-      \ helper functions at lines 175-280 of\nplan.py CLI.\n"
-- name: Phase 4 - Replace Plan-Data YAML Reads in CLI
-  execution: sequential
-  description: 'Replace all yaml.safe_load calls that read plan data in CLI plan.py
-    with PlanService/PlanRepository calls. This handles the read-only side. After
-    this phase, only mutation YAML calls should remain.
-
-    '
-  tasks:
-  - id: RD_001
-    name: Replace YAML reads in helper functions and cmd_status
-    status: completed
-    agent: build-python
-    description: 'Replace yaml.safe_load in _check_all_tasks_complete(), _get_plan_branch(),
-      and cmd_status() with PlanRepository calls.
-
-      '
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: "Create a module-level helper to get a PlanRepository instance:\n\n\
-      \  def _get_repo(plan_path: Path = None):\n      \"\"\"Get PlanRepository for\
-      \ the current repo.\"\"\"\n      from agenticguidance.services.plan import PlanService\n\
-      \      svc = PlanService()\n      if svc._repository is not None:\n        \
-      \  return svc._repository\n      return None\n\nThen replace these functions:\n\
-      \n1. _check_all_tasks_complete(plan_folder) at ~line 175:\n   CURRENT: Reads\
-      \ all plan_*.yml, counts tasks, checks all completed.\n   NEW: repo = _get_repo();\
-      \ return repo.check_all_tasks_complete(plan_folder.name)\n   Keep YAML fallback\
-      \ if repo is None.\n\n2. _get_plan_branch(plan_path) at ~line 245:\n   CURRENT:\
-      \ Reads plan_build.yml and plan_teach.yml for branch field.\n   NEW: repo =\
-      \ _get_repo(); return repo.get_plan_branch(plan_path.name)\n   Keep YAML fallback.\n\
-      \n3. cmd_status() at ~line 1336:\n   CURRENT: Reads plan_*.yml to count tasks\
-      \ (lines 1380-1420).\n   NEW: Use repo.get_task_counts(plan_folder_name) for\
-      \ task summary.\n   Also use repo.get_plan() for deferred_reason (line 1410)\
-      \ instead of YAML read.\n\nIMPORTANT: Always keep a YAML fallback for when repo\
-      \ is None:\n  repo = _get_repo()\n  if repo is not None:\n      # TinyDB path\n\
-      \  else:\n      # existing YAML code\n"
-  - id: RD_002
-    name: Replace YAML reads in task query commands
-    status: completed
-    agent: build-python
-    description: 'Replace yaml.safe_load in cmd_task_list, cmd_task_status, and cmd_task_current
-      with PlanRepository/TaskService calls.
-
-      '
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: "1. cmd_task_list() at ~line 2152:\n   CURRENT: Line 2221 - yaml.safe_load\
-      \ to get tasks from plan files.\n   NEW: Use repo.get_tasks(plan_folder_name)\
-      \ to get all tasks.\n   Map TaskData objects to the display format the function\
-      \ already uses.\n\n2. cmd_task_status() at ~line 2282:\n   CURRENT: Line 2312\
-      \ - yaml.safe_load to find a specific task.\n   NEW: Use repo.get_task(plan_folder_name,\
-      \ task_id).\n\n3. cmd_task_current() at ~line 3189:\n   CURRENT: Line 3241 -\
-      \ yaml.safe_load to find current task.\n   NEW: Use repo.get_current_task(plan_folder_name).\n\
-      \nFor all three: Keep YAML fallback if repo is None.\nThe display/output formatting\
-      \ should remain unchanged.\n"
-  - id: RD_003
-    name: Replace YAML reads in validate, phase_list, and orchestration commands
-    status: completed
-    agent: build-python
-    description: 'Replace yaml.safe_load in cmd_validate, cmd_phase_list, cmd_orchestration_generate,
-      and cmd_orchestration_validate.
-
-      '
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: "1. cmd_validate() at ~line 1754:\n   Lines 1642, 1784, 1833, 1901 -\
-      \ multiple yaml.safe_load calls.\n   CURRENT: Reads each plan_*.yml to validate\
-      \ structure.\n   NEW: Use repo.get_plan(plan_folder_name) to get PlanData with\
-      \ phases/tasks.\n   Validate the PlanData structure instead of raw YAML.\n \
-      \  NOTE: Line 1658 reads user_stories - DO NOT migrate that one.\n\n2. cmd_phase_list()\
-      \ at ~line 3455:\n   Line 3503 - yaml.safe_load to read phases.\n   NEW: Use\
-      \ repo.list_phases(plan_folder_name).\n\n3. cmd_orchestration_generate() at\
-      \ ~line 3812:\n   Line 3853 - yaml.safe_load to read plan structure for MMD\
-      \ generation.\n   NEW: Use repo.get_plan(plan_folder_name) for phases/tasks.\n\
-      \n4. cmd_orchestration_validate() at ~line 4050:\n   Line 4112 - yaml.safe_load\
-      \ to read plan for validation.\n   NEW: Use repo.get_plan(plan_folder_name).\n\
-      \n5. cmd_init() at ~line 1051:\n   Line 915 - yaml.safe_load in builder spawning\
-      \ section.\n   NEW: Use repo.get_plan(plan_folder_name) for phases/tasks.\n"
-- name: Phase 5 - Replace Plan-Data YAML Mutations in CLI
-  execution: sequential
-  description: 'Replace all yaml.safe_load + yaml.dump (read-modify-write) patterns
-    in CLI plan.py with PlanRepository write operations. This is the hardest phase
-    as mutations require proper locking and data integrity.
-
-    '
-  tasks:
-  - id: MU_001
-    name: Replace task mutation YAML calls
-    status: completed
-    completed_date: '2026-02-24'
-    agent: build-python
-    description: 'Replace yaml read+modify+dump in _update_task_status, cmd_task_add,
-      and cmd_task_update with PlanRepository methods.
-
-      '
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: "1. _update_task_status() at ~line 2032:\n   Lines 2047, 2082 - yaml.safe_load\
-      \ + yaml.dump.\n   NEW: repo.update_task_status(plan_folder_name, task_id, new_status)\n\
-      \   Then optionally repo.sync_to_yaml(plan_folder_name).\n   IMPORTANT: Keep\
-      \ the auto-archive trigger logic that follows the status update.\n\n2. cmd_task_add()\
-      \ at ~line 2379:\n   Lines 2415, 2472 - yaml.safe_load + yaml.dump.\n   NEW:\
-      \ repo.add_task(plan_folder_name, phase_name, task_data)\n   Then optionally\
-      \ repo.sync_to_yaml(plan_folder_name).\n\n3. cmd_task_update() at ~line 3063:\n\
-      \   Lines 3099, 3154 - yaml.safe_load + yaml.dump.\n   NEW: For status changes,\
-      \ use repo.update_task_status().\n   For other field changes (name, description,\
-      \ etc.), need a new\n   repo.update_task() method or use repo._tasks.update()\
-      \ directly.\n   Add update_task(plan_folder_name, task_id, updates) to PlanRepository\n\
-      \   if it doesn't exist yet.\n"
-  - id: MU_002
-    name: Replace phase mutation YAML calls
-    status: completed
-    completed_date: '2026-02-24'
-    agent: build-python
-    description: 'Replace yaml read+modify+dump in cmd_phase_add and cmd_phase_update
-      with PlanRepository phase methods.
-
-      '
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: "1. cmd_phase_add() at ~line 3349:\n   Lines 3377, 3429 - yaml.safe_load\
-      \ + yaml.dump.\n   NEW: repo.add_phase(plan_folder_name, phase_data)\n   Then\
-      \ repo.sync_to_yaml(plan_folder_name) for git visibility.\n\n2. cmd_phase_update()\
-      \ at ~line 3564:\n   Lines 3600, 3669 - yaml.safe_load + yaml.dump.\n   NEW:\
-      \ repo.update_phase(plan_folder_name, phase_name, updates)\n   Then repo.sync_to_yaml(plan_folder_name).\n"
-  - id: MU_003
-    name: Replace archive, unarchive, and cancel YAML mutations
-    status: completed
-    completed_date: '2026-02-24'
-    agent: build-python
-    description: 'Replace yaml read+modify+dump in cmd_archive, cmd_unarchive, and
-      cmd_cancel with PlanRepository operations.
-
-      '
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: "1. cmd_archive() at ~line 2500:\n   Lines 2525, 2530 - reads/writes\
-      \ plan_completed.yml.\n   NEW: repo.archive_plan(plan_folder_name, completed_date=today)\n\
-      \   The physical folder move (shutil.move) should REMAIN as-is.\n   After moving,\
-      \ call repo.resync_plan_folder() with the new path.\n   Then repo.sync_to_yaml()\
-      \ for git visibility.\n\n2. cmd_unarchive() at ~line 2546:\n   Lines 2702, 2708\
-      \ - reads/writes plan_completed.yml.\n   NEW: repo.unarchive_plan(plan_folder_name)\n\
-      \   Physical folder move REMAINS. After moving, resync_plan_folder().\n\n3.\
-      \ cmd_cancel() at ~line 2733:\n   Lines 2768, 2791 - reads/writes plan build\
-      \ file.\n   NEW: repo.cancel_plan(plan_folder_name, reason=args.reason)\n  \
-      \ After cancelling in DB, sync to YAML for git visibility.\n"
-  - id: MU_004
-    name: Add TinyDB import after plan creation in cmd_new and cmd_init
-    status: completed
-    completed_date: '2026-02-24'
-    agent: build-python
-    description: 'After cmd_new/cmd_init create YAML scaffold files, import the new
-      plan into TinyDB so it''s immediately queryable.
-
-      '
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: "1. cmd_new() at ~line 634:\n   After creating the plan folder and writing\
-      \ YAML files, add:\n     repo = _get_repo()\n     if repo:\n         repo.import_from_yaml(plan_folder)\n\
-      \n2. cmd_init() at ~line 1051:\n   Same pattern - after plan folder creation,\
-      \ import to TinyDB.\n\n3. cmd_bootstrap() at ~line 4657:\n   After bootstrap\
-      \ creates plan files, import to TinyDB.\n\nThis ensures newly created plans\
-      \ are immediately available via TinyDB\nwithout relying on auto-bootstrap or\
-      \ read-through.\n"
-- name: Phase 6 - Testing, Cleanup & Validation
-  execution: sequential
-  description: 'Fix test failures, run full suite, and validate that zero plan-data
-    YAML calls remain in CLI plan.py.
-
-    '
-  tasks:
-  - id: TC_001
-    name: Fix pre-existing test failures
-    status: completed
-    completed_date: '2026-02-24'
-    agent: build-python
-    description: 'Fix the 12 pre-existing test failures across AgenticGuidance and
-      AgenticCLI.
-
-      '
-    inputs:
-    - modules/AgenticGuidance/tests/
-    - modules/AgenticCLI/tests/
-    target_files:
-    - modules/AgenticCLI/tests/test_orchestration_workflow.py
-    - modules/AgenticCLI/tests/test_session_commands.py
-    - modules/AgenticGuidance/tests/test_deploy_worktree_guidance.py
-    - modules/AgenticGuidance/tests/test_orchestration_story_validation.py
-    - modules/AgenticGuidance/tests/test_planner_build_story_generation.py
-    - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
-    guidance: "Run tests and fix failures:\n\nAgenticCLI failures (7):\n- TestPlanningRunner\
-      \ (5 tests) - mock missing `plans_dir` attribute.\n  Fix: Add plans_dir to the\
-      \ mock PlanService in the test fixture.\n- TestSessionHelperFunctions (2 tests)\
-      \ - test_is_process_running_for_nonexistent_process\n  and test_update_session_status_marks_completed.\n\
-      \  Investigate and fix the specific assertion failures.\n\nAgenticGuidance failures\
-      \ (5):\n- test_deploy_worktree_guidance (2 tests) - guidance file content assertions.\n\
-      - test_orchestration_story_validation - story lifecycle comment check.\n- test_planner_build_story_generation\
-      \ - fence block validation.\n- test_services_plan_service_integration - plan\
-      \ structure validation.\n  This may be a YAML syntax error in a live plan file.\n\
-      \nRun: python3 -m pytest <test_file> -x -v to investigate each.\n"
-  - id: TC_002
-    name: Run full test suite and fix migration regressions
-    status: completed
-    completed_date: '2026-02-24'
-    agent: build-python
-    description: Run complete test suites, fix any failures caused by Phase 3-5 changes.
-    inputs:
-    - modules/AgenticGuidance/tests/
-    - modules/AgenticCLI/tests/
-    target_files:
-    - modules/AgenticGuidance/tests/
-    - modules/AgenticCLI/tests/
-    guidance: "Run full test suites:\n  python3 -m pytest modules/AgenticGuidance/tests/\
-      \ -v --tb=short\n  python3 -m pytest modules/AgenticCLI/tests/ -v --tb=short\n\
-      \nCommon regressions to watch for:\n- Tests that mock yaml.safe_load expecting\
-      \ it to be called (remove mocks)\n- Tests that create YAML files expecting them\
-      \ to be source of truth\n  (add TinyDB import step or use PlanService)\n- Tests\
-      \ that check for yaml.dump side effects\n- Import errors from changed PlanData/TaskData\
-      \ constructors\n- Tests using PlanData/TaskData without new required fields\n\
-      \nFix all failures. Target: zero failures.\n"
-  - id: TC_003
-    name: Audit and verify zero plan-data YAML in CLI
-    status: completed
-    completed_date: '2026-02-24'
-    agent: build-python
-    description: 'Verify that no plan-data yaml.safe_load/dump calls remain in plan.py.
-      Only non-plan YAML calls should survive.
-
-      '
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: 'Run: grep -n "yaml.safe_load\|yaml.dump" plan.py
-
-
-      EXPECTED remaining YAML calls (non-plan data, DO NOT remove):
-
-      - _get_loop_types() reads agent-loops.yml
-
-      - cmd_validate reads user_stories YAML
-
-      - cmd_stories_list reads user stories
-
-      - cmd_stories_test reads/writes stories test output
-
-
-      If any plan-data YAML calls remain, replace them with PlanRepository calls.
-
-
-      Target: Maximum 6 yaml calls remaining (all non-plan-data).
-
-      Report the final count and which lines they are on.
-
-      '

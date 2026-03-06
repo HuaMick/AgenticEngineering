@@ -1,92 +1,96 @@
-# Plan: AgenticLangSmith Lean Deployment
-# Status: APPROVED
-# Created: 2026-01-13
-# Summary: A stripped-back, efficient implementation of LangSmith tracing.
+name: agenticlangsmith-lean-build
+worktree_path: /home/code/AgenticEngineering-agenticlangsmith
+branch: ''
+status: COMPLETED
+priority: high
+objective: 'This is the cleaned-up, non-overengineered version of the LangSmith integration.
 
-name: "agenticlangsmith-lean-build"
-worktree_path: "/home/code/AgenticEngineering-agenticlangsmith"
-status: "COMPLETED"
-priority: "high"
-
-context: |
-  This is the cleaned-up, non-overengineered version of the LangSmith integration.
   It avoids symlinks by installing the hook script directly to ~/.claude/hooks/
+
   and configures all worktrees in a single batch.
 
+  '
+created: ''
 phases:
-  - name: "Deployment Phase"
-    execution: sequential
-    tasks:
-      - id: "deploy_01"
-        name: "Environment Validation"
-        description: "Verify jq/curl and LangSmith API Key availability"
-        guidance: |
-          1. Run: which jq curl
-          2. Ask user for their LangSmith API key (starts with lsv2_pt_...)
-        acceptance_criteria:
-          - "jq and curl are present"
-          - "User provides API key"
+- name: Deployment Phase
+  execution: sequential
+  tickets:
+  - id: deploy_01
+    name: Environment Validation
+    description: Verify jq/curl and LangSmith API Key availability
+    status: pending
+    agent: null
+    guidance: '1. Run: which jq curl
 
-      - id: "deploy_02"
-        name: "Install Hook Script"
-        description: "Deploy the stop_hook.sh script to ~/.claude/hooks/"
-        guidance: |
-          mkdir -p ~/.claude/hooks
-          curl -fsSL -o ~/.claude/hooks/stop_hook.sh https://raw.githubusercontent.com/langchain-ai/tracing-claude-code/main/stop_hook.sh
-          chmod +x ~/.claude/hooks/stop_hook.sh
-        acceptance_criteria:
-          - "File ~/.claude/hooks/stop_hook.sh exists and is executable"
+      2. Ask user for their LangSmith API key (starts with lsv2_pt_...)
 
-      - id: "deploy_03"
-        name: "Configure Global Settings"
-        description: "Add the Stop hook to ~/.claude/settings.json using new matcher format"
-        guidance: |
-          # IMPORTANT: Claude Code hooks now use matcher-based format
-          # Each hook event (Stop, PostToolUse, etc.) contains an array of objects
-          # Each object has optional "matcher" and required "hooks" array
-          # Format: {"Stop": [{"matcher": {...}, "hooks": [{"type": "command", "command": "..."}]}]}
+      '
+  - id: deploy_02
+    name: Install Hook Script
+    description: Deploy the stop_hook.sh script to ~/.claude/hooks/
+    status: pending
+    agent: null
+    guidance: 'mkdir -p ~/.claude/hooks
 
-          # Use jq to safely add the hook without breaking existing plugins
-          cp ~/.claude/settings.json ~/.claude/settings.json.bak
-          jq '. + {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash ~/.claude/hooks/stop_hook.sh"}]}]}}' ~/.claude/settings.json > ~/.claude/settings.json.tmp && mv ~/.claude/settings.json.tmp ~/.claude/settings.json
-        acceptance_criteria:
-          - "settings.json contains the Stop hook config with nested hooks array"
-          - "Existing plugins are preserved"
-          - "Format uses new matcher-based structure (hooks array inside Stop array item)"
+      curl -fsSL -o ~/.claude/hooks/stop_hook.sh https://raw.githubusercontent.com/langchain-ai/tracing-claude-code/main/stop_hook.sh
 
-      - id: "deploy_04"
-        name: "Batch Configure Worktrees"
-        description: "Set up settings.local.json in all worktrees"
-        guidance: |
-          WORKTREES=(
-            "/home/code/AgenticEngineering"
-            "/home/code/AgenticEngineering-agentic-cli"
-            "/home/code/AgenticEngineering-agenticguidance"
-            "/home/code/AgenticEngineering-agenticlangsmith"
-          )
-          
-          for WT in "${WORKTREES[@]}"; do
-            mkdir -p "$WT/.claude"
-            PROJECT_NAME=$(basename "$WT")
-            echo "{\"env\": {\"TRACE_TO_LANGSMITH\": \"true\", \"CC_LANGSMITH_API_KEY\": \"$API_KEY\", \"CC_LANGSMITH_PROJECT\": \"$PROJECT_NAME\"}}" > "$WT/.claude/settings.local.json"
-            echo "Ignored .claude/settings.local.json in $WT"
-            grep -q ".claude/settings.local.json" "$WT/.gitignore" || echo ".claude/settings.local.json" >> "$WT/.gitignore"
-          done
-        acceptance_criteria:
-          - "All 4 worktrees have settings.local.json"
-          - ".gitignore updated mapping to prevent key leakage"
+      chmod +x ~/.claude/hooks/stop_hook.sh
 
-      - id: "deploy_05"
-        name: "Verification"
-        description: "Perform a smoke test and check LangSmith dashboard"
-        guidance: |
-          1. Run a simple command in Claude Code (e.g., 'hello')
-          2. Check ~/.claude/state/hook.log for activity
-          3. Confirm trace appears at https://smith.langchain.ai/
-        acceptance_criteria:
-          - "Trace appears in LangSmith under the correct project name"
+      '
+  - id: deploy_03
+    name: Configure Global Settings
+    description: Add the Stop hook to ~/.claude/settings.json using new matcher format
+    status: pending
+    agent: null
+    guidance: '# IMPORTANT: Claude Code hooks now use matcher-based format
 
-success_criteria:
-  - "Tracing works across all worktrees"
-  - "No broken symlinks or complex dependencies"
-  - "Zero leakage of secret keys to Git"
+      # Each hook event (Stop, PostToolUse, etc.) contains an array of objects
+
+      # Each object has optional "matcher" and required "hooks" array
+
+      # Format: {"Stop": [{"matcher": {...}, "hooks": [{"type": "command", "command":
+      "..."}]}]}
+
+
+      # Use jq to safely add the hook without breaking existing plugins
+
+      cp ~/.claude/settings.json ~/.claude/settings.json.bak
+
+      jq ''. + {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "bash
+      ~/.claude/hooks/stop_hook.sh"}]}]}}'' ~/.claude/settings.json > ~/.claude/settings.json.tmp
+      && mv ~/.claude/settings.json.tmp ~/.claude/settings.json
+
+      '
+  - id: deploy_04
+    name: Batch Configure Worktrees
+    description: Set up settings.local.json in all worktrees
+    status: pending
+    agent: null
+    guidance: "WORKTREES=(\n  \"/home/code/AgenticEngineering\"\n  \"/home/code/AgenticEngineering-agentic-cli\"\
+      \n  \"/home/code/AgenticEngineering-agenticguidance\"\n  \"/home/code/AgenticEngineering-agenticlangsmith\"\
+      \n)\n\nfor WT in \"${WORKTREES[@]}\"; do\n  mkdir -p \"$WT/.claude\"\n  PROJECT_NAME=$(basename\
+      \ \"$WT\")\n  echo \"{\\\"env\\\": {\\\"TRACE_TO_LANGSMITH\\\": \\\"true\\\"\
+      , \\\"CC_LANGSMITH_API_KEY\\\": \\\"$API_KEY\\\", \\\"CC_LANGSMITH_PROJECT\\\
+      \": \\\"$PROJECT_NAME\\\"}}\" > \"$WT/.claude/settings.local.json\"\n  echo\
+      \ \"Ignored .claude/settings.local.json in $WT\"\n  grep -q \".claude/settings.local.json\"\
+      \ \"$WT/.gitignore\" || echo \".claude/settings.local.json\" >> \"$WT/.gitignore\"\
+      \ndone\n"
+  - id: deploy_05
+    name: Verification
+    description: Perform a smoke test and check LangSmith dashboard
+    status: pending
+    agent: null
+    guidance: '1. Run a simple command in Claude Code (e.g., ''hello'')
+
+      2. Check ~/.claude/state/hook.log for activity
+
+      3. Confirm trace appears at https://smith.langchain.ai/
+
+      '
+context: 'This is the cleaned-up, non-overengineered version of the LangSmith integration.
+
+  It avoids symlinks by installing the hook script directly to ~/.claude/hooks/
+
+  and configures all worktrees in a single batch.
+
+  '

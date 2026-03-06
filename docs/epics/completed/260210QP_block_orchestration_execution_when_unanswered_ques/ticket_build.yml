@@ -1,30 +1,19 @@
-title: Orchestration Pause-on-Questions
-description: 'Prevent orchestration from advancing and plans from auto-archiving when
-  unanswered questions exist. Four deliverables: orchestration prompt gate, auto-archive
-  gate (3 call sites), session spawn warning, and question list support for completed/archived
-  plans.
-
-  '
-success_criteria:
-- Auto-archive is blocked at ALL THREE call sites when pending questions exist
-- Auto-archive proceeds normally when no pending questions exist
-- Auto-archive proceeds when all questions are answered (none pending)
-- Orchestration prompt includes mandatory question-check gate before task spawn
-- Session spawn warns (non-blocking) when pending questions exist for the plan
-- '''agentic question list --plan completed_folder'' works for archived plans'
-- All new behavior has unit tests
+name: 260210QP_block_orchestration_execution_when_unanswered_ques
+worktree_path: ''
+branch: ''
+status: pending
+priority: medium
+objective: ''
+created: ''
 phases:
-- id: P1
-  name: 'Utility function: has_pending_questions'
+- name: 'Utility function: has_pending_questions'
   description: 'Create a fast, reusable utility function that checks for pending questions
     in a plan folder. This is the shared primitive used by all three gates.
 
     '
-  tasks:
+  tickets:
   - id: P1-T1
-    title: Add has_pending_questions() to plan.py
-    status: completed
-    agent: build-python
+    name: ''
     description: 'Add a function `has_pending_questions(plan_path: Path) -> bool`
       to modules/AgenticCLI/src/agenticcli/commands/plan.py.
 
@@ -37,19 +26,18 @@ phases:
       similar gating purposes.
 
       '
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/plan.py
-- id: P2
-  name: Auto-archive gate (3 call sites)
+- name: Auto-archive gate (3 call sites)
   description: 'Guard all three auto-archive call sites with the pending question
     check. This is the critical data-loss prevention change.
 
     '
-  tasks:
+  tickets:
   - id: P2-T1
-    title: Gate auto-archive in cmd_task_complete (line ~1939)
-    status: completed
-    agent: build-python
+    name: ''
     description: "In cmd_task_complete() around line 1939, wrap the existing auto-archive\
       \ block with a pending-questions check:\n```python if not no_archive and is_plan_fully_completed(plan_path):\n\
       \    if has_pending_questions(plan_path):\n        print_warning(\"All tasks\
@@ -58,22 +46,22 @@ phases:
       \ + plan_path.name)\n    else:\n        # existing archive logic unchanged\n\
       ```\nThe warning must go to stderr (use print_warning which does this). Task\
       \ update still succeeds - only archive is skipped.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/plan.py
   - id: P2-T2
-    title: Gate auto-archive in cmd_plan_orchestrate_execute (line ~910)
-    status: completed
-    agent: build-python
+    name: ''
     description: "In the orchestrate-execute flow around line 910, apply the same\
       \ pattern:\n```python if is_plan_fully_completed(plan_folder):\n    if has_pending_questions(plan_folder):\n\
       \        print_warning(\"All tasks completed but unanswered questions remain.\
       \ Skipping auto-archive.\")\n    else:\n        # existing archive logic\n```\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/plan.py
   - id: P2-T3
-    title: Gate auto-archive in Typer task update (line ~2951)
-    status: completed
-    agent: build-python
+    name: ''
     description: "In the Typer-based task update function around line 2951, apply\
       \ same pattern:\n```python if new_status == \"completed\" and not no_archive\
       \ and is_plan_fully_completed(plan_path):\n    if has_pending_questions(plan_path):\n\
@@ -81,20 +69,19 @@ phases:
       \            print_json({\"auto_archive\": False, \"reason\": \"pending_questions\"\
       })\n    else:\n        # existing archive logic\n```\nInclude JSON output for\
       \ the blocked case since this code path already has JSON support.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/plan.py
-- id: P3
-  name: Orchestration prompt question gate
+- name: Orchestration prompt question gate
   description: 'Add a mandatory question-check step to the orchestration prompt. This
     is guidance-only (no code), but prevents the orchestrator from spawning tasks
     into a plan that has unanswered questions.
 
     '
-  tasks:
+  tickets:
   - id: P3-T1
-    title: Add question gate to EXECUTE section of orchestration.md
-    status: completed
-    agent: build-python
+    name: ''
     description: "Edit docs/prompts/orchestration.md. In the EXECUTE section, add\
       \ a new step BEFORE spawning (between current step 1 and step 2):\n``` ## EXECUTE\
       \ (use CLI sessions, NOT inline Task tool) For each plan with an MMD: 1. Read\
@@ -108,20 +95,19 @@ phases:
       \ 5) to note that the gate in step 2 should prevent reaching here with pending\
       \ questions, but this remains as a safety check.\nRenumber subsequent steps\
       \ accordingly.\n"
+    status: completed
+    agent: build-python
     target_files:
     - docs/prompts/orchestration.md
-- id: P4
-  name: Session spawn question warning
+- name: Session spawn question warning
   description: 'When --plan is provided to session spawn, check for pending questions
     and print an informational warning. Non-blocking - the orchestrator decides whether
     to proceed.
 
     '
-  tasks:
+  tickets:
   - id: P4-T1
-    title: Add pending-question warning to cmd_spawn
-    status: completed
-    agent: build-python
+    name: ''
     description: "In cmd_spawn() in session.py, after plan_folder is resolved (around\
       \ line 583), add:\n```python # Warn if plan has pending questions (informational\
       \ only) if plan_folder:\n    from agenticcli.commands.plan import has_pending_questions\n\
@@ -130,19 +116,18 @@ phases:
       \ pending questions. Check: agentic question list --plan {plan_folder.name}\"\
       )\n```\nThis is informational (not blocking). The orchestrator prompt gate is\
       \ the authoritative check; this is a defense-in-depth reminder.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/session.py
-- id: P5
-  name: Question list for completed/archived plans
+- name: Question list for completed/archived plans
   description: 'Allow `agentic question list --plan <folder>` to work when the folder
     is in docs/plans/completed/ (not just live/).
 
     '
-  tasks:
+  tickets:
   - id: P5-T1
-    title: Update _get_plan_path to search completed plans
-    status: completed
-    agent: build-python
+    name: ''
     description: "In question.py's _get_plan_path(), the auto-detect path uses MainFirstPlanResolver\
       \ which only finds live plans. When --plan is provided explicitly, it works\
       \ fine if the user passes a full path, but the common pattern is passing just\
@@ -160,19 +145,18 @@ phases:
       \   ...\n```\nAdd helper `_search_completed_plans(name: str) -> Path | None`\
       \ that searches docs/plans/completed/ with same prefix-match logic as find_plan_folder\
       \ uses for live/.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/question.py
-- id: P6
-  name: Unit tests
+- name: Unit tests
   description: 'Tests for all new behavior. Create a single new test file test_plan_question_gate.py
     to keep tests focused.
 
     '
-  tasks:
+  tickets:
   - id: P6-T1
-    title: Test has_pending_questions utility
-    status: completed
-    agent: build-python
+    name: ''
     description: 'Create modules/AgenticCLI/tests/test_plan_question_gate.py with
       tests:
 
@@ -185,12 +169,12 @@ phases:
       Use tmp_path fixture. Import has_pending_questions from agenticcli.commands.plan.
 
       '
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/tests/test_plan_question_gate.py
   - id: P6-T2
-    title: Test auto-archive blocked by pending questions
-    status: completed
-    agent: build-python
+    name: ''
     description: "In test_plan_question_gate.py, add tests for auto-archive gating:\n\
       1. test_auto_archive_blocked_when_pending_questions:\n   - Set up a plan folder\
       \ with all tasks completed\n   - Add a question file to questions/pending/\n\
@@ -202,30 +186,31 @@ phases:
       \ only (none in pending/)\n   - Call cmd_task_complete\n   - Assert archive\
       \ WAS called\n\nUse monkeypatch/mock for PlanMovementWorkflow and is_plan_fully_completed.\
       \ Use capsys or mock print_warning to check output.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/tests/test_plan_question_gate.py
   - id: P6-T3
-    title: Test session spawn warning
-    status: completed
-    agent: build-python
+    name: ''
     description: "In test_plan_question_gate.py, add test:\n1. test_spawn_warns_on_pending_questions:\n\
       \   - Mock has_pending_questions to return True\n   - Mock subprocess.Popen\
       \ (don't actually spawn)\n   - Call cmd_spawn with plan arg\n   - Assert warning\
       \ message in stderr\n\nUse monkeypatch for has_pending_questions and subprocess.\n"
-    target_files:
-    - modules/AgenticCLI/tests/test_plan_question_gate.py
-- id: P7
-  name: Verification
-  description: Run tests and verify all changes work together.
-  tasks:
-  - id: P7-T1
-    title: Run test suite
     status: completed
     agent: build-python
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_question_gate.py
+- name: Verification
+  description: Run tests and verify all changes work together.
+  tickets:
+  - id: P7-T1
+    name: ''
     description: 'Run the full test suite to verify no regressions: ```bash cd /home/code/AgenticEngineering/modules/AgenticCLI
       && python3 -m pytest tests/test_plan_question_gate.py -v cd /home/code/AgenticEngineering/modules/AgenticCLI
       && python3 -m pytest tests/ -x --timeout=30 ``` Fix any failures.
 
       '
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/tests/test_plan_question_gate.py

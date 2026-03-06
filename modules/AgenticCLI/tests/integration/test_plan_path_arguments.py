@@ -36,7 +36,7 @@ class TestPlanStatusPathArguments:
                         "id": "phase_01",
                         "name": "Phase One",
                         "status": "in_progress",
-                        "tasks": [
+                        "tickets": [
                             {"id": "01", "description": "Task 1", "status": "completed"},
                             {"id": "02", "description": "Task 2", "status": "pending"},
                         ]
@@ -161,7 +161,7 @@ class TestPlanValidatePathArguments:
                         "id": "build_01",
                         "name": "Build Phase",
                         "status": "pending",
-                        "tasks": []
+                        "tickets": []
                     }
                 ]
             }
@@ -296,7 +296,7 @@ class TestPlanArchivePathArguments:
                         "id": "test_01",
                         "name": "Test Phase",
                         "status": "completed",
-                        "tasks": [
+                        "tickets": [
                             {"id": "01", "description": "Done", "status": "completed"}
                         ]
                     }

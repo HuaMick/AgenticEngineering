@@ -65,7 +65,7 @@ This is a test plan for integration testing.
             {
                 "name": "Phase 1",
                 "id": "phase_01",
-                "tasks": [
+                "tickets": [
                     {
                         "id": "01.1",
                         "name": "First task",

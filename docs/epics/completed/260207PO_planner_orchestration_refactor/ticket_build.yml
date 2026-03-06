@@ -1,325 +1,284 @@
-# Plan: Refactor orchestration-planning — Split MMD Generation into planner-orchestration
-#
-# This plan extracts MMD generation from orchestration-planning into a dedicated
-# planner-orchestration agent, following the naming convention:
-# - orchestration-* agents execute workflows
-# - planner-* agents create planning artifacts
+name: planner-orchestration-refactor-teach
+worktree_path: ''
+branch: ''
+status: completed
+priority: high
+objective: 'orchestration-planning was doing two distinct jobs:
 
-name: "planner-orchestration-refactor"
-status: "completed"
-priority: "high"
-
-context: |
-  orchestration-planning was doing two distinct jobs:
   1. Orchestrating planner agents (spawn, review, approve)
+
   2. Generating orchestration MMD files (read YAMLs, create flowcharts)
 
+
   This violates naming conventions. The MMD file is a planning artifact,
+
   so its generation belongs in a planner-* agent. Additionally, a generic
+
   planner/planner/ agent existed but was underdeveloped and overlapping.
 
+
   This plan creates planner-orchestration, refactors orchestration-planning
+
   to delegate MMD generation, and includes mandatory teach validation
+
   (agent self-review) since this modifies agent guidance files.
 
-related_plans:
-  orchestration: "orchestration_planner_orchestration_refactor.mmd"
-
-impacted_files:
-  # New files
-  - path: "modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml"
-    change_type: create
-    change_category: implementation
-    reason: "New agent process with MMD generation steps"
-
-  - path: "modules/AgenticGuidance/agents/planner/planner-orchestration/inputs.yml"
-    change_type: create
-    change_category: implementation
-    reason: "New agent inputs with plan folder path and MMD schema references"
-
-  - path: "modules/AgenticGuidance/agents/planner/planner-orchestration/manifest.yml"
-    change_type: create
-    change_category: implementation
-    reason: "New agent manifest declaring MMD output"
-
-  # Modified files
-  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd"
-    change_type: modify
-    change_category: implementation
-    reason: "Remove MMD generation subgraph, add planner-orchestration spawn"
-
-  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
-    change_type: modify
-    change_category: implementation
-    reason: "Add planner-orchestration to spawns list"
-
-  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
-    change_type: modify
-    change_category: implementation
-    reason: "Remove MMD-specific definitions, add delegation reference"
-
-  - path: "modules/AgenticGuidance/agents/planner/manifest.yml"
-    change_type: modify
-    change_category: implementation
-    reason: "Add planner-orchestration to sub_agents and routing_logic"
-
-  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml"
-    change_type: modify
-    change_category: implementation
-    reason: "Add planner-orchestration to agent routing for re-planning"
-
-  - path: "docs/prompts/orchestration_planner.md"
-    change_type: modify
-    change_category: docs
-    reason: "Rewrite for new architecture with delegated MMD generation"
-
-  - path: "docs/prompts/orchestration_executor.md"
-    change_type: modify
-    change_category: docs
-    reason: "Add planner-orchestration to routing table"
-
-  # Deleted files
-  - path: "modules/AgenticGuidance/agents/planner/planner/"
-    change_type: delete
-    change_category: implementation
-    reason: "Replaced by planner-orchestration"
-
-impacted_artifacts:
-  - artifact_type: agent
-    artifact_identifier: "planner-orchestration"
-    impact_type: new
-    description: "New planner agent for generating orchestration MMD files"
-
-  - artifact_type: agent
-    artifact_identifier: "orchestration-planning"
-    impact_type: modified
-    description: "Simplified to pure orchestration — no longer generates MMDs directly"
-
-  - artifact_type: agent
-    artifact_identifier: "planner/planner"
-    impact_type: removed
-    description: "Generic planner replaced by focused planner-orchestration"
-
-# ========================================
-# LOOP STRUCTURES
-# ========================================
-loop_structures:
-  - id: "loop_teach_validation"
-    type: "agent-self-review"
-    applies_to_phase: "Teach Validation Phase"
-    trigger: "After all guidance file modifications are complete"
-    description: |
-      MANDATORY agent self-review for all modified agents.
-      Each agent whose guidance was modified must be reviewed for:
-      - Path resolution correctness in inputs.yml
-      - Consistency between process.yml and inputs.yml
-      - Manifest spawns list accuracy
-    exit_criteria:
-      success: "All agent self-reviews pass"
-      max_iterations: 3
-      escalation: "Escalate to human with specific validation failures"
-    participants:
-      - agent: "test-guidance-simulator"
-        role: "Validates agent guidance completeness"
-    mandatory: true
-
-# ========================================
-# PHASES AND TASKS
-# ========================================
+  '
+created: ''
 phases:
-  # ----------------------------------------
-  # PHASE 1: Create planner-orchestration agent
-  # ----------------------------------------
-  - name: "Create planner-orchestration Agent"
-    execution: sequential
-    description: "Create the new planner-orchestration agent under agents/planner/"
-    tasks:
-      - id: "build_001"
-        name: "Create process.yml"
-        description: |
-          Create agents/planner/planner-orchestration/process.yml with MMD generation steps
-          extracted from orchestration-planning/process.mmd (lines 250-329).
-          Steps: Load plan context, extract phases, determine agent routing,
-          validate loops, generate metadata, build flowchart, validate granularity,
-          write MMD, validate against schema.
-        status: "completed"
-        agent_type: "build-python"
+- name: Create planner-orchestration Agent
+  execution: sequential
+  description: Create the new planner-orchestration agent under agents/planner/
+  tickets:
+  - id: build_001
+    name: Create process.yml
+    description: 'Create agents/planner/planner-orchestration/process.yml with MMD
+      generation steps
 
-      - id: "build_002"
-        name: "Create inputs.yml"
-        description: |
-          Create agents/planner/planner-orchestration/inputs.yml with:
-          - plan_folder_path required input
-          - target_project_path required input
-          - MMD schema reference
-          - Executor specification reference
-          - Loop definitions reference
-          - Agent categories reference
-          - Phase template references
-          - MMD node granularity fence
-        status: "completed"
-        agent_type: "build-python"
+      extracted from orchestration-planning/process.mmd (lines 250-329).
 
-      - id: "build_003"
-        name: "Create manifest.yml"
-        description: |
-          Create agents/planner/planner-orchestration/manifest.yml declaring:
-          - Agent name and description
-          - MMD output with required metadata fields
-          - Architecture checklist
-        status: "completed"
-        agent_type: "build-python"
+      Steps: Load plan context, extract phases, determine agent routing,
 
-  # ----------------------------------------
-  # PHASE 2: Refactor orchestration-planning
-  # ----------------------------------------
-  - name: "Refactor orchestration-planning"
-    execution: sequential
-    description: "Simplify orchestration-planning to pure orchestration, delegating MMD generation"
-    tasks:
-      - id: "build_004"
-        name: "Remove MMD generation subgraph from process.mmd"
-        description: |
-          Remove the MMD Generation Subgraph (lines 250-329) from process.mmd.
-          Replace with a planner-orchestration spawn step:
-          AllPhasesPlanned -> SpawnMMDGenerator -> MMDAgentResult decision -> retry/escalate/success.
-          Update header comments to reflect delegation model.
-        status: "completed"
-        agent_type: "build-python"
+      validate loops, generate metadata, build flowchart, validate granularity,
 
-      - id: "build_005"
-        name: "Update manifest.yml and inputs.yml"
-        description: |
-          manifest.yml: Add planner-orchestration to spawns list, update outputs to note delegation.
-          inputs.yml: Remove mmd_node_granularity section, remove MMD template inputs,
-          add mmd_generation_delegation reference to planner-orchestration.
-        status: "completed"
-        agent_type: "build-python"
+      write MMD, validate against schema.
 
-  # ----------------------------------------
-  # PHASE 3: Update cross-references
-  # ----------------------------------------
-  - name: "Update Cross-References"
-    execution: sequential
-    description: "Update all files that reference the old structure"
-    tasks:
-      - id: "build_006"
-        name: "Add planner-orchestration to planner/manifest.yml"
-        description: |
-          Add planner-orchestration to sub_agents list and routing_logic in
-          agents/planner/manifest.yml.
-        status: "completed"
-        agent_type: "build-python"
+      '
+    status: completed
+    agent: null
+  - id: build_002
+    name: Create inputs.yml
+    description: 'Create agents/planner/planner-orchestration/inputs.yml with:
 
-      - id: "build_007"
-        name: "Delete planner/planner/ directory"
-        description: |
-          Delete the underdeveloped agents/planner/planner/ directory.
-          It is replaced by planner-orchestration.
-        status: "completed"
-        agent_type: "build-python"
+      - plan_folder_path required input
 
-      - id: "build_008"
-        name: "Update orchestration-executor inputs.yml"
-        description: |
-          Add planner-orchestration to orchestration-executor/inputs.yml
-          agent routing for re-planning scenarios.
-        status: "completed"
-        agent_type: "build-python"
+      - target_project_path required input
 
-  # ----------------------------------------
-  # PHASE 4: Fix prompts
-  # ----------------------------------------
-  - name: "Fix Prompts"
-    execution: sequential
-    description: "Update human-facing prompts to match new architecture"
-    tasks:
-      - id: "build_009"
-        name: "Rewrite orchestration_planner.md"
-        description: |
-          Rewrite docs/prompts/orchestration_planner.md to describe
-          orchestration-planning as a workflow coordinator that spawns planners
-          and delegates MMD generation to planner-orchestration.
-          Include updated SPAWNED AGENTS table with planner-orchestration.
-        status: "completed"
-        agent_type: "build-python"
+      - MMD schema reference
 
-      - id: "build_010"
-        name: "Update orchestration_executor.md"
-        description: |
-          Update docs/prompts/orchestration_executor.md routing table
-          to include planner-orchestration under planner type.
-          Add MMD_REGENERATION feedback trigger.
-        status: "completed"
-        agent_type: "build-python"
+      - Executor specification reference
 
-  # ----------------------------------------
-  # PHASE 5: Teach Validation (MANDATORY)
-  # ----------------------------------------
-  - name: "Teach Validation Phase"
-    execution: sequential
-    description: |
-      MANDATORY agent self-review for all modified agents.
-      This plan modifies guidance files for orchestration-planning,
-      orchestration-executor, and planner manifest, plus creates
-      planner-orchestration. All must be validated.
-    tasks:
-      - id: "teach_001"
-        name: "Agent self-review: planner-orchestration"
-        description: |
-          Validate the new planner-orchestration agent:
-          - process.yml steps are coherent and complete
-          - inputs.yml paths resolve correctly
-          - manifest.yml outputs match process.yml expectations
-          - Node granularity fence is properly defined
-        status: "completed"
-        agent_type: "test-guidance-simulator"
-        loop: "agent-self-review"
+      - Loop definitions reference
 
-      - id: "teach_002"
-        name: "Agent self-review: orchestration-planning"
-        description: |
-          Validate orchestration-planning after refactor:
-          - process.mmd no longer contains MMD generation logic
-          - process.mmd properly spawns planner-orchestration
-          - manifest.yml spawns list includes planner-orchestration
-          - inputs.yml references planner-orchestration process
-          - No broken internal references after MMD removal
-        status: "completed"
-        agent_type: "test-guidance-simulator"
-        loop: "agent-self-review"
+      - Agent categories reference
 
-      - id: "teach_003"
-        name: "Agent self-review: orchestration-executor"
-        description: |
-          Validate orchestration-executor after routing update:
-          - inputs.yml includes planner-orchestration reference
-          - Routing table can resolve planner-orchestration
-        status: "completed"
-        agent_type: "test-guidance-simulator"
-        loop: "agent-self-review"
+      - Phase template references
 
-      - id: "teach_004"
-        name: "Cross-reference consistency check"
-        description: |
-          Validate consistency across all modified files:
-          - planner/manifest.yml lists planner-orchestration
-          - orchestration-planning/manifest.yml spawns planner-orchestration
-          - orchestration-executor/inputs.yml references planner-orchestration
-          - planner/planner/ directory no longer exists
-          - No orphan references to old planner/planner/ agent
-        status: "completed"
-        agent_type: "test-guidance-simulator"
-        loop: "agent-self-review"
+      - MMD node granularity fence
 
-# ========================================
-# SUCCESS CRITERIA
-# ========================================
-success_criteria:
-  - "planner-orchestration agent folder exists with process.yml, inputs.yml, manifest.yml"
-  - "orchestration-planning/process.mmd no longer contains MMD generation logic"
-  - "orchestration-planning/manifest.yml spawns planner-orchestration"
-  - "planner/manifest.yml lists planner-orchestration in sub_agents"
-  - "planner/planner/ directory is deleted"
-  - "Both prompts reference correct architecture"
-  - "All agent self-reviews pass (MANDATORY)"
+      '
+    status: completed
+    agent: null
+  - id: build_003
+    name: Create manifest.yml
+    description: 'Create agents/planner/planner-orchestration/manifest.yml declaring:
+
+      - Agent name and description
+
+      - MMD output with required metadata fields
+
+      - Architecture checklist
+
+      '
+    status: completed
+    agent: null
+- name: Refactor orchestration-planning
+  execution: sequential
+  description: Simplify orchestration-planning to pure orchestration, delegating MMD
+    generation
+  tickets:
+  - id: build_004
+    name: Remove MMD generation subgraph from process.mmd
+    description: 'Remove the MMD Generation Subgraph (lines 250-329) from process.mmd.
+
+      Replace with a planner-orchestration spawn step:
+
+      AllPhasesPlanned -> SpawnMMDGenerator -> MMDAgentResult decision -> retry/escalate/success.
+
+      Update header comments to reflect delegation model.
+
+      '
+    status: completed
+    agent: null
+  - id: build_005
+    name: Update manifest.yml and inputs.yml
+    description: 'manifest.yml: Add planner-orchestration to spawns list, update outputs
+      to note delegation.
+
+      inputs.yml: Remove mmd_node_granularity section, remove MMD template inputs,
+
+      add mmd_generation_delegation reference to planner-orchestration.
+
+      '
+    status: completed
+    agent: null
+- name: Update Cross-References
+  execution: sequential
+  description: Update all files that reference the old structure
+  tickets:
+  - id: build_006
+    name: Add planner-orchestration to planner/manifest.yml
+    description: 'Add planner-orchestration to sub_agents list and routing_logic in
+
+      agents/planner/manifest.yml.
+
+      '
+    status: completed
+    agent: null
+  - id: build_007
+    name: Delete planner/planner/ directory
+    description: 'Delete the underdeveloped agents/planner/planner/ directory.
+
+      It is replaced by planner-orchestration.
+
+      '
+    status: completed
+    agent: null
+  - id: build_008
+    name: Update orchestration-executor inputs.yml
+    description: 'Add planner-orchestration to orchestration-executor/inputs.yml
+
+      agent routing for re-planning scenarios.
+
+      '
+    status: completed
+    agent: null
+- name: Fix Prompts
+  execution: sequential
+  description: Update human-facing prompts to match new architecture
+  tickets:
+  - id: build_009
+    name: Rewrite orchestration_planner.md
+    description: 'Rewrite docs/prompts/orchestration_planner.md to describe
+
+      orchestration-planning as a workflow coordinator that spawns planners
+
+      and delegates MMD generation to planner-orchestration.
+
+      Include updated SPAWNED AGENTS table with planner-orchestration.
+
+      '
+    status: completed
+    agent: null
+  - id: build_010
+    name: Update orchestration_executor.md
+    description: 'Update docs/prompts/orchestration_executor.md routing table
+
+      to include planner-orchestration under planner type.
+
+      Add MMD_REGENERATION feedback trigger.
+
+      '
+    status: completed
+    agent: null
+- name: Teach Validation Phase
+  execution: sequential
+  description: 'MANDATORY agent self-review for all modified agents.
+
+    This plan modifies guidance files for orchestration-planning,
+
+    orchestration-executor, and planner manifest, plus creates
+
+    planner-orchestration. All must be validated.
+
+    '
+  tickets:
+  - id: teach_001
+    name: 'Agent self-review: planner-orchestration'
+    description: 'Validate the new planner-orchestration agent:
+
+      - process.yml steps are coherent and complete
+
+      - inputs.yml paths resolve correctly
+
+      - manifest.yml outputs match process.yml expectations
+
+      - Node granularity fence is properly defined
+
+      '
+    status: completed
+    agent: null
+  - id: teach_002
+    name: 'Agent self-review: orchestration-planning'
+    description: 'Validate orchestration-planning after refactor:
+
+      - process.mmd no longer contains MMD generation logic
+
+      - process.mmd properly spawns planner-orchestration
+
+      - manifest.yml spawns list includes planner-orchestration
+
+      - inputs.yml references planner-orchestration process
+
+      - No broken internal references after MMD removal
+
+      '
+    status: completed
+    agent: null
+  - id: teach_003
+    name: 'Agent self-review: orchestration-executor'
+    description: 'Validate orchestration-executor after routing update:
+
+      - inputs.yml includes planner-orchestration reference
+
+      - Routing table can resolve planner-orchestration
+
+      '
+    status: completed
+    agent: null
+  - id: teach_004
+    name: Cross-reference consistency check
+    description: 'Validate consistency across all modified files:
+
+      - planner/manifest.yml lists planner-orchestration
+
+      - orchestration-planning/manifest.yml spawns planner-orchestration
+
+      - orchestration-executor/inputs.yml references planner-orchestration
+
+      - planner/planner/ directory no longer exists
+
+      - No orphan references to old planner/planner/ agent
+
+      '
+    status: completed
+    agent: null
+- name: Agent Self-Review
+  execution: parallel
+  description: 'Individual self-review for each created or modified agent.
+
+    These tasks are independent and can run in parallel.
+
+    '
+  tickets: []
+- name: Cross-Reference Consistency
+  execution: sequential
+  description: 'Holistic cross-reference check across all modified agents.
+
+    Validates that spawns, routing, and manifest entries are mutually consistent.
+
+    Depends on Phase 1 completing successfully.
+
+    '
+  tickets: []
+context: 'orchestration-planning was doing two distinct jobs:
+
+  1. Orchestrating planner agents (spawn, review, approve)
+
+  2. Generating orchestration MMD files (read YAMLs, create flowcharts)
+
+
+  This violates naming conventions. The MMD file is a planning artifact,
+
+  so its generation belongs in a planner-* agent. Additionally, a generic
+
+  planner/planner/ agent existed but was underdeveloped and overlapping.
+
+
+  This plan creates planner-orchestration, refactors orchestration-planning
+
+  to delegate MMD generation, and includes mandatory teach validation
+
+  (agent self-review) since this modifies agent guidance files.
+
+  '

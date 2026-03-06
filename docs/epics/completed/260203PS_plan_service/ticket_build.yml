@@ -1,0 +1,651 @@
+name: plan-service-implementation
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: pending
+priority: high
+objective: 'Implement PlanService in modules/AgenticGuidance/src/agenticguidance/services/plan.py
+
+  to provide full CRUD operations for plan management. Current plan.py only contains
+
+  PlanMovementWorkflow (archival/movement). Need to add comprehensive plan service
+
+  capabilities integrated with existing MainFirstPlanResolver from context.py.
+
+  '
+created: '2026-02-03'
+phases:
+- name: Design Phase
+  execution: sequential
+  description: Define PlanService API and data models
+  tickets:
+  - id: PS-001
+    name: Design PlanService API
+    description: 'Define the complete PlanService class with all required methods:
+
+
+      Core CRUD operations:
+
+      - create_plan(objective, branch, description) -> PlanCreateResult
+
+      - get_plan(plan_id_or_path) -> Optional[PlanData]
+
+      - list_plans(status=''live''|''completed''|''deferred'') -> list[PlanInfo]
+
+      - update_plan_status(plan_id, status) -> PlanUpdateResult
+
+      - delete_plan(plan_id, force=False) -> PlanDeleteResult
+
+
+      Plan structure operations:
+
+      - get_plan_tasks(plan_id) -> list[TaskData]
+
+      - get_plan_phases(plan_id) -> list[PhaseData]
+
+      - validate_plan_structure(plan_path) -> ValidationResult
+
+
+      Integration points:
+
+      - Use MainFirstPlanResolver for plan discovery
+
+      - Use GitSafetyChecker for validation (already in plan.py)
+
+      - Use FileLock for atomic operations (already in plan.py)
+
+
+      Design should follow existing patterns from PlanMovementWorkflow.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    guidance: 'Study existing PlanMovementWorkflow patterns:
+
+      - Result dataclasses (MoveResult, TaskMoveResult, FolderMoveResult)
+
+      - GitSafetyChecker integration
+
+      - FileLock usage for atomic operations
+
+      - YAML loading/writing patterns
+
+
+      Define analogous result types for PlanService operations.
+
+      Ensure integration with MainFirstPlanResolver from context.py.
+
+      '
+    success_criteria:
+    - API design includes all required CRUD methods
+    - Result dataclasses defined for all operations
+    - Integration points with existing services identified
+    - Design follows Domain layer patterns from ARCHITECTURE.md
+  - id: PS-002
+    name: Define data models and result types
+    description: "Create dataclasses for PlanService return types:\n\n@dataclass\n\
+      class PlanCreateResult:\n    plan_folder: Path\n    plan_folder_name: str\n\
+      \    success: bool\n    message: str\n\n@dataclass\nclass PlanData:\n    plan_folder:\
+      \ Path\n    plan_folder_name: str\n    objective: Optional[str]\n    status:\
+      \ Optional[str]\n    branch: Optional[str]\n    phases: list[PhaseData]\n  \
+      \  tasks: list[TaskData]\n\n@dataclass\nclass PlanInfo:\n    plan_folder: Path\n\
+      \    plan_folder_name: str\n    objective: Optional[str]\n    status: Optional[str]\n\
+      \    created: Optional[str]\n\n@dataclass\nclass ValidationResult:\n    valid:\
+      \ bool\n    errors: list[str]\n    warnings: list[str]\n\nFollow patterns from\
+      \ existing result types in plan.py.\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    success_criteria:
+    - All result dataclasses defined
+    - Data models support all required operations
+    - Types are compatible with existing services
+    - Docstrings explain each field
+- name: Implementation Phase
+  execution: sequential
+  description: Implement PlanService methods
+  tickets:
+  - id: PS-003
+    name: Implement PlanService class initialization
+    description: "Create PlanService class with initialization:\n\nclass PlanService:\n\
+      \    def __init__(self, repo_path: Optional[Path] = None):\n        self.repo_path\
+      \ = repo_path or self._find_repo_root()\n        self.resolver = MainFirstPlanResolver(self.repo_path)\n\
+      \        self.git_checker = GitSafetyChecker(self.repo_path)\n        self.plans_base\
+      \ = self.repo_path / \"docs\" / \"plans\"\n\n    @staticmethod\n    def _find_repo_root(start:\
+      \ Optional[Path] = None) -> Path:\n        # Similar to PlanMovementWorkflow._find_repo_root\n\
+      \nInitialize dependencies on MainFirstPlanResolver and GitSafetyChecker.\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    success_criteria:
+    - PlanService class defined
+    - Initialization sets up resolver and git_checker
+    - repo_path resolution works correctly
+    - Class follows existing service patterns
+  - id: PS-004
+    name: Implement create_plan method
+    description: "Implement plan creation with scaffolding:\n\ndef create_plan(\n\
+      \    self,\n    objective: str,\n    branch: str,\n    description: str,\n \
+      \   dry_run: bool = False\n) -> PlanCreateResult:\n    # 1. Generate plan folder\
+      \ name using convention YYMMDDXX_description\n    # 2. Create plan folder in\
+      \ docs/plans/live/\n    # 3. Create README.md with initial content\n    # 4.\
+      \ Create initial plan_build.yml scaffold\n    # 5. Return PlanCreateResult\n\
+      \nFollow naming convention from plans.yml: YYMMDDXX_description pattern.\nUse\
+      \ current date for YYMMDD, derive XX from branch name.\nSanitize description\
+      \ (lowercase, underscores only, max 50 chars).\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    guidance: 'Plan folder naming convention (from plans.yml):
+
+      - Pattern: YYMMDDXX_description
+
+      - YYMMDD: Current date (year/month/day)
+
+      - XX: 2 uppercase letters from branch (e.g., "main" -> "MA", "feature-auth"
+      -> "AU")
+
+      - description: Sanitized description (lowercase, underscores, max 50 chars)
+
+
+      Create scaffold files:
+
+      - README.md with objective and status
+
+      - plan_build.yml with basic structure
+
+
+      Use dry_run flag to preview without creating files.
+
+      '
+    success_criteria:
+    - Plan folder created with correct naming convention
+    - README.md and plan_build.yml scaffolded
+    - PlanCreateResult contains folder path and name
+    - Dry run mode supported
+  - id: PS-005
+    name: Implement get_plan method
+    description: "Implement plan data retrieval:\n\ndef get_plan(self, plan_id_or_path:\
+      \ str) -> Optional[PlanData]:\n    # 1. Resolve plan folder using MainFirstPlanResolver\n\
+      \    # 2. Load all plan_*.yml files from folder\n    # 3. Extract phases and\
+      \ tasks\n    # 4. Return PlanData or None if not found\n\nSupport both plan\
+      \ ID (e.g., \"260203PS\") and full path.\nIntegrate with MainFirstPlanResolver.resolve_active_plan().\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    guidance: 'Use MainFirstPlanResolver to locate plan folders.
+
+      Load all plan_*.yml files from the folder root (flat structure).
+
+      Extract phases and tasks using patterns from extract_all_tasks().
+
+
+      Support multiple input formats:
+
+      - Short ID: "260203PS"
+
+      - Folder name: "260203PS_plan_service"
+
+      - Relative path: "docs/plans/live/260203PS_plan_service"
+
+      - Absolute path: "/home/code/.../docs/plans/live/260203PS_plan_service"
+
+      '
+    success_criteria:
+    - Plan found by ID or path
+    - All phases and tasks extracted
+    - Returns None for non-existent plans
+    - PlanData structure complete
+  - id: PS-006
+    name: Implement list_plans method
+    description: "Implement plan listing by status:\n\ndef list_plans(\n    self,\n\
+      \    status: str = 'live',\n    include_metadata: bool = True\n) -> list[PlanInfo]:\n\
+      \    # 1. Determine folder based on status (live/completed/deferred)\n    #\
+      \ 2. Iterate plan folders\n    # 3. Extract metadata from plan files\n    #\
+      \ 4. Return list of PlanInfo\n\nSupport filtering by status: live, completed,\
+      \ deferred.\nExtract objective, status, created date from plan files.\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    guidance: 'Plan locations:
+
+      - live: docs/plans/live/
+
+      - completed: docs/plans/completed/
+
+      - deferred: docs/plans/deferred/ (if exists)
+
+
+      For each folder:
+
+      - Check if it matches YYMMDDXX_description pattern
+
+      - Load plan_*.yml files to extract metadata
+
+      - Build PlanInfo with folder name, objective, status, created date
+
+
+      Sort results by folder name (newest first).
+
+      '
+    success_criteria:
+    - Returns all plans for specified status
+    - PlanInfo contains folder name and metadata
+    - Filters by status correctly
+    - Handles empty directories gracefully
+  - id: PS-007
+    name: Implement update_plan_status method
+    description: "Implement plan status updates:\n\ndef update_plan_status(\n    self,\n\
+      \    plan_id: str,\n    new_status: str,\n    dry_run: bool = False\n) -> PlanUpdateResult:\n\
+      \    # 1. Find plan using get_plan()\n    # 2. Load all plan_*.yml files\n \
+      \   # 3. Update status field in each file\n    # 4. Write back to disk\n   \
+      \ # 5. Return PlanUpdateResult\n\nValid statuses: planning, active, partially_completed,\
+      \ fully_completed.\nUse FileLock for atomic updates.\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    guidance: 'Status lifecycle (from plans.yml):
+
+      - planning: Plan being developed
+
+      - active: Execution in progress
+
+      - partially_completed: Some phases done, work continues
+
+      - fully_completed: All phases done
+
+
+      Update all plan_*.yml files in the folder to maintain consistency.
+
+      Use FileLock to prevent concurrent modifications.
+
+      Validate status value before updating.
+
+      '
+    success_criteria:
+    - Status updated in all plan files
+    - FileLock prevents concurrent updates
+    - Invalid status values rejected
+    - Dry run mode supported
+  - id: PS-008
+    name: Implement get_plan_tasks method
+    description: "Implement task extraction:\n\ndef get_plan_tasks(\n    self,\n \
+      \   plan_id: str,\n    status_filter: Optional[str] = None\n) -> list[TaskData]:\n\
+      \    # 1. Find plan using get_plan()\n    # 2. Extract tasks from all phases\n\
+      \    # 3. Filter by status if specified\n    # 4. Return list of TaskData\n\n\
+      Leverage MainFirstPlanResolver.extract_all_tasks().\nSupport filtering by task\
+      \ status.\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    guidance: 'Use MainFirstPlanResolver.extract_all_tasks() as reference.
+
+      Extract tasks from nested phases[].tasks[] structure.
+
+
+      TaskData should include:
+
+      - Task ID, name, description
+
+      - Status, phase, phase_id
+
+      - Agent type, inputs, target files
+
+      - Guidance, success criteria
+
+
+      Support status filtering: pending, in_progress, completed, blocked.
+
+      '
+    success_criteria:
+    - All tasks extracted from plan
+    - Status filtering works correctly
+    - TaskData includes all required fields
+    - Handles plans with no tasks
+  - id: PS-009
+    name: Implement validate_plan_structure method
+    description: "Implement plan structure validation:\n\ndef validate_plan_structure(self,\
+      \ plan_path: Path) -> ValidationResult:\n    # 1. Check folder naming convention\n\
+      \    # 2. Verify plan files in folder root (not subdirectories)\n    # 3. Validate\
+      \ YAML structure against requirements\n    # 4. Check required fields (name,\
+      \ worktree_path, status, phases)\n    # 5. Return ValidationResult with errors\
+      \ and warnings\n\nValidate against plans.yml requirements.\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/plans.yml
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    guidance: 'Validation checks (from plans.yml):
+
+
+      Structure:
+
+      - Folder matches YYMMDDXX_description pattern
+
+      - Plan files (plan_*.yml) in folder root, NOT subdirectories
+
+      - All required fields present
+
+      - Phase/task IDs unique
+
+      - Status values valid
+
+
+      Quality:
+
+      - Success criteria specific and verifiable
+
+      - Task descriptions start with action verb
+
+      - Phase ordering reflects dependencies
+
+
+      Return errors for critical issues, warnings for quality concerns.
+
+      '
+    success_criteria:
+    - Validates folder naming convention
+    - Checks plan file locations
+    - Verifies required fields
+    - Returns detailed errors and warnings
+- name: Integration Phase
+  execution: sequential
+  description: Integrate PlanService with existing services and exports
+  tickets:
+  - id: PS-010
+    name: Update services/__init__.py exports
+    description: "Add PlanService exports to services/__init__.py:\n\nfrom .plan import\
+      \ (\n    # Existing exports\n    FolderMoveResult,\n    GitSafetyChecker,\n\
+      \    MoveResult,\n    PlanMovementWorkflow,\n    TaskMoveResult,\n    # New\
+      \ exports\n    PlanService,\n    PlanCreateResult,\n    PlanData,\n    PlanInfo,\n\
+      \    PlanUpdateResult,\n    PlanDeleteResult,\n    ValidationResult,\n    PhaseData,\n\
+      \    TaskData,\n)\n\nUpdate __all__ list accordingly.\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    success_criteria:
+    - All PlanService types exported
+    - __all__ list updated
+    - No import errors
+    - Follows existing export patterns
+  - id: PS-011
+    name: Add docstrings and type hints
+    description: 'Add comprehensive docstrings to all PlanService methods:
+
+
+      - Class-level docstring explaining purpose and usage
+
+      - Method docstrings with Args, Returns, Raises sections
+
+      - Example usage in docstrings
+
+      - Type hints for all parameters and returns
+
+
+      Follow Google-style docstrings used in existing services.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    guidance: 'Follow docstring patterns from existing services (context.py, plan.py).
+
+      Include:
+
+      - One-line summary
+
+      - Detailed description
+
+      - Args section with type and description
+
+      - Returns section with type and description
+
+      - Examples section for complex methods
+
+
+      Add type hints matching docstrings.
+
+      Use Optional, Path, list, dict from typing as needed.
+
+      '
+    success_criteria:
+    - All methods have docstrings
+    - Type hints on all parameters and returns
+    - Examples included for public methods
+    - Docstrings follow Google style
+- name: Testing Phase
+  execution: sequential
+  description: Create comprehensive unit and integration tests
+  tickets:
+  - id: PS-012
+    name: Create unit tests for PlanService
+    description: 'Create test file: modules/AgenticGuidance/tests/services/test_plan_service.py
+
+
+      Test suites:
+
+      1. PlanService initialization
+
+      2. create_plan() with various inputs
+
+      3. get_plan() with different ID formats
+
+      4. list_plans() for each status
+
+      5. update_plan_status() with valid/invalid statuses
+
+      6. get_plan_tasks() with filtering
+
+      7. validate_plan_structure() with valid/invalid structures
+
+
+      Use pytest fixtures for test plan folders.
+
+      Mock file system operations where appropriate.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticCLI/tests/
+    target_files:
+    - modules/AgenticGuidance/tests/services/test_plan_service.py
+    guidance: 'Test patterns to follow:
+
+      - Use pytest fixtures for setup/teardown
+
+      - Create temporary plan folders for testing
+
+      - Test both success and error paths
+
+      - Verify result types and values
+
+      - Test edge cases (empty plans, missing files, etc.)
+
+
+      Use unittest.mock for MainFirstPlanResolver if needed.
+
+      Test with real YAML files for integration confidence.
+
+      '
+    success_criteria:
+    - Test file created with 20+ test cases
+    - All PlanService methods tested
+    - Both success and error paths covered
+    - Tests use realistic plan structures
+    - All tests pass
+  - id: PS-013
+    name: Create integration tests with MainFirstPlanResolver
+    description: 'Create integration tests verifying PlanService works with MainFirstPlanResolver:
+
+
+      Test scenarios:
+
+      1. Create plan and resolve it using MainFirstPlanResolver
+
+      2. List plans and verify resolver finds them
+
+      3. Update plan and verify changes reflected in resolver
+
+      4. Extract tasks using both PlanService and resolver
+
+
+      Ensure services work together correctly.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    target_files:
+    - modules/AgenticGuidance/tests/services/test_plan_service_integration.py
+    success_criteria:
+    - Integration tests cover service interaction
+    - PlanService and MainFirstPlanResolver work together
+    - Tests verify data consistency
+    - All integration tests pass
+  - id: PS-014
+    name: Test dry-run mode for all write operations
+    description: 'Verify dry-run mode works for:
+
+      - create_plan(dry_run=True)
+
+      - update_plan_status(dry_run=True)
+
+
+      Ensure no files are created/modified in dry-run mode.
+
+      Verify results indicate what WOULD happen.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/tests/services/test_plan_service.py
+    success_criteria:
+    - Dry-run creates no files
+    - Results indicate planned actions
+    - All write operations support dry-run
+    - Tests verify file system unchanged
+- name: Documentation Phase
+  execution: sequential
+  description: Document PlanService API and usage
+  tickets:
+  - id: PS-015
+    name: Update services module docstring
+    description: 'Update modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+
+      docstring to include PlanService:
+
+
+      - plan: Plan movement and archival workflows + CRUD operations
+
+
+      Add brief description of PlanService capabilities.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
+    success_criteria:
+    - Module docstring updated
+    - PlanService described
+    - Follows existing format
+  - id: PS-016
+    name: Add usage examples to PlanService docstring
+    description: 'Add comprehensive usage examples to PlanService class docstring:
+
+
+      Example 1: Creating a new plan
+
+      Example 2: Retrieving plan data
+
+      Example 3: Listing all live plans
+
+      Example 4: Validating plan structure
+
+
+      Show common workflows and integration patterns.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    success_criteria:
+    - 4+ usage examples in docstring
+    - Examples show common workflows
+    - Code is executable
+    - Covers main use cases
+context: 'Current state:
+
+  - plan.py contains only PlanMovementWorkflow for task archival and folder movement
+
+  - context.py contains MainFirstPlanResolver for plan discovery and task extraction
+
+  - Plans live in docs/plans/live/ and docs/plans/completed/
+
+  - Plan folder naming convention: YYMMDDXX_description (enforced by CLI)
+
+  - Plan structure follows flat pattern: plan files directly in folder root
+
+
+  Architecture requirements:
+
+  - Domain -> Workflow -> Entrypoint pattern
+
+  - Service should be self-contained domain logic
+
+  - Integration with existing MainFirstPlanResolver
+
+  - CLI commands will use this service (workflow -> entrypoint separation)
+
+  '

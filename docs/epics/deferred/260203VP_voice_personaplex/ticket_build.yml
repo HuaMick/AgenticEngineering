@@ -1,1136 +1,1056 @@
-# Voice PersonaPlex Build Plan
-# Plan ID: 260203VP
-# Created: 2026-02-03
-# Strategy: CLI-First HITL - Optional Voice Consumer
+name: voice-personaplex
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: active
+priority: low
+objective: 'Implement PersonaPlex voice interface as an optional consumer of the question/answer
+  queue.
 
-# ========================================
-# ROOT-LEVEL PLAN METADATA (Required)
-# ========================================
-name: "voice-personaplex"
-worktree_path: "/home/code/AgenticEngineering"
-branch: "main"
-status: "active"
-priority: "low"
+  Voice daemon monitors questions/pending/, speaks questions via TTS, captures answers
+  via STT,
 
-worktree: "/home/code/AgenticEngineering"
-plan_file: "docs/plans/live/260203VP_voice_personaplex/plan_build.yml"
+  and writes answers via QuestionQueue service. Completely optional - system works
+  without it.
 
-# ========================================
-# CONTEXT (Narrative Updates)
-# ========================================
-context: |
-  This plan implements PersonaPlex integration as an OPTIONAL voice interface for HITL.
-  This is a CONSUMER of the CLI-First infrastructure, not the core.
-
-  ARCHITECTURE DECISION (CLI-First Strategy):
-  - CLI is PRIMARY interface, voice is OPTIONAL
-  - Voice daemon reads from questions/pending/ (same as CLI)
-  - Voice daemon writes via QuestionQueue service (same as CLI)
-  - Both interfaces coexist without conflict
-
-  This plan REPLACES 260203AV_agenticvoice_async with a new scope:
-  - Old: Voice-first approach with custom queue and daemon
-  - New: Voice as optional consumer of CLI-First infrastructure
-
-  Reuse from 260203AV:
-  - PersonaPlex WebSocket patterns
-  - Parakeet TDT integration
-  - Configuration system
-
-  Discard from 260203AV:
-  - Question queue monitoring (use 260203QF QuestionQueue)
-  - Answer writing logic (use QuestionQueue.answer_question)
-  - Custom daemon management (follow CLI patterns)
-
-# ========================================
-# DEPENDENCIES
-# ========================================
-dependencies:
-  depends_on:
-    - plan_id: "260203QF"
-      description: "QuestionQueue service and data models (REQUIRED - blocker)"
-    - plan_id: "260203QC"
-      description: "May reference CLI commands in guidance"
-    - plan_id: "260203QG"
-      description: "Agents generate questions using updated patterns"
-  required_by: []
-
-# ========================================
-# OBJECTIVE
-# ========================================
-objective: |
-  Implement PersonaPlex voice interface as an optional consumer of the question/answer queue.
-  Voice daemon monitors questions/pending/, speaks questions via TTS, captures answers via STT,
-  and writes answers via QuestionQueue service. Completely optional - system works without it.
-
-# ========================================
-# ROOT-LEVEL INPUTS (Pre-gathered Context)
-# ========================================
-inputs:
-  - location: "modules/AgenticGuidance/src/agenticguidance/services/question.py"
-    description: "QuestionQueue service implementation and patterns"
-
-  - location: "modules/AgenticGuidance/src/agenticguidance/models/question.py"
-    description: "Question and Answer data models"
-
-  - location: "docs/plans/deferred/260203AV_agenticvoice_async/live/plan_build.yml"
-    description: "Previous PersonaPlex and Parakeet integration patterns (reference only)"
-
-  - location: "modules/AgenticCLI/pyproject.toml"
-    description: "Reference for Python module structure and dependency patterns"
-
-# ========================================
-# LOOP STRUCTURES
-# ========================================
-loop_structures:
-  - id: "loop_implementation"
-    type: "test-fix-loop"
-    applies_to_phase: "All Implementation Phases"
-    trigger: "After implementation tasks complete"
-    description: |
-      Iterative development pattern where voice implementation is validated
-      against integration tests. Each iteration runs tests, identifies failures,
-      and fixes issues until all tests pass or max iterations reached.
-    exit_criteria:
-      success: "All unit and integration tests pass"
-      max_iterations: 5
-      escalation: "Escalate to user with test results and remaining failures"
-    participants:
-      - agent: "builder"
-        role: "Implements voice interface components"
-      - agent: "test-builder"
-        role: "Creates and executes tests"
-      - agent: "builder"
-        role: "Fixes failures identified by tests"
-
-  - id: "loop_validation"
-    type: "audit-test-fix-loop"
-    applies_to_phase: "Validation Phase"
-    trigger: "After implementation and initial tests pass"
-    description: |
-      MANDATORY validation loop to verify voice quality and prevent reward hacking.
-      Auditor examines implementation for edge cases, error handling, and transcription quality.
-    exit_criteria:
-      success: "Audit passes AND all tests still pass after audit corrections"
-      max_iterations: 3
-      escalation: "BLOCK deployment - audit failures must be resolved"
-    participants:
-      - agent: "test-audit"
-        role: "Audits voice implementation quality"
-      - agent: "builder"
-        role: "Fixes audit-identified implementation issues"
-    mandatory: true
-
-# ========================================
-# PHASES AND TASKS
-# ========================================
+  '
+created: ''
 phases:
-  # ========================================
-  # PHASE 1: PersonaPlex Client
-  # ========================================
-  - name: "Phase 1: PersonaPlex Client"
-    execution: sequential
-    description: "WebSocket connection and TTS/STT integration"
-    tasks:
-      - id: "VP-001"
-        name: "Create PersonaPlex client module"
-        description: |
-          Implement PersonaPlexClient class for voice I/O via WebSocket:
-
-          Core capabilities:
-          - Initialize WebSocket connection to PersonaPlex API
-          - Configuration from environment variables (PERSONAPLEX_API_URL, PERSONAPLEX_API_KEY)
-          - Connection health checks and reconnect logic
-          - Abstract interface if PersonaPlex SDK not yet determined
-
-          Class structure:
-          ```python
-          class PersonaPlexClient:
-              def __init__(self, config: dict):
-                  # Initialize WebSocket connection
-                  # Configure voice profile, TTS/STT settings
-
-              def connect(self) -> bool:
-                  # Establish WebSocket connection
-                  # Return success status
-
-              def speak(self, text: str) -> bool:
-                  # Convert text to speech via PersonaPlex TTS
-                  # Stream audio to user's device
-                  # Return success status
-
-              def listen(self, timeout: int = 30) -> tuple[str, float]:
-                  # Capture audio from microphone
-                  # Transcribe via PersonaPlex STT
-                  # Return (transcribed_text, confidence_score)
-                  # Raise TimeoutError if silence exceeds timeout
-
-              def disconnect(self):
-                  # Close WebSocket connection gracefully
-          ```
-
-          Follow patterns from 260203AV PersonaPlex integration (reference only).
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - docs/plans/deferred/260203AV_agenticvoice_async/live/plan_build.yml
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/personaplex.py
-        guidance: |
-          Implementation notes:
-          - Use environment variables for configuration (NEVER hardcode API keys)
-          - WebSocket connection should support reconnection on failure
-          - Voice parameters: speed, tone, persona (configurable)
-          - Handle audio device errors gracefully with user-friendly messages
-          - Implement voice activity detection (VAD) for noise filtering
-          - Silence timeout: 30 seconds -> TimeoutError
-
-          Voice prompt format for questions:
-          "Hey, I have a question about {context}. {question_text}"
-
-          If PersonaPlex SDK is not available, create abstract interface
-          that can be implemented later.
-        success_criteria:
-          - PersonaPlexClient class implemented with connect/speak/listen/disconnect
-          - Configuration loaded from environment variables
-          - WebSocket connection health monitoring implemented
-          - Reconnect logic handles dropped connections
-          - Audio device error handling with user-friendly messages
-          - Abstract interface allows future PersonaPlex SDK integration
-
-      - id: "VP-002"
-        name: "Create Parakeet TDT transcription module"
-        description: |
-          Implement ParakeetTranscriber for high-quality transcription:
-
-          Core capabilities:
-          - Initialize Parakeet TDT model on startup
-          - Transcribe audio in parallel with PersonaPlex STT
-          - Compare PersonaPlex and Parakeet transcriptions for validation
-          - Compute confidence scores and flag discrepancies
-
-          Class structure:
-          ```python
-          class ParakeetTranscriber:
-              def __init__(self, model_path: str):
-                  # Load Parakeet TDT model
-                  # Initialize transcription pipeline
-
-              def transcribe(self, audio_data: bytes) -> tuple[str, float]:
-                  # Run Parakeet transcription
-                  # Return (transcribed_text, confidence_score)
-
-              def validate_transcription(
-                  self,
-                  personaplex_text: str,
-                  personaplex_confidence: float,
-                  parakeet_text: str,
-                  parakeet_confidence: float
-              ) -> tuple[str, float, bool]:
-                  # Compare both transcriptions
-                  # Return (best_text, confidence, needs_retry)
-                  # needs_retry=True if confidence < 0.8 or discrepancies found
-          ```
-
-          Dual transcription strategy:
-          1. PersonaPlex STT: Fast, real-time, immediate feedback
-          2. Parakeet TDT: Slower, batch, higher accuracy (used for final answer)
-
-          Use Parakeet result for Answer objects written to queue.
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - docs/plans/deferred/260203AV_agenticvoice_async/live/plan_build.yml
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/parakeet.py
-        guidance: |
-          Implementation notes:
-          - Load Parakeet model on service startup (not per-question)
-          - Run Parakeet transcription in parallel with PersonaPlex
-          - Confidence threshold: 0.8 (80%)
-          - If confidence < 0.8 OR discrepancies detected -> ask user to repeat
-
-          Validation logic:
-          - If both transcriptions agree: high confidence
-          - If differ significantly: flag for review, ask user to repeat
-          - If Parakeet confidence < 0.8: ask user to repeat
-
-          User prompt on low confidence:
-          "I didn't catch that clearly. Could you repeat?"
-
-          Model loading should be efficient and cached.
-        success_criteria:
-          - ParakeetTranscriber class loads model on initialization
-          - Transcription runs in parallel with PersonaPlex
-          - Confidence scores computed for transcription quality
-          - Discrepancies between PersonaPlex and Parakeet flagged
-          - User prompted to repeat on low confidence
-          - Parakeet results used for final Answer objects
-
-      - id: "VP-003"
-        name: "Create voice configuration system"
-        description: |
-          Implement configuration system for voice interface:
-
-          Configuration file: ~/.agentic/agenticvoice.yml
-
-          Configuration keys:
-          ```yaml
-          personaplex:
-            api_url: "https://api.personaplex.ai/v1"
-            api_key: "${PERSONAPLEX_API_KEY}"
-            voice_profile: "default"
-            tts_speed: 1.0
-            stt_language: "en-US"
-
-          parakeet:
-            model_path: "~/.agentic/models/parakeet-tdt"
-            confidence_threshold: 0.8
-
-          daemon:
-            pid_file: "~/.agentic/agenticvoice.pid"
-            log_file: "~/.agentic/agenticvoice.log"
-            poll_interval: 5  # seconds
-            auto_restart: true
-            max_retries: 3
-          ```
-
-          Use environment variable expansion (${VAR}).
-          Validate config on load and provide clear error messages.
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - docs/plans/deferred/260203AV_agenticvoice_async/live/plan_build.yml
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/config.py
-          - modules/AgenticVoice/config.example.yml
-        guidance: |
-          Implementation notes:
-          - Config file location: ~/.agentic/agenticvoice.yml
-          - Provide example config: modules/AgenticVoice/config.example.yml
-          - Environment variable expansion: ${VAR} -> os.getenv('VAR')
-          - Validation: Check required fields, valid paths, numeric ranges
-          - Clear error messages for missing/invalid config
-          - Support both absolute and ~ paths
-
-          Config validation checks:
-          - API key present (can be env var reference)
-          - Model path exists or can be created
-          - Numeric values in valid ranges
-          - File paths writable
-
-          Use YAML for configuration (pyyaml dependency).
-        success_criteria:
-          - Configuration loaded from ~/.agentic/agenticvoice.yml
-          - Environment variables expanded correctly
-          - Validation errors reported with clear messages
-          - Example config provided in repo
-          - Supports both absolute and tilde paths
-          - Invalid config rejected with helpful error messages
-
-  # ========================================
-  # PHASE 2: Question Monitoring
-  # ========================================
-  - name: "Phase 2: Question Monitoring"
-    execution: sequential
-    description: "Daemon watches questions/pending/ folder using QuestionQueue"
-    tasks:
-      - id: "VP-004"
-        name: "Create question monitor daemon"
-        description: |
-          Implement QuestionMonitor daemon that watches questions/pending/ folder:
-
-          Core capabilities:
-          - Monitor plan-scoped questions/pending/ directory for new files
-          - Use QuestionQueue.list_pending_questions() to get new questions
-          - Sort questions by severity (blocking > high > medium > low)
-          - Poll at configurable interval (default: 5 seconds)
-          - Handle multiple plan contexts (iterate active plans)
-
-          Class structure:
-          ```python
-          class QuestionMonitor:
-              def __init__(self, config: dict, plan_path: Path):
-                  self.queue = QuestionQueue(plan_path)
-                  self.poll_interval = config['daemon']['poll_interval']
-
-              def get_next_question(self) -> Optional[Question]:
-                  # Get pending questions sorted by severity
-                  # Return highest priority question or None
-
-              def start(self):
-                  # Main daemon loop
-                  # Poll for questions, yield to VoiceWorkflow
-
-              def stop(self):
-                  # Graceful shutdown
-          ```
-
-          Use QuestionQueue service from 260203QF (NO custom queue implementation).
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticGuidance/src/agenticguidance/services/question.py
-          - modules/AgenticGuidance/src/agenticguidance/models/question.py
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/monitor.py
-        guidance: |
-          Implementation notes:
-          - Use QuestionQueue.list_pending_questions(severity_filter=None)
-          - Sort questions by severity enum order
-          - Poll interval configurable (default: 5 seconds)
-          - Handle plan context discovery (find active plans)
-          - Graceful shutdown on SIGTERM
-          - No custom file watching - use QuestionQueue API
-
-          Question priority order:
-          1. blocking (highest)
-          2. high
-          3. medium
-          4. low (lowest)
-
-          Within same severity, use created_at (oldest first).
-
-          Monitor should be plan-aware (iterate multiple plan contexts if needed).
-        success_criteria:
-          - QuestionMonitor uses QuestionQueue service (NO custom queue)
-          - Questions sorted by severity and created_at
-          - Poll interval configurable
-          - Graceful shutdown on SIGTERM
-          - Plan context discovery implemented
-          - No race conditions in question retrieval
-
-      - id: "VP-005"
-        name: "Create daemon lifecycle management"
-        description: |
-          Implement daemon process management:
-
-          Core capabilities:
-          - PID file management: ~/.agentic/agenticvoice.pid
-          - Log file rotation: ~/.agentic/agenticvoice.log
-          - Graceful shutdown on SIGTERM
-          - Auto-restart on crash (max 3 retries)
-          - Health checks and status reporting
-
-          Daemon main loop:
-          1. Check for new questions via QuestionMonitor
-          2. Process questions via VoiceWorkflow (Phase 3)
-          3. Sleep for poll_interval
-          4. Repeat until SIGTERM
-
-          Use standard daemon patterns (fork, setsid) or python-daemon library.
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticVoice/src/agenticvoice/monitor.py
-          - modules/AgenticVoice/src/agenticvoice/config.py
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/daemon.py
-        guidance: |
-          Implementation notes:
-          - PID file: Write process ID on startup, remove on shutdown
-          - Log file: Standard logging to file with rotation
-          - Signal handling: SIGTERM for graceful shutdown
-          - Crash recovery: Retry up to max_retries times, then exit
-          - Health check: Verify PersonaPlex connection, file permissions
-
-          Daemon lifecycle:
-          1. Fork and detach from terminal
-          2. Create PID file
-          3. Initialize logging
-          4. Start main loop
-          5. Handle SIGTERM gracefully
-          6. Clean up PID file on exit
-
-          Use python-daemon library if available, otherwise implement
-          standard daemon patterns manually.
-        success_criteria:
-          - Daemon starts and runs in background
-          - PID file created and managed correctly
-          - Graceful shutdown on SIGTERM
-          - Logs written to file with rotation
-          - Auto-restart on crash (limited retries)
-          - Health checks prevent daemon from running in bad state
-
-  # ========================================
-  # PHASE 3: Voice Workflow
-  # ========================================
-  - name: "Phase 3: Voice Workflow"
-    execution: sequential
-    description: "Speak questions, capture answers, write via QuestionQueue"
-    tasks:
-      - id: "VP-006"
-        name: "Create voice answer workflow"
-        description: |
-          Implement VoiceAnswerWorkflow to process questions via voice:
-
-          Workflow steps:
-          1. Get next question from QuestionMonitor (sorted by severity)
-          2. Speak question via PersonaPlexClient.speak()
-          3. Capture answer via PersonaPlexClient.listen()
-          4. Transcribe answer via ParakeetTranscriber.transcribe()
-          5. Validate transcription quality (compare PersonaPlex vs Parakeet)
-          6. If low confidence: Ask user to repeat, retry up to 3 times
-          7. Write Answer via QuestionQueue.answer_question()
-          8. Return success or failure
-
-          Handle edge cases:
-          - User skips question (silence timeout -> defer)
-          - User says "defer" or "skip" -> defer question
-          - Transcription quality too low (retry up to 3 times)
-          - PersonaPlex connection failure (retry, then fallback)
-
-          Class structure:
-          ```python
-          class VoiceAnswerWorkflow:
-              def __init__(
-                  self,
-                  personaplex: PersonaPlexClient,
-                  parakeet: ParakeetTranscriber,
-                  queue: QuestionQueue
-              ):
-                  self.personaplex = personaplex
-                  self.parakeet = parakeet
-                  self.queue = queue
-
-              def process_question(self, question: Question) -> bool:
-                  # Execute workflow for single question
-                  # Return True if answered, False if deferred/failed
-
-              def run(self):
-                  # Main loop: process questions until queue empty
-          ```
-
-          Use QuestionQueue.answer_question() to write answers (NO custom file writing).
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticGuidance/src/agenticguidance/services/question.py
-          - modules/AgenticVoice/src/agenticvoice/personaplex.py
-          - modules/AgenticVoice/src/agenticvoice/parakeet.py
-          - modules/AgenticVoice/src/agenticvoice/monitor.py
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/workflow.py
-        guidance: |
-          Implementation notes:
-          - Use QuestionQueue.answer_question() for writing answers
-          - Retry logic: Max 3 retries for low-confidence transcriptions
-          - Defer handling: If user says "defer"/"skip" or silence timeout
-          - Error handling: PersonaPlex failures should fallback gracefully
-          - Logging: Log each workflow step for debugging
-
-          Voice prompts:
-          - Question: "Hey, I have a question about {context}. {question_text}"
-          - Retry: "I didn't catch that clearly. Could you repeat?"
-          - Success: "Got it, thanks!"
-
-          Defer keywords: "defer", "skip", "later", "ask me later"
-          (case-insensitive matching)
-
-          Workflow should be atomic: Either fully succeeds or fails cleanly.
-        success_criteria:
-          - VoiceAnswerWorkflow processes questions sequentially
-          - Answers written via QuestionQueue.answer_question()
-          - Quality validation integrated (Parakeet vs PersonaPlex)
-          - Edge cases handled (skip, defer, retry)
-          - Max 3 retries for low-confidence transcriptions
-          - Defer keywords detected correctly
-          - Logging provides clear workflow trace
-
-      - id: "VP-007"
-        name: "Implement answer validation and retry logic"
-        description: |
-          Enhance VoiceAnswerWorkflow with robust validation:
-
-          Validation checks:
-          1. Transcription confidence score (Parakeet >= 0.8)
-          2. Transcription agreement (PersonaPlex vs Parakeet)
-          3. Answer length (not empty, not single word unless valid)
-          4. Defer keywords detection (user wants to skip)
-
-          Retry strategy:
-          - Max 3 retries per question
-          - On each retry: Re-prompt user with clearer instructions
-          - After 3 failed retries: Defer question automatically
-          - Log retry attempts for debugging
-
-          Defer detection:
-          - Keywords: "defer", "skip", "later", "ask me later", "not now"
-          - Empty answers (silence timeout)
-          - Explicit user request to skip
-
-          Write deferred questions to questions/deferred/ directory.
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticVoice/src/agenticvoice/workflow.py
-          - modules/AgenticVoice/src/agenticvoice/parakeet.py
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/workflow.py
-        guidance: |
-          Implementation notes:
-          - Confidence threshold: 0.8 (80%)
-          - Agreement threshold: Levenshtein distance < 20% of length
-          - Answer length: Minimum 2 words (unless yes/no question)
-          - Defer keywords: Case-insensitive, partial match OK
-
-          Retry prompts:
-          - Retry 1: "I didn't catch that clearly. Could you repeat?"
-          - Retry 2: "Sorry, I'm having trouble understanding. Please speak clearly."
-          - Retry 3: "Last try - please repeat your answer slowly."
-          - After 3 failures: "I'll defer this question for now."
-
-          Deferred questions should be moved to questions/deferred/ folder
-          (may need to extend QuestionQueue service or handle manually).
-
-          Log all validation failures and retry attempts for debugging.
-        success_criteria:
-          - Confidence validation enforces 0.8 threshold
-          - Transcription agreement checked (PersonaPlex vs Parakeet)
-          - Answer length validation prevents empty responses
-          - Defer keywords detected correctly
-          - Max 3 retries enforced
-          - Retry prompts progressively clarify instructions
-          - Deferred questions written to questions/deferred/
-          - Logging traces all validation failures and retries
-
-  # ========================================
-  # PHASE 4: Parakeet Integration
-  # ========================================
-  - name: "Phase 4: Parakeet Integration"
-    execution: sequential
-    description: "High-quality transcription pipeline with Parakeet TDT"
-    tasks:
-      - id: "VP-008"
-        name: "Implement Parakeet model loading and caching"
-        description: |
-          Optimize Parakeet model loading for daemon lifecycle:
-
-          Core optimizations:
-          - Load model once on daemon startup (not per-question)
-          - Cache model in memory for fast transcription
-          - Handle model loading errors gracefully
-          - Support custom model paths (configurable)
-
-          Model loading strategy:
-          ```python
-          class ParakeetTranscriber:
-              _model_cache = None  # Class-level cache
-
-              def __init__(self, model_path: str):
-                  if ParakeetTranscriber._model_cache is None:
-                      # Load model first time
-                      ParakeetTranscriber._model_cache = self._load_model(model_path)
-                  self.model = ParakeetTranscriber._model_cache
-
-              def _load_model(self, model_path: str):
-                  # Load Parakeet TDT model
-                  # Handle errors, fallback to default model if needed
-          ```
-
-          Graceful degradation:
-          - If Parakeet model unavailable: Fall back to PersonaPlex STT only
-          - Log warning but don't crash daemon
-          - Continue with reduced transcription quality
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticVoice/src/agenticvoice/parakeet.py
-          - modules/AgenticVoice/src/agenticvoice/config.py
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/parakeet.py
-        guidance: |
-          Implementation notes:
-          - Model loading should happen on first ParakeetTranscriber init
-          - Cache model in class-level variable (shared across instances)
-          - Handle model loading errors with clear messages
-          - Support custom model paths from config
-          - Provide fallback if model unavailable
-
-          Model path resolution:
-          - First try: config['parakeet']['model_path']
-          - Fallback: ~/.agentic/models/parakeet-tdt
-          - If neither exists: Log warning, disable Parakeet
-
-          Error handling:
-          - Model file not found -> fallback to PersonaPlex only
-          - Model loading error -> fallback to PersonaPlex only
-          - Insufficient memory -> fallback to PersonaPlex only
-
-          Log model loading status for debugging.
-        success_criteria:
-          - Parakeet model loaded once on daemon startup
-          - Model cached in memory for fast transcription
-          - Custom model paths supported from config
-          - Graceful fallback to PersonaPlex if model unavailable
-          - Clear error messages for model loading failures
-          - Logging indicates model loading status
-
-      - id: "VP-009"
-        name: "Implement parallel transcription pipeline"
-        description: |
-          Run PersonaPlex and Parakeet transcriptions in parallel:
-
-          Parallel execution:
-          - Start PersonaPlex STT (fast, low latency)
-          - Start Parakeet TDT (high quality, slower)
-          - Return PersonaPlex result immediately for feedback
-          - Use Parakeet result for final Answer object
-
-          Implementation strategy:
-          ```python
-          import asyncio
-
-          async def transcribe_parallel(audio_data: bytes):
-              # Run both transcriptions concurrently
-              personaplex_task = asyncio.create_task(
-                  personaplex.listen_async()
-              )
-              parakeet_task = asyncio.create_task(
-                  parakeet.transcribe_async(audio_data)
-              )
-
-              # Wait for both to complete
-              personaplex_result = await personaplex_task
-              parakeet_result = await parakeet_task
-
-              return personaplex_result, parakeet_result
-          ```
-
-          Use asyncio for concurrent execution.
-          Reduce total transcription time by running both in parallel.
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticVoice/src/agenticvoice/personaplex.py
-          - modules/AgenticVoice/src/agenticvoice/parakeet.py
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/workflow.py
-        guidance: |
-          Implementation notes:
-          - Use asyncio for parallel execution
-          - PersonaPlex provides immediate feedback
-          - Parakeet provides final answer quality
-          - Handle case where Parakeet unavailable (use PersonaPlex only)
-
-          Transcription flow:
-          1. User speaks answer
-          2. PersonaPlex STT runs in real-time
-          3. Parakeet TDT runs in parallel
-          4. Compare both results (validation)
-          5. Use Parakeet result for Answer object
-
-          If Parakeet unavailable:
-          - Use PersonaPlex result only
-          - Log warning about reduced quality
-          - Continue workflow normally
-
-          Error handling:
-          - PersonaPlex failure: Critical error, retry
-          - Parakeet failure: Non-critical, fallback to PersonaPlex
-        success_criteria:
-          - PersonaPlex and Parakeet run in parallel
-          - PersonaPlex result available for immediate feedback
-          - Parakeet result used for final Answer objects
-          - Graceful fallback if Parakeet unavailable
-          - Total transcription time reduced by parallelization
-          - Error handling for individual transcription failures
-
-  # ========================================
-  # PHASE 5: Answer Submission
-  # ========================================
-  - name: "Phase 5: Answer Submission"
-    execution: sequential
-    description: "Write answers via QuestionQueue service"
-    tasks:
-      - id: "VP-010"
-        name: "Integrate QuestionQueue.answer_question()"
-        description: |
-          Use QuestionQueue service for writing answers (NO custom file writing):
-
-          Integration points:
-          ```python
-          from agenticguidance.services.question import QuestionQueue
-          from agenticguidance.models.question import AnswerConfidence
-
-          def submit_answer(
-              queue: QuestionQueue,
-              question_id: str,
-              answer_text: str,
-              confidence_score: float
-          ):
-              # Map Parakeet confidence to AnswerConfidence enum
-              if confidence_score >= 0.9:
-                  confidence = AnswerConfidence.HIGH.value
-              elif confidence_score >= 0.7:
-                  confidence = AnswerConfidence.MEDIUM.value
-              else:
-                  confidence = AnswerConfidence.LOW.value
-
-              # Write answer via QuestionQueue
-              question, answer = queue.answer_question(
-                  question_id=question_id,
-                  answer_text=answer_text,
-                  answered_by="voice",
-                  confidence=confidence
-              )
-
-              return question, answer
-          ```
-
-          Use QuestionQueue.answer_question() for all answer writes.
-          Map Parakeet confidence scores to AnswerConfidence enum values.
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticGuidance/src/agenticguidance/services/question.py
-          - modules/AgenticGuidance/src/agenticguidance/models/question.py
-          - modules/AgenticVoice/src/agenticvoice/workflow.py
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/workflow.py
-        guidance: |
-          Implementation notes:
-          - Use QuestionQueue.answer_question() exclusively (NO custom writes)
-          - Map Parakeet confidence (0.0-1.0) to AnswerConfidence enum
-          - answered_by should be "voice" for voice-submitted answers
-          - Handle QuestionQueue errors gracefully (retry once, then escalate)
-
-          Confidence mapping:
-          - >= 0.9: AnswerConfidence.HIGH
-          - >= 0.7: AnswerConfidence.MEDIUM
-          - < 0.7: AnswerConfidence.LOW (should trigger retry)
-
-          Error handling:
-          - QuestionQueue.answer_question() raises FileNotFoundError if question not in pending/
-          - QuestionQueue.answer_question() raises ValueError for invalid confidence
-          - QuestionQueue.answer_question() raises TimeoutError for lock failures
-
-          Retry strategy:
-          - FileNotFoundError: Log error, question may have been answered elsewhere
-          - ValueError: Fix confidence value and retry
-          - TimeoutError: Retry once, then escalate
-
-          All file operations handled by QuestionQueue service.
-        success_criteria:
-          - Answers written exclusively via QuestionQueue.answer_question()
-          - Parakeet confidence mapped to AnswerConfidence enum correctly
-          - answered_by set to "voice" for voice-submitted answers
-          - QuestionQueue errors handled with retry logic
-          - No custom file writing (100% QuestionQueue integration)
-          - Logging traces all answer submissions
-
-      - id: "VP-011"
-        name: "Implement answer submission error handling"
-        description: |
-          Add robust error handling for answer submission failures:
-
-          Error scenarios:
-          1. Question already answered (race condition with CLI)
-          2. File lock timeout (concurrent access)
-          3. Disk full or permission errors
-          4. Invalid question ID
-          5. Network interruption during PersonaPlex/Parakeet
-
-          Error handling strategy:
-          - Question already answered: Log warning, move to next question
-          - File lock timeout: Retry once with 1-second delay, then skip
-          - Disk/permission errors: Critical error, escalate to user
-          - Invalid question ID: Log error, skip question
-          - Network errors: Retry transcription, fallback to defer
-
-          Implement comprehensive logging for debugging:
-          - Log each answer submission attempt
-          - Log all errors with full stack trace
-          - Log retry attempts and outcomes
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticVoice/src/agenticvoice/workflow.py
-        target_files:
-          - modules/AgenticVoice/src/agenticvoice/workflow.py
-        guidance: |
-          Implementation notes:
-          - Use try/except blocks around QuestionQueue.answer_question()
-          - Distinguish between recoverable and critical errors
-          - Retry recoverable errors once with delay
-          - Escalate critical errors to daemon error handler
-
-          Error categories:
-          - Recoverable: FileNotFoundError, TimeoutError
-          - Critical: PermissionError, OSError (disk full), ValueError
-
-          Logging levels:
-          - WARNING: Question already answered (race condition)
-          - ERROR: File lock timeout, invalid question ID
-          - CRITICAL: Disk full, permission errors
-
-          Retry logic:
-          - Max 1 retry for file lock timeout
-          - 1-second delay between retries
-          - After retry failure, log error and skip question
-
-          User notification:
-          - Critical errors should log to daemon log file
-          - Consider writing error marker file for CLI to detect
-        success_criteria:
-          - All QuestionQueue errors caught and handled
-          - Recoverable errors retried once with delay
-          - Critical errors escalated with full context
-          - Comprehensive logging for debugging
-          - Race conditions with CLI handled gracefully
-          - Daemon continues running after non-critical errors
-
-  # ========================================
-  # PHASE 6: Daemon Management
-  # ========================================
-  - name: "Phase 6: Daemon Management"
-    execution: sequential
-    description: "CLI commands for start/stop/status"
-    tasks:
-      - id: "VP-012"
-        name: "Create agentic voice CLI command group"
-        description: |
-          Add voice command group to AgenticCLI:
-
-          Commands:
-          ```
-          agentic voice start [--daemon] [--plan PLAN_ID]
-          - Start AgenticVoice service
-          - Default: daemon mode (continuous monitoring)
-          - Option: one-shot mode (process pending, then exit)
-          - Option: --plan to monitor specific plan (default: all active plans)
-
-          agentic voice stop
-          - Stop AgenticVoice daemon gracefully (SIGTERM)
-          - Wait for current question to complete
-
-          agentic voice status
-          - Show service status (running/stopped)
-          - Show pending question count per plan
-          - Show last answer timestamp
-          - Show daemon PID if running
-
-          agentic voice logs [--tail N] [--follow]
-          - Show service logs from ~/.agentic/agenticvoice.log
-          - Option: --tail N (last N lines)
-          - Option: --follow (tail -f behavior)
-          ```
-
-          Follow AgenticCLI command patterns (use Typer framework).
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticCLI/src/agenticcli/cli.py
-          - modules/AgenticCLI/src/agenticcli/commands/plan.py
-        target_files:
-          - modules/AgenticCLI/src/agenticcli/commands/voice.py
-        guidance: |
-          Implementation notes:
-          - Use Typer for CLI framework (consistent with AgenticCLI)
-          - Register voice command group in cli.py
-          - Import AgenticVoice daemon module for start/stop
-          - Use PID file for status checking
-
-          Command implementation:
-          - start: Fork daemon process, write PID file, exit
-          - stop: Read PID file, send SIGTERM, wait for exit
-          - status: Check PID file, query daemon health
-          - logs: Read log file, support tail/follow options
-
-          Error handling:
-          - start: Check if already running (PID file exists)
-          - stop: Check if not running (PID file missing)
-          - status: Handle missing PID file (not running)
-          - logs: Handle missing log file (never started)
-
-          Follow existing CLI patterns from plan.py and other command modules.
-        success_criteria:
-          - Voice command group added to CLI
-          - Start/stop/status/logs commands implemented
-          - Daemon and one-shot modes supported
-          - Plan filtering supported (--plan option)
-          - Commands follow AgenticCLI patterns (Typer framework)
-          - Error handling for invalid states (already running, not running)
-          - Rich formatting for readable output
-
-      - id: "VP-013"
-        name: "Implement daemon status reporting"
-        description: |
-          Enhance status command with detailed daemon information:
-
-          Status report should include:
-          ```
-          AgenticVoice Daemon Status
-          ==========================
-          Status: Running (PID: 12345)
-          Uptime: 2 hours, 34 minutes
-          Last question processed: 5 minutes ago
-
-          Active Plans:
-          - 260203QC_question_cli: 3 pending questions
-          - 260203VP_voice_personaplex: 1 pending question
-
-          Recent Activity:
-          - Q-20260203-143022-a1b2: Answered 5 minutes ago
-          - Q-20260203-150945-c3d4: Answered 12 minutes ago
-
-          Daemon Health:
-          - PersonaPlex connection: OK
-          - Parakeet model: Loaded
-          - Log file: ~/.agentic/agenticvoice.log (234 KB)
-          - PID file: ~/.agentic/agenticvoice.pid
-          ```
-
-          Use Rich library for formatted output.
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - modules/AgenticCLI/src/agenticcli/commands/voice.py
-          - modules/AgenticVoice/src/agenticvoice/daemon.py
-        target_files:
-          - modules/AgenticCLI/src/agenticcli/commands/voice.py
-          - modules/AgenticVoice/src/agenticvoice/daemon.py
-        guidance: |
-          Implementation notes:
-          - Read PID file to check if daemon running
-          - Query daemon process for uptime (process start time)
-          - Scan questions/ folders to count pending questions
-          - Read log file for recent activity
-          - Check PersonaPlex connection status
-          - Check Parakeet model loading status
-
-          Status checks:
-          - PID file exists -> daemon running
-          - Process PID exists -> daemon alive
-          - PersonaPlex connection -> health check API call
-          - Parakeet model -> check model cache
-
-          Use Rich library for formatted tables and status displays.
-
-          Error handling:
-          - PID file missing -> Status: Stopped
-          - PID file exists but process dead -> Status: Crashed (stale PID file)
-          - Cannot connect to daemon -> Status: Unknown
-
-          Consider adding JSON output option (--json) for scripting.
-        success_criteria:
-          - Status command shows daemon state (running/stopped/crashed)
-          - Uptime calculated from process start time
-          - Pending question counts per plan displayed
-          - Recent activity shown (last 5 questions)
-          - Daemon health checks included (PersonaPlex, Parakeet)
-          - Rich formatting for readable output
-          - Handles stale PID files gracefully
-          - Optional JSON output for scripting
-
-# ========================================
-# SUCCESS CRITERIA
-# ========================================
-success_criteria:
-  - "PersonaPlex client connects via WebSocket and performs TTS/STT"
-  - "Parakeet TDT provides high-quality transcription with confidence scores"
-  - "Voice daemon monitors questions/pending/ using QuestionQueue service"
-  - "Questions spoken via PersonaPlex TTS with context"
-  - "User answers captured via PersonaPlex STT and validated by Parakeet"
-  - "Answers written exclusively via QuestionQueue.answer_question()"
-  - "agentic voice start/stop/status/logs commands work correctly"
-  - "Daemon runs reliably in background with PID and log management"
-  - "Voice and CLI can coexist without conflicts (both use QuestionQueue)"
-  - "Voice interface is truly optional (system works without it)"
-  - "Configuration loaded from ~/.agentic/agenticvoice.yml with validation"
-  - "Transcription quality validation prevents low-confidence answers"
-  - "Retry logic handles transcription failures gracefully"
-  - "Defer keywords and silence timeout handled correctly"
-  - "Integration tests validate voice workflow end-to-end"
-
-# ========================================
-# VALIDATION
-# ========================================
-validation:
-  - criterion: "PersonaPlex client connects and performs voice I/O"
-    method: "Integration test: test_personaplex_connection()"
-    expected: "WebSocket connection established, TTS/STT working"
-
-  - criterion: "Parakeet transcription quality validation"
-    method: "Integration test: test_parakeet_transcription_quality()"
-    expected: "Confidence scores computed, discrepancies flagged"
-
-  - criterion: "Voice daemon monitors questions using QuestionQueue"
-    method: "Integration test: test_daemon_question_monitoring()"
-    expected: "Pending questions retrieved and sorted by severity"
-
-  - criterion: "Answers written via QuestionQueue service"
-    method: "Integration test: test_answer_submission_via_queue()"
-    expected: "Answers written to questions/answered/ via QuestionQueue.answer_question()"
-
-  - criterion: "CLI commands control daemon lifecycle"
-    method: "Integration test: test_voice_cli_commands()"
-    expected: "Start/stop/status/logs commands work correctly"
-
-  - criterion: "Voice and CLI coexist without conflicts"
-    method: "Integration test: test_voice_cli_coexistence()"
-    expected: "Both interfaces can answer questions without race conditions"
-
-  - criterion: "Retry logic handles transcription failures"
-    method: "Unit test: test_retry_logic_on_low_confidence()"
-    expected: "Max 3 retries, defer after failures"
-
-  - criterion: "Defer keywords detected correctly"
-    method: "Unit test: test_defer_keyword_detection()"
-    expected: "Keywords like 'defer', 'skip' trigger deferral"
-
-# ========================================
-# TARGET FILES
-# ========================================
-target_files:
-  primary:
+- name: 'Phase 1: PersonaPlex Client'
+  execution: sequential
+  description: WebSocket connection and TTS/STT integration
+  tickets:
+  - id: VP-001
+    name: Create PersonaPlex client module
+    description: "Implement PersonaPlexClient class for voice I/O via WebSocket:\n\
+      \nCore capabilities:\n- Initialize WebSocket connection to PersonaPlex API\n\
+      - Configuration from environment variables (PERSONAPLEX_API_URL, PERSONAPLEX_API_KEY)\n\
+      - Connection health checks and reconnect logic\n- Abstract interface if PersonaPlex\
+      \ SDK not yet determined\n\nClass structure:\n```python\nclass PersonaPlexClient:\n\
+      \    def __init__(self, config: dict):\n        # Initialize WebSocket connection\n\
+      \        # Configure voice profile, TTS/STT settings\n\n    def connect(self)\
+      \ -> bool:\n        # Establish WebSocket connection\n        # Return success\
+      \ status\n\n    def speak(self, text: str) -> bool:\n        # Convert text\
+      \ to speech via PersonaPlex TTS\n        # Stream audio to user's device\n \
+      \       # Return success status\n\n    def listen(self, timeout: int = 30) ->\
+      \ tuple[str, float]:\n        # Capture audio from microphone\n        # Transcribe\
+      \ via PersonaPlex STT\n        # Return (transcribed_text, confidence_score)\n\
+      \        # Raise TimeoutError if silence exceeds timeout\n\n    def disconnect(self):\n\
+      \        # Close WebSocket connection gracefully\n```\n\nFollow patterns from\
+      \ 260203AV PersonaPlex integration (reference only).\n"
+    status: pending
+    agent: null
+    inputs:
+    - docs/plans/deferred/260203AV_agenticvoice_async/live/plan_build.yml
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/personaplex.py
+    guidance: 'Implementation notes:
+
+      - Use environment variables for configuration (NEVER hardcode API keys)
+
+      - WebSocket connection should support reconnection on failure
+
+      - Voice parameters: speed, tone, persona (configurable)
+
+      - Handle audio device errors gracefully with user-friendly messages
+
+      - Implement voice activity detection (VAD) for noise filtering
+
+      - Silence timeout: 30 seconds -> TimeoutError
+
+
+      Voice prompt format for questions:
+
+      "Hey, I have a question about {context}. {question_text}"
+
+
+      If PersonaPlex SDK is not available, create abstract interface
+
+      that can be implemented later.
+
+      '
+    success_criteria:
+    - PersonaPlexClient class implemented with connect/speak/listen/disconnect
+    - Configuration loaded from environment variables
+    - WebSocket connection health monitoring implemented
+    - Reconnect logic handles dropped connections
+    - Audio device error handling with user-friendly messages
+    - Abstract interface allows future PersonaPlex SDK integration
+  - id: VP-002
+    name: Create Parakeet TDT transcription module
+    description: "Implement ParakeetTranscriber for high-quality transcription:\n\n\
+      Core capabilities:\n- Initialize Parakeet TDT model on startup\n- Transcribe\
+      \ audio in parallel with PersonaPlex STT\n- Compare PersonaPlex and Parakeet\
+      \ transcriptions for validation\n- Compute confidence scores and flag discrepancies\n\
+      \nClass structure:\n```python\nclass ParakeetTranscriber:\n    def __init__(self,\
+      \ model_path: str):\n        # Load Parakeet TDT model\n        # Initialize\
+      \ transcription pipeline\n\n    def transcribe(self, audio_data: bytes) -> tuple[str,\
+      \ float]:\n        # Run Parakeet transcription\n        # Return (transcribed_text,\
+      \ confidence_score)\n\n    def validate_transcription(\n        self,\n    \
+      \    personaplex_text: str,\n        personaplex_confidence: float,\n      \
+      \  parakeet_text: str,\n        parakeet_confidence: float\n    ) -> tuple[str,\
+      \ float, bool]:\n        # Compare both transcriptions\n        # Return (best_text,\
+      \ confidence, needs_retry)\n        # needs_retry=True if confidence < 0.8 or\
+      \ discrepancies found\n```\n\nDual transcription strategy:\n1. PersonaPlex STT:\
+      \ Fast, real-time, immediate feedback\n2. Parakeet TDT: Slower, batch, higher\
+      \ accuracy (used for final answer)\n\nUse Parakeet result for Answer objects\
+      \ written to queue.\n"
+    status: pending
+    agent: null
+    inputs:
+    - docs/plans/deferred/260203AV_agenticvoice_async/live/plan_build.yml
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/parakeet.py
+    guidance: 'Implementation notes:
+
+      - Load Parakeet model on service startup (not per-question)
+
+      - Run Parakeet transcription in parallel with PersonaPlex
+
+      - Confidence threshold: 0.8 (80%)
+
+      - If confidence < 0.8 OR discrepancies detected -> ask user to repeat
+
+
+      Validation logic:
+
+      - If both transcriptions agree: high confidence
+
+      - If differ significantly: flag for review, ask user to repeat
+
+      - If Parakeet confidence < 0.8: ask user to repeat
+
+
+      User prompt on low confidence:
+
+      "I didn''t catch that clearly. Could you repeat?"
+
+
+      Model loading should be efficient and cached.
+
+      '
+    success_criteria:
+    - ParakeetTranscriber class loads model on initialization
+    - Transcription runs in parallel with PersonaPlex
+    - Confidence scores computed for transcription quality
+    - Discrepancies between PersonaPlex and Parakeet flagged
+    - User prompted to repeat on low confidence
+    - Parakeet results used for final Answer objects
+  - id: VP-003
+    name: Create voice configuration system
+    description: "Implement configuration system for voice interface:\n\nConfiguration\
+      \ file: ~/.agentic/agenticvoice.yml\n\nConfiguration keys:\n```yaml\npersonaplex:\n\
+      \  api_url: \"https://api.personaplex.ai/v1\"\n  api_key: \"${PERSONAPLEX_API_KEY}\"\
+      \n  voice_profile: \"default\"\n  tts_speed: 1.0\n  stt_language: \"en-US\"\n\
+      \nparakeet:\n  model_path: \"~/.agentic/models/parakeet-tdt\"\n  confidence_threshold:\
+      \ 0.8\n\ndaemon:\n  pid_file: \"~/.agentic/agenticvoice.pid\"\n  log_file: \"\
+      ~/.agentic/agenticvoice.log\"\n  poll_interval: 5  # seconds\n  auto_restart:\
+      \ true\n  max_retries: 3\n```\n\nUse environment variable expansion (${VAR}).\n\
+      Validate config on load and provide clear error messages.\n"
+    status: pending
+    agent: null
+    inputs:
+    - docs/plans/deferred/260203AV_agenticvoice_async/live/plan_build.yml
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/config.py
+    - modules/AgenticVoice/config.example.yml
+    guidance: 'Implementation notes:
+
+      - Config file location: ~/.agentic/agenticvoice.yml
+
+      - Provide example config: modules/AgenticVoice/config.example.yml
+
+      - Environment variable expansion: ${VAR} -> os.getenv(''VAR'')
+
+      - Validation: Check required fields, valid paths, numeric ranges
+
+      - Clear error messages for missing/invalid config
+
+      - Support both absolute and ~ paths
+
+
+      Config validation checks:
+
+      - API key present (can be env var reference)
+
+      - Model path exists or can be created
+
+      - Numeric values in valid ranges
+
+      - File paths writable
+
+
+      Use YAML for configuration (pyyaml dependency).
+
+      '
+    success_criteria:
+    - Configuration loaded from ~/.agentic/agenticvoice.yml
+    - Environment variables expanded correctly
+    - Validation errors reported with clear messages
+    - Example config provided in repo
+    - Supports both absolute and tilde paths
+    - Invalid config rejected with helpful error messages
+- name: 'Phase 2: Question Monitoring'
+  execution: sequential
+  description: Daemon watches questions/pending/ folder using QuestionQueue
+  tickets:
+  - id: VP-004
+    name: Create question monitor daemon
+    description: "Implement QuestionMonitor daemon that watches questions/pending/\
+      \ folder:\n\nCore capabilities:\n- Monitor plan-scoped questions/pending/ directory\
+      \ for new files\n- Use QuestionQueue.list_pending_questions() to get new questions\n\
+      - Sort questions by severity (blocking > high > medium > low)\n- Poll at configurable\
+      \ interval (default: 5 seconds)\n- Handle multiple plan contexts (iterate active\
+      \ plans)\n\nClass structure:\n```python\nclass QuestionMonitor:\n    def __init__(self,\
+      \ config: dict, plan_path: Path):\n        self.queue = QuestionQueue(plan_path)\n\
+      \        self.poll_interval = config['daemon']['poll_interval']\n\n    def get_next_question(self)\
+      \ -> Optional[Question]:\n        # Get pending questions sorted by severity\n\
+      \        # Return highest priority question or None\n\n    def start(self):\n\
+      \        # Main daemon loop\n        # Poll for questions, yield to VoiceWorkflow\n\
+      \n    def stop(self):\n        # Graceful shutdown\n```\n\nUse QuestionQueue\
+      \ service from 260203QF (NO custom queue implementation).\n"
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/monitor.py
+    guidance: 'Implementation notes:
+
+      - Use QuestionQueue.list_pending_questions(severity_filter=None)
+
+      - Sort questions by severity enum order
+
+      - Poll interval configurable (default: 5 seconds)
+
+      - Handle plan context discovery (find active plans)
+
+      - Graceful shutdown on SIGTERM
+
+      - No custom file watching - use QuestionQueue API
+
+
+      Question priority order:
+
+      1. blocking (highest)
+
+      2. high
+
+      3. medium
+
+      4. low (lowest)
+
+
+      Within same severity, use created_at (oldest first).
+
+
+      Monitor should be plan-aware (iterate multiple plan contexts if needed).
+
+      '
+    success_criteria:
+    - QuestionMonitor uses QuestionQueue service (NO custom queue)
+    - Questions sorted by severity and created_at
+    - Poll interval configurable
+    - Graceful shutdown on SIGTERM
+    - Plan context discovery implemented
+    - No race conditions in question retrieval
+  - id: VP-005
+    name: Create daemon lifecycle management
+    description: 'Implement daemon process management:
+
+
+      Core capabilities:
+
+      - PID file management: ~/.agentic/agenticvoice.pid
+
+      - Log file rotation: ~/.agentic/agenticvoice.log
+
+      - Graceful shutdown on SIGTERM
+
+      - Auto-restart on crash (max 3 retries)
+
+      - Health checks and status reporting
+
+
+      Daemon main loop:
+
+      1. Check for new questions via QuestionMonitor
+
+      2. Process questions via VoiceWorkflow (Phase 3)
+
+      3. Sleep for poll_interval
+
+      4. Repeat until SIGTERM
+
+
+      Use standard daemon patterns (fork, setsid) or python-daemon library.
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticVoice/src/agenticvoice/monitor.py
+    - modules/AgenticVoice/src/agenticvoice/config.py
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/daemon.py
+    guidance: 'Implementation notes:
+
+      - PID file: Write process ID on startup, remove on shutdown
+
+      - Log file: Standard logging to file with rotation
+
+      - Signal handling: SIGTERM for graceful shutdown
+
+      - Crash recovery: Retry up to max_retries times, then exit
+
+      - Health check: Verify PersonaPlex connection, file permissions
+
+
+      Daemon lifecycle:
+
+      1. Fork and detach from terminal
+
+      2. Create PID file
+
+      3. Initialize logging
+
+      4. Start main loop
+
+      5. Handle SIGTERM gracefully
+
+      6. Clean up PID file on exit
+
+
+      Use python-daemon library if available, otherwise implement
+
+      standard daemon patterns manually.
+
+      '
+    success_criteria:
+    - Daemon starts and runs in background
+    - PID file created and managed correctly
+    - Graceful shutdown on SIGTERM
+    - Logs written to file with rotation
+    - Auto-restart on crash (limited retries)
+    - Health checks prevent daemon from running in bad state
+- name: 'Phase 3: Voice Workflow'
+  execution: sequential
+  description: Speak questions, capture answers, write via QuestionQueue
+  tickets:
+  - id: VP-006
+    name: Create voice answer workflow
+    description: "Implement VoiceAnswerWorkflow to process questions via voice:\n\n\
+      Workflow steps:\n1. Get next question from QuestionMonitor (sorted by severity)\n\
+      2. Speak question via PersonaPlexClient.speak()\n3. Capture answer via PersonaPlexClient.listen()\n\
+      4. Transcribe answer via ParakeetTranscriber.transcribe()\n5. Validate transcription\
+      \ quality (compare PersonaPlex vs Parakeet)\n6. If low confidence: Ask user\
+      \ to repeat, retry up to 3 times\n7. Write Answer via QuestionQueue.answer_question()\n\
+      8. Return success or failure\n\nHandle edge cases:\n- User skips question (silence\
+      \ timeout -> defer)\n- User says \"defer\" or \"skip\" -> defer question\n-\
+      \ Transcription quality too low (retry up to 3 times)\n- PersonaPlex connection\
+      \ failure (retry, then fallback)\n\nClass structure:\n```python\nclass VoiceAnswerWorkflow:\n\
+      \    def __init__(\n        self,\n        personaplex: PersonaPlexClient,\n\
+      \        parakeet: ParakeetTranscriber,\n        queue: QuestionQueue\n    ):\n\
+      \        self.personaplex = personaplex\n        self.parakeet = parakeet\n\
+      \        self.queue = queue\n\n    def process_question(self, question: Question)\
+      \ -> bool:\n        # Execute workflow for single question\n        # Return\
+      \ True if answered, False if deferred/failed\n\n    def run(self):\n       \
+      \ # Main loop: process questions until queue empty\n```\n\nUse QuestionQueue.answer_question()\
+      \ to write answers (NO custom file writing).\n"
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticVoice/src/agenticvoice/personaplex.py
     - modules/AgenticVoice/src/agenticvoice/parakeet.py
-    - modules/AgenticVoice/src/agenticvoice/config.py
     - modules/AgenticVoice/src/agenticvoice/monitor.py
-    - modules/AgenticVoice/src/agenticvoice/daemon.py
+    target_files:
     - modules/AgenticVoice/src/agenticvoice/workflow.py
+    guidance: 'Implementation notes:
+
+      - Use QuestionQueue.answer_question() for writing answers
+
+      - Retry logic: Max 3 retries for low-confidence transcriptions
+
+      - Defer handling: If user says "defer"/"skip" or silence timeout
+
+      - Error handling: PersonaPlex failures should fallback gracefully
+
+      - Logging: Log each workflow step for debugging
+
+
+      Voice prompts:
+
+      - Question: "Hey, I have a question about {context}. {question_text}"
+
+      - Retry: "I didn''t catch that clearly. Could you repeat?"
+
+      - Success: "Got it, thanks!"
+
+
+      Defer keywords: "defer", "skip", "later", "ask me later"
+
+      (case-insensitive matching)
+
+
+      Workflow should be atomic: Either fully succeeds or fails cleanly.
+
+      '
+    success_criteria:
+    - VoiceAnswerWorkflow processes questions sequentially
+    - Answers written via QuestionQueue.answer_question()
+    - Quality validation integrated (Parakeet vs PersonaPlex)
+    - Edge cases handled (skip, defer, retry)
+    - Max 3 retries for low-confidence transcriptions
+    - Defer keywords detected correctly
+    - Logging provides clear workflow trace
+  - id: VP-007
+    name: Implement answer validation and retry logic
+    description: 'Enhance VoiceAnswerWorkflow with robust validation:
+
+
+      Validation checks:
+
+      1. Transcription confidence score (Parakeet >= 0.8)
+
+      2. Transcription agreement (PersonaPlex vs Parakeet)
+
+      3. Answer length (not empty, not single word unless valid)
+
+      4. Defer keywords detection (user wants to skip)
+
+
+      Retry strategy:
+
+      - Max 3 retries per question
+
+      - On each retry: Re-prompt user with clearer instructions
+
+      - After 3 failed retries: Defer question automatically
+
+      - Log retry attempts for debugging
+
+
+      Defer detection:
+
+      - Keywords: "defer", "skip", "later", "ask me later", "not now"
+
+      - Empty answers (silence timeout)
+
+      - Explicit user request to skip
+
+
+      Write deferred questions to questions/deferred/ directory.
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticVoice/src/agenticvoice/workflow.py
+    - modules/AgenticVoice/src/agenticvoice/parakeet.py
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/workflow.py
+    guidance: 'Implementation notes:
+
+      - Confidence threshold: 0.8 (80%)
+
+      - Agreement threshold: Levenshtein distance < 20% of length
+
+      - Answer length: Minimum 2 words (unless yes/no question)
+
+      - Defer keywords: Case-insensitive, partial match OK
+
+
+      Retry prompts:
+
+      - Retry 1: "I didn''t catch that clearly. Could you repeat?"
+
+      - Retry 2: "Sorry, I''m having trouble understanding. Please speak clearly."
+
+      - Retry 3: "Last try - please repeat your answer slowly."
+
+      - After 3 failures: "I''ll defer this question for now."
+
+
+      Deferred questions should be moved to questions/deferred/ folder
+
+      (may need to extend QuestionQueue service or handle manually).
+
+
+      Log all validation failures and retry attempts for debugging.
+
+      '
+    success_criteria:
+    - Confidence validation enforces 0.8 threshold
+    - Transcription agreement checked (PersonaPlex vs Parakeet)
+    - Answer length validation prevents empty responses
+    - Defer keywords detected correctly
+    - Max 3 retries enforced
+    - Retry prompts progressively clarify instructions
+    - Deferred questions written to questions/deferred/
+    - Logging traces all validation failures and retries
+- name: 'Phase 4: Parakeet Integration'
+  execution: sequential
+  description: High-quality transcription pipeline with Parakeet TDT
+  tickets:
+  - id: VP-008
+    name: Implement Parakeet model loading and caching
+    description: "Optimize Parakeet model loading for daemon lifecycle:\n\nCore optimizations:\n\
+      - Load model once on daemon startup (not per-question)\n- Cache model in memory\
+      \ for fast transcription\n- Handle model loading errors gracefully\n- Support\
+      \ custom model paths (configurable)\n\nModel loading strategy:\n```python\n\
+      class ParakeetTranscriber:\n    _model_cache = None  # Class-level cache\n\n\
+      \    def __init__(self, model_path: str):\n        if ParakeetTranscriber._model_cache\
+      \ is None:\n            # Load model first time\n            ParakeetTranscriber._model_cache\
+      \ = self._load_model(model_path)\n        self.model = ParakeetTranscriber._model_cache\n\
+      \n    def _load_model(self, model_path: str):\n        # Load Parakeet TDT model\n\
+      \        # Handle errors, fallback to default model if needed\n```\n\nGraceful\
+      \ degradation:\n- If Parakeet model unavailable: Fall back to PersonaPlex STT\
+      \ only\n- Log warning but don't crash daemon\n- Continue with reduced transcription\
+      \ quality\n"
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticVoice/src/agenticvoice/parakeet.py
+    - modules/AgenticVoice/src/agenticvoice/config.py
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/parakeet.py
+    guidance: 'Implementation notes:
+
+      - Model loading should happen on first ParakeetTranscriber init
+
+      - Cache model in class-level variable (shared across instances)
+
+      - Handle model loading errors with clear messages
+
+      - Support custom model paths from config
+
+      - Provide fallback if model unavailable
+
+
+      Model path resolution:
+
+      - First try: config[''parakeet''][''model_path'']
+
+      - Fallback: ~/.agentic/models/parakeet-tdt
+
+      - If neither exists: Log warning, disable Parakeet
+
+
+      Error handling:
+
+      - Model file not found -> fallback to PersonaPlex only
+
+      - Model loading error -> fallback to PersonaPlex only
+
+      - Insufficient memory -> fallback to PersonaPlex only
+
+
+      Log model loading status for debugging.
+
+      '
+    success_criteria:
+    - Parakeet model loaded once on daemon startup
+    - Model cached in memory for fast transcription
+    - Custom model paths supported from config
+    - Graceful fallback to PersonaPlex if model unavailable
+    - Clear error messages for model loading failures
+    - Logging indicates model loading status
+  - id: VP-009
+    name: Implement parallel transcription pipeline
+    description: "Run PersonaPlex and Parakeet transcriptions in parallel:\n\nParallel\
+      \ execution:\n- Start PersonaPlex STT (fast, low latency)\n- Start Parakeet\
+      \ TDT (high quality, slower)\n- Return PersonaPlex result immediately for feedback\n\
+      - Use Parakeet result for final Answer object\n\nImplementation strategy:\n\
+      ```python\nimport asyncio\n\nasync def transcribe_parallel(audio_data: bytes):\n\
+      \    # Run both transcriptions concurrently\n    personaplex_task = asyncio.create_task(\n\
+      \        personaplex.listen_async()\n    )\n    parakeet_task = asyncio.create_task(\n\
+      \        parakeet.transcribe_async(audio_data)\n    )\n\n    # Wait for both\
+      \ to complete\n    personaplex_result = await personaplex_task\n    parakeet_result\
+      \ = await parakeet_task\n\n    return personaplex_result, parakeet_result\n\
+      ```\n\nUse asyncio for concurrent execution.\nReduce total transcription time\
+      \ by running both in parallel.\n"
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticVoice/src/agenticvoice/personaplex.py
+    - modules/AgenticVoice/src/agenticvoice/parakeet.py
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/workflow.py
+    guidance: 'Implementation notes:
+
+      - Use asyncio for parallel execution
+
+      - PersonaPlex provides immediate feedback
+
+      - Parakeet provides final answer quality
+
+      - Handle case where Parakeet unavailable (use PersonaPlex only)
+
+
+      Transcription flow:
+
+      1. User speaks answer
+
+      2. PersonaPlex STT runs in real-time
+
+      3. Parakeet TDT runs in parallel
+
+      4. Compare both results (validation)
+
+      5. Use Parakeet result for Answer object
+
+
+      If Parakeet unavailable:
+
+      - Use PersonaPlex result only
+
+      - Log warning about reduced quality
+
+      - Continue workflow normally
+
+
+      Error handling:
+
+      - PersonaPlex failure: Critical error, retry
+
+      - Parakeet failure: Non-critical, fallback to PersonaPlex
+
+      '
+    success_criteria:
+    - PersonaPlex and Parakeet run in parallel
+    - PersonaPlex result available for immediate feedback
+    - Parakeet result used for final Answer objects
+    - Graceful fallback if Parakeet unavailable
+    - Total transcription time reduced by parallelization
+    - Error handling for individual transcription failures
+- name: 'Phase 5: Answer Submission'
+  execution: sequential
+  description: Write answers via QuestionQueue service
+  tickets:
+  - id: VP-010
+    name: Integrate QuestionQueue.answer_question()
+    description: "Use QuestionQueue service for writing answers (NO custom file writing):\n\
+      \nIntegration points:\n```python\nfrom agenticguidance.services.question import\
+      \ QuestionQueue\nfrom agenticguidance.models.question import AnswerConfidence\n\
+      \ndef submit_answer(\n    queue: QuestionQueue,\n    question_id: str,\n   \
+      \ answer_text: str,\n    confidence_score: float\n):\n    # Map Parakeet confidence\
+      \ to AnswerConfidence enum\n    if confidence_score >= 0.9:\n        confidence\
+      \ = AnswerConfidence.HIGH.value\n    elif confidence_score >= 0.7:\n       \
+      \ confidence = AnswerConfidence.MEDIUM.value\n    else:\n        confidence\
+      \ = AnswerConfidence.LOW.value\n\n    # Write answer via QuestionQueue\n   \
+      \ question, answer = queue.answer_question(\n        question_id=question_id,\n\
+      \        answer_text=answer_text,\n        answered_by=\"voice\",\n        confidence=confidence\n\
+      \    )\n\n    return question, answer\n```\n\nUse QuestionQueue.answer_question()\
+      \ for all answer writes.\nMap Parakeet confidence scores to AnswerConfidence\
+      \ enum values.\n"
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticVoice/src/agenticvoice/workflow.py
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/workflow.py
+    guidance: 'Implementation notes:
+
+      - Use QuestionQueue.answer_question() exclusively (NO custom writes)
+
+      - Map Parakeet confidence (0.0-1.0) to AnswerConfidence enum
+
+      - answered_by should be "voice" for voice-submitted answers
+
+      - Handle QuestionQueue errors gracefully (retry once, then escalate)
+
+
+      Confidence mapping:
+
+      - >= 0.9: AnswerConfidence.HIGH
+
+      - >= 0.7: AnswerConfidence.MEDIUM
+
+      - < 0.7: AnswerConfidence.LOW (should trigger retry)
+
+
+      Error handling:
+
+      - QuestionQueue.answer_question() raises FileNotFoundError if question not in
+      pending/
+
+      - QuestionQueue.answer_question() raises ValueError for invalid confidence
+
+      - QuestionQueue.answer_question() raises TimeoutError for lock failures
+
+
+      Retry strategy:
+
+      - FileNotFoundError: Log error, question may have been answered elsewhere
+
+      - ValueError: Fix confidence value and retry
+
+      - TimeoutError: Retry once, then escalate
+
+
+      All file operations handled by QuestionQueue service.
+
+      '
+    success_criteria:
+    - Answers written exclusively via QuestionQueue.answer_question()
+    - Parakeet confidence mapped to AnswerConfidence enum correctly
+    - answered_by set to "voice" for voice-submitted answers
+    - QuestionQueue errors handled with retry logic
+    - No custom file writing (100% QuestionQueue integration)
+    - Logging traces all answer submissions
+  - id: VP-011
+    name: Implement answer submission error handling
+    description: 'Add robust error handling for answer submission failures:
+
+
+      Error scenarios:
+
+      1. Question already answered (race condition with CLI)
+
+      2. File lock timeout (concurrent access)
+
+      3. Disk full or permission errors
+
+      4. Invalid question ID
+
+      5. Network interruption during PersonaPlex/Parakeet
+
+
+      Error handling strategy:
+
+      - Question already answered: Log warning, move to next question
+
+      - File lock timeout: Retry once with 1-second delay, then skip
+
+      - Disk/permission errors: Critical error, escalate to user
+
+      - Invalid question ID: Log error, skip question
+
+      - Network errors: Retry transcription, fallback to defer
+
+
+      Implement comprehensive logging for debugging:
+
+      - Log each answer submission attempt
+
+      - Log all errors with full stack trace
+
+      - Log retry attempts and outcomes
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticVoice/src/agenticvoice/workflow.py
+    target_files:
+    - modules/AgenticVoice/src/agenticvoice/workflow.py
+    guidance: 'Implementation notes:
+
+      - Use try/except blocks around QuestionQueue.answer_question()
+
+      - Distinguish between recoverable and critical errors
+
+      - Retry recoverable errors once with delay
+
+      - Escalate critical errors to daemon error handler
+
+
+      Error categories:
+
+      - Recoverable: FileNotFoundError, TimeoutError
+
+      - Critical: PermissionError, OSError (disk full), ValueError
+
+
+      Logging levels:
+
+      - WARNING: Question already answered (race condition)
+
+      - ERROR: File lock timeout, invalid question ID
+
+      - CRITICAL: Disk full, permission errors
+
+
+      Retry logic:
+
+      - Max 1 retry for file lock timeout
+
+      - 1-second delay between retries
+
+      - After retry failure, log error and skip question
+
+
+      User notification:
+
+      - Critical errors should log to daemon log file
+
+      - Consider writing error marker file for CLI to detect
+
+      '
+    success_criteria:
+    - All QuestionQueue errors caught and handled
+    - Recoverable errors retried once with delay
+    - Critical errors escalated with full context
+    - Comprehensive logging for debugging
+    - Race conditions with CLI handled gracefully
+    - Daemon continues running after non-critical errors
+- name: 'Phase 6: Daemon Management'
+  execution: sequential
+  description: CLI commands for start/stop/status
+  tickets:
+  - id: VP-012
+    name: Create agentic voice CLI command group
+    description: 'Add voice command group to AgenticCLI:
+
+
+      Commands:
+
+      ```
+
+      agentic voice start [--daemon] [--plan PLAN_ID]
+
+      - Start AgenticVoice service
+
+      - Default: daemon mode (continuous monitoring)
+
+      - Option: one-shot mode (process pending, then exit)
+
+      - Option: --plan to monitor specific plan (default: all active plans)
+
+
+      agentic voice stop
+
+      - Stop AgenticVoice daemon gracefully (SIGTERM)
+
+      - Wait for current question to complete
+
+
+      agentic voice status
+
+      - Show service status (running/stopped)
+
+      - Show pending question count per plan
+
+      - Show last answer timestamp
+
+      - Show daemon PID if running
+
+
+      agentic voice logs [--tail N] [--follow]
+
+      - Show service logs from ~/.agentic/agenticvoice.log
+
+      - Option: --tail N (last N lines)
+
+      - Option: --follow (tail -f behavior)
+
+      ```
+
+
+      Follow AgenticCLI command patterns (use Typer framework).
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
     - modules/AgenticCLI/src/agenticcli/commands/voice.py
-  tests:
-    - modules/AgenticVoice/tests/test_personaplex.py
-    - modules/AgenticVoice/tests/test_parakeet.py
-    - modules/AgenticVoice/tests/test_monitor.py
-    - modules/AgenticVoice/tests/test_workflow.py
-    - modules/AgenticVoice/tests/integration/test_voice_cli.py
-    - modules/AgenticVoice/tests/integration/test_voice_queue_integration.py
+    guidance: 'Implementation notes:
 
-# ========================================
-# MIGRATION FROM 260203AV
-# ========================================
-migration_notes: |
-  This plan replaces 260203AV_agenticvoice_async with a new architecture:
+      - Use Typer for CLI framework (consistent with AgenticCLI)
 
-  KEEP from 260203AV:
-  - PersonaPlex WebSocket client patterns
-  - Parakeet TDT integration approach
-  - Configuration system structure
-  - Voice quality validation patterns
+      - Register voice command group in cli.py
 
-  DISCARD from 260203AV:
-  - Custom QuestionQueue implementation (use 260203QF)
-  - Custom answer writer (use QuestionQueue.answer_question)
-  - Daemon-first architecture (now CLI-first, voice optional)
-  - Custom notification mechanisms (use file watcher)
+      - Import AgenticVoice daemon module for start/stop
 
-  NEW in 260203VP:
-  - Integration with QuestionQueue service from 260203QF
-  - CLI commands for daemon management (260203QC patterns)
-  - Coexistence with CLI (both use same QuestionQueue)
-  - Optional voice interface (system works without it)
+      - Use PID file for status checking
 
-  ARCHIVE 260203AV after migrating relevant content.
 
-# ========================================
-# NEXT STEPS
-# ========================================
-next_steps:
-  - "Wait for 260203QF (Question Foundation) to complete - BLOCKER"
-  - "Create orchestration_voice_personaplex.mmd diagram"
-  - "Spawn builder agents for Phase 1 (PersonaPlex Client)"
-  - "After 260203QF completes, spawn agents for Phase 2-3 (integration)"
-  - "Archive 260203AV_agenticvoice_async plan after content migration"
+      Command implementation:
+
+      - start: Fork daemon process, write PID file, exit
+
+      - stop: Read PID file, send SIGTERM, wait for exit
+
+      - status: Check PID file, query daemon health
+
+      - logs: Read log file, support tail/follow options
+
+
+      Error handling:
+
+      - start: Check if already running (PID file exists)
+
+      - stop: Check if not running (PID file missing)
+
+      - status: Handle missing PID file (not running)
+
+      - logs: Handle missing log file (never started)
+
+
+      Follow existing CLI patterns from plan.py and other command modules.
+
+      '
+    success_criteria:
+    - Voice command group added to CLI
+    - Start/stop/status/logs commands implemented
+    - Daemon and one-shot modes supported
+    - Plan filtering supported (--plan option)
+    - Commands follow AgenticCLI patterns (Typer framework)
+    - Error handling for invalid states (already running, not running)
+    - Rich formatting for readable output
+  - id: VP-013
+    name: Implement daemon status reporting
+    description: 'Enhance status command with detailed daemon information:
+
+
+      Status report should include:
+
+      ```
+
+      AgenticVoice Daemon Status
+
+      ==========================
+
+      Status: Running (PID: 12345)
+
+      Uptime: 2 hours, 34 minutes
+
+      Last question processed: 5 minutes ago
+
+
+      Active Plans:
+
+      - 260203QC_question_cli: 3 pending questions
+
+      - 260203VP_voice_personaplex: 1 pending question
+
+
+      Recent Activity:
+
+      - Q-20260203-143022-a1b2: Answered 5 minutes ago
+
+      - Q-20260203-150945-c3d4: Answered 12 minutes ago
+
+
+      Daemon Health:
+
+      - PersonaPlex connection: OK
+
+      - Parakeet model: Loaded
+
+      - Log file: ~/.agentic/agenticvoice.log (234 KB)
+
+      - PID file: ~/.agentic/agenticvoice.pid
+
+      ```
+
+
+      Use Rich library for formatted output.
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/voice.py
+    - modules/AgenticVoice/src/agenticvoice/daemon.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/voice.py
+    - modules/AgenticVoice/src/agenticvoice/daemon.py
+    guidance: 'Implementation notes:
+
+      - Read PID file to check if daemon running
+
+      - Query daemon process for uptime (process start time)
+
+      - Scan questions/ folders to count pending questions
+
+      - Read log file for recent activity
+
+      - Check PersonaPlex connection status
+
+      - Check Parakeet model loading status
+
+
+      Status checks:
+
+      - PID file exists -> daemon running
+
+      - Process PID exists -> daemon alive
+
+      - PersonaPlex connection -> health check API call
+
+      - Parakeet model -> check model cache
+
+
+      Use Rich library for formatted tables and status displays.
+
+
+      Error handling:
+
+      - PID file missing -> Status: Stopped
+
+      - PID file exists but process dead -> Status: Crashed (stale PID file)
+
+      - Cannot connect to daemon -> Status: Unknown
+
+
+      Consider adding JSON output option (--json) for scripting.
+
+      '
+    success_criteria:
+    - Status command shows daemon state (running/stopped/crashed)
+    - Uptime calculated from process start time
+    - Pending question counts per plan displayed
+    - Recent activity shown (last 5 questions)
+    - Daemon health checks included (PersonaPlex, Parakeet)
+    - Rich formatting for readable output
+    - Handles stale PID files gracefully
+    - Optional JSON output for scripting
+context: 'This plan implements PersonaPlex integration as an OPTIONAL voice interface
+  for HITL.
+
+  This is a CONSUMER of the CLI-First infrastructure, not the core.
+
+
+  ARCHITECTURE DECISION (CLI-First Strategy):
+
+  - CLI is PRIMARY interface, voice is OPTIONAL
+
+  - Voice daemon reads from questions/pending/ (same as CLI)
+
+  - Voice daemon writes via QuestionQueue service (same as CLI)
+
+  - Both interfaces coexist without conflict
+
+
+  This plan REPLACES 260203AV_agenticvoice_async with a new scope:
+
+  - Old: Voice-first approach with custom queue and daemon
+
+  - New: Voice as optional consumer of CLI-First infrastructure
+
+
+  Reuse from 260203AV:
+
+  - PersonaPlex WebSocket patterns
+
+  - Parakeet TDT integration
+
+  - Configuration system
+
+
+  Discard from 260203AV:
+
+  - Question queue monitoring (use 260203QF QuestionQueue)
+
+  - Answer writing logic (use QuestionQueue.answer_question)
+
+  - Custom daemon management (follow CLI patterns)
+
+  '

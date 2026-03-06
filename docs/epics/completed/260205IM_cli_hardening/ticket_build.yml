@@ -1,42 +1,33 @@
-name: cli-hardening-and-idempotency
+name: cli-hardening-test-plan
 worktree_path: /home/code/AgenticEngineering
 branch: main
 status: active
 priority: high
-context: 'This plan addresses context waste and orchestration friction by:
-
-  1. Making ''session stop'' and ''loop stop'' idempotent.
-
-  2. Standardizing the ''planner'' role.
-
-  3. Ensuring agents have a safe path to update planning files.
+objective: 'Verify all CLI hardening features work correctly across unit, integration,
+  and UAT levels.
 
 
-  All implementation tasks are PENDING and have been explored via diagnostic sessions.
-  The following implementation is already present in the source but requires verification:
-  - Idempotency in session/loop stop - Generic planner role - agentic plan bootstrap
-  - --dangerously-skip-permissions flag
+  Success Criteria:
 
-  The test plan should be used to verify these implementations.
+  - Stop commands return exit 0 when already in terminal state
 
-  Implementation should follow the guidance in each task.
+  - Stop commands handle ProcessLookupError gracefully
 
-  '
-objective: '1. Modify ''agentic session stop'' to be idempotent.
+  - Bootstrap command creates correct folder structure with stubs
 
-  2. Modify ''agentic loop stop'' to be idempotent.
+  - --dangerously-skip-permissions is correctly passed to underlying ''claude'' process
 
-  3. Define a standardized ''planner'' role in AgenticGuidance.
+  - Planner role can be loaded via context bootstrap
 
-  4. Implement ''agentic plan bootstrap'' to automate the scout-to-worker transition.
-  5. Add --dangerously-skip-permissions flag to support unattended sessions/loops.
+  - All user stories pass in local and Docker environments
 
   '
+created: ''
 phases:
 - name: 'Phase 1: CLI Stop Idempotency'
   execution: sequential
   description: Make stop commands return success if already stopped
-  tasks:
+  tickets:
   - id: IM_001
     name: Make session stop idempotent
     description: Update cmd_stop in session.py to exit 0 if status is terminal or
@@ -58,7 +49,6 @@ phases:
     - Calling stop on a 'failed' session returns exit code 0
     - ProcessLookupError sets status to completed and returns exit code 0
     - 'JSON output includes success: true for all idempotent cases'
-    completed_at: '2026-02-05T23:21:40.538075'
   - id: IM_002
     name: Make loop stop idempotent
     description: Update cmd_stop in loop.py to exit 0 if status is terminal
@@ -80,11 +70,10 @@ phases:
     - Calling stop on a 'stopped' loop returns exit code 0
     - Calling stop on a 'failed' loop returns exit code 0
     - ProcessLookupError sets status to completed and returns exit code 0
-    completed_at: '2026-02-05T23:21:40.679541'
 - name: 'Phase 2: Standardized Planning Role'
   execution: sequential
   description: Establish the 'planner' role and automated spawning
-  tasks:
+  tickets:
   - id: IM_003
     name: Define generic planner role
     description: Create a base planner role with necessary permissions for plan folder
@@ -111,7 +100,6 @@ phases:
     - process.yml defines planning workflow
     - inputs.yml defines required parameters
     - '''agentic context bootstrap --role planner'' works'
-    completed_at: '2026-02-05T23:21:40.811777'
   - id: IM_004
     name: Implement plan bootstrap command
     description: Add 'agentic plan bootstrap' to automate plan folder initialization
@@ -137,11 +125,10 @@ phases:
     - plan_test.yml stub is created
     - Output suggests next steps for planner agent
     - 'Exit codes: 0 success, 1 error, 2 folder exists'
-    completed_at: '2026-02-05T23:21:40.977720'
 - name: 'Phase 3: Permission Skip Flag'
   execution: sequential
   description: Add support for bypassing permission prompts
-  tasks:
+  tickets:
   - id: IM_005
     name: Add --dangerously-skip-permissions flag
     description: Add the flag to session spawn and loop start commands
@@ -158,3 +145,387 @@ phases:
       '
     success_criteria:
     - Passing the flag results in '--dangerously-skip-permissions' being sent to 'claude'
+- name: Environment Setup Phase
+  execution: sequential
+  description: Prepare testing environments to ensure tests validate latest code
+  tickets:
+  - id: ENV_001
+    name: Local environment verification
+    description: Verify CLI is installed and accessible in local environment
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/pyproject.toml
+    guidance: 'Verify local environment setup:
+
+      1. Run: uv pip install -e ./modules/AgenticCLI
+
+      2. Verify: agentic --version (should show version from source)
+
+      3. Verify: which agentic (should point to virtual environment)
+
+      4. Document environment details for test context
+
+      '
+    success_criteria:
+    - agentic command is accessible
+    - Version matches source code
+    - CLI commands respond correctly
+  - id: ENV_002
+    name: Docker environment preparation
+    description: Build shared myagents-test Docker image for testing
+    status: completed
+    agent: test-runner
+    inputs:
+    - Dockerfile.test
+    guidance: 'Prepare Docker testing environment:
+
+      1. Build: docker build -f Dockerfile.test -t myagents-test .
+
+      2. Verify: docker run --rm myagents-test agentic --version
+
+      3. Document image ID and build timestamp
+
+      '
+    success_criteria:
+    - Docker image builds successfully
+    - CLI is accessible in container
+    - Image is tagged as myagents-test
+- name: Unit Tests Phase
+  execution: sequential
+  description: Component-level testing of idempotency and bootstrap features
+  tickets:
+  - id: UNIT_001
+    name: Session stop idempotency tests
+    description: Test session stop returns exit 0 for terminal states and ProcessLookupError
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_stop_idempotency.py
+    guidance: "Create comprehensive unit tests for session stop idempotency:\n\nTest\
+      \ Coverage:\n1. Terminal state check (lines 363-373):\n   - status='completed'\
+      \ -> exit 0, no process kill attempt\n   - status='stopped' -> exit 0, no process\
+      \ kill attempt\n   - status='failed' -> exit 0, no process kill attempt\n  \
+      \ - Verify success message format\n   - Verify JSON output format when --json\
+      \ flag used\n\n2. ProcessLookupError handling (lines 398-412):\n   - Mock os.kill\
+      \ to raise ProcessLookupError\n   - Verify status set to 'completed'\n   - Verify\
+      \ ended_at timestamp is set\n   - Verify session is saved\n   - Verify exit\
+      \ 0 (not exit 1)\n   - Verify success message indicates process not found\n\n\
+      3. Edge cases:\n   - Multiple stop calls in sequence\n   - Stop with --force\
+      \ flag on terminal state\n   - Stop on non-existent process\n\nUse pytest with\
+      \ mocking for process interactions.\nReference existing patterns from test_session_commands.py.\n"
+    success_criteria:
+    - All terminal states return exit 0
+    - ProcessLookupError handled gracefully
+    - No attempts to kill already-stopped processes
+    - State transitions are correct
+    - Test coverage >90% for cmd_stop function
+  - id: UNIT_002
+    name: Loop stop idempotency tests
+    description: Test loop stop returns exit 0 for terminal states and ProcessLookupError
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    - modules/AgenticCLI/tests/test_loop_integration.py
+    target_files:
+    - modules/AgenticCLI/tests/test_loop_stop_idempotency.py
+    guidance: "Create comprehensive unit tests for loop stop idempotency:\n\nTest\
+      \ Coverage:\n1. Terminal state check (lines 361-371):\n   - status='completed'\
+      \ -> exit 0, no process kill attempt\n   - status='stopped' -> exit 0, no process\
+      \ kill attempt\n   - status='failed' -> exit 0, no process kill attempt\n  \
+      \ - Verify success message format\n   - Verify JSON output format when --json\
+      \ flag used\n\n2. ProcessLookupError handling (lines 403-417):\n   - Mock os.kill\
+      \ to raise ProcessLookupError\n   - Verify status set to 'completed'\n   - Verify\
+      \ ended_at timestamp is set\n   - Verify loop is saved\n   - Verify exit 0 (not\
+      \ exit 1)\n   - Verify success message indicates process not found\n\n3. Iteration\
+      \ handling:\n   - Verify running iterations are also marked as stopped\n   -\
+      \ Verify iteration timestamps are updated\n\n4. Edge cases:\n   - Multiple stop\
+      \ calls in sequence\n   - Stop with --force flag on terminal state\n   - Stop\
+      \ on non-existent process\n\nUse pytest with mocking for process interactions.\n\
+      Reference existing patterns from test_loop_integration.py.\n"
+    success_criteria:
+    - All terminal states return exit 0
+    - ProcessLookupError handled gracefully
+    - No attempts to kill already-stopped loops
+    - Iteration state is correctly updated
+    - Test coverage >90% for cmd_stop function
+  - id: UNIT_003
+    name: Bootstrap command tests
+    description: Test plan bootstrap creates correct folder structure and stubs
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/tests/test_plan_init.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_bootstrap.py
+    guidance: "Create comprehensive unit tests for bootstrap command:\n\nTest Coverage:\n\
+      1. Folder creation (lines 514-516):\n   - Verify plan folder created at correct\
+      \ path\n   - Verify live/ subfolder created\n   - Verify parent directories\
+      \ created if needed\n\n2. Stub file creation (lines 518-546):\n   - plan_build.yml\
+      \ contains correct metadata (name, worktree, branch, status, priority)\n   -\
+      \ plan_build.yml contains provided objective\n   - plan_build.yml has initial\
+      \ PLAN_001 task\n   - plan_test.yml stub exists (minimal stub: \"phases: []\"\
+      )\n   - plan_completed.yml stub exists (minimal stub: \"completed_items: []\"\
+      )\n\n3. File content validation:\n   - YAML is syntactically valid\n   - Timestamps\
+      \ are in correct format\n   - Plan ID extraction from folder name works\n  \
+      \ - Objective text is preserved exactly\n\n4. Error handling:\n   - Existing\
+      \ folder -> exit 2 with error message\n   - Invalid branch name -> appropriate\
+      \ error\n   - Not in git repo -> exit 1 with error\n\n5. Output formats:\n \
+      \  - Normal output includes next steps\n   - JSON output (--json) includes plan_folder,\
+      \ plan_path, objective, success\n\nUse pytest with temp directories for isolation.\n\
+      Mock git repository detection if needed.\n"
+    success_criteria:
+    - Correct folder structure created
+    - All stub files present with valid YAML
+    - Metadata matches input parameters
+    - Error cases handled gracefully
+    - Output format includes --dangerously-skip-permissions in suggested command
+    - Test coverage >90% for cmd_bootstrap function
+  - id: UNIT_004
+    name: Permission skip flag tests
+    description: Test --dangerously-skip-permissions flag parsing and pass-through
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    target_files:
+    - modules/AgenticCLI/tests/test_permission_skip_flag.py
+    guidance: "Create unit tests for the --dangerously-skip-permissions flag:\n\n\
+      Test Coverage:\n1. CLI Parsing:\n   - Verify --dangerously-skip-permissions\
+      \ is accepted by 'agentic session spawn'\n   - Verify --dangerously-skip-permissions\
+      \ is accepted by 'agentic loop start'\n\n2. Session Spawn Pass-through:\n  \
+      \ - Mock subprocess.Popen/run\n   - Run 'agentic session spawn --prompt \"test\"\
+      \ --dangerously-skip-permissions'\n   - Verify underlying 'claude' command includes\
+      \ '--dangerously-skip-permissions'\n\n3. Loop Start Pass-through:\n   - Mock\
+      \ subprocess.Popen\n   - Run 'agentic loop start --prompt \"test\" --dangerously-skip-permissions'\n\
+      \   - Verify underlying 'claude' command includes '--dangerously-skip-permissions'\n\
+      \n4. Negative tests:\n   - Verify '--dangerously-skip-permissions' is NOT included\
+      \ when the flag is omitted.\n\nUse pytest with mocking for subprocess calls.\n"
+    success_criteria:
+    - Flag is correctly parsed by CLI
+    - Flag is correctly passed to underlying 'claude' processes
+    - Omission of flag works as expected
+- name: Integration Tests Phase
+  execution: sequential
+  description: Cross-component testing of CLI commands and role loading
+  tickets:
+  - id: INTEG_001
+    name: Context bootstrap planner role test
+    description: Test planner role can be loaded via context bootstrap command
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner/process.yml
+    - modules/AgenticGuidance/agents/planner/planner/inputs.yml
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_context_bootstrap_planner.py
+    guidance: "Create integration test for planner role loading:\n\nTest Coverage:\n\
+      1. Role file discovery:\n   - Verify manifest.yml exists and is valid YAML\n\
+      \   - Verify process.yml exists and is valid YAML\n   - Verify inputs.yml exists\
+      \ and is valid YAML\n\n2. Context bootstrap command:\n   - Run: agentic context\
+      \ bootstrap --role planner -j\n   - Verify JSON output contains role metadata\n\
+      \   - Verify role='planner' in output\n   - Verify process steps are included\n\
+      \   - Verify no errors in output\n\n3. Role metadata validation:\n   - name\
+      \ field is present and equals 'planner'\n   - description is present and explains\
+      \ generic planning role\n   - version field is present\n   - outputs section\
+      \ defines plan_yaml output\n\n4. Process validation:\n   - goal field explains\
+      \ plan initialization\n   - steps include CCI BOOTSTRAP\n   - steps include\
+      \ PLAN INITIALIZATION\n   - invocation_context is present\n\nUse subprocess\
+      \ to run actual CLI command for integration testing.\n"
+    success_criteria:
+    - Role files are discovered correctly
+    - Context bootstrap returns valid JSON
+    - Role metadata is complete
+    - No errors during role loading
+  - id: INTEG_002
+    name: Stop idempotency end-to-end test
+    description: Test realistic scenarios with actual session/loop lifecycle
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_stop_idempotency_e2e.py
+    guidance: "Create end-to-end integration tests for stop idempotency:\n\nTest Scenarios:\n\
+      1. Session lifecycle with multiple stops:\n   - Start a mock session\n   - Stop\
+      \ it normally (verify status='stopped')\n   - Stop it again (verify exit 0,\
+      \ idempotent)\n   - Stop it third time (verify still exit 0)\n\n2. Loop lifecycle\
+      \ with multiple stops:\n   - Start a mock loop\n   - Stop it normally (verify\
+      \ status='stopped')\n   - Stop it again (verify exit 0, idempotent)\n   - Stop\
+      \ it third time (verify still exit 0)\n\n3. Process cleanup scenario:\n   -\
+      \ Start session/loop\n   - Kill process externally (simulate crash)\n   - Run\
+      \ stop command (verify ProcessLookupError handled)\n   - Verify status='completed',\
+      \ exit 0\n\n4. Orchestration scenario:\n   - Orchestrator starts multiple sessions\n\
+      \   - Some complete normally\n   - Some fail\n   - Some are stopped\n   - Orchestrator\
+      \ calls stop on all (verify all return exit 0)\n\nUse actual CLI commands via\
+      \ subprocess for realistic testing.\nUse temp directories for session/loop state\
+      \ files.\n"
+    success_criteria:
+    - Multiple stop calls always succeed
+    - Crashed processes handled gracefully
+    - State files updated correctly
+    - Exit codes are always 0 for idempotent operations
+  - id: INTEG_003
+    name: Bootstrap to planner workflow test
+    description: Test complete workflow from bootstrap to planner agent spawn
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py
+    guidance: "Create integration test for bootstrap -> planner workflow:\n\nTest\
+      \ Workflow:\n1. Run bootstrap command:\n   - agentic plan bootstrap --branch\
+      \ test-feature --objective \"Test objective\"\n   - Verify exit 0\n   - Capture\
+      \ plan folder name from output\n\n2. Verify created artifacts:\n   - Plan folder\
+      \ exists at docs/plans/live/{folder}/\n   - live/plan_build.yml exists and is\
+      \ valid\n   - live/plan_test.yml stub exists\n   - plan_completed.yml stub exists\n\
+      \n3. Verify plan_build.yml content:\n   - name matches description\n   - branch='test-feature'\n\
+      \   - objective=\"Test objective\"\n   - Has PLAN_001 task with agent='planner'\n\
+      \n4. Simulate planner context loading:\n   - cd to plan folder\n   - Run: agentic\
+      \ context bootstrap --role planner -j\n   - Verify planner role loads successfully\n\
+      \n5. Verify suggested next step:\n   - Output should suggest spawning planner\
+      \ agent\n   - Command suggestion should reference created plan folder\n\nUse\
+      \ temp directories for isolated testing.\n"
+    success_criteria:
+    - Bootstrap creates all required artifacts
+    - Planner role can be loaded in created plan context
+    - Complete workflow executes without errors
+    - Output provides clear next steps
+- name: Test Audit Phase
+  execution: sequential
+  description: MANDATORY audit to validate test quality and detect issues
+  tickets:
+  - id: AUDIT_001
+    name: Test quality audit
+    description: Audit all tests for reward hacking, skipped tests, and quality issues
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticCLI/tests/test_session_stop_idempotency.py
+    - modules/AgenticCLI/tests/test_loop_stop_idempotency.py
+    - modules/AgenticCLI/tests/test_plan_bootstrap.py
+    - modules/AgenticCLI/tests/integration/test_context_bootstrap_planner.py
+    - modules/AgenticCLI/tests/integration/test_stop_idempotency_e2e.py
+    - modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py
+    guidance: "Perform comprehensive test audit following audit process:\n\nAudit\
+      \ Checklist:\n1. Skipped tests validation:\n   - Find all @pytest.mark.skip\
+      \ decorators\n   - Validate skip justification is legitimate\n   - Flag unjustified\
+      \ skips as failures\n\n2. Reward hacking detection:\n   - Tests that mock too\
+      \ much (not testing real behavior)\n   - Tests with hardcoded paths (not portable)\n\
+      \   - Tests that pass trivially without validating behavior\n   - Tests missing\
+      \ critical assertions\n\n3. Coverage gaps:\n   - Error paths not tested\n  \
+      \ - Edge cases missing\n   - Integration points not covered\n\n4. Test quality\
+      \ issues:\n   - Missing cleanup (temp files, state files)\n   - Tests that modify\
+      \ global state\n   - Tests with race conditions\n   - Tests that depend on execution\
+      \ order\n\n5. Implementation validation:\n   - Verify tests actually call the\
+      \ implementation code\n   - Verify mocks are minimal and necessary\n   - Verify\
+      \ assertions check meaningful behavior\n\nGenerate audit report with PASS/FAIL\
+      \ for each test file.\n"
+    success_criteria:
+    - No unjustified skipped tests
+    - No reward hacking detected
+    - Coverage gaps identified and addressed
+    - All tests meet quality standards
+    - Audit report generated with specific findings
+- name: UAT Validation Phase
+  execution: sequential
+  description: MANDATORY user acceptance testing - PRIMARY SUCCESS CRITERIA
+  tickets:
+  - id: UAT_001
+    name: Orchestrator stop idempotency story
+    description: 'Validate: As an orchestrator, I can stop sessions/loops without
+      failure'
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    guidance: "User Story: As an orchestrator, I can stop sessions/loops without failure\n\
+      \nPersona: Orchestration system managing multiple agent sessions\n\nStarting\
+      \ State:\n- CLI installed and accessible\n- Multiple sessions in various states\
+      \ (running, completed, stopped, failed)\n- Multiple loops in various states\
+      \ (running, completed, stopped, failed)\n- Orchestrator has session/loop IDs\
+      \ from previous operations\n\nUser Journey:\n1. Orchestrator lists all sessions:\
+      \ agentic session list\n   Expected: See sessions in mixed states\n\n2. Orchestrator\
+      \ stops running session: agentic session stop <running-id>\n   Expected: Session\
+      \ stops successfully, exit 0\n\n3. Orchestrator stops same session again: agentic\
+      \ session stop <running-id>\n   Expected: Success message \"already in terminal\
+      \ state\", exit 0\n\n4. Orchestrator stops completed session: agentic session\
+      \ stop <completed-id>\n   Expected: Success message \"already in terminal state\"\
+      , exit 0\n\n5. Orchestrator stops failed session: agentic session stop <failed-id>\n\
+      \   Expected: Success message \"already in terminal state\", exit 0\n\n6. Repeat\
+      \ steps 1-5 for loops using: agentic loop list, agentic loop stop\n   Expected:\
+      \ Same idempotent behavior\n\n7. Orchestrator bulk cleanup (stop all sessions):\n\
+      \   for id in $(agentic session list -j | jq -r '.[].session_id'); do\n    \
+      \ agentic session stop $id\n   done\n   Expected: All stop commands succeed\
+      \ (exit 0), no errors\n\nSuccess Criteria:\n- Stop commands always return exit\
+      \ 0 for terminal states\n- No errors thrown when stopping already-stopped entities\n\
+      - Orchestrator can safely call stop multiple times\n- Bulk cleanup operations\
+      \ complete without failure\n\nTest in both local and Docker environments.\n"
+    success_criteria:
+    - All stop operations return exit 0
+    - No errors for terminal state stops
+    - Bulk cleanup succeeds
+    - Behavior consistent across local and Docker
+  - id: UAT_002
+    name: Developer bootstrap workflow story
+    description: 'Validate: As a developer, I can bootstrap a new plan with a single
+      command'
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/agents/planner/planner/
+    guidance: "User Story: As a developer, I can bootstrap a new plan with a single\
+      \ command\n\nPersona: Developer starting a new feature implementation\n\nStarting\
+      \ State:\n- CLI installed and accessible\n- In git repository (AgenticEngineering)\n\
+      - No existing plan for this feature\n- Has a clear objective in mind\n\nUser\
+      \ Journey:\n1. Developer decides to create a new feature plan\n   Objective:\
+      \ \"Implement user authentication service\"\n   Branch: auth-feature\n\n2. Developer\
+      \ runs bootstrap command:\n   agentic plan bootstrap --branch auth-feature \\\
+      \n     --objective \"Implement user authentication service\"\n   Expected: Success\
+      \ message with plan folder name and path\n\n3. Developer verifies folder structure:\n\
+      \   ls -la docs/plans/live/260205AU_auth_feature/\n   Expected: See live/ subfolder\n\
+      \n4. Developer checks plan_build.yml:\n   cat docs/plans/live/260205AU_auth_feature/live/plan_build.yml\n\
+      \   Expected:\n   - Contains objective\n   - Has metadata (name, branch, worktree_path,\
+      \ status, priority)\n   - Has PLAN_001 task with agent='planner'\n\n5. Developer\
+      \ checks stub files:\n   ls -la docs/plans/live/260205AU_auth_feature/live/\n\
+      \   Expected: plan_build.yml, plan_test.yml (stub)\n   ls -la docs/plans/live/260205AU_auth_feature/\n\
+      \   Expected: plan_completed.yml (stub)\n\n6. Developer loads planner context:\n\
+      \   agentic context bootstrap --role planner -j\n   Expected: Planner role loads\
+      \ successfully, JSON output includes process steps\n\n7. Developer follows suggested\
+      \ next step:\n   Output suggests: \"Spawn a planner agent to complete the plan\"\
+      \n   Expected: Clear guidance on what to do next\n\nSuccess Criteria:\n- Single\
+      \ command creates complete plan structure\n- All required files present and\
+      \ valid\n- Objective is preserved in plan\n- Next steps are clear and actionable\n\
+      - Developer can immediately proceed to planning\n\nTest in both local and Docker\
+      \ environments.\n"
+    success_criteria:
+    - Bootstrap completes in single command
+    - All artifacts created correctly
+    - Developer can proceed without manual setup
+    - Behavior consistent across local and Docker
+context: 'This test plan verifies the CLI hardening implementation:
+
+  1. Session stop idempotency (session.py handles terminal states and ProcessLookupError)
+
+  2. Loop stop idempotency (loop.py handles terminal states and ProcessLookupError)
+
+  3. Generic planner role (modules/AgenticGuidance/agents/planner/planner/)
+
+  4. Bootstrap command (plan.py: cmd_bootstrap)
+
+  5. Permission Skip Flag (cli.py: --dangerously-skip-permissions added to spawn and
+  start)
+
+  '

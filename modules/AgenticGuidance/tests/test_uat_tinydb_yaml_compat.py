@@ -59,7 +59,7 @@ def _minimal_epic_data(folder_name: str, status: str = "pending") -> dict:
                 "name": "Alpha Phase",
                 "description": "First phase",
                 "execution": "sequential",
-                "tasks": [
+                "tickets": [
                     {
                         "id": "A001",
                         "name": "Task Alpha",
@@ -81,7 +81,7 @@ def _minimal_epic_data(folder_name: str, status: str = "pending") -> dict:
             {
                 "name": "Beta Phase",
                 "description": "Second phase",
-                "tasks": [
+                "tickets": [
                     {
                         "id": "B001",
                         "name": "Task Gamma",
@@ -345,7 +345,7 @@ class TestUS_GD_202_RoundTrip:
 
         all_tickets = []
         for phase in exported["phases"]:
-            all_tickets.extend(phase.get("tickets", phase.get("tasks", [])))
+            all_tickets.extend(phase.get("tickets", []))
 
         ticket_ids = {t["id"] for t in all_tickets}
         assert "A001" in ticket_ids, "Ticket A001 should survive round-trip"
@@ -607,7 +607,7 @@ class TestUS_GD_206_FolderMatchesGuard:
             "name": "epic_a",
             "status": "pending",
             "phases": [
-                {"name": "P1", "tasks": [
+                {"name": "P1", "tickets": [
                     {"id": "A001", "name": "Ticket from A", "status": "pending"},
                 ]}
             ],
@@ -616,7 +616,7 @@ class TestUS_GD_206_FolderMatchesGuard:
             "name": "epic_b",
             "status": "pending",
             "phases": [
-                {"name": "P1", "tasks": [
+                {"name": "P1", "tickets": [
                     {"id": "B001", "name": "Ticket from B", "status": "pending"},
                 ]}
             ],
@@ -652,7 +652,7 @@ class TestUS_GD_206_FolderMatchesGuard:
                 "name": epic_name,
                 "status": "pending",
                 "phases": [
-                    {"name": "P1", "tasks": [
+                    {"name": "P1", "tickets": [
                         {"id": "SHARED_ID", "name": f"Ticket in {epic_name}", "status": "pending"},
                     ]}
                 ],

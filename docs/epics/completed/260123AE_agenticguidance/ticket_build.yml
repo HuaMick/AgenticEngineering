@@ -1,0 +1,1260 @@
+name: comprehensive-guidance-walkthrough-test
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: completed
+priority: high
+objective: 'Refactor AgenticEngineering to 3-layer architecture:
+
+  - AgenticGuidance/services/: Business logic (extracted from AgenticCLI workflows)
+
+  - Thin CLI: Presentation layer only (~2k lines)
+
+  - AgenticTmux: Terminal session management
+
+  - AgenticVoice: Voice interface for phone-based planning
+
+
+  Key decision: Business logic goes into AgenticGuidance/services/ (NOT a separate
+  "Core" module)
+
+  because these services interpret guidance and belong with the guidance they interpret.
+
+  '
+created: ''
+phases:
+- name: Discovery Phase
+  execution: parallel
+  description: Analyze existing self-review assets and identify gaps
+  tickets:
+  - id: disc_001
+    name: Audit Existing Self-Review Assets
+    description: 'Review the existing self-review assets to understand current state:
+
+      - self-review-criteria.yml: What criteria are defined?
+
+      - agent-self-review.yml: What protocol is documented?
+
+      - self-review-preset.yml: What tasks are pre-configured?
+
+      '
+    status: completed
+    agent: explorer
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+    - modules/AgenticCLI/src/agenticcli/templates/presets/self-review-preset.yml
+    success_criteria:
+    - Current criteria documented
+    - Protocol steps identified
+    - Gaps between assets and CCI pattern identified
+  - id: disc_002
+    name: Analyze Current CLI Agent Help Structure
+    description: 'Understand how agent help commands currently work:
+
+      - How is --planner-guidance routed?
+
+      - Where is help content generated?
+
+      - How can --self-review be added?
+
+      '
+    status: completed
+    agent: explorer
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/entry.py
+    - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    success_criteria:
+    - Agent help routing documented
+    - Extension point for --self-review identified
+  - id: disc_003
+    name: Document Current CLI Command Pattern
+    description: Map existing bootstrap command flow and identify simplification opportunities
+    status: completed
+    agent: explorer
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    success_criteria:
+    - Documented current command flow
+    - Identified chaining points
+- name: Teach Phase
+  execution: sequential
+  description: Update guidance to document CCI-based self-review
+  tickets:
+  - id: teach_001
+    name: Update agent-self-review.yml with CCI Pattern
+    description: 'Update the guideline to document CCI-based self-review:
+
+      - Add section on CLI command usage
+
+      - Document expected CLI output format
+
+      - Show how agent reads criteria files via paths
+
+      - Update protocol steps to include CLI invocation
+
+      '
+    status: completed
+    agent: teacher-update-guidance
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+    success_criteria:
+    - CCI invocation pattern documented
+    - Protocol includes CLI as first step
+    - File path reading documented
+  - id: teach_002
+    name: Document Self-Review CLI Output Schema
+    description: 'Define the expected output structure for self-review CLI command:
+
+      - criteria_files: List of file paths to self-review criteria
+
+      - agent_files: List of agent guidance files to review
+
+      - output_schema_path: Path to expected output format
+
+      - related_assets: Paths to relevant definitions/guidelines
+
+      '
+    status: completed
+    agent: teacher-update-guidance
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    success_criteria:
+    - CLI output schema defined
+    - All output fields documented
+    - Example output provided
+  - id: teach_003
+    name: Update Self-Review Criteria with File Path References
+    description: 'Ensure self-review-criteria.yml includes references to other relevant
+      files:
+
+      - Cross-references to related guidelines
+
+      - Paths to validation scripts (if any)
+
+      - Links to example outputs
+
+      '
+    status: completed
+    agent: teacher-update-guidance
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    success_criteria:
+    - Cross-references added
+    - File paths use repository-relative format
+  - id: teach_004
+    name: Document Self-Review Workflow with CCI
+    description: 'Document how self-review works with CCI pattern:
+
+      1. `agentic <agent>` - Get agent overview with file paths
+
+      2. Agent reads self-review-criteria.yml from known path
+
+      3. Agent reads agent-self-review.yml for protocol
+
+      4. Agent reads own guidance files (process.yml, inputs.yml)
+
+      5. Agent performs review using criteria
+
+      6. Agent generates structured output
+
+      '
+    status: completed
+    agent: teacher-update-guidance
+    inputs:
+    - docs/CCI_CONTEXT_ARCHITECTURE.md
+    - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+    success_criteria:
+    - Self-review workflow documented in guidance
+    - File paths clearly listed
+    - End-to-end example included
+  - id: teach_005
+    name: Document CCI Command Chaining Pattern
+    description: 'Create or update guideline documenting the CCI command chaining
+      pattern:
+
+      - `agentic <agent>` -> Initial instructions + next commands
+
+      - `agentic <agent> --bootstrap` -> Full context + file paths
+
+      - Each command outputs file paths for source exploration
+
+      '
+    status: completed
+    agent: teacher-update-guidance
+    inputs:
+    - docs/CCI_CONTEXT_ARCHITECTURE.md
+    success_criteria:
+    - Command chaining pattern documented
+    - File path output pattern documented
+    - Examples show full chain execution
+  - id: teach_006
+    name: Add Required Inputs Validation to teacher-update-guidance
+    description: 'Update teacher-update-guidance/inputs.yml:
+
+      1. Add explicit required_inputs section
+
+      2. Mark core teaching framework files (path.yml, guidance-artifacts.yml) as
+      mandatory
+
+      3. Mark RLM inputs as optional (loaded on demand)
+
+
+      Update teacher-update-guidance/process.yml:
+
+      1. Step 2 should validate required inputs exist
+
+      2. RLM patterns should have trigger condition (>500 actions)
+
+      '
+    status: pending
+    agent: teacher-update-guidance
+    inputs:
+    - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml
+    success_criteria:
+    - inputs.yml has required_inputs section
+    - Core teaching framework files marked required
+    - RLM inputs marked as optional
+    - process.yml step 2 validates required inputs
+  - id: teach_007
+    name: Add self-review criteria to test-service and test-final-output
+    description: 'Ensure all test agents can participate in self-review by
+
+      adding reference to self-review-criteria.yml.
+
+      '
+    status: pending
+    agent: null
+- name: Validation Phase
+  execution: sequential
+  description: Verify self-review guidance works correctly with CCI pattern
+  tickets:
+  - id: val_001
+    name: Verify CCI Output Includes Self-Review Paths
+    description: 'Execute `agentic planner-guidance` and verify output includes:
+
+      - Paths to agent guidance files (process.yml, inputs.yml)
+
+      - Reference to self-review-criteria.yml in related files
+
+      - Reference to agent-self-review.yml in related files
+
+      '
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - CLI output includes guidance file paths
+    - Self-review criteria path is discoverable
+    - Agent can locate criteria from CLI output
+  - id: val_002
+    name: Execute Self-Review Using CCI Pattern
+    description: 'Have an agent perform self-review using the CCI pattern:
+
+      1. Run `agentic planner-guidance` for initial context
+
+      2. Read self-review-criteria.yml from known path
+
+      3. Read agent-self-review.yml for protocol
+
+      4. Execute self-review following the protocol
+
+      5. Generate structured output
+
+      '
+    status: completed
+    agent: test-guidance-simulator
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+    success_criteria:
+    - Agent successfully completes self-review
+    - Structured output generated
+    - Pattern is replicable for other agents
+  - id: val_003
+    name: Validate 3 Agents with CCI Self-Review
+    description: 'Run CCI self-review for 3 different agent types to validate the
+
+      guidance is clear and the pattern works across agent categories.
+
+      '
+    status: completed
+    agent: test-guidance-simulator
+    success_criteria:
+    - planner-guidance passes CCI self-review
+    - build-python passes CCI self-review
+    - test-runner passes CCI self-review
+- name: Test Phase
+  execution: sequential
+  description: Validate fixes via agent self-review
+  tickets:
+  - id: test_001
+    name: Self-review build-flutter agent
+    description: "Execute full self-review of build-flutter agent using CCI pattern.\n\
+      \nSteps:\n1. Run: agentic build-flutter (CCI bootstrap)\n2. Read self-review\
+      \ criteria and protocol\n3. Read agent's process.yml, inputs.yml, manifest.yml\n\
+      4. Validate:\n   - All paths resolve to existing files\n   - Version numbers\
+      \ consistent across files\n   - Layer references resolve\n   - Guidelines comments\
+      \ accurate\n5. Generate self-review output per self-review-criteria.yml\n\n\
+      Expected: PASS status with zero CRITICAL or HIGH findings\n"
+    status: pending
+    agent: build-flutter
+    inputs:
+    - modules/AgenticGuidance/agents/build/build-flutter/process.yml
+    - modules/AgenticGuidance/agents/build/build-flutter/inputs.yml
+    - modules/AgenticGuidance/agents/build/build-flutter/manifest.yml
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+    success_criteria:
+    - 'Self-review returns status: PASS'
+    - Zero CRITICAL severity findings
+    - Zero HIGH severity findings
+    - All path validations pass
+    - Version consistency validated
+  - id: test_002
+    name: Self-review build-python agent
+    description: "Execute full self-review of build-python agent using CCI pattern.\n\
+      \nSteps:\n1. Run: agentic build-python (CCI bootstrap)\n2. Read self-review\
+      \ criteria and protocol\n3. Read agent's process.yml, inputs.yml, manifest.yml\n\
+      4. Validate:\n   - All paths resolve to existing files\n   - python_folder_conventions\
+      \ has correct paths\n   - Version numbers consistent across files\n   - Layer\
+      \ references resolve\n5. Generate self-review output per self-review-criteria.yml\n\
+      \nExpected: PASS status with zero CRITICAL or HIGH findings\n"
+    status: pending
+    agent: build-python
+    inputs:
+    - modules/AgenticGuidance/agents/build/build-python/process.yml
+    - modules/AgenticGuidance/agents/build/build-python/inputs.yml
+    - modules/AgenticGuidance/agents/build/build-python/manifest.yml
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+    success_criteria:
+    - 'Self-review returns status: PASS'
+    - Zero CRITICAL severity findings
+    - Zero HIGH severity findings
+    - python_folder_conventions paths validate
+    - Version consistency validated
+  - id: test_003
+    name: Validate cli-commands.yml completeness
+    description: 'Verify the new context bootstrap command documentation is complete
+
+      and consistent with actual CLI behavior.
+
+
+      Checks:
+
+      1. context.bootstrap command exists in cli-commands.yml
+
+      2. Parameters match actual CLI implementation
+
+      3. Example output format matches what agents receive
+
+      4. Cross-reference to CCI pattern documentation exists
+
+
+      This is a path resolution and consistency check, not a full
+
+      self-review since cli-commands.yml is a shared asset.
+
+      '
+    status: pending
+    agent: explorer
+    inputs:
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    - modules/AgenticGuidance/agents/build/build-flutter/process.yml
+    - modules/AgenticGuidance/agents/build/build-python/process.yml
+    success_criteria:
+    - context.bootstrap command documented
+    - Parameters include --role and -j flag
+    - Example matches process.yml CCI bootstrap step
+    - Description references CCI pattern
+  - id: test_006
+    name: Execute self-review for test-service
+    description: Self-review validation for test-service agent
+    status: pending
+    agent: null
+  - id: test_007
+    name: Execute self-review for test-user-simulator
+    description: Self-review validation for test-user-simulator agent
+    status: pending
+    agent: null
+  - id: test_008
+    name: Validate cross-agent consistency
+    description: 'Verify consistency patterns across all 7 test agents:
+
+      - All agents have proper outputs in process.yml
+
+      - All agents reference appropriate shared layers
+
+      - RLM-capable agents have proper rlm_inputs structure
+
+      - Self-review capable agents have criteria reference
+
+      '
+    status: pending
+    agent: null
+- name: Cleanup Phase
+  execution: sequential
+  description: Verify all JIT references removed and handle file lifecycle
+  tickets:
+  - id: clean_001
+    name: Verify Zero JIT References in Active Guidance
+    description: 'Grep for remaining JIT or Just-In-Time references in:
+
+      - modules/AgenticGuidance/ (excluding completed/ folders)
+
+      - docs/*.md (excluding completed plans)
+
+
+      Expected result: Zero matches in active guidance files.
+
+      Historical references in completed/ are acceptable.
+
+      '
+    status: pending
+    agent: explorer
+    inputs:
+    - modules/AgenticGuidance/
+    - docs/
+    success_criteria:
+    - Zero JIT references in active guidance
+    - Zero Just-In-Time references in active guidance
+    - Only completed/ folders may contain historical JIT references
+  - id: clean_002
+    name: Apply Copy-and-Sync Pattern to Completed Plans
+    description: 'Create completed/ folder and sync completed plans:
+
+      1. Create docs/plans/live/260123AE_agenticguidance/completed/ folder
+
+      2. Copy plan_live_agent_selfreview_cci.yml to completed/
+
+      3. Copy plan_live_cci_rename_simplification.yml to completed/
+
+      4. Delete completed plans from live/ (all tasks are status: completed)
+
+      5. Create plan_completed.yml summary index in completed/
+
+      '
+    status: pending
+    agent: orchestration-executor
+    inputs:
+    - docs/plans/live/260123AE_agenticguidance/live/
+    success_criteria:
+    - completed/ folder exists
+    - Completed plans copied to completed/
+    - Completed plans removed from live/
+    - plan_completed.yml index created
+  - id: clean_003
+    name: Archive Orchestration MMD File
+    description: 'Move orchestration_cci_guidance.mmd to completed/ as it documents
+
+      the completed orchestration pattern. This reduces noise in live/
+
+      while preserving the orchestration reference.
+
+      '
+    status: pending
+    agent: orchestration-executor
+    inputs:
+    - docs/plans/live/260123AE_agenticguidance/live/orchestration_cci_guidance.mmd
+    success_criteria:
+    - orchestration_cci_guidance.mmd moved to completed/
+    - No orphaned orchestration files in live/
+- name: Audit Phase
+  execution: sequential
+  description: Validate guidance quality and detect reward hacking
+  tickets:
+  - id: audit_001
+    name: Audit CCI Guidance Quality
+    description: 'Review the updated guidance files for:
+
+      - Completeness: Are all CCI patterns fully documented?
+
+      - Consistency: Do all files use CCI terminology consistently?
+
+      - Accuracy: Do file paths and cross-references resolve?
+
+      - Testability: Can the guidance be validated by agents?
+
+
+      Focus areas:
+
+      - agent-self-review.yml: CCI pattern section (lines 45-220)
+
+      - self-review-criteria.yml: Cross-references section
+
+      - CCI_CONTEXT_ARCHITECTURE.md: Self-review workflow section
+
+      '
+    status: pending
+    agent: test-audit
+    inputs:
+    - modules/AgenticGuidance/assets/guidelines/agent-self-review.yml
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    - docs/CCI_CONTEXT_ARCHITECTURE.md
+    success_criteria:
+    - All CCI pattern documentation complete
+    - All file path references resolve
+    - No inconsistent terminology
+    - Guidance is testable by agent simulation
+  - id: audit_002
+    name: Detect Reward Hacking in Validation Phase
+    description: 'Review the validation results from the parent plans to detect
+
+      reward hacking patterns:
+
+      - Did validation rely on hidden knowledge or pre-existing context?
+
+      - Were tests overly permissive in success criteria?
+
+      - Did agents validate against documentation or implementation?
+
+
+      Specific checks:
+
+      - val_001: Did CLI output verification actually read files?
+
+      - val_002: Did agent use blind-test approach?
+
+      - val_003: Were 3 agents actually tested or just documented?
+
+      '
+    status: pending
+    agent: test-audit
+    inputs:
+    - docs/plans/live/260123AE_agenticguidance/live/plan_live_agent_selfreview_cci.yml
+    - docs/plans/live/260123AE_agenticguidance/live/plan_live_cci_rename_simplification.yml
+    success_criteria:
+    - Validation approach documented and traceable
+    - No reward hacking patterns detected
+    - Test evidence exists for each validation claim
+- name: Documentation Phase
+  execution: sequential
+  description: Ensure CCI documentation is complete and accurate
+  tickets:
+  - id: doc_001
+    name: Verify CCI Architecture Documentation Complete
+    description: 'Ensure CCI_CONTEXT_ARCHITECTURE.md includes:
+
+      - CCI pattern overview and rationale
+
+      - Command chaining pattern (agentic <agent> -> --bootstrap)
+
+      - File path output pattern
+
+      - Self-review workflow with CCI
+
+      - Migration notes from JIT terminology
+
+      '
+    status: pending
+    agent: teacher-update-guidance
+    inputs:
+    - docs/CCI_CONTEXT_ARCHITECTURE.md
+    success_criteria:
+    - All CCI patterns documented
+    - Examples match actual CLI behavior
+    - Cross-references to related files work
+  - id: doc_002
+    name: Update Agent Process Files with CCI Bootstrap
+    description: 'Verify all agent process.yml files have updated CCI bootstrap
+
+      instructions. This was part of the teach phase but documentation
+
+      phase should confirm it''s complete across all 22+ agents.
+
+      '
+    status: pending
+    agent: explorer
+    inputs:
+    - modules/AgenticGuidance/agents/*/*/process.yml
+    success_criteria:
+    - All process.yml files have CCI BOOTSTRAP section
+    - No JIT references remain in process.yml files
+    - Bootstrap instructions are consistent across agents
+  - id: doc_003
+    name: Create Plan Completion Summary
+    description: 'Update or create plan_completed.yml in completed/ folder with:
+
+      - Summary of CCI guidance updates
+
+      - List of completed plans
+
+      - Key outcomes and deliverables
+
+      - References to updated files
+
+      '
+    status: pending
+    agent: orchestration-executor
+    inputs:
+    - docs/plans/live/260123AE_agenticguidance/completed/
+    success_criteria:
+    - plan_completed.yml exists in completed/
+    - Summary includes all completed work
+    - References point to correct file locations
+- name: Teach Phase - Guidance Updates
+  execution: sequential
+  description: Update guidance files for the 5 planner agents to address identified
+    gaps
+  tickets: []
+- name: Test Phase - Self-Review Validation
+  execution: sequential
+  description: Validate guidance updates through agent self-review
+  tickets:
+  - id: test_004
+    name: planner-guidance-testing self-review validation
+    description: Run planner-guidance-testing agent self-review to validate guidance
+      updates
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-guidance-testing/inputs.yml
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-guidance-testing/process.yml
+    guidance: 'Execute agent self-review:
+
+      1. Verify inputs section lists all required_inputs: agent_guidance_paths, target_project_path,
+      plan_folder_name
+
+      2. Validate consistency with inputs.yml required_inputs
+
+      3. Check step 2 references required inputs validation
+
+      '
+    success_criteria:
+    - Self-review returns NO_GAPS
+    - plan_folder_name explicitly referenced
+  - id: test_005
+    name: planner-reviewer self-review validation
+    description: Run planner-reviewer agent self-review to validate guidance updates
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
+    - modules/AgenticGuidance/assets/definitions/self-review-criteria.yml
+    target_files:
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
+    guidance: 'Execute agent self-review:
+
+      1. Verify outputs section exists with decision, feedback, checklist_results
+
+      2. Verify inputs section lists required_inputs: plan_folder_path, target_project_path
+
+      3. Validate consistency with inputs.yml
+
+      '
+    success_criteria:
+    - Self-review returns NO_GAPS
+    - outputs section validated
+    - inputs consistency verified
+- name: Create AgenticGuidance Services Layer
+  description: 'Extract business logic from AgenticCLI/workflows/ into AgenticGuidance/services/.
+
+    This becomes the shared service layer for all interfaces.
+
+    '
+  tickets:
+  - id: AG-001
+    name: Create AgenticGuidance services structure
+    description: 'Create the services layer with proper Python package structure:
+
+      - modules/AgenticGuidance/services/
+
+      - modules/AgenticGuidance/models/
+
+      - Update pyproject.toml to make it a Python package
+
+      '
+    status: completed
+    agent: null
+  - id: AG-002
+    name: Move context_workflow to context.py service
+    description: 'Extract MainFirstPlanResolver and context resolution logic to AgenticGuidance/services/.
+
+      This is the largest workflow (594 lines).
+
+      '
+    status: completed
+    agent: null
+  - id: AG-003
+    name: Move plan_workflow to plan.py service
+    description: 'Extract plan scaffolding, task CRUD, and git safety logic.
+
+      '
+    status: completed
+    agent: null
+  - id: AG-004
+    name: Move remaining workflows to services
+    description: 'Move config_workflow, task_workflow, state_workflow,
+
+      template_workflow, environment_workflow to AgenticGuidance/services/.
+
+      '
+    status: completed
+    agent: null
+  - id: AG-005
+    name: Create comprehensive test suite for AgenticGuidance services
+    description: 'Move relevant tests from AgenticCLI, add service-level tests.
+
+      '
+    status: completed
+    agent: null
+- name: Refactor AgenticCLI to Thin Wrapper
+  description: 'Update AgenticCLI to call AgenticGuidance services instead of local
+    workflows.
+
+    Remove workflows/ directory, keep only presentation logic.
+
+    '
+  tickets:
+  - id: AG-006
+    name: Update CLI dependencies
+    description: 'Add agenticguidance as dependency, update imports.
+
+      '
+    status: completed
+    agent: null
+  - id: AG-007
+    name: Refactor command handlers to use AgenticGuidance services
+    description: 'Update commands/context.py, commands/plan.py, etc. to call
+
+      AgenticGuidance services instead of local workflows.
+
+      '
+    status: completed
+    agent: null
+  - id: AG-008
+    name: Remove workflows directory from AgenticCLI
+    description: 'Delete workflows/ after all commands updated.
+
+      '
+    status: completed
+    agent: null
+- name: Build AgenticTmux Module
+  description: 'Create tmux session management module for terminal-based workflow.
+
+    NOTE: This phase is tracked in detail by 260126AT_agentictmux plan.
+
+    '
+  tickets:
+  - id: AG-009
+    name: Create AgenticTmux module structure
+    description: 'Create new module with tmux session management commands.
+
+      '
+    status: pending
+    agent: null
+  - id: AG-010
+    name: Implement session.py service in AgenticGuidance
+    description: 'Add session.py service to AgenticGuidance for tmux session lifecycle.
+
+      '
+    status: pending
+    agent: null
+  - id: AG-011
+    name: Build tmux session commands
+    description: 'Implement session create/attach/list/kill commands.
+
+      '
+    status: pending
+    agent: null
+- name: Build AgenticVoice Module
+  description: 'Create voice interface for phone-based planning and control.
+
+    NOTE: This phase is tracked in detail by 260126AV_agenticvoice plan.
+
+    '
+  tickets:
+  - id: AG-012
+    name: Create AgenticVoice module structure
+    description: 'Create new module with WebSocket server for phone connection.
+
+      '
+    status: pending
+    agent: null
+  - id: AG-013
+    name: Implement voice command routing
+    description: 'Route voice commands to AgenticGuidance services.
+
+      '
+    status: pending
+    agent: null
+  - id: AG-014
+    name: Integrate with PersonaPlex (optional)
+    description: 'Optional integration with PersonaPlex for natural voice interaction.
+
+      '
+    status: pending
+    agent: null
+- name: Phase 26
+  description: 'Execute guidance-test-loop to validate agent guidance using walkthrough-based
+
+    validation. Each task spawns the target agent to perform self-guided guidance
+
+    review, collecting feedback on ambiguities, broken references, and missing context.
+
+    '
+  tickets:
+  - id: '1.1'
+    name: ''
+    description: Walkthrough validation of orchestration-executor guidance
+    status: pending
+    agent: null
+  - id: '1.2'
+    name: ''
+    description: Walkthrough validation of orchestration-planning guidance
+    status: pending
+    agent: null
+  - id: '1.3'
+    name: ''
+    description: Walkthrough validation of test-guidance-simulator guidance
+    status: pending
+    agent: null
+  - id: '1.4'
+    name: ''
+    description: Walkthrough validation of planner-guidance-testing guidance (self-validation)
+    status: pending
+    agent: null
+  - id: '1.5'
+    name: ''
+    description: Walkthrough validation of teacher-update-guidance guidance
+    status: pending
+    agent: null
+  - id: '1.6'
+    name: ''
+    description: Walkthrough validation of planner-build guidance
+    status: pending
+    agent: null
+  - id: '1.7'
+    name: ''
+    description: Walkthrough validation of build-python guidance
+    status: pending
+    agent: null
+  - id: '1.8'
+    name: ''
+    description: Walkthrough validation of test-runner guidance
+    status: pending
+    agent: null
+- name: Phase 27
+  description: 'Analyze friction points from Phase 1, categorize by severity, and
+    identify
+
+    patterns. Determine which gaps are guidance issues vs fundamental design flaws.
+
+    '
+  tickets:
+  - id: '2.1'
+    name: ''
+    description: Aggregate and categorize guidance gaps
+    status: pending
+    agent: null
+  - id: '2.2'
+    name: ''
+    description: Identify systemic CCI pattern issues
+    status: pending
+    agent: null
+- name: Phase 28
+  description: 'Verify that walkthrough validations were executed correctly and reported
+
+    friction accurately. Detect false positives and test methodology issues.
+
+    '
+  tickets:
+  - id: '3.1'
+    name: ''
+    description: Audit walkthrough validation methodology
+    status: pending
+    agent: null
+- name: Phase 29
+  description: 'Update agent guidance to fix confirmed gaps from Phase 2. Use teacher
+    agents
+
+    to improve process.yml and inputs.yml files. Re-test after fixes.
+
+    '
+  tickets:
+  - id: '4.1'
+    name: ''
+    description: Fix CRITICAL and HIGH severity gaps
+    status: pending
+    agent: null
+  - id: '4.2'
+    name: ''
+    description: Re-test after fixes (iteration 2 of guidance-test-loop)
+    status: pending
+    agent: null
+- name: Phase 30
+  description: 'Validate orchestration agents can execute their coordination tasks
+    using
+
+    only guidance files. Focus on subagent_spawning_test scenario - can
+
+    orchestrators locate and spawn subagents from guidance alone?
+
+    '
+  tickets: []
+- name: Phase 31
+  description: 'Validate planner agents can create plans using only guidance files.
+
+    Focus on loop_context_test - planners participate in planner-loop
+
+    with reviewer feedback. Also validate plan output structure requirements.
+
+    '
+  tickets:
+  - id: '2.3'
+    name: 'Walkthrough: planner-cleaning'
+    description: Validate planner-cleaning can create finalization plans using guidance
+      only
+    status: pending
+    agent: null
+  - id: '2.4'
+    name: 'Walkthrough: planner-guidance'
+    description: Validate planner-guidance can create guidance change plans using
+      guidance only
+    status: pending
+    agent: null
+  - id: '2.5'
+    name: 'Walkthrough: planner-guidance-testing'
+    description: Validate planner-guidance-testing can create guidance test plans
+      using guidance only
+    status: pending
+    agent: null
+  - id: '2.6'
+    name: 'Walkthrough: planner-reviewer'
+    description: Validate planner-reviewer can review plans using guidance only
+    status: pending
+    agent: null
+  - id: '2.7'
+    name: 'Walkthrough: planner-test'
+    description: Validate planner-test can create test phase plans using guidance
+      only
+    status: pending
+    agent: null
+- name: Phase 32
+  description: 'Validate test agents can execute testing tasks using only guidance
+    files.
+
+    Focus on loop_context_test for agents in test-fix-loop and self-review loops.
+
+    '
+  tickets:
+  - id: '3.2'
+    name: 'Walkthrough: test-builder'
+    description: Validate test-builder can construct tests using guidance only
+    status: pending
+    agent: null
+  - id: '3.3'
+    name: 'Walkthrough: test-final-output'
+    description: Validate test-final-output can validate outputs using guidance only
+    status: pending
+    agent: null
+  - id: '3.4'
+    name: 'Walkthrough: test-guidance-simulator (self-validation)'
+    description: Self-validation - test-guidance-simulator validates its own guidance
+    status: pending
+    agent: null
+  - id: '3.5'
+    name: 'Walkthrough: test-runner'
+    description: Validate test-runner can execute tests using guidance only
+    status: pending
+    agent: null
+  - id: '3.6'
+    name: 'Walkthrough: test-service'
+    description: Validate test-service can test services using guidance only
+    status: pending
+    agent: null
+  - id: '3.7'
+    name: 'Walkthrough: test-user-simulator'
+    description: Validate test-user-simulator can simulate user journeys using guidance
+      only
+    status: pending
+    agent: null
+- name: Phase 33
+  description: 'Validate teacher agents can update guidance and assets using only
+    their
+
+    guidance files. Focus on documentation-loop participation.
+
+    '
+  tickets:
+  - id: '4.3'
+    name: 'Walkthrough: teacher-update-guidance'
+    description: Validate teacher-update-guidance can update agent guidance using
+      guidance only
+    status: pending
+    agent: null
+- name: Phase 34
+  description: 'Validate build and deploy agents can execute their tasks using only
+
+    guidance files. Focus on CCI bootstrap pattern validation.
+
+    '
+  tickets:
+  - id: '5.1'
+    name: 'Walkthrough: build-flutter'
+    description: Validate build-flutter can implement Flutter code using guidance
+      only
+    status: pending
+    agent: null
+  - id: '5.2'
+    name: 'Walkthrough: build-python'
+    description: Validate build-python can implement Python code using guidance only
+    status: pending
+    agent: null
+  - id: '5.3'
+    name: 'Walkthrough: deploy-cicd'
+    description: Validate deploy-cicd can deploy pipelines using guidance only
+    status: pending
+    agent: null
+  - id: '5.4'
+    name: 'Walkthrough: deploy-worktree'
+    description: Validate deploy-worktree can manage worktrees using guidance only
+    status: pending
+    agent: null
+- name: Phase 35
+  description: 'Analyze friction points from phases 1-5, categorize by severity, and
+    identify
+
+    patterns. Determine which gaps are guidance issues vs fundamental design flaws.
+
+    '
+  tickets:
+  - id: '6.1'
+    name: Aggregate and categorize guidance gaps
+    description: 'Collect all friction points from walkthrough phases.
+
+      Categorize by severity (CRITICAL, HIGH, MEDIUM, LOW).
+
+      Identify cross-agent patterns and systemic issues.
+
+      '
+    status: pending
+    agent: null
+  - id: '6.2'
+    name: Identify systemic guidance patterns
+    description: 'Analyze cross-agent patterns in guidance structure.
+
+      Identify systemic issues that affect multiple agent categories.
+
+      '
+    status: pending
+    agent: null
+- name: Phase 36
+  description: 'Verify that walkthrough validations were executed correctly and reported
+
+    friction accurately. Detect false positives and test methodology issues.
+
+    '
+  tickets:
+  - id: '7.1'
+    name: Audit walkthrough validation methodology
+    description: 'Review walkthrough execution to ensure test quality.
+
+      Validate that target agents used ONLY guidance files.
+
+      Identify any false positives in friction reports.
+
+      '
+    status: pending
+    agent: null
+  - id: '7.2'
+    name: Spot-check sample agents
+    description: 'Deep validation of 8 agents (1-2 from each category) to catch
+
+      lenient initial assessments.
+
+      '
+    status: pending
+    agent: null
+- name: Phase 37
+  description: 'Validate that all loop participant agents have complete and correct
+
+    loop_context sections in their process.yml files. Check structural
+
+    completeness and consistency with agent-loops.yml definitions.
+
+    '
+  tickets: []
+- name: Phase 38
+  description: 'Test that loop patterns can be executed correctly by validating
+
+    that agents understand their roles, iteration strategies, and
+
+    exit conditions when executing within each loop type.
+
+    '
+  tickets: []
+- name: Phase 39
+  description: 'Verify that exit conditions are properly defined and consistently
+
+    documented across loop participants. Ensure agents understand when
+
+    loops should terminate (success) vs continue (iteration needed).
+
+    '
+  tickets: []
+- name: Phase 40
+  description: 'Validate that loop participant roles are clearly defined and
+
+    that interaction patterns between participants are documented.
+
+    Agents should understand who they receive input from and
+
+    who consumes their output.
+
+    '
+  tickets: []
+- name: Phase 41
+  description: 'Fix loop_context gaps identified in previous phases using
+
+    teacher-update-guidance agents. Re-validate after fixes.
+
+    '
+  tickets: []
+- name: Phase 42
+  description: 'Validate all file path references in inputs.yml files across all agent
+    categories.
+
+    This includes layer references, core_inputs references, and fragment references.
+
+    '
+  tickets: []
+- name: Phase 43
+  description: 'Validate cross-references between process.yml and inputs.yml files.
+
+    Ensure process files correctly reference their companion inputs files
+
+    and external asset definitions.
+
+    '
+  tickets: []
+- name: Phase 44
+  description: 'Validate references within asset layer files (inputs/*.yml) to ensure
+
+    all definition and guideline files they reference actually exist.
+
+    '
+  tickets: []
+- name: Phase 45
+  description: 'Identify orphaned assets (files that exist but are never referenced)
+    and
+
+    detect any broken references that slipped through earlier phases.
+
+    '
+  tickets: []
+- name: Phase 46
+  description: 'Validate that the 6-step CCI self-review workflow documented in
+
+    agent-self-review.yml works correctly. Test that agents can:
+
+    1. Receive CLI context injection (file paths)
+
+    2. Read self-review-criteria.yml
+
+    3. Read agent-self-review.yml protocol
+
+    4. Read their own guidance files
+
+    5. Apply self-review protocol
+
+    6. Generate conformant output
+
+    '
+  tickets: []
+- name: Phase 47
+  description: 'Execute self_review_test scenario on representative agents from each
+
+    implemented category. Validates that ALL agent types can complete
+
+    self-review using only their guidance files.
+
+    '
+  tickets:
+  - id: '2.8'
+    name: ''
+    description: Self-review validation of test-runner agent
+    status: pending
+    agent: null
+  - id: '2.9'
+    name: ''
+    description: Self-review validation of test-service agent
+    status: pending
+    agent: null
+  - id: '2.10'
+    name: ''
+    description: Self-review validation of teacher-update-guidance agent
+    status: pending
+    agent: null
+  - id: '2.11'
+    name: ''
+    description: Self-review validation of teacher-update-assets agent
+    status: pending
+    agent: null
+  - id: '2.12'
+    name: ''
+    description: Self-review validation of deploy-cicd agent
+    status: pending
+    agent: null
+  - id: '2.13'
+    name: ''
+    description: Self-review validation of deploy-worktree agent
+    status: pending
+    agent: null
+  - id: '2.14'
+    name: ''
+    description: Self-review validation of orchestration-executor agent
+    status: pending
+    agent: null
+  - id: '2.15'
+    name: ''
+    description: Self-review validation of orchestration-friction agent
+    status: pending
+    agent: null
+- name: Phase 48
+  description: 'Validate that self-review outputs conform to the schema defined in
+
+    self-review-criteria.yml#output_requirements. Tests PASS and NEEDS_ATTENTION
+
+    scenarios and verifies plan file creation for NEEDS_ATTENTION status.
+
+    '
+  tickets: []
+- name: Phase 49
+  description: 'Final validation that agents can complete self-review using ONLY their
+
+    guidance files without code inspection, codebase exploration, or external
+
+    context beyond referenced files. Confirms the guidance-blind-test strategy.
+
+    '
+  tickets: []
+context: "This plan provides comprehensive walkthrough validation for ALL agent guidance\
+  \ files.\nBuilding on the CCI Pattern Validation completed in plan_live_test_guidance.yml,\n\
+  this plan extends testing to cover:\n\n1. ORCHESTRATION AGENTS (3 agents)\n   -\
+  \ orchestration-executor: Plan execution and subagent spawning\n   - orchestration-friction:\
+  \ Friction detection and analysis\n   - orchestration-planning: Planning workflow\
+  \ coordination\n\n2. PLANNER AGENTS (7 agents)\n   - planner-audit: Audit phase\
+  \ planning\n   - planner-build: Build implementation planning\n   - planner-cleaning:\
+  \ Finalization and cleanup planning\n   - planner-guidance: Guidance change planning\n\
+  \   - planner-guidance-testing: Guidance test planning (this agent)\n   - planner-reviewer:\
+  \ Plan review and feedback\n   - planner-test: Test phase planning\n\n3. TEST AGENTS\
+  \ (7 agents)\n   - test-audit: Self-review auditing\n   - test-builder: Test construction\n\
+  \   - test-final-output: Final output validation\n   - test-guidance-simulator:\
+  \ Guidance walkthrough execution\n   - test-runner: Test execution\n   - test-service:\
+  \ Service testing\n   - test-user-simulator: User journey simulation\n\n4. TEACHER\
+  \ AGENTS (3 agents)\n   - teacher-trace-diagnostics: Trace analysis and friction\
+  \ detection\n   - teacher-update-assets: Asset file updates\n   - teacher-update-guidance:\
+  \ Guidance file updates\n\n5. BUILD AGENTS (2 agents)\n   - build-flutter: Flutter\
+  \ implementation\n   - build-python: Python implementation\n\n6. DEPLOY AGENTS (2\
+  \ agents)\n   - deploy-cicd: CI/CD pipeline deployment\n   - deploy-worktree: Worktree\
+  \ setup and management\n\nTOTAL: 24 agents to be validated\n\nSTRATEGY: guidance-blind-test\n\
+  Each agent receives ONLY its guidance files (process.yml, inputs.yml, manifest.yml)\n\
+  and must demonstrate task completion without code inspection or codebase exploration.\n"

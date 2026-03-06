@@ -31,7 +31,7 @@ def minimal_plan():
                 "phase_id": "P1",
                 "name": "Build Phase",
                 "status": "pending",
-                "tasks": [],
+                "tickets": [],
             },
         ],
     }
@@ -57,7 +57,7 @@ def complex_plan():
                 "phase_id": "P1",
                 "name": "Setup Phase",
                 "status": "completed",
-                "tasks": [
+                "tickets": [
                     {"id": "P1-001", "name": "Initialize project", "status": "completed"},
                     {"id": "P1-002", "name": "Configure dependencies", "status": "completed"},
                 ],
@@ -66,7 +66,7 @@ def complex_plan():
                 "phase_id": "P2",
                 "name": "Build Phase",
                 "status": "in_progress",
-                "tasks": [
+                "tickets": [
                     {"id": "P2-001", "name": "Implement core module", "status": "completed"},
                     {"id": "P2-002", "name": "Implement utilities", "status": "pending"},
                 ],
@@ -75,7 +75,7 @@ def complex_plan():
                 "phase_id": "P3",
                 "name": "Testing Phase",
                 "status": "pending",
-                "tasks": [
+                "tickets": [
                     {"id": "P3-001", "name": "Unit tests", "status": "pending"},
                     {"id": "P3-002", "name": "Integration tests", "status": "pending"},
                 ],
@@ -84,7 +84,7 @@ def complex_plan():
                 "phase_id": "P4",
                 "name": "Documentation Phase",
                 "status": "pending",
-                "tasks": [
+                "tickets": [
                     {"id": "P4-001", "name": "API documentation", "status": "pending"},
                 ],
             },
@@ -112,7 +112,7 @@ def plan_with_matching_mmd():
                 "phase_id": "P1",
                 "name": "Build Phase",
                 "status": "completed",
-                "tasks": [
+                "tickets": [
                     {"id": "P1-001", "name": "Task 1", "status": "completed"},
                 ],
             },
@@ -120,7 +120,7 @@ def plan_with_matching_mmd():
                 "phase_id": "P2",
                 "name": "Test Phase",
                 "status": "pending",
-                "tasks": [
+                "tickets": [
                     {"id": "P2-001", "name": "Test Task", "status": "pending"},
                 ],
             },
@@ -182,19 +182,19 @@ def plan_with_missing_phase_mmd():
                 "phase_id": "P1",
                 "name": "Build Phase",
                 "status": "completed",
-                "tasks": [],
+                "tickets": [],
             },
             {
                 "phase_id": "P2",
                 "name": "Test Phase",
                 "status": "pending",
-                "tasks": [],
+                "tickets": [],
             },
             {
                 "phase_id": "P3",
                 "name": "Deploy Phase",
                 "status": "pending",
-                "tasks": [],
+                "tickets": [],
             },
         ],
     }
@@ -243,7 +243,7 @@ def plan_with_missing_task_mmd():
                 "phase_id": "P1",
                 "name": "Build Phase",
                 "status": "in_progress",
-                "tasks": [
+                "tickets": [
                     {"id": "P1-001", "name": "First task", "status": "completed"},
                     {"id": "P1-002", "name": "Second task", "status": "pending"},
                     {"id": "P1-003", "name": "Third task", "status": "pending"},
@@ -296,7 +296,7 @@ def plan_without_mmd():
                 "phase_id": "P1",
                 "name": "Build Phase",
                 "status": "pending",
-                "tasks": [],
+                "tickets": [],
             },
         ],
     }
@@ -323,7 +323,7 @@ def plan_with_existing_mmd():
                 "phase_id": "P1",
                 "name": "Build Phase",
                 "status": "pending",
-                "tasks": [],
+                "tickets": [],
             },
         ],
     }
@@ -832,7 +832,7 @@ class TestOrchestrationGenerateEdgeCases:
                         "phase_id": "NP1",
                         "name": "Nested Build Phase",
                         "status": "pending",
-                        "tasks": [],
+                        "tickets": [],
                     },
                 ],
             }
@@ -908,7 +908,7 @@ flowchart LR
         """Test validation uses first MMD when multiple exist."""
         plan_content = {
             "name": "multi-mmd-plan",
-            "phases": [{"phase_id": "P1", "name": "Test", "status": "pending", "tasks": []}],
+            "phases": [{"phase_id": "P1", "name": "Test", "status": "pending", "tickets": []}],
         }
         mmd_content = """%% Test MMD
 %% PHASES:
@@ -1040,7 +1040,7 @@ class TestAgentRoutingValidationErrors:
             "objective": "Test validation",
             "status": "pending",
             "phases": [
-                {"phase_id": "P1", "name": "Build", "status": "pending", "tasks": [
+                {"phase_id": "P1", "name": "Build", "status": "pending", "tickets": [
                     {"id": "T001", "name": "Task 1", "status": "pending"}
                 ]},
             ],

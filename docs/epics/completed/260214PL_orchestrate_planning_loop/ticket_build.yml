@@ -3,9 +3,9 @@ worktree_path: /home/code/AgenticEngineering
 branch: main
 status: active
 priority: high
-context: "PROBLEM:\n- The `agentic orchestrate` command currently only launches an\
-  \ interactive Claude session\n- There is no automated mode that runs the full plan\
-  \ lifecycle without human interaction\n- The planner loop (PlannerLoopWorkflow/Runner)\
+objective: "PROBLEM:\n- The `agentic orchestrate` command currently only launches\
+  \ an interactive Claude session\n- There is no automated mode that runs the full\
+  \ plan lifecycle without human interaction\n- The planner loop (PlannerLoopWorkflow/Runner)\
   \ handles plan-then-MMD but not execution\n\nGOAL:\n- Add `--planning-loop` flag\
   \ to `agentic orchestrate` that automates the full lifecycle:\n  discover plans\
   \ needing orchestration, spawn planners, run review cycles,\n  generate/validate\
@@ -19,34 +19,11 @@ context: "PROBLEM:\n- The `agentic orchestrate` command currently only launches 
   \ files\n- No execution phase after MMD validation (spawn agents per AGENT_ROUTING)\n\
   - No archive_plan() step after successful execution\n- No --planning-loop flag on\
   \ orchestrate command\n"
-success_criteria:
-- agentic orchestrate --help shows --planning-loop flag
-- parse_mmd_routing() correctly extracts AGENT_ROUTING, STATUS, FEEDBACK_TRIGGERS,
-  PHASES
-- OrchestrationWorkflow extends PlannerLoopWorkflow with execution methods
-- OrchestrationRunner runs two-phase lifecycle (plan-then-execute) with phase-level
-  retry
-- agentic orchestrate --planning-loop --plan <folder> runs full lifecycle
-- All new code covered by unit tests
-- python3 -m pytest passes on new test files
-architecture_alignment:
-- Extends existing PlannerLoopWorkflow (no duplication)
-- Follows CLI command pattern: handle(args, ctx) router + cmd_* functions
-- Uses Typer registration pattern from cli.py
-- MMD parsing uses same regex patterns as plan.py:3957
-- State persistence follows planner.py pattern (_save_state/_load_state)
-risks_and_mitigations:
-- Risk: OrchestrationRunner spawning wrong agent types from MMD
-  Mitigation: parse_mmd_routing() unit tested against real MMD templates
-- Risk: Phase-level retry causing infinite loops
-  Mitigation: max_retries parameter with hard cap, state tracking per phase
-- Risk: Breaking existing interactive orchestrate command
-  Mitigation: --planning-loop is additive flag, default behavior unchanged
+created: ''
 phases:
-- id: phase-1
-  name: Orchestration Workflow
+- name: Orchestration Workflow
   description: Create OrchestrationWorkflow and OrchestrationRunner in workflows/orchestration.py
-  tasks:
+  tickets:
   - id: task-1.1
     name: Implement parse_mmd_routing() pure function
     description: "Create a pure function that parses MMD file content and extracts\
@@ -67,6 +44,8 @@ phases:
       - `r\"(?:%%|#)\\s*AGENT_ROUTING:\\s*(\\S+)\\s+agent\"`\n\nEDGE CASES:\n- Empty\
       \ MMD content -> return empty dicts/lists\n- Missing headers -> return partial\
       \ result with empty defaults\n- Duplicate keys -> last wins\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/templates/mmd/header.mmd.j2
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
@@ -86,7 +65,6 @@ phases:
       6. Return defaults for missing headers (empty dict/list, not None)
 
       '
-    status: completed
     success_criteria:
     - Parses header AGENT_ROUTING into {phase_id: agent_type} dict
     - Parses STATUS into {phase_id: status} dict
@@ -111,6 +89,8 @@ phases:
       - spawn_execution_agent(): similar to spawn_planner() but uses phase-specific\n\
       \  agent type and passes --plan flag. Uses `agentic session spawn` pattern.\n\
       - archive_plan(): calls `agentic plan archive <folder>` via subprocess\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
     target_files:
@@ -128,7 +108,6 @@ phases:
       6. All methods return Optional/bool for error propagation
 
       '
-    status: completed
     success_criteria:
     - Inherits all PlannerLoopWorkflow methods
     - load_mmd returns MMD content string or None
@@ -161,6 +140,8 @@ phases:
       plans_processed\": [],\n    \"plans_failed\": [],\n    \"errors\": [],\n   \
       \ \"current_plan\": None,\n    \"current_phase\": None,\n    \"execution_results\"\
       : {},  # plan_folder -> {phase_id: status}\n}\n```\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
       (PlannerLoopRunner lines 440-593)
@@ -181,7 +162,6 @@ phases:
       7. archive_plan() after all phases succeed
 
       '
-    status: completed
     success_criteria:
     - Two-phase lifecycle: planning then execution
     - Single-plan mode with --plan flag
@@ -189,10 +169,9 @@ phases:
     - Phase-level retry with configurable max
     - State tracking for all plans and phases
     - Archive on success, error tracking on failure
-- id: phase-2
-  name: CLI Integration
+- name: CLI Integration
   description: Add --planning-loop flag to orchestrate command and wire to OrchestrationRunner
-  tasks:
+  tickets:
   - id: task-2.1
     name: Add --planning-loop flag handling to cmd_orchestrate
     description: "Modify commands/orchestrate.py to handle the --planning-loop flag.\
@@ -206,6 +185,8 @@ phases:
       \ --project flags\n- Create state with unique ID, save via state helpers\n-\
       \ Instantiate OrchestrationRunner, call .run()\n- Output results as JSON or\
       \ rich console\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/planner.py
@@ -227,7 +208,6 @@ phases:
       7. State persistence using same JSON format as planner loops
 
       '
-    status: completed
     success_criteria:
     - --planning-loop flag triggers automated mode
     - Default (no flag) still launches interactive session
@@ -253,6 +233,8 @@ phases:
       \ typer.Option(\n    \"--project\", \"-p\", help=\"Project filter for story\
       \ discovery\"\n)] = None,\n```\n\nWire new params into the _ns() call passed\
       \ to cmd_orchestrate.\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py (lines
       143-158)
@@ -263,17 +245,15 @@ phases:
       \ planning_loop, background, max_iterations,\n   completion_promise, project\n\
       4. Keep existing parameters unchanged\n5. Follow same Annotated[type, typer.Option(...)]\
       \ pattern as planner_start\n"
-    status: completed
     success_criteria:
     - agentic orchestrate --help shows --planning-loop flag
     - --planning-loop, --background, --max-iterations, --completion-promise, --project
       all registered
     - Existing flags (--plan, --prompt-file, --role, --model) unchanged
     - Parameters correctly passed to cmd_orchestrate via _ns()
-- id: phase-3
-  name: Tests
+- name: Tests
   description: Unit tests for workflow and integration tests for CLI command
-  tasks:
+  tickets:
   - id: task-3.1
     name: Workflow unit tests
     description: "Create tests for parse_mmd_routing, OrchestrationWorkflow, and OrchestrationRunner.\n\
@@ -290,6 +270,8 @@ phases:
       \ methods)\n   - test_run_discovery_mode (mock workflow methods)\n   - test_phase_retry_on_failure\n\
       \   - test_max_retries_respected\n   - test_state_tracking_updates\n   - test_archives_on_success\n\
       \nPATTERNS: Follow test_planner_loop.py style (tmp_path, mock subprocess, SimpleNamespace)\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_planner_loop.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
@@ -310,7 +292,6 @@ phases:
       7. Verify state dict updates at each lifecycle step
 
       '
-    status: completed
     success_criteria:
     - All parse_mmd_routing edge cases covered
     - Workflow methods tested with mocked subprocess
@@ -327,6 +308,8 @@ phases:
       \   - test_background_mode_spawns_subprocess (mock subprocess.Popen)\n   - test_state_persistence\
       \ (check state file created)\n   - test_json_output_format\n   - test_error_handling_on_runner_failure\n\
       \nPATTERNS: Follow test_planner_loop.py command test style\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_planner_loop.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
@@ -347,7 +330,6 @@ phases:
       7. Test error propagation from runner failures
 
       '
-    status: completed
     success_criteria:
     - Flag routing tested (planning-loop vs interactive)
     - Background mode tested with mocked Popen
@@ -355,74 +337,19 @@ phases:
     - JSON output format validated
     - Error handling verified
     - python3 -m pytest tests/test_orchestrate_command.py passes
-loops:
-  test-fix-loop:
-    enabled: true
-    max_iterations: 5
-    trigger: after_phase
-    phases:
-    - phase-3
-    description: Iterate on test failures and fixes
-  audit-test-fix-loop:
-    enabled: false
-    max_iterations: 3
-    trigger: after_completion
-    description: Final validation after all phases complete
-validation:
-  user_acceptance_tests:
-  - name: Planning loop flag visible
-    steps:
-    - Run agentic orchestrate --help
-    - Verify --planning-loop flag shown
-    - Verify --background, --max-iterations, --completion-promise, --project flags
-      shown
-  - name: Interactive mode unchanged
-    steps:
-    - Run agentic orchestrate (no --planning-loop)
-    - Verify interactive Claude session launches
-    - Confirm bootstrap context injected
-  - name: Planning loop runs full lifecycle
-    steps:
-    - Create a test plan with plan_build.yml
-    - Run agentic orchestrate --planning-loop --plan <folder>
-    - Verify planning phase runs (discover, plan, review, MMD)
-    - Verify execution phase runs (parse routing, spawn agents per phase)
-    - Verify plan archived on success
-  - name: All tests pass
-    steps:
-    - Run python3 -m pytest tests/test_orchestration_workflow.py -v
-    - Run python3 -m pytest tests/test_orchestrate_command.py -v
-    - All tests green
-notes: 'CRITICAL REFERENCES:
-
-  - planner_loop.py (lines 29-593) - Base workflow and runner to extend
-
-  - commands/planner.py (lines 23-428) - Command handler pattern to follow
-
-  - commands/plan.py:3957 - AGENT_ROUTING regex: r"(?:%%|#)\s*AGENT_ROUTING:\s*(.+)"
-
-  - cli.py:143-158 - Typer orchestrate registration
-
-  - templates/mmd/header.mmd.j2 - MMD header format with metadata
-
-
-  DEPENDENCY:
-
-  - Plan 260214TC builds the base orchestrate command (interactive mode)
-
-  - This plan (260214PL) adds the --planning-loop automated mode on top
-
-  - Both can proceed in parallel since they touch different code paths
-
-
-  IMPLEMENTATION ORDER:
-
-  1. Phase 1 first (workflow module is self-contained)
-
-  2. Phase 2 depends on Phase 1 (imports OrchestrationRunner)
-
-  3. Phase 3 depends on Phase 1 and 2 (tests the implementations)
-
-  '
-dependencies:
-- 260214TC_agentic_orchestrate_interactive_bootstrapped_claud
+context: "PROBLEM:\n- The `agentic orchestrate` command currently only launches an\
+  \ interactive Claude session\n- There is no automated mode that runs the full plan\
+  \ lifecycle without human interaction\n- The planner loop (PlannerLoopWorkflow/Runner)\
+  \ handles plan-then-MMD but not execution\n\nGOAL:\n- Add `--planning-loop` flag\
+  \ to `agentic orchestrate` that automates the full lifecycle:\n  discover plans\
+  \ needing orchestration, spawn planners, run review cycles,\n  generate/validate\
+  \ MMDs, then execute phases by parsing AGENT_ROUTING and\n  spawning the appropriate\
+  \ agents\n\nCURRENT STATE:\n- orchestrate.py (commands/orchestrate.py) has cmd_orchestrate()\
+  \ for interactive mode\n- planner_loop.py (workflows/planner_loop.py) has PlannerLoopWorkflow\
+  \ + PlannerLoopRunner\n- PlannerLoopRunner handles: discover -> type -> planner\
+  \ -> review -> MMD gen -> validate\n- MMD headers contain AGENT_ROUTING, STATUS,\
+  \ FEEDBACK_TRIGGERS, PHASES metadata\n- CLI registration in cli.py uses Typer @app.command()\
+  \ pattern\n\nGAP:\n- No parse_mmd_routing() to extract execution metadata from MMD\
+  \ files\n- No execution phase after MMD validation (spawn agents per AGENT_ROUTING)\n\
+  - No archive_plan() step after successful execution\n- No --planning-loop flag on\
+  \ orchestrate command\n"

@@ -1,107 +1,38 @@
-name: "Workspace Drift \u2014 Root Cause Resolution"
+name: Workspace Drift — Root Cause Resolution
 worktree_path: /home/code/AgenticEngineering
 branch: main
 status: active
 priority: high
-target_project_path: /home/code/AgenticEngineering
-affected_stories:
-- US-CLI-010
-- US-CLI-090
-- US-CLI-092
-- US-CLI-017
-objective: "Resolve the root causes of workspace file drift by addressing the fundamental\
-  \ problem:\nplan folders are created through multiple uncontrolled paths (agent\
-  \ Write tool, cmd_scaffold,\ncmd_create) that bypass the CLI's plan init pipeline.\
-  \ The workspace file is a symptom \u2014\nthe real issue is that Claude sessions\
-  \ and spawned agents jump directly to creating plan\nartifacts without going through\
-  \ `agentic plan init`, which is the only path that properly\ncreates worktrees AND\
-  \ updates the workspace file.\n\nSUCCESS LOOKS LIKE: Every plan folder in docs/plans/live/\
-  \ was created by `agentic plan init`,\nhas a corresponding worktree (or explicitly\
-  \ opted out), and the workspace file stays in sync\nautomatically without manual\
-  \ intervention.\n"
-context: "ROOT CAUSE ANALYSIS (from diagnostics 2026-02-14):\n\n1. MULTIPLE UNCONTROLLED\
-  \ CREATION PATHS:\n   - cmd_init: Creates worktree + plan folder + workspace update\
-  \ (CORRECT but has bug)\n   - cmd_create: Creates worktree + plan in FEATURE worktree\
-  \ (BYPASSES Main-First)\n   - cmd_scaffold: Creates plan folder only, NO worktree,\
-  \ NO workspace update\n   - Agent Write tool: Creates files directly, NO CLI involvement\
-  \ at all\n   Only cmd_init does things correctly, but nothing enforces its use.\n\
-  \n2. AGENT SESSION BYPASS:\n   - Claude sessions spawn planner-build via Task tool\n\
-  \   - planner-build guidance says \"A planning folder should have been provided\"\
-  \n   - But when spawned directly, no upstream caller runs `agentic plan init` first\n\
-  \   - Agent creates folder with Write tool \u2192 no worktree, no workspace update\n\
-  \   - Example: 260214WS_workspace_auto_sync was created this way in this session\n\
-  \n3. PLAN INIT BUG:\n   - plan.py cmd_init line 1154: `if workspace_file and not\
-  \ worktree_exists:`\n   - Only updates workspace for NEW worktrees, skips reused\
-  \ ones\n   - Causes workspace to miss entries when worktrees are reused\n\n4. NO\
-  \ POST-HOC RECONCILIATION:\n   - `agentic worktree sync` exists but nothing triggers\
-  \ it automatically\n   - No lifecycle hook on plan completion to sync workspace\n\
-  \   - No validation gate that catches drift before it compounds\n\nOBSERVED SYMPTOMS:\n\
-  - Workspace has stale entry for deleted worktree (plan-fix-11-test-plan...)\n- 260214WS\
-  \ plan folder exists without worktree (created by agent Write)\n- 260214TC plan\
-  \ folder reused worktree but workspace wasn't updated\n- docs/worktrees.yml registry\
-  \ has stale entries\n\nVALIDATOR BUG (secondary):\n- plan.py:4001 regex `\\w+` doesn't\
-  \ match hyphenated phase IDs (phase-1)\n- Should be `[\\w-]+` \u2014 causes false\
-  \ validation failures\n"
-open_questions:
-  q1:
-    question: How should Claude sessions be guided to use CLI for plan creation?
-    status: answered
-    decision: "Option A + C \u2014 guidance fence in planner-build + orchestration\
-      \ prompt template"
-    rationale: Fence prevents bypass, template makes the happy path easy
-  q2:
-    question: Should ALL plans require a worktree, or can some be main-only?
-    status: answered
-    decision: "Option B \u2014 allow main-only with explicit --no-worktree flag"
-    rationale: Explicit is better than implicit, supports both workflows
-  q3:
-    question: What should happen with cmd_create's Main-First Planning bypass?
-    status: answered
-    decision: "Option B \u2014 deprecate cmd_create for plan creation, single entry\
-      \ point through cmd_init"
-    rationale: One way to create plans, no ambiguity
-  q4:
-    question: Should sync trigger on every plan completion or only on cleanup?
-    status: answered
-    decision: "Option A \u2014 every completion"
-    rationale: Low cost, high safety
-  q5:
-    question: How to handle the duplicate generate_plan_folder_name functions?
-    status: answered
-    decision: "Option A \u2014 consolidate to naming.py, remove worktree.py duplicate"
-    rationale: Small change, removes duplication now
-success_criteria:
-- Every plan folder in docs/plans/live/ has a traceable creation path (CLI or explicit
-  main-only)
-- Workspace file stays in sync automatically through plan lifecycle
-- planner-build agent cannot create plan folders without CLI involvement (fence)
-- cmd_init workspace update works for both new and reused worktrees
-- Single code path for plan folder creation (cmd_init)
-- No manual `agentic worktree sync` needed in normal workflow
-- Registry (docs/worktrees.yml) cleaned up automatically on sync
-- Validator regex fixed for hyphenated phase IDs
-architecture_alignment:
-- Uses existing cmd_sync() logic (no new sync mechanism)
-- Maintains separation: worktree.py owns sync, plan.py calls it
-- Guidance changes follow existing fence/signpost patterns in process.yml
-- CLI remains source of truth for plan lifecycle
-- Preserves CLI patterns: handle(args, ctx) router + cmd_* functions
-risks_and_mitigations:
-- risk: Guidance fence in planner-build breaks existing agent workflows
-  mitigation: "Fence only triggers when plan folder is missing \u2014 existing workflows\
-    \ where folder is pre-created are unaffected"
-- risk: Requiring CLI for plan creation adds friction to quick planning
-  mitigation: Option B for q2 allows main-only plans with explicit --no-worktree flag
-- risk: Consolidating generate_plan_folder_name breaks cmd_create
-  mitigation: If cmd_create stops creating plans (q3 Option B), the old function becomes
-    unused
-- risk: Concurrent sync operations causing file corruption
-  mitigation: Use FileLock for workspace file writes (already used for YAML)
-- risk: Claude sessions don't know about the orchestration prompt template
-  mitigation: Register as a skill (/plan-new) so it's discoverable in Claude Code
+objective: 'Resolve the root causes of workspace file drift by addressing the fundamental
+  problem:
+
+  plan folders are created through multiple uncontrolled paths (agent Write tool,
+  cmd_scaffold,
+
+  cmd_create) that bypass the CLI''s plan init pipeline. The workspace file is a symptom
+  —
+
+  the real issue is that Claude sessions and spawned agents jump directly to creating
+  plan
+
+  artifacts without going through `agentic plan init`, which is the only path that
+  properly
+
+  creates worktrees AND updates the workspace file.
+
+
+  SUCCESS LOOKS LIKE: Every plan folder in docs/plans/live/ was created by `agentic
+  plan init`,
+
+  has a corresponding worktree (or explicitly opted out), and the workspace file stays
+  in sync
+
+  automatically without manual intervention.
+
+  '
+created: ''
 phases:
-- id: phase-1
-  name: Funnel plan creation through CLI
+- name: Funnel plan creation through CLI
   description: 'Address the root cause: ensure all plan folder creation goes through
 
     `agentic plan init`. This is the highest-value change because it prevents
@@ -109,7 +40,7 @@ phases:
     drift at the source rather than fixing it after the fact.
 
     '
-  tasks:
+  tickets:
   - id: task-1.1
     name: Add FENCE to planner-build preventing direct folder creation
     description: "Add a fence to planner-build/process.yml that detects when the plan\
@@ -117,12 +48,14 @@ phases:
       `agentic plan init` be run first.\n\nCURRENT GUIDANCE (line 110):\n  \"A planning\
       \ folder should have been provided (docs/plans/live/YYMMDDXX_description/).\n\
       \   Create appropriate folder structure based on plan complexity\"\n\nPROBLEM:\
-      \ \"should have been\" is advisory \u2014 agent proceeds to create it anyway.\n\
-      \nFIX: Change to a hard FENCE:\n  \"FENCE: The plan folder MUST already exist\
+      \ \"should have been\" is advisory — agent proceeds to create it anyway.\n\n\
+      FIX: Change to a hard FENCE:\n  \"FENCE: The plan folder MUST already exist\
       \ at docs/plans/live/YYMMDDXX_description/.\n   If it does not exist, STOP and\
       \ report:\n   'Plan folder not found. Run `agentic plan init <branch> --description\
       \ <desc>` first.'\n   Do NOT create the plan folder directly. The CLI creates\
       \ the worktree, workspace\n   entry, and folder structure atomically.\"\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-build/process.yml
     target_files:
@@ -139,7 +72,6 @@ phases:
       files
 
       '
-    status: completed
     success_criteria:
     - planner-build process.yml has FENCE for missing plan folder
     - Fence provides clear `agentic plan init` command to run
@@ -147,26 +79,50 @@ phases:
     - Same fence applied to all planner-* agents
   - id: task-1.2
     name: Add orchestration prompt template for Claude sessions
-    description: "Create a standard prompt or approach doc that shows how Claude sessions\
-      \ should\nhandle plan creation. When a user asks to create a plan, the session\
-      \ should:\n1. Run `agentic plan init <branch> --description <desc>` via Bash\n\
-      2. Use the resulting plan folder path\n3. THEN spawn planner agents with the\
-      \ folder path\n\nThis could be:\n- A documented pattern in the orchestration\
-      \ planner prompt\n- An update to docs/prompts/orchestration_planner.md\n- A\
-      \ section in CLAUDE.md or project memory\n\nThe goal is that Claude sessions\
-      \ naturally use the CLI before spawning planners,\nnot that they're forced to\
-      \ \u2014 make the right path the easy path.\n"
+    description: 'Create a standard prompt or approach doc that shows how Claude sessions
+      should
+
+      handle plan creation. When a user asks to create a plan, the session should:
+
+      1. Run `agentic plan init <branch> --description <desc>` via Bash
+
+      2. Use the resulting plan folder path
+
+      3. THEN spawn planner agents with the folder path
+
+
+      This could be:
+
+      - A documented pattern in the orchestration planner prompt
+
+      - An update to docs/prompts/orchestration_planner.md
+
+      - A section in CLAUDE.md or project memory
+
+
+      The goal is that Claude sessions naturally use the CLI before spawning planners,
+
+      not that they''re forced to — make the right path the easy path.
+
+      '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/docs/prompts/orchestration_planner.md
     - /home/code/AgenticEngineering/modules/AgenticGuidance/agents/planner/planner-build/process.yml
     target_files:
     - /home/code/AgenticEngineering/docs/prompts/orchestration_planner.md
-    guidance: "1. Read current orchestration_planner.md\n2. Add a \"PLAN CREATION\
-      \ PROTOCOL\" section near the top\n3. Document the required sequence: CLI init\
-      \ \u2192 spawn planner \u2192 review\n4. Add examples showing correct vs incorrect\
-      \ patterns\n5. Reference deploy-worktree agent as the standard worktree setup\
-      \ path\n"
-    status: completed
+    guidance: '1. Read current orchestration_planner.md
+
+      2. Add a "PLAN CREATION PROTOCOL" section near the top
+
+      3. Document the required sequence: CLI init → spawn planner → review
+
+      4. Add examples showing correct vs incorrect patterns
+
+      5. Reference deploy-worktree agent as the standard worktree setup path
+
+      '
     success_criteria:
     - orchestration_planner.md has clear plan creation protocol
     - Protocol shows `agentic plan init` as mandatory first step
@@ -201,6 +157,8 @@ phases:
       - Update any remaining callers to use naming.py version
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/worktree.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
@@ -223,16 +181,14 @@ phases:
       7. Update any imports that reference the removed function
 
       '
-    status: completed
     success_criteria:
     - cmd_create no longer creates plan folders by default
     - cmd_scaffold shows deprecation warning
     - Only one generate_plan_folder_name function exists (in naming.py)
     - No broken imports after removal
-- id: phase-2
-  name: Fix existing CLI bugs
+- name: Fix existing CLI bugs
   description: Fix the known bugs in plan init and the validator
-  tasks:
+  tickets:
   - id: task-2.1
     name: Fix workspace update in cmd_init for reused worktrees
     description: 'Modify plan.py cmd_init() to update workspace file for ALL worktree
@@ -251,42 +207,62 @@ phases:
       before adding), so calling it for reused worktrees is safe.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
     target_files:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: "1. Read cmd_init function (lines 996-1200)\n2. Locate workspace update\
-      \ block (lines 1152-1161)\n3. Change: `if workspace_file and not worktree_exists:`\
-      \ \u2192 `if workspace_file:`\n4. Update comment to clarify it handles both\
-      \ new and reused worktrees\n5. Verify update_workspace_add() is idempotent (check\
-      \ for duplicate prevention)\n"
-    status: completed
+    guidance: '1. Read cmd_init function (lines 996-1200)
+
+      2. Locate workspace update block (lines 1152-1161)
+
+      3. Change: `if workspace_file and not worktree_exists:` → `if workspace_file:`
+
+      4. Update comment to clarify it handles both new and reused worktrees
+
+      5. Verify update_workspace_add() is idempotent (check for duplicate prevention)
+
+      '
     success_criteria:
     - Line 1154 no longer has `and not worktree_exists` condition
     - Workspace update happens for reused worktrees
     - No duplicate entries created
   - id: task-2.2
     name: Fix validator regex for hyphenated phase IDs
-    description: "Fix the orchestration MMD validator regex at plan.py:4001.\n\nBUG:\
-      \ `r\"%%\\s+(\\w+):\"` \u2014 \\w doesn't match hyphens\nFIX: `r\"%%\\s+([\\\
-      w-]+):\"` \u2014 allows phase-1, phase-2, etc.\n\nThis causes false validation\
-      \ failures for all plans using standard\nphase-N naming convention.\n"
+    description: 'Fix the orchestration MMD validator regex at plan.py:4001.
+
+
+      BUG: `r"%%\s+(\w+):"` — \w doesn''t match hyphens
+
+      FIX: `r"%%\s+([\w-]+):"` — allows phase-1, phase-2, etc.
+
+
+      This causes false validation failures for all plans using standard
+
+      phase-N naming convention.
+
+      '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
     target_files:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
-    guidance: "1. Read plan.py line 4001\n2. Change: `r\"%%\\s+(\\w+):\"` \u2192 `r\"\
-      %%\\s+([\\w-]+):\"`\n3. Verify the fix works: `agentic plan orchestration validate\
-      \ --plan 260214WS_workspace_auto_sync`\n"
-    status: completed
+    guidance: '1. Read plan.py line 4001
+
+      2. Change: `r"%%\s+(\w+):"` → `r"%%\s+([\w-]+):"`
+
+      3. Verify the fix works: `agentic plan orchestration validate --plan 260214WS_workspace_auto_sync`
+
+      '
     success_criteria:
     - Regex matches hyphenated phase IDs (phase-1, phase-2, etc.)
     - Validation passes for 260214WS plan after fix
     - Non-hyphenated IDs (P1, P2) still work
-- id: phase-3
-  name: Auto-sync on plan lifecycle events
+- name: Auto-sync on plan lifecycle events
   description: Hook workspace sync into plan completion and registry cleanup
-  tasks:
+  tickets:
   - id: task-3.1
     name: Add workspace sync to plan completion flow
     description: 'Add sync call to _try_worktree_cleanup_after_archive() so workspace
@@ -299,6 +275,8 @@ phases:
       since workspace entries can drift even without worktree removal.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/worktree.py
@@ -309,7 +287,6 @@ phases:
       \ import cmd_sync\n   from types import SimpleNamespace\n   try:\n       cmd_sync(SimpleNamespace())\n\
       \   except Exception:\n       pass  # Don't fail cleanup if sync fails\n   ```\n\
       3. Ensure sync failure doesn't block cleanup success\n"
-    status: completed
     success_criteria:
     - Workspace sync called on plan completion
     - Sync errors don't break completion flow
@@ -323,6 +300,8 @@ phases:
       file but the registry can also drift.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/worktree.py
     - /home/code/AgenticEngineering/docs/worktrees.yml
@@ -337,7 +316,6 @@ phases:
       4. Update JSON output to include registry_cleaned count
 
       '
-    status: completed
     success_criteria:
     - Registry entries removed for deleted worktrees
     - Existing worktrees preserved
@@ -351,6 +329,8 @@ phases:
       Uses same FileLock pattern from agenticguidance.state already used for YAML.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/worktree.py
     - /home/code/AgenticEngineering/modules/AgenticGuidance/src/agenticguidance/state.py
@@ -363,15 +343,13 @@ phases:
       3. Handle lock timeout gracefully (return False)
 
       '
-    status: completed
     success_criteria:
     - FileLock protects all workspace file reads/writes
     - Lock timeout handled gracefully
     - No deadlocks
-- id: phase-4
-  name: Testing and validation
+- name: Testing and validation
   description: Comprehensive testing of all changes
-  tasks:
+  tickets:
   - id: task-4.1
     name: Unit tests for plan creation funneling and sync
     description: 'Create tests covering:
@@ -391,86 +369,69 @@ phases:
       - Validator regex with hyphenated phase IDs
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/worktree.py
     target_files:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/commands/test_workspace_sync.py
-    guidance: "1. Create test file using pytest with tmp_path, monkeypatch\n2. Mock\
-      \ subprocess for git commands\n3. Test each fix independently\n4. Test integration:\
-      \ full lifecycle (init \u2192 work \u2192 complete \u2192 sync)\n"
-    status: completed
+    guidance: '1. Create test file using pytest with tmp_path, monkeypatch
+
+      2. Mock subprocess for git commands
+
+      3. Test each fix independently
+
+      4. Test integration: full lifecycle (init → work → complete → sync)
+
+      '
     success_criteria:
     - All new code paths covered
     - Tests pass in isolation and together
     - Edge cases covered (missing files, concurrent access)
   - id: task-4.2
     name: End-to-end validation
-    description: "Manual testing of the full workflow:\n1. Create plan via `agentic\
-      \ plan init` \u2192 verify workspace updated\n2. Reuse worktree \u2192 verify\
-      \ workspace updated\n3. Complete plan \u2192 verify sync runs\n4. Delete worktree\
-      \ outside CLI \u2192 verify sync cleans up\n5. Spawn planner-build without folder\
-      \ \u2192 verify fence stops it\n6. Run `agentic worktree validate` \u2192 verify\
-      \ no drift\n"
-    inputs: []
-    target_files: []
+    description: 'Manual testing of the full workflow:
+
+      1. Create plan via `agentic plan init` → verify workspace updated
+
+      2. Reuse worktree → verify workspace updated
+
+      3. Complete plan → verify sync runs
+
+      4. Delete worktree outside CLI → verify sync cleans up
+
+      5. Spawn planner-build without folder → verify fence stops it
+
+      6. Run `agentic worktree validate` → verify no drift
+
+      '
     status: completed
+    agent: null
     success_criteria:
     - Full lifecycle works without manual sync
     - Fence prevents direct folder creation by agents
     - Validator reports no drift after complete lifecycle
-loops:
-  test-fix-loop:
-    enabled: true
-    max_iterations: 5
-    trigger: after_phase
-    phases:
-    - phase-4
-    description: Iterate on test failures and fixes
-validation:
-  user_acceptance_tests:
-  - name: Plan creation always goes through CLI
-    steps:
-    - Spawn planner-build agent without pre-existing folder
-    - Verify agent stops with fence message
-    - Run `agentic plan init` then re-spawn agent
-    - Verify agent proceeds normally
-  - name: Workspace sync on plan completion
-    steps:
-    - Create and complete a plan
-    - Verify workspace file updated automatically
-    - Check no manual sync required
-  - name: Workspace update on worktree reuse
-    steps:
-    - Run plan init with existing idle worktree
-    - Verify workspace entry added
-    - Confirm no duplicate entries
-  - name: Registry cleanup on sync
-    steps:
-    - Delete a worktree manually
-    - Complete a plan (triggers sync)
-    - Verify registry entry removed
-  - name: cmd_create does not create plan folders
-    steps:
-    - Run `agentic worktree create test-branch`
-    - Verify no plan folder created
-    - Verify message points to `agentic plan init`
-notes: "IMPLEMENTATION PRIORITIES:\n1. Phase 1 (Funnel creation) \u2014 ROOT CAUSE\
-  \ FIX. Highest value. Prevents future drift.\n2. Phase 2 (Bug fixes) \u2014 Quick\
-  \ wins. Fix known bugs in plan init and validator.\n3. Phase 3 (Auto-sync) \u2014\
-  \ Safety net. Catches drift that slips through.\n4. Phase 4 (Testing) \u2014 Validates\
-  \ everything works together.\n\nKEY INSIGHT:\nThe workspace file drift is a SYMPTOM.\
-  \ The root cause is that plan folders can be\ncreated through 4 different paths,\
-  \ and only 1 (cmd_init) properly creates worktrees\nand updates the workspace. The\
-  \ fix is to funnel all creation through cmd_init and\nadd fences that prevent agents\
-  \ from bypassing it.\n\nAGENT SESSION PATTERN (the \"jump to implementation\" problem):\n\
-  When a user asks Claude to plan something, the session tends to:\n1. Go into its\
-  \ own planning mode \u2713 (this is fine)\n2. Spawn a planner agent via Task tool\
-  \ \u2717 (bypasses CLI)\n3. The planner writes plan files directly \u2717 (no worktree,\
-  \ no workspace update)\n\nThe fix is two-fold:\nA. FENCE: planner-build refuses\
-  \ to proceed without existing folder\nB. TEMPLATE: orchestration prompt shows the\
-  \ correct sequence (CLI init \u2192 spawn)\n\nThis doesn't prevent agents from planning\
-  \ \u2014 it just ensures the folder structure\nis created properly BEFORE the planner\
-  \ starts writing to it.\n"
-estimated_effort: 10-14 hours
-dependencies: []
+context: "ROOT CAUSE ANALYSIS (from diagnostics 2026-02-14):\n\n1. MULTIPLE UNCONTROLLED\
+  \ CREATION PATHS:\n   - cmd_init: Creates worktree + plan folder + workspace update\
+  \ (CORRECT but has bug)\n   - cmd_create: Creates worktree + plan in FEATURE worktree\
+  \ (BYPASSES Main-First)\n   - cmd_scaffold: Creates plan folder only, NO worktree,\
+  \ NO workspace update\n   - Agent Write tool: Creates files directly, NO CLI involvement\
+  \ at all\n   Only cmd_init does things correctly, but nothing enforces its use.\n\
+  \n2. AGENT SESSION BYPASS:\n   - Claude sessions spawn planner-build via Task tool\n\
+  \   - planner-build guidance says \"A planning folder should have been provided\"\
+  \n   - But when spawned directly, no upstream caller runs `agentic plan init` first\n\
+  \   - Agent creates folder with Write tool → no worktree, no workspace update\n\
+  \   - Example: 260214WS_workspace_auto_sync was created this way in this session\n\
+  \n3. PLAN INIT BUG:\n   - plan.py cmd_init line 1154: `if workspace_file and not\
+  \ worktree_exists:`\n   - Only updates workspace for NEW worktrees, skips reused\
+  \ ones\n   - Causes workspace to miss entries when worktrees are reused\n\n4. NO\
+  \ POST-HOC RECONCILIATION:\n   - `agentic worktree sync` exists but nothing triggers\
+  \ it automatically\n   - No lifecycle hook on plan completion to sync workspace\n\
+  \   - No validation gate that catches drift before it compounds\n\nOBSERVED SYMPTOMS:\n\
+  - Workspace has stale entry for deleted worktree (plan-fix-11-test-plan...)\n- 260214WS\
+  \ plan folder exists without worktree (created by agent Write)\n- 260214TC plan\
+  \ folder reused worktree but workspace wasn't updated\n- docs/worktrees.yml registry\
+  \ has stale entries\n\nVALIDATOR BUG (secondary):\n- plan.py:4001 regex `\\w+` doesn't\
+  \ match hyphenated phase IDs (phase-1)\n- Should be `[\\w-]+` — causes false validation\
+  \ failures\n"

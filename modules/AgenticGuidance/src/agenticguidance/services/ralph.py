@@ -296,7 +296,7 @@ class RalphLoopService:
         # Extract tasks from phases structure
         phases = content.get("phases", [])
         for phase in phases:
-            tasks = phase.get("tasks", [])
+            tasks = phase.get("tickets", [])
             for task in tasks:
                 status = task.get("status", "pending")
                 if status == "completed":

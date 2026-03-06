@@ -62,7 +62,7 @@ def task_repo(temp_dir):
             {
                 "name": "Phase 1",
                 "id": "phase_01",
-                "tasks": [
+                "tickets": [
                     {
                         "id": "01.1",
                         "name": "Completed task",
@@ -89,7 +89,7 @@ def task_repo(temp_dir):
             {
                 "name": "Phase 2",
                 "id": "phase_02",
-                "tasks": [
+                "tickets": [
                     {
                         "id": "02.1",
                         "name": "Phase 2 task",

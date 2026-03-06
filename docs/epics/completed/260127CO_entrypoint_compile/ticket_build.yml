@@ -3,8 +3,7 @@ worktree_path: /home/code/AgenticEngineering-feat/entrypoint-compile
 branch: feat/entrypoint-compile
 status: completed
 priority: high
-plan_file: docs/plans/live/260127CO_entrypoint_compile/plan_build.yml
-context: 'The `agentic entrypoint execute` command currently outputs only the entrypoint
+objective: 'The `agentic entrypoint execute` command currently outputs only the entrypoint
 
   YAML file content. However, entrypoints reference other files:
 
@@ -21,68 +20,12 @@ context: 'The `agentic entrypoint execute` command currently outputs only the en
   This is repetitive friction that can be eliminated with a --compile flag.
 
   '
-inputs:
-- location: modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
-  description: Current entrypoint command implementation (340 lines)
-- location: modules/AgenticGuidance/entrypoints/_plan_teach.yml
-  description: 'Example entrypoint showing orchestration: reference pattern'
-- location: modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
-  description: 'Example inputs.yml showing location: reference pattern (400+ lines,
-    30+ references)'
-success_criteria:
-- '`agentic entrypoint execute _plan_teach --compile` outputs complete context bundle'
-- Entrypoint YAML content is included with clear header
-- 'Orchestration MMD content is included (from orchestration: field)'
-- Inputs.yml content is included (discovered from entrypoint path)
-- 'All location: referenced files from inputs.yml are included'
-- Output format uses clear section delimiters (# === SECTION ===)
-- Missing files are noted but do not cause failure (graceful degradation)
-- JSON output mode includes structured sections array
-output_format:
-  description: Expected output structure for --compile flag
-  example: '# === ENTRYPOINT: _plan_teach ===
-
-    <yaml content>
-
-
-    # === ORCHESTRATION: process.mmd ===
-
-    <mmd content>
-
-
-    # === INPUTS: inputs.yml ===
-
-    <inputs.yml content>
-
-
-    # === REFERENCED: fix-the-source.yml ===
-
-    <content>
-
-
-    # === REFERENCED: context-minimisation.yml ===
-
-    <content>
-
-
-    # ... (all location: references)
-
-    '
-loop_structures:
-- id: loop_test_fix
-  type: test-fix-loop
-  applies_to_phase: Validation Phase
-  trigger: After implementation tasks complete
-  description: Iterative testing to validate compile functionality
-  exit_criteria:
-    success: agentic entrypoint execute _plan_teach --compile produces valid output
-    max_iterations: 3
-    escalation: Manual review of edge cases
+created: ''
 phases:
 - name: Build Phase
   execution: sequential
   description: Implement --compile flag and recursive resolution
-  tasks:
+  tickets:
   - id: build_001
     name: Add --compile argument to execute subparser
     description: "Modify the argument parser to add --compile flag.\n\nLocation: entrypoint.py\
@@ -91,6 +34,7 @@ phases:
       \ '-c', action='store_true',\n                     help='Compile complete context\
       \ bundle')\n"
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
   - id: build_002
@@ -103,6 +47,7 @@ phases:
       \  orchestration: modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd\n\
       \  -> inputs: modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml\n"
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
   - id: build_003
@@ -114,6 +59,7 @@ phases:
       \  - location: \"modules/AgenticGuidance/assets/guidelines/fix-the-source.yml\"\
       \n    description: \"Fix root causes instead of symptoms.\"\n"
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
   - id: build_004
@@ -128,6 +74,7 @@ phases:
       content\": str} | None,\n  \"references\": [{\"path\": str, \"content\": str,\
       \ \"description\": str}, ...]\n}\n"
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
   - id: build_005
@@ -140,6 +87,7 @@ phases:
       \  <content>\n\n  # === INPUTS: <filename> ===\n  <content>\n\n  # === REFERENCED:\
       \ <filename> ===\n  <content>\n"
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
   - id: build_006
@@ -151,12 +99,13 @@ phases:
       \   - Else: use _format_compiled_output for text\n3. Else: existing behavior\
       \ (unchanged)\n"
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/entrypoint.py
 - name: Validation Phase
   execution: sequential
   description: Test the --compile flag functionality
-  tasks:
+  tickets:
   - id: test_001
     name: Manual blind test of --compile flag
     description: "Execute the following commands and verify output:\n\n1. Basic compile:\n\
@@ -171,7 +120,7 @@ phases:
       \ test entrypoint without orchestration: field\n\n   Expected: Graceful handling\
       \ - entrypoint shown, no orchestration section\n"
     status: completed
-    loop: test-fix-loop
+    agent: null
   - id: test_002
     name: Unit tests for compile helpers
     description: 'Add unit tests for the new helper functions:
@@ -192,13 +141,14 @@ phases:
 
       '
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/tests/commands/test_entrypoint.py
 - name: Update Entrypoints Phase
   execution: sequential
   description: Update entrypoint files to reference CLI commands instead of manual
     file reading
-  tasks:
+  tickets:
   - id: entry_001
     name: Update _plan_teach.yml to use CLI
     description: "Update modules/AgenticGuidance/entrypoints/_plan_teach.yml:\n\n\
@@ -210,6 +160,7 @@ phases:
       \ task current\"\n  - \"Follow the orchestration process from compiled output\"\
       \n```\n"
     status: completed
+    agent: null
     target_files:
     - modules/AgenticGuidance/entrypoints/_plan_teach.yml
   - id: entry_002
@@ -220,6 +171,7 @@ phases:
 
       '
     status: completed
+    agent: null
     target_files:
     - modules/AgenticGuidance/entrypoints/_plan_build.yml
   - id: entry_003
@@ -230,6 +182,7 @@ phases:
 
       '
     status: completed
+    agent: null
     target_files:
     - modules/AgenticGuidance/entrypoints/_orchestrate.yml
   - id: entry_004
@@ -253,6 +206,7 @@ phases:
 
       '
     status: completed
+    agent: null
     target_files:
     - modules/AgenticGuidance/entrypoints/*.yml
   - id: entry_005
@@ -267,12 +221,13 @@ phases:
 
       '
     status: completed
+    agent: null
     target_files:
     - docs/prompts/loop1.txt
 - name: Cleanup Phase
   execution: sequential
   description: Clean up and finalize
-  tasks:
+  tickets:
   - id: cleanup_001
     name: Run linting and formatting
     description: 'Ensure code passes project linting standards:
@@ -283,6 +238,7 @@ phases:
 
       '
     status: completed
+    agent: null
   - id: cleanup_002
     name: Run full test suite
     description: 'Run complete test suite to catch regressions:
@@ -291,38 +247,21 @@ phases:
 
       '
     status: completed
-implementation_notes:
-  path_resolution: 'Paths in entrypoint YAML are relative to repository root.
+    agent: null
+context: 'The `agentic entrypoint execute` command currently outputs only the entrypoint
 
-    Use repository root detection (walk up from entrypoint to find .git or modules/)
+  YAML file content. However, entrypoints reference other files:
 
-    to resolve relative paths to absolute paths.
+  - orchestration: field -> points to process.mmd
 
-    '
-  yaml_parsing: 'The yaml module is already imported in entrypoint.py.
+  - inputs reference -> points to inputs.yml
 
-    Use yaml.safe_load() for all YAML parsing.
-
-    '
-  graceful_degradation: 'If a referenced file doesn''t exist:
-
-    - In text mode: Add "# === MISSING: <path> ===" section
-
-    - In JSON mode: Include {"path": str, "content": null, "error": str}
+  - inputs.yml contains 20+ location: fields -> points to guidelines, definitions,
+  etc.
 
 
-    This allows partial compilation even with some missing files.
+  Agents must manually use Read/Glob/Grep to build their initial context.
 
-    '
-  location_field_patterns: 'In inputs.yml, references appear as:
+  This is repetitive friction that can be eliminated with a --compile flag.
 
-    - location: "path/to/file.yml"
-
-    - path: "path/to/file.yml"
-
-
-    Some are nested under layers:, inputs:, core_inputs: etc.
-
-    The parser should recursively search all YAML nodes.
-
-    '
+  '

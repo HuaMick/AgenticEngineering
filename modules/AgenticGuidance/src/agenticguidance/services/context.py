@@ -255,7 +255,7 @@ class MainFirstEpicResolver:
                     phase_name = phase.get("name", "Unknown Phase")
                     phase_id = phase.get("id", "")
 
-                    for task in phase.get("tasks", []):
+                    for task in phase.get("tickets", []):
                         task_info = {
                             "id": task.get("id", ""),
                             "name": task.get("name", ""),

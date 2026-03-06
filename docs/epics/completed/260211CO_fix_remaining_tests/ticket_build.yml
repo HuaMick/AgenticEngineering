@@ -1,429 +1,306 @@
-plan_name: "Fix Remaining 11 Test Failures (Typer Migration Residual)"
-worktree: 260211CO_fix_remaining_tests
+name: 260211CO_fix_remaining_tests
+worktree_path: ''
 branch: main
 status: draft
-target_project_path: /home/code/AgenticEngineering
+priority: medium
+objective: 'Fix 11 remaining test failures across 6 files caused by behavioral differences
+  between the old argparse CLI and the new Typer CLI backend. The strategy is to update
+  tests to match Typer behavior where appropriate, and add missing Typer constraints
+  where the CLI should actually reject invalid input.
 
-objective: >
-  Fix 11 remaining test failures across 6 files caused by behavioral differences
-  between the old argparse CLI and the new Typer CLI backend. The strategy is to
-  update tests to match Typer behavior where appropriate, and add missing Typer
-  constraints where the CLI should actually reject invalid input.
-
-context: >
-  The CLI migrated from argparse to Typer (cli.py). Most tests were updated in
-  prior plans (260211AE series). These 11 failures are the final residual issues:
-
-  1. test_plan.py (3 failures):
-     - test_list_plans: Rich table truncates "260103AE_test" to "260103A…" — assertion
-       must use substring or check table contains truncated form
-     - test_task_start: Task start requires orchestration_*.mmd (EN-006 fence) but
-       test fixture has no MMD file — need to create one in fixture
-     - test_task_not_found: Error message is now "Cannot start task - plan has no
-       orchestration_*.mmd" not "not found" — either fix assertion or add MMD file
-       so the code reaches the "not found" path
-
-  2. test_cli_task.py (2 failures):
-     - test_list_status_rejects_invalid: Typer --status is a plain str, not choices=
-       enum — Typer accepts any string. Fix: add validation callback in cli.py
-     - test_add_priority_rejects_invalid: Same for --priority
-
-  3. test_agent_help.py (2 failures):
-     - test_all_26_agents_registered: KNOWN_AGENTS has 24 agents, test expects 26.
-       Fix: update test to expect 24
-     - test_orchestration_agents_count: Source has 3 orchestration agents, test expects 5.
-       Fix: update test to expect 3
-
-  4. test_cli.py (1 failure):
-     - test_help_shows_aliases: Test expects "(wt)", "(cfg)" etc. in help output,
-       but Typer uses hidden commands for aliases — they don't show in help text.
-       Fix: update test to check actual Typer help content
-
-  5. test_entry.py (1 failure):
-     - test_main_h_flag: entry.py only translates -h→--help when AGENTIC_USE_TYPER=1.
-       Test calls main() without env var, so -h falls through and exits with code 2.
-       Fix: move -h translation before the backend routing check
-
-  6. test_workflow_sequences.py (2 failures):
-     - test_plan_scaffold_status_workflow: Expects live/ and completed/ subdirs inside
-       scaffold folder, but create_planning_folder uses flattened structure (plan_*.yml
-       directly in folder). Fix: update test assertions to match flattened structure
-     - test_plan_with_json_output: Creates file at plan_path/live/plan_test.yml but
-       flattened structure puts files directly in plan_path. Fix: write to plan_path/
-
-affected_stories:
-  - US-CLI-011  # Scaffold Plan Folder Only
-  - US-CLI-012  # View Plan Status
-  - US-CLI-013  # List All Plans
-  - US-CLI-020  # List Plan Tasks
-  - US-CLI-022  # Start and Complete Tasks
-  - US-CLI-023  # Add Tasks to Plan
-  - US-CLI-025  # Prefill Tasks from Preset
-  - US-DEV-010  # Run Tests via Agent
-
+  '
+created: ''
 phases:
-  - phase_id: P1
-    name: "Fix Test Assertions to Match Typer Behavior"
-    description: >
-      Update test files where assertions are checking old argparse behavior that
-      is no longer valid. These are pure test-side changes.
+- name: Fix Test Assertions to Match Typer Behavior
+  description: 'Update test files where assertions are checking old argparse behavior
+    that is no longer valid. These are pure test-side changes.
+
+    '
+  tickets:
+  - id: P1_01
+    name: Fix test_plan.py - plan list truncation and task orchestration gate
+    description: "Fix 3 failures in test_plan.py:\n1. test_list_plans (line 54): Rich\
+      \ table truncates plan names. Change\n   assertion from `assert \"260103AE_test\"\
+      \ in stdout` to check for the\n   truncated form `\"260103A\"` or use a broader\
+      \ pattern.\n\n2. test_task_start (line 99-100): Task start requires orchestration_*.mmd\n\
+      \   (EN-006 fence). Create a dummy orchestration_test.mmd file in the\n   test\
+      \ fixture's plan folder so the command reaches the actual task\n   start logic.\n\
+      \n3. test_task_not_found (line 122-123): Same issue — needs MMD file so\n  \
+      \ the error message becomes \"not found\" instead of \"no orchestration_*.mmd\"\
+      .\n   After adding MMD in fixture, this test should work. Also update assertion\n\
+      \   to handle the case where the error message might say \"Task 99 not found\"\
+      \n   or similar.\n"
     status: pending
-    dependencies: []
-    tasks:
-      - task_id: P1_01
-        name: "Fix test_plan.py - plan list truncation and task orchestration gate"
-        description: >
-          Fix 3 failures in test_plan.py:
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/conftest.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/conftest.py
+    guidance: 'Read conftest.py temp_repo fixture (creates 260103AE_test plan folder).
+      Add an orchestration_test.mmd file with minimal content to that fixture.
 
-          1. test_list_plans (line 54): Rich table truncates plan names. Change
-             assertion from `assert "260103AE_test" in stdout` to check for the
-             truncated form `"260103A"` or use a broader pattern.
+      For test_list_plans: The Rich table output truncates to column width. Use `"260103A"
+      in stdout` which matches both truncated and full forms.
 
-          2. test_task_start (line 99-100): Task start requires orchestration_*.mmd
-             (EN-006 fence). Create a dummy orchestration_test.mmd file in the
-             test fixture's plan folder so the command reaches the actual task
-             start logic.
+      For test_task_start and test_task_not_found: Once the MMD file exists, cmd_task_start
+      will proceed past the orchestration gate and reach the actual task logic. Check
+      that _update_task_status properly handles the plan_test.yml fixture data format.
 
-          3. test_task_not_found (line 122-123): Same issue — needs MMD file so
-             the error message becomes "not found" instead of "no orchestration_*.mmd".
-             After adding MMD in fixture, this test should work. Also update assertion
-             to handle the case where the error message might say "Task 99 not found"
-             or similar.
-        status: pending
-        guidance: >
-          Read conftest.py temp_repo fixture (creates 260103AE_test plan folder).
-          Add an orchestration_test.mmd file with minimal content to that fixture.
-
-          For test_list_plans: The Rich table output truncates to column width.
-          Use `"260103A" in stdout` which matches both truncated and full forms.
-
-          For test_task_start and test_task_not_found: Once the MMD file exists,
-          cmd_task_start will proceed past the orchestration gate and reach the
-          actual task logic. Check that _update_task_status properly handles the
-          plan_test.yml fixture data format.
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/conftest.py
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/conftest.py
-        success_criteria:
-          - All 3 test_plan.py failures now pass
-          - Existing passing tests in test_plan.py continue to pass
-
-      - task_id: P1_02
-        name: "Fix test_agent_help.py - agent count assertions"
-        description: >
-          Fix 2 failures in test_agent_help.py:
-
-          1. test_all_26_agents_registered (line 69): KNOWN_AGENTS has 24 agents.
-             Change assertion from `== 26` to `== 24`.
-
-          2. test_orchestration_agents_count (line 419): Source has 3 orchestration
-             agents (executor, friction, planning). Change assertion from `== 5`
-             to `== 3`.
-        status: pending
-        guidance: >
-          Simple numeric assertion updates. Verify by reading agent_help.py
-          KNOWN_AGENTS list to confirm actual counts:
-          - Planners: 7, Test: 7, Orchestration: 3, Teacher: 3, Build: 2, Deploy: 2
-          - Total: 24
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_agent_help.py
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/agent_help.py
-        success_criteria:
-          - Both agent count tests pass
-          - All other test_agent_help.py tests continue to pass
-
-      - task_id: P1_03
-        name: "Fix test_cli.py - help alias format assertion"
-        description: >
-          Fix 1 failure in test_cli.py:
-
-          test_help_shows_aliases (line 142-148): Test expects "(wt)", "(cfg)" etc.
-          in help output. Typer uses hidden commands — aliases don't appear in main
-          help text with parenthetical notation.
-
-          Recommended fix: Remove the parenthetical alias checks (lines 142-146)
-          since aliases are already tested in TestCommandAliases (which passes).
-          Keep the -j/--json assertion which matches Typer format.
-        status: pending
-        guidance: >
-          The test already has TestCommandAliases class that verifies aliases work.
-          The "(wt)" format was argparse epilog text that Typer doesn't produce.
-          Remove or update lines 142-146 to check for actual help content.
-          Keep line 148 (`"-j, --json" in result.stdout`) which matches Typer format.
-
-          Alternative: Check that primary command names (worktree, config, template,
-          stories, manifest) appear in help output instead of alias parentheticals.
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
-        success_criteria:
-          - test_help_shows_aliases passes
-          - All other test_cli.py tests continue to pass
-
-      - task_id: P1_04
-        name: "Fix test_entry.py - -h flag handling"
-        description: >
-          Fix 1 failure in test_entry.py:
-
-          test_main_h_flag (line 62-69): entry.py only translates -h to --help
-          when AGENTIC_USE_TYPER=1 (line 64). Without that env var, -h falls
-          through to the default backend which treats -h as unrecognized (exit 2).
-
-          Fix: Move the -h → --help translation to before the backend routing check
-          so it works regardless of which backend is active.
-        status: pending
-        guidance: >
-          In entry.py main(), move the -h translation to right after the --version
-          handling and agent name detection, but BEFORE the _use_typer() check.
-          Currently lines 63-65 are inside `if _use_typer():` block. Move to:
-
-          ```python
-          # Handle -h alias for --help (works for both backends)
-          if len(sys.argv) >= 2 and sys.argv[1] == "-h":
-              sys.argv[1] = "--help"
-          ```
-
-          Place this after the agent name block (line 59) and before line 62.
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/entry.py
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/entry.py
-        success_criteria:
-          - test_main_h_flag passes with exit code 0
-          - --help and -h both show help and exit 0
-          - No regressions in other entry.py tests
-
-      - task_id: P1_05
-        name: "Fix test_workflow_sequences.py - scaffold structure expectations"
-        description: >
-          Fix 2 failures in test_workflow_sequences.py:
-
-          1. test_plan_scaffold_status_workflow (line 112): Test expects
-             `(plan_path / "live").exists()` and `(plan_path / "completed").exists()`.
-             But create_planning_folder uses flattened structure — plan_*.yml files
-             go directly in plan_path, no live/ or completed/ subdirs.
-             Fix: Remove assertions checking for live/ and completed/ subdirectories.
-             Instead check that plan_*.yml files exist directly in plan_path.
-
-          2. test_plan_with_json_output (line 152): Writes file to
-             `plan_path / "live" / "plan_test.yml"` but the flattened structure
-             doesn't have a live/ subdir. Fix: Write to `plan_path / "plan_test.yml"`.
-             Also update line 134 from `plan_path / "live"` to `plan_path`.
-        status: pending
-        guidance: >
-          For test_plan_scaffold_status_workflow:
-          - Remove lines 112-113 (live/ and completed/ assertions)
-          - Replace with: `assert list(plan_path.glob("plan_*.yml"))` to verify
-            flattened plan files exist
-          - Remove lines 115-116 (checking live/ for yml files)
-
-          For test_plan_with_json_output:
-          - Change line 134 from `plan_path / "live"` to just `plan_path`
-          - Change line 152 from writing to `plan_path / "live" / "plan_test.yml"`
-            to writing to `plan_path / "plan_test.yml"`
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_workflow_sequences.py
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/worktree.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
-        success_criteria:
-          - Both workflow sequence test failures now pass
-          - All other workflow sequence tests continue to pass
-
-  - phase_id: P2
-    name: "Add Typer Input Validation Constraints"
-    description: >
-      Add validation callbacks to Typer --status and --priority parameters
-      so invalid values are rejected at the CLI layer (matching argparse behavior).
+      '
+    success_criteria:
+    - All 3 test_plan.py failures now pass
+    - Existing passing tests in test_plan.py continue to pass
+  - id: P1_02
+    name: Fix test_agent_help.py - agent count assertions
+    description: "Fix 2 failures in test_agent_help.py:\n1. test_all_26_agents_registered\
+      \ (line 69): KNOWN_AGENTS has 24 agents.\n   Change assertion from `== 26` to\
+      \ `== 24`.\n\n2. test_orchestration_agents_count (line 419): Source has 3 orchestration\n\
+      \   agents (executor, friction, planning). Change assertion from `== 5`\n  \
+      \ to `== 3`.\n"
     status: pending
-    dependencies:
-      - P1
-    tasks:
-      - task_id: P2_01
-        name: "Add validation callbacks for --status and --priority in cli.py"
-        description: >
-          Fix 2 failures in test_cli_task.py:
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_agent_help.py
+    guidance: 'Simple numeric assertion updates. Verify by reading agent_help.py KNOWN_AGENTS
+      list to confirm actual counts: - Planners: 7, Test: 7, Orchestration: 3, Teacher:
+      3, Build: 2, Deploy: 2 - Total: 24
 
-          1. test_list_status_rejects_invalid: Typer --status is a plain str — Typer
-             accepts any string. Add a Typer callback to validate against
-             ["all", "pending", "in_progress", "completed"].
+      '
+    success_criteria:
+    - Both agent count tests pass
+    - All other test_agent_help.py tests continue to pass
+  - id: P1_03
+    name: Fix test_cli.py - help alias format assertion
+    description: 'Fix 1 failure in test_cli.py:
 
-          2. test_add_priority_rejects_invalid: Same for --priority with
-             valid values ["low", "medium", "high"].
+      test_help_shows_aliases (line 142-148): Test expects "(wt)", "(cfg)" etc. in
+      help output. Typer uses hidden commands — aliases don''t appear in main help
+      text with parenthetical notation.
 
-          Add validation callbacks in cli.py near the plan task command definitions.
-          Also update the test assertions: Typer error messages use "Invalid value"
-          not "invalid choice". Update tests to check for a more generic error pattern
-          like `code != 0` (already checked) and remove the specific message check
-          or broaden it.
-        status: pending
-        guidance: >
-          In cli.py, add validation callbacks near the plan_task_list and plan_task_add
-          definitions (around line 1438):
+      Recommended fix: Remove the parenthetical alias checks (lines 142-146) since
+      aliases are already tested in TestCommandAliases (which passes). Keep the -j/--json
+      assertion which matches Typer format.
 
-          ```python
-          def _validate_status(value: str) -> str:
-              valid = ["all", "pending", "in_progress", "completed"]
-              if value not in valid:
-                  raise typer.BadParameter(
-                      f"Invalid choice: '{value}'. Choose from: {', '.join(valid)}")
-              return value
-
-          def _validate_priority(value: str) -> str:
-              valid = ["low", "medium", "high"]
-              if value not in valid:
-                  raise typer.BadParameter(
-                      f"Invalid choice: '{value}'. Choose from: {', '.join(valid)}")
-              return value
-          ```
-
-          Apply as callback= on the Typer.Option() for the respective parameters.
-
-          In test_cli_task.py, update assertions:
-          - test_list_status_rejects_invalid: Change `"invalid choice" in stderr.lower()`
-            to `"invalid" in stderr.lower()` to match both formats
-          - test_add_priority_rejects_invalid: Same change
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_task.py
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_task.py
-        success_criteria:
-          - test_list_status_rejects_invalid exits non-zero for invalid status
-          - test_add_priority_rejects_invalid exits non-zero for invalid priority
-          - Valid values still accepted (existing passing tests remain green)
-
-  - phase_id: P3
-    name: "Test Verification"
-    description: >
-      Run all affected test files to confirm zero failures and no regressions.
-      Includes test-fix loop if any failures remain.
+      '
     status: pending
-    dependencies:
-      - P2
-    loop:
-      type: test-fix-loop
-      max_iterations: 3
-      exit_condition: "0 failures across all test files"
-    tasks:
-      - task_id: P3_01
-        name: "Run all 6 affected test files"
-        description: >
-          Execute pytest on all 6 test files and verify 0 failures:
-          ```
-          cd /home/code/AgenticEngineering/modules/AgenticCLI && python3 -m pytest \
-            tests/test_plan.py \
-            tests/test_cli_task.py \
-            tests/test_agent_help.py \
-            tests/test_cli.py \
-            tests/test_entry.py \
-            tests/integration/test_workflow_sequences.py \
-            -v --tb=short
-          ```
-        status: pending
-        guidance: >
-          Run the test command above. If any failures remain, identify the failure,
-          fix it, and re-run. This is a test-fix loop with max 3 iterations.
-        target_files: []
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_task.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_agent_help.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_entry.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_workflow_sequences.py
-        success_criteria:
-          - 0 failures across all 6 test files
-          - All 116 tests pass (105 previously passing + 11 fixed)
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
+    guidance: 'The test already has TestCommandAliases class that verifies aliases
+      work. The "(wt)" format was argparse epilog text that Typer doesn''t produce.
+      Remove or update lines 142-146 to check for actual help content. Keep line 148
+      (`"-j, --json" in result.stdout`) which matches Typer format.
 
-      - task_id: P3_02
-        name: "Run full AgenticCLI test suite for regression check"
-        description: >
-          Run the complete test suite to check for regressions:
-          ```
-          cd /home/code/AgenticEngineering/modules/AgenticCLI && python3 -m pytest tests/ -v --tb=short
-          ```
-        status: pending
-        guidance: >
-          If any previously passing tests regress, investigate whether the changes
-          in P1/P2 caused the regression and fix. The validation callbacks in P2
-          are the most likely source of regressions — ensure they only affect
-          invalid inputs.
-        target_files: []
-        inputs: []
-        success_criteria:
-          - No regressions from baseline
-          - Full test suite passes
+      Alternative: Check that primary command names (worktree, config, template, stories,
+      manifest) appear in help output instead of alias parentheticals.
 
-  - phase_id: P4_UAT
-    name: "User Acceptance Testing"
-    description: >
-      Validate that the CLI behaves correctly for end users after test fixes.
-      Anchored to affected user stories.
+      '
+    success_criteria:
+    - test_help_shows_aliases passes
+    - All other test_cli.py tests continue to pass
+  - id: P1_04
+    name: Fix test_entry.py - -h flag handling
+    description: 'Fix 1 failure in test_entry.py:
+
+      test_main_h_flag (line 62-69): entry.py only translates -h to --help when AGENTIC_USE_TYPER=1
+      (line 64). Without that env var, -h falls through to the default backend which
+      treats -h as unrecognized (exit 2).
+
+      Fix: Move the -h → --help translation to before the backend routing check so
+      it works regardless of which backend is active.
+
+      '
     status: pending
-    dependencies:
-      - P3
-    strategy: test-user-simulator
-    user_stories:
-      - id: US-CLI-011
-        criteria: "agentic plan scaffold creates flattened structure with plan_*.yml files"
-      - id: US-CLI-013
-        criteria: "agentic plan list shows plan names in repository"
-      - id: US-CLI-022
-        criteria: "agentic plan task start/complete work with orchestrated plans"
-      - id: US-CLI-020
-        criteria: "agentic plan task list --status rejects invalid status values"
-      - id: US-CLI-023
-        criteria: "agentic plan task add --priority rejects invalid priority values"
-    tasks:
-      - task_id: P4_01
-        name: "UAT: CLI plan commands user journey"
-        description: >
-          Simulate user journey through plan commands:
-          1. `agentic plan scaffold test-uat` - creates flattened folder
-          2. `agentic plan list` - shows the new plan
-          3. `agentic plan status` - shows plan status
-          4. `agentic plan task list --status invalid_value` - rejects with error
-          5. `agentic plan task add "Test" --priority critical` - rejects with error
-          6. `agentic --help` - shows commands (aliases are hidden but functional)
-          7. `agentic -h` - equivalent to --help (exit 0)
-        status: pending
-        guidance: >
-          Use test-user-simulator agent. The simulator should execute each step
-          and verify the expected behavior from the user story acceptance criteria.
-          Focus on error messages being clear and helpful.
-        target_files: []
-        inputs:
-          - /home/code/AgenticEngineering/docs/userstories/AgenticCLI/02_plan_management.yml
-        success_criteria:
-          - All user story acceptance criteria validated
-          - Error messages are clear and actionable
-          - No crashes or unexpected behavior
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/entry.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/entry.py
+    guidance: "In entry.py main(), move the -h translation to right after the --version\
+      \ handling and agent name detection, but BEFORE the _use_typer() check. Currently\
+      \ lines 63-65 are inside `if _use_typer():` block. Move to:\n```python # Handle\
+      \ -h alias for --help (works for both backends) if len(sys.argv) >= 2 and sys.argv[1]\
+      \ == \"-h\":\n    sys.argv[1] = \"--help\"\n```\nPlace this after the agent\
+      \ name block (line 59) and before line 62.\n"
+    success_criteria:
+    - test_main_h_flag passes with exit code 0
+    - --help and -h both show help and exit 0
+    - No regressions in other entry.py tests
+  - id: P1_05
+    name: Fix test_workflow_sequences.py - scaffold structure expectations
+    description: "Fix 2 failures in test_workflow_sequences.py:\n1. test_plan_scaffold_status_workflow\
+      \ (line 112): Test expects\n   `(plan_path / \"live\").exists()` and `(plan_path\
+      \ / \"completed\").exists()`.\n   But create_planning_folder uses flattened\
+      \ structure — plan_*.yml files\n   go directly in plan_path, no live/ or completed/\
+      \ subdirs.\n   Fix: Remove assertions checking for live/ and completed/ subdirectories.\n\
+      \   Instead check that plan_*.yml files exist directly in plan_path.\n\n2. test_plan_with_json_output\
+      \ (line 152): Writes file to\n   `plan_path / \"live\" / \"plan_test.yml\"`\
+      \ but the flattened structure\n   doesn't have a live/ subdir. Fix: Write to\
+      \ `plan_path / \"plan_test.yml\"`.\n   Also update line 134 from `plan_path\
+      \ / \"live\"` to `plan_path`.\n"
+    status: pending
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_workflow_sequences.py
+    guidance: "For test_plan_scaffold_status_workflow: - Remove lines 112-113 (live/\
+      \ and completed/ assertions) - Replace with: `assert list(plan_path.glob(\"\
+      plan_*.yml\"))` to verify\n  flattened plan files exist\n- Remove lines 115-116\
+      \ (checking live/ for yml files)\nFor test_plan_with_json_output: - Change line\
+      \ 134 from `plan_path / \"live\"` to just `plan_path` - Change line 152 from\
+      \ writing to `plan_path / \"live\" / \"plan_test.yml\"`\n  to writing to `plan_path\
+      \ / \"plan_test.yml\"`\n"
+    success_criteria:
+    - Both workflow sequence test failures now pass
+    - All other workflow sequence tests continue to pass
+- name: Add Typer Input Validation Constraints
+  description: 'Add validation callbacks to Typer --status and --priority parameters
+    so invalid values are rejected at the CLI layer (matching argparse behavior).
 
-success_criteria:
-  - All 11 previously failing tests pass
-  - No regressions in the full AgenticCLI test suite
-  - CLI behavior matches user story acceptance criteria
-  - Input validation works for --status and --priority parameters
+    '
+  tickets:
+  - id: P2_01
+    name: Add validation callbacks for --status and --priority in cli.py
+    description: "Fix 2 failures in test_cli_task.py:\n1. test_list_status_rejects_invalid:\
+      \ Typer --status is a plain str — Typer\n   accepts any string. Add a Typer\
+      \ callback to validate against\n   [\"all\", \"pending\", \"in_progress\", \"\
+      completed\"].\n\n2. test_add_priority_rejects_invalid: Same for --priority with\n\
+      \   valid values [\"low\", \"medium\", \"high\"].\n\nAdd validation callbacks\
+      \ in cli.py near the plan task command definitions. Also update the test assertions:\
+      \ Typer error messages use \"Invalid value\" not \"invalid choice\". Update\
+      \ tests to check for a more generic error pattern like `code != 0` (already\
+      \ checked) and remove the specific message check or broaden it.\n"
+    status: pending
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_task.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_task.py
+    guidance: "In cli.py, add validation callbacks near the plan_task_list and plan_task_add\
+      \ definitions (around line 1438):\n```python def _validate_status(value: str)\
+      \ -> str:\n    valid = [\"all\", \"pending\", \"in_progress\", \"completed\"\
+      ]\n    if value not in valid:\n        raise typer.BadParameter(\n         \
+      \   f\"Invalid choice: '{value}'. Choose from: {', '.join(valid)}\")\n    return\
+      \ value\n\ndef _validate_priority(value: str) -> str:\n    valid = [\"low\"\
+      , \"medium\", \"high\"]\n    if value not in valid:\n        raise typer.BadParameter(\n\
+      \            f\"Invalid choice: '{value}'. Choose from: {', '.join(valid)}\"\
+      )\n    return value\n```\nApply as callback= on the Typer.Option() for the respective\
+      \ parameters.\nIn test_cli_task.py, update assertions: - test_list_status_rejects_invalid:\
+      \ Change `\"invalid choice\" in stderr.lower()`\n  to `\"invalid\" in stderr.lower()`\
+      \ to match both formats\n- test_add_priority_rejects_invalid: Same change\n"
+    success_criteria:
+    - test_list_status_rejects_invalid exits non-zero for invalid status
+    - test_add_priority_rejects_invalid exits non-zero for invalid priority
+    - Valid values still accepted (existing passing tests remain green)
+- name: Test Verification
+  description: 'Run all affected test files to confirm zero failures and no regressions.
+    Includes test-fix loop if any failures remain.
 
-impacted_artifacts:
-  test_files:
-    - modules/AgenticCLI/tests/test_plan.py
-    - modules/AgenticCLI/tests/test_cli_task.py
-    - modules/AgenticCLI/tests/test_agent_help.py
-    - modules/AgenticCLI/tests/test_cli.py
-    - modules/AgenticCLI/tests/test_entry.py
-    - modules/AgenticCLI/tests/integration/test_workflow_sequences.py
-  source_files:
-    - modules/AgenticCLI/src/agenticcli/cli.py
-    - modules/AgenticCLI/src/agenticcli/entry.py
-  fixture_files:
-    - modules/AgenticCLI/tests/conftest.py
+    '
+  tickets:
+  - id: P3_01
+    name: Run all 6 affected test files
+    description: "Execute pytest on all 6 test files and verify 0 failures: ``` cd\
+      \ /home/code/AgenticEngineering/modules/AgenticCLI && python3 -m pytest \\\n\
+      \  tests/test_plan.py \\\n  tests/test_cli_task.py \\\n  tests/test_agent_help.py\
+      \ \\\n  tests/test_cli.py \\\n  tests/test_entry.py \\\n  tests/integration/test_workflow_sequences.py\
+      \ \\\n  -v --tb=short\n```\n"
+    status: pending
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_task.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_agent_help.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_entry.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_workflow_sequences.py
+    guidance: 'Run the test command above. If any failures remain, identify the failure,
+      fix it, and re-run. This is a test-fix loop with max 3 iterations.
 
-open_questions: []
+      '
+    success_criteria:
+    - 0 failures across all 6 test files
+    - All 116 tests pass (105 previously passing + 11 fixed)
+  - id: P3_02
+    name: Run full AgenticCLI test suite for regression check
+    description: 'Run the complete test suite to check for regressions: ``` cd /home/code/AgenticEngineering/modules/AgenticCLI
+      && python3 -m pytest tests/ -v --tb=short ```
+
+      '
+    status: pending
+    agent: null
+    guidance: 'If any previously passing tests regress, investigate whether the changes
+      in P1/P2 caused the regression and fix. The validation callbacks in P2 are the
+      most likely source of regressions — ensure they only affect invalid inputs.
+
+      '
+    success_criteria:
+    - No regressions from baseline
+    - Full test suite passes
+- name: User Acceptance Testing
+  description: 'Validate that the CLI behaves correctly for end users after test fixes.
+    Anchored to affected user stories.
+
+    '
+  tickets:
+  - id: P4_01
+    name: 'UAT: CLI plan commands user journey'
+    description: 'Simulate user journey through plan commands: 1. `agentic plan scaffold
+      test-uat` - creates flattened folder 2. `agentic plan list` - shows the new
+      plan 3. `agentic plan status` - shows plan status 4. `agentic plan task list
+      --status invalid_value` - rejects with error 5. `agentic plan task add "Test"
+      --priority critical` - rejects with error 6. `agentic --help` - shows commands
+      (aliases are hidden but functional) 7. `agentic -h` - equivalent to --help (exit
+      0)
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/docs/userstories/AgenticCLI/02_plan_management.yml
+    guidance: 'Use test-user-simulator agent. The simulator should execute each step
+      and verify the expected behavior from the user story acceptance criteria. Focus
+      on error messages being clear and helpful.
+
+      '
+    success_criteria:
+    - All user story acceptance criteria validated
+    - Error messages are clear and actionable
+    - No crashes or unexpected behavior
+context: "The CLI migrated from argparse to Typer (cli.py). Most tests were updated\
+  \ in prior plans (260211AE series). These 11 failures are the final residual issues:\n\
+  1. test_plan.py (3 failures):\n   - test_list_plans: Rich table truncates \"260103AE_test\"\
+  \ to \"260103A…\" — assertion\n     must use substring or check table contains truncated\
+  \ form\n   - test_task_start: Task start requires orchestration_*.mmd (EN-006 fence)\
+  \ but\n     test fixture has no MMD file — need to create one in fixture\n   - test_task_not_found:\
+  \ Error message is now \"Cannot start task - plan has no\n     orchestration_*.mmd\"\
+  \ not \"not found\" — either fix assertion or add MMD file\n     so the code reaches\
+  \ the \"not found\" path\n\n2. test_cli_task.py (2 failures):\n   - test_list_status_rejects_invalid:\
+  \ Typer --status is a plain str, not choices=\n     enum — Typer accepts any string.\
+  \ Fix: add validation callback in cli.py\n   - test_add_priority_rejects_invalid:\
+  \ Same for --priority\n\n3. test_agent_help.py (2 failures):\n   - test_all_26_agents_registered:\
+  \ KNOWN_AGENTS has 24 agents, test expects 26.\n     Fix: update test to expect\
+  \ 24\n   - test_orchestration_agents_count: Source has 3 orchestration agents, test\
+  \ expects 5.\n     Fix: update test to expect 3\n\n4. test_cli.py (1 failure):\n\
+  \   - test_help_shows_aliases: Test expects \"(wt)\", \"(cfg)\" etc. in help output,\n\
+  \     but Typer uses hidden commands for aliases — they don't show in help text.\n\
+  \     Fix: update test to check actual Typer help content\n\n5. test_entry.py (1\
+  \ failure):\n   - test_main_h_flag: entry.py only translates -h→--help when AGENTIC_USE_TYPER=1.\n\
+  \     Test calls main() without env var, so -h falls through and exits with code\
+  \ 2.\n     Fix: move -h translation before the backend routing check\n\n6. test_workflow_sequences.py\
+  \ (2 failures):\n   - test_plan_scaffold_status_workflow: Expects live/ and completed/\
+  \ subdirs inside\n     scaffold folder, but create_planning_folder uses flattened\
+  \ structure (plan_*.yml\n     directly in folder). Fix: update test assertions to\
+  \ match flattened structure\n   - test_plan_with_json_output: Creates file at plan_path/live/plan_test.yml\
+  \ but\n     flattened structure puts files directly in plan_path. Fix: write to\
+  \ plan_path/\n"

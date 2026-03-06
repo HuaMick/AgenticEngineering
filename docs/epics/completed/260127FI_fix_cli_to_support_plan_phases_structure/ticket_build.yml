@@ -1,0 +1,137 @@
+name: fix-cli-plan-phases-structure
+worktree_path: ''
+branch: ''
+status: completed
+priority: high
+objective: ''
+created: '2026-01-27'
+phases:
+- name: Build - Fix Phase Lookup in All Functions
+  description: 'Update all task-related functions to check both root-level and nested
+    phases.
+
+    '
+  tickets:
+  - id: CL-001
+    name: Fix cmd_task_list phase lookup
+    description: 'Update cmd_task_list() to check both structures:
+
+      ```python
+
+      phases = content.get("phases", []) or content.get("plan", {}).get("phases",
+      [])
+
+      ```
+
+      Also fix phase_id lookup to check both field names:
+
+      ```python
+
+      phase_id = phase.get("phase_id", "") or phase.get("id", "")
+
+      ```
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+  - id: CL-002
+    name: Fix cmd_task_status phase lookup
+    description: 'Update cmd_task_status() to check both structures and field names.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+  - id: CL-003
+    name: Fix cmd_task_current phase lookup
+    description: 'Update cmd_task_current() to check both structures and field names.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+  - id: CL-004
+    name: Fix cmd_task_update phase lookup
+    description: 'Update cmd_task_update() to check both structures and field names.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+  - id: CL-005
+    name: Extract helper function for phase lookup
+    description: "Create a reusable helper to reduce code duplication:\n```python\n\
+      def _get_phases_from_content(content: dict) -> list:\n    '''Get phases from\
+      \ either root or nested under plan.'''\n    return content.get(\"phases\", [])\
+      \ or content.get(\"plan\", {}).get(\"phases\", [])\n```\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+- name: Test - Validate Both Structures
+  description: 'Add tests for both plan structures and verify existing tests pass.
+
+    '
+  tickets:
+  - id: CL-006
+    name: Add tests for plan.phases structure
+    description: 'Add test cases to test_plan_nested_tasks.py for:
+
+      - Plan with phases under plan.phases (not root)
+
+      - Plan using id instead of phase_id
+
+      - Both structures in same test suite
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+  - id: CL-007
+    name: Run full test suite
+    description: 'Run pytest to verify no regressions.
+
+      '
+    status: completed
+    agent: null
+- name: Blind Test - Validate with Real Plans
+  description: 'Test against the actual plan files that were failing.
+
+    '
+  tickets:
+  - id: CL-008
+    name: Test against 260127DO plan
+    description: 'Run CLI commands against the guidance plan that uses plan.phases:
+
+      ```bash
+
+      agentic plan task list --plan docs/plans/live/260127DO_cli_agent_responsibilities
+
+      ```
+
+      Expected: Should list all 7 tasks (AG_001 through AG_007)
+
+      '
+    status: completed
+    agent: null
+  - id: CL-009
+    name: Test against 260127CO plan
+    description: 'Verify the CLI plan still works (uses root-level phases):
+
+      ```bash
+
+      agentic plan task list --plan docs/plans/live/260127CO_entrypoint_compile
+
+      ```
+
+      Expected: Should still list all 10 tasks
+
+      '
+    status: completed
+    agent: null

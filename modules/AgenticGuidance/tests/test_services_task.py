@@ -27,7 +27,7 @@ def sample_epic_path(tmp_path):
         "phases": [
             {
                 "name": "Phase 1",
-                "tasks": [
+                "tickets": [
                     {
                         "id": "task_001",
                         "name": "First task",
@@ -183,7 +183,7 @@ class TestTicketRetrieval:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "task_001",
                             "name": "Pending task",
@@ -236,7 +236,7 @@ class TestTicketRetrieval:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "task_001",
                             "name": "Completed task",
@@ -399,7 +399,7 @@ class TestEdgeCases:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "minimal_001",
                             "name": "Minimal task",
@@ -493,7 +493,7 @@ class TestEdgeCases:
             "phases": [
                 {
                     "name": "Phase 1",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "task_001",
                             "name": "Task with invalid status",
@@ -685,7 +685,7 @@ class TestIntegrationRealEpic:
             # Find the ticket in the YAML
             found = False
             for phase in epic_data.get("phases", []):
-                for ticket_data in phase.get("tasks", []):
+                for ticket_data in phase.get("tickets", []):
                     if ticket_data.get("id") == test_ticket_id:
                         assert ticket_data.get("status") == "in_progress"
                         found = True

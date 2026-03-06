@@ -25,7 +25,7 @@ def nested_task_plan():
                 "phase_id": "P1",
                 "name": "Phase 1 - Build",
                 "status": "pending",
-                "tasks": [
+                "tickets": [
                     {
                         "id": "TST-001",
                         "name": "First task",
@@ -45,7 +45,7 @@ def nested_task_plan():
                 "phase_id": "P2",
                 "name": "Phase 2 - Test",
                 "status": "pending",
-                "tasks": [
+                "tickets": [
                     {
                         "id": "TST-003",
                         "name": "Third task",
@@ -79,7 +79,7 @@ def nested_task_plan_with_task_id():
                 "phase_id": "P1",
                 "name": "Phase 1",
                 "status": "pending",
-                "tasks": [
+                "tickets": [
                     {
                         "task_id": "TID-001",
                         "name": "Task with task_id field",
@@ -116,7 +116,7 @@ class TestUpdateTaskStatus:
         # Verify YAML was updated
         plan_file = nested_task_plan / "plan_build.yml"
         data = yaml.safe_load(plan_file.read_text())
-        task = data["phases"][0]["tasks"][0]
+        task = data["phases"][0]["tickets"][0]
         assert task["status"] == "in_progress"
 
     def test_finds_task_in_second_phase(self, nested_task_plan, cli_runner):
@@ -129,7 +129,7 @@ class TestUpdateTaskStatus:
         # Verify YAML was updated
         plan_file = nested_task_plan / "plan_build.yml"
         data = yaml.safe_load(plan_file.read_text())
-        task = data["phases"][1]["tasks"][0]
+        task = data["phases"][1]["tickets"][0]
         assert task["status"] == "in_progress"
 
     def test_complete_updates_nested_task(self, nested_task_plan, cli_runner):
@@ -145,7 +145,7 @@ class TestUpdateTaskStatus:
         # Verify YAML was updated
         plan_file = nested_task_plan / "plan_build.yml"
         data = yaml.safe_load(plan_file.read_text())
-        task = data["phases"][0]["tasks"][1]
+        task = data["phases"][0]["tickets"][1]
         assert task["status"] == "completed"
 
     def test_supports_task_id_field_name(
@@ -167,7 +167,7 @@ class TestUpdateTaskStatus:
 
         plan_file = nested_task_plan_with_task_id / "plan_build.yml"
         data = yaml.safe_load(plan_file.read_text())
-        task = data["phases"][0]["tasks"][0]
+        task = data["phases"][0]["tickets"][0]
         assert task["status"] == "in_progress"
 
     def test_error_when_task_not_found(self, nested_task_plan, cli_runner):
@@ -286,7 +286,7 @@ class TestTaskCurrent:
         # Add guidance to the plan
         plan_file = nested_task_plan / "plan_build.yml"
         data = yaml.safe_load(plan_file.read_text())
-        data["phases"][0]["tasks"][0]["guidance"] = "Test guidance for task"
+        data["phases"][0]["tickets"][0]["guidance"] = "Test guidance for task"
         with open(plan_file, "w") as f:
             yaml.dump(data, f, default_flow_style=False)
 
@@ -360,7 +360,7 @@ class TestEdgeCases:
                     "phase_id": "P1",
                     "name": "Phase 1",
                     "status": "pending",
-                    "tasks": [
+                    "tickets": [
                         {
                             "id": "TEST-TASK_001-v2",
                             "name": "Task with special chars in ID",
@@ -388,4 +388,4 @@ class TestEdgeCases:
 
             # Verify update worked
             data = yaml.safe_load(plan_file.read_text())
-            assert data["phases"][0]["tasks"][0]["status"] == "in_progress"
+            assert data["phases"][0]["tickets"][0]["status"] == "in_progress"

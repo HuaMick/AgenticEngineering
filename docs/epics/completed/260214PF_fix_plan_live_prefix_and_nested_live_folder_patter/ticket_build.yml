@@ -1,0 +1,162 @@
+name: Fix plan_live_ Prefix and Nested live/ Folder Pattern
+worktree_path: /home/code/AgenticEngineering-260212TC_add_test_cleaner_agent
+branch: 260214PF_fix_plan_live_prefix_outdated_pattern
+status: active
+priority: critical
+objective: "THE PROBLEM:\nThe orchestration-planning agent just created plan folder\
+  \ 260214US_add_user_story_generation_phase_to_planner_agents\nwith an OUTDATED structure:\n\
+  \n1. Nested live/ subfolder containing plan files:\n   - live/plan_live_build.yml\n\
+  \   - live/plan_live_test.yml\n\n2. Correct files at root:\n   - plan_teach.yml\n\
+  \   - plan_test.yml\n   - plan_audit_clean.yml\n\nThe CORRECT pattern (enforced\
+  \ by CLI and used by all recent plans):\n- Plan files (plan_*.yml) directly in folder\
+  \ root\n- No \"live\" prefix in filenames\n- No nested live/, completed/, analysis/,\
+  \ or audit/ subdirectories\n\nROOT CAUSE ANALYSIS:\n1. orchestration-planning/process.mmd\
+  \ line 68 references \"plan_live_*.yml\"\n2. planner-test/process.yml line 18 has\
+  \ path_template with nested \"/live/\" folder\n3. planner-build/process.yml line\
+  \ 35 has path_template with nested \"/live/\" folder\n4. planner-guidance/process.yml\
+  \ lines 27,37 have path_template with nested \"/live/\" folder\n5. planner-cleaning/process.yml\
+  \ line 42 references nested structure\n\nIMPACT:\n- Inconsistent plan folder structures\n\
+  - CLI commands may not find files (CLI expects flat root structure)\n- Auto-archival\
+  \ may fail\n- Confusion for agents and users about where files live\n\nEVIDENCE:\n\
+  - plans.yml (canonical definition) specifies FLAT STRUCTURE (lines 33-51)\n- plans.yml\
+  \ has FENCE at line 200: \"Plan files MUST be in folder root, NOT subdirectories\"\
+  \n- All completed plans from 260214 batch use correct flat structure\n- agentic\
+  \ plan init creates correct flat structure (confirmed)\n\nLEGACY CONTAMINATION:\n\
+  The outdated pattern exists in:\n- modules/legacy/MyAgents/... (expected, legacy\
+  \ code)\n- modules/AgenticGuidance/agents/planner/... (WRONG, must be fixed)\n-\
+  \ modules/AgenticGuidance/agents/orchestration/... (WRONG, must be fixed)\n"
+created: ''
+phases:
+- name: Fix Guidance Files
+  tickets:
+  - id: build_01_01
+    name: ''
+    description: Update orchestration-planning/process.mmd to reference plan_*.yml
+      (not plan_live_*.yml)
+    status: completed
+    agent: null
+    success_criteria:
+    - Line 68 changed from 'plan_live_*.yml' to 'plan_*.yml'
+    - All other references to plan_live_ prefix removed
+    - No references to nested live/ folder in path examples
+  - id: build_01_02
+    name: ''
+    description: Fix planner-test/process.yml path_template to remove nested /live/
+      folder
+    status: completed
+    agent: null
+    success_criteria:
+    - 'Line 18 path_template: ''docs/plans/live/{planning_folder}/plan_test.yml''
+      (no /live/ nested)'
+    - All other references to live/plan_test.yml changed to plan_test.yml
+  - id: build_01_03
+    name: ''
+    description: Fix planner-build/process.yml path_template to remove nested /live/
+      folder and plan_live_ prefix
+    status: completed
+    agent: null
+    success_criteria:
+    - 'Line 35 path_template: ''docs/plans/live/{plan_folder_name}/plan_build.yml''
+      (no /live/ nested, no plan_live_ prefix)'
+    - All other references to live/plan_live_build.yml changed to plan_build.yml
+  - id: build_01_04
+    name: ''
+    description: Fix planner-guidance/process.yml path_templates to remove nested
+      /live/ folder and plan_live_ prefix
+    status: completed
+    agent: null
+    success_criteria:
+    - 'Line 27 path_template: ''docs/plans/live/{plan_folder_name}/plan_teach.yml''
+      (no /live/ nested, no plan_live_ prefix)'
+    - 'Line 37 path_template: ''docs/plans/live/{plan_folder_name}/plan_audit_clean.yml''
+      (no /live/ nested, no plan_live_ prefix)'
+    - All other references updated to match
+  - id: build_01_05
+    name: ''
+    description: Fix planner-cleaning/process.yml references to nested structure
+    status: completed
+    agent: null
+    success_criteria:
+    - Line 42 location updated to remove /live/ nested folder
+    - All other references to live/plan_* changed to plan_*
+  - id: build_01_06
+    name: ''
+    description: Fix planner-audit/process.yml references to plan_live_ pattern
+    status: completed
+    agent: null
+    success_criteria:
+    - All references to plan_live_*.yml changed to plan_*.yml
+    - No references to nested live/ folder in paths
+  - id: build_01_07
+    name: ''
+    description: Fix planner-guidance-testing/process.yml references to nested structure
+    status: completed
+    agent: null
+    success_criteria:
+    - All references to live/plan_live_* changed to plan_*
+    - Path templates updated to flat structure
+- name: Fix Affected Plan Folder
+  tickets:
+  - id: build_02_01
+    name: ''
+    description: Move plan files from nested live/ folder to root in 260214US plan
+    status: completed
+    agent: null
+    success_criteria:
+    - live/plan_live_build.yml moved to plan_build.yml at root
+    - live/plan_live_test.yml content merged with existing plan_test.yml at root (or
+      replaced if root is placeholder)
+    - Empty live/ directory removed
+    - All plan files (plan_*.yml) are at folder root
+  - id: build_02_02
+    name: ''
+    description: Update 260214US plan README.md to reflect correct structure
+    status: completed
+    agent: null
+    success_criteria:
+    - README reflects flat structure with plan_*.yml at root
+    - No references to nested live/ subfolder
+- name: Add Prevention Fence
+  tickets:
+  - id: build_03_01
+    name: ''
+    description: Add FENCE to plans.yml reminding agents to NEVER use nested live/
+      folders
+    status: completed
+    agent: null
+    success_criteria:
+    - New fence added near file_taxonomy section
+    - Fence explicitly prohibits nested live/, completed/, analysis/, audit/ folders
+      for plan files
+    - Fence references CLI as canonical source of truth for structure
+  - id: build_03_02
+    name: ''
+    description: Update planner-reviewer checklists to validate flat structure
+    status: completed
+    agent: null
+    success_criteria:
+    - 'Checklist item added: ''Plan files (plan_*.yml) are at folder root, NOT in
+      subdirectories'''
+    - 'Checklist item added: ''No plan_live_ prefix in filenames'''
+context: "THE PROBLEM:\nThe orchestration-planning agent just created plan folder\
+  \ 260214US_add_user_story_generation_phase_to_planner_agents\nwith an OUTDATED structure:\n\
+  \n1. Nested live/ subfolder containing plan files:\n   - live/plan_live_build.yml\n\
+  \   - live/plan_live_test.yml\n\n2. Correct files at root:\n   - plan_teach.yml\n\
+  \   - plan_test.yml\n   - plan_audit_clean.yml\n\nThe CORRECT pattern (enforced\
+  \ by CLI and used by all recent plans):\n- Plan files (plan_*.yml) directly in folder\
+  \ root\n- No \"live\" prefix in filenames\n- No nested live/, completed/, analysis/,\
+  \ or audit/ subdirectories\n\nROOT CAUSE ANALYSIS:\n1. orchestration-planning/process.mmd\
+  \ line 68 references \"plan_live_*.yml\"\n2. planner-test/process.yml line 18 has\
+  \ path_template with nested \"/live/\" folder\n3. planner-build/process.yml line\
+  \ 35 has path_template with nested \"/live/\" folder\n4. planner-guidance/process.yml\
+  \ lines 27,37 have path_template with nested \"/live/\" folder\n5. planner-cleaning/process.yml\
+  \ line 42 references nested structure\n\nIMPACT:\n- Inconsistent plan folder structures\n\
+  - CLI commands may not find files (CLI expects flat root structure)\n- Auto-archival\
+  \ may fail\n- Confusion for agents and users about where files live\n\nEVIDENCE:\n\
+  - plans.yml (canonical definition) specifies FLAT STRUCTURE (lines 33-51)\n- plans.yml\
+  \ has FENCE at line 200: \"Plan files MUST be in folder root, NOT subdirectories\"\
+  \n- All completed plans from 260214 batch use correct flat structure\n- agentic\
+  \ plan init creates correct flat structure (confirmed)\n\nLEGACY CONTAMINATION:\n\
+  The outdated pattern exists in:\n- modules/legacy/MyAgents/... (expected, legacy\
+  \ code)\n- modules/AgenticGuidance/agents/planner/... (WRONG, must be fixed)\n-\
+  \ modules/AgenticGuidance/agents/orchestration/... (WRONG, must be fixed)\n"

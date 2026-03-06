@@ -1,36 +1,22 @@
-plan_id: 260208QN
-plan_name: Question Auto-Notify on Creation
+name: 260208QN_question_auto_notify
+worktree_path: ''
+branch: ''
 status: approved
-created: '2026-02-08'
-updated: '2026-02-09'
+priority: medium
 objective: "Wire ntfy push notifications directly into the question creation flow\
   \ so that\nblocking/high-severity questions notify the user's phone immediately\
-  \ \u2014 without\nrequiring a manually started watcher daemon.\n\nCurrent state\
-  \ (partially implemented by 260208NB):\n- cmd_ask() already calls _send_ntfy_if_configured()\
+  \ — without\nrequiring a manually started watcher daemon.\n\nCurrent state (partially\
+  \ implemented by 260208NB):\n- cmd_ask() already calls _send_ntfy_if_configured()\
   \ and _ensure_reply_poller()\n- NtfyReplyPoller class exists in question_watcher.py\n\
   - Orchestration-executor guidance already tells agents to start watch-daemon\n\n\
   Remaining gaps (this plan):\n1. Severity filter: _send_ntfy_if_configured() sends\
   \ for ALL questions, but\n   only blocking/high should trigger phone notifications\
   \ (per Q3 resolution)\n2. cmd_ask() auto-notify should respect the severity filter\n\
   3. Tests for severity-gated notification behavior\n4. Verify orchestration-executor\
-  \ guidance is correct (already done \u2014 lines 474-476)\n"
-architecture_notes: "Decision log (pre-resolved open questions):\n- Q1: Add ntfy hook\
-  \ in cmd_ask() directly (CLI-level, in session.py question command)\n  \u2192 Already\
-  \ implemented in question.py cmd_ask() at lines 531-534\n- Q2: Update orchestration-executor\
-  \ guidance to auto-start watch-daemon\n  \u2192 Already implemented in process.yml\
-  \ guidelines at lines 474-476\n- Q3: Only blocking/high-severity questions trigger\
-  \ phone notifications\n  \u2192 NOT YET IMPLEMENTED \u2014 this is the primary build\
-  \ task\n- Q4: No circular dependency \u2014 keep ntfy in CLI module, simple hook\
-  \ call in cmd_ask\n  \u2192 Architecture already correct, no changes needed\n\n\
-  Hook location: agenticcli.commands.question._send_ntfy_if_configured()\nNotification\
-  \ client: agenticcli.utils.ntfy.notify_new_question()\nReply poller: agenticcli.services.question_watcher.NtfyReplyPoller\n"
-files_modified:
-- modules/AgenticCLI/src/agenticcli/commands/question.py
-- modules/AgenticCLI/tests/test_ntfy.py
-- modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py
+  \ guidance is correct (already done — lines 474-476)\n"
+created: '2026-02-08'
 phases:
-- id: P1
-  name: Add severity filter to auto-notify
+- name: Add severity filter to auto-notify
   description: 'Gate ntfy push notifications so only blocking and high severity questions
 
     trigger phone notifications. Low and medium severity questions are still
@@ -38,11 +24,9 @@ phases:
     created and visible in the CLI/tmux but do not push to the phone.
 
     '
-  tasks:
+  tickets:
   - id: P1-T1
     name: Add severity gate in _send_ntfy_if_configured()
-    status: completed
-    file: modules/AgenticCLI/src/agenticcli/commands/question.py
     description: "In _send_ntfy_if_configured(), add a severity check before calling\n\
       notify_new_question(). Only questions with severity in (\"blocking\", \"high\"\
       )\nshould proceed to notification. Others are silently skipped.\n\nCurrent code\
@@ -54,10 +38,12 @@ phases:
       \  q_severity = getattr(q, \"severity\", \"medium\").lower()\n  if q_severity\
       \ not in (\"blocking\", \"high\"):\n      logger.debug(\"Skipping ntfy for %s\
       \ (severity=%s)\", q_id, q_severity)\n      continue\n\nThis ensures:\n- blocking\
-      \ \u2192 phone notification (urgent priority)\n- high \u2192 phone notification\
-      \ (high priority)\n- medium \u2192 no phone notification\n- low \u2192 no phone\
-      \ notification\n- The dedup set still tracks seen IDs to prevent re-notification\
-      \ if\n  severity is later escalated\n"
+      \ → phone notification (urgent priority)\n- high → phone notification (high\
+      \ priority)\n- medium → no phone notification\n- low → no phone notification\n\
+      - The dedup set still tracks seen IDs to prevent re-notification if\n  severity\
+      \ is later escalated\n"
+    status: completed
+    agent: null
     success_criteria:
     - blocking severity questions trigger ntfy notification
     - high severity questions trigger ntfy notification
@@ -67,8 +53,6 @@ phases:
     - No change to existing cmd_ask() call site
   - id: P1-T2
     name: Move dedup tracking after severity gate
-    status: completed
-    file: modules/AgenticCLI/src/agenticcli/commands/question.py
     description: "Adjust the dedup tracking so that question IDs are only added to\n\
       _ntfy_seen_question_ids AFTER passing the severity gate. This way,\nif a question\
       \ is later escalated from medium to high, it can still\nbe notified.\n\nRevised\
@@ -79,21 +63,20 @@ phases:
       \ not in (\"blocking\", \"high\"):\n          logger.debug(\"Skipping ntfy for\
       \ %s (severity=%s)\", q_id, q_severity)\n          continue\n\n      _ntfy_seen_question_ids.add(q_id)\n\
       \      success = notify_new_question(topic, q, server)\n"
+    status: completed
+    agent: null
     success_criteria:
     - IDs only added to dedup set when notification is actually sent
     - Medium/low questions not tracked in dedup (allows future escalation)
-- id: P2
-  name: Add tests for severity-gated notifications
+- name: Add tests for severity-gated notifications
   description: 'Add unit tests verifying the severity filter behavior and update
 
     existing tests that may assume all severities trigger notifications.
 
     '
-  tasks:
+  tickets:
   - id: P2-T1
     name: Add severity filter unit tests
-    status: completed
-    file: modules/AgenticCLI/tests/test_ntfy.py
     description: "Add a TestSeverityFilter test class (or add to existing test class)\n\
       with tests for _send_ntfy_if_configured() severity gating:\n\n1. test_blocking_severity_sends_notification:\n\
       \   Create a mock question with severity=\"blocking\", call\n   _send_ntfy_if_configured(),\
@@ -106,14 +89,14 @@ phases:
       \   Then send a blocking question, verify its ID IS in the set.\n\nUse monkeypatch\
       \ to mock _get_ntfy_config() to return a valid config,\nand mock notify_new_question\
       \ to track calls.\n"
+    status: completed
+    agent: null
     success_criteria:
     - All four severity levels tested
     - Dedup behavior tested for filtered vs notified questions
     - Tests mock at correct level (no real HTTP calls)
   - id: P2-T2
     name: Update E2E test for severity-aware auto-notify
-    status: completed
-    file: modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py
     description: "The existing test_e2e_ask_notify_answer_flow() creates a question\n\
       with severity=\"high\" and asserts auto-notify was called. This test\nshould\
       \ still pass after the severity gate (high triggers notification).\n\nAdd one\
@@ -122,15 +105,16 @@ phases:
       \ (auto-notify skipped for medium).\n  Verify the question is still created\
       \ in pending/ (creation unaffected).\n\nAlso verify test_e2e_flow_with_ntfy_network_error\
       \ still passes\n(it uses severity=\"low\", so the auto-notify in cmd_ask should\
-      \ be\nskipped entirely \u2014 the test creates the question first, then manually\n\
+      \ be\nskipped entirely — the test creates the question first, then manually\n\
       calls notify_new_question which bypasses the filter).\n"
+    status: completed
+    agent: null
     success_criteria:
     - Existing high-severity E2E test still passes
     - New medium-severity test verifies no auto-notification
     - Question creation still works regardless of severity
     - No regressions in other E2E tests
-- id: P3
-  name: Verify orchestration-executor guidance
+- name: Verify orchestration-executor guidance
   description: 'Verify that the orchestration-executor process.yml already contains
 
     the question-watching guidelines. This is a verification-only phase
@@ -138,11 +122,9 @@ phases:
     with no code changes expected.
 
     '
-  tasks:
+  tickets:
   - id: P3-T1
     name: Verify question watch-daemon guidance in orchestration-executor
-    status: completed
-    file: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
     description: "Confirm that the orchestration-executor process.yml guidelines section\n\
       contains instructions for starting question watch-daemon before phase\nexecution\
       \ and stopping it after shutdown.\n\nExpected guidelines (already present at\
@@ -153,6 +135,8 @@ phases:
       \ the watcher:\n   `agentic question watch-stop`\"\n\nIf present: mark task\
       \ complete, no changes needed.\nIf missing: add the three guideline lines to\
       \ the guidelines section.\n"
+    status: completed
+    agent: null
     success_criteria:
     - Guidance for auto-starting watch-daemon is present
     - Guidance for stopping watcher on shutdown is present

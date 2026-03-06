@@ -1,9 +1,12 @@
-name: Build Phase - Add Tmux Layout Verification and Dry-Run Support
+name: UAT Phase - Real Tmux GUI Validation
+worktree_path: ''
+branch: ''
 status: pending
-type: build
+priority: medium
+objective: ''
+created: ''
 phases:
 - name: Add dry-run mode and fix in-place layout
-  status: pending
   description: "The command-too-long bug is ALREADY FIXED (orchestrate.py already\
     \ writes to\ntemp file and uses $(cat ...)). This build phase addresses the remaining\
     \ gaps:\n\n1. Add --dry-run flag to `agentic orchestrate` that creates the tmux\
@@ -13,7 +16,7 @@ phases:
     \   The new-session path was fixed to use -l absolute values, but the inplace\n\
     \   path was not. This is a latent bug that will bite when running orchestrate\n\
     \   from inside an existing tmux session.\n"
-  tasks:
+  tickets:
   - id: build-001
     name: Add --dry-run flag to cmd_orchestrate
     description: "Add a --dry-run flag to the orchestrate command that:\n1. Creates\
@@ -39,6 +42,7 @@ phases:
       \  - modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py\n  - modules/AgenticCLI/src/agenticcli/cli.py\
       \ (add --dry-run arg, line 707)\n"
     status: pending
+    agent: null
     target_files:
     - path: modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
       change_type: modify
@@ -66,42 +70,345 @@ phases:
       \ absolute column/row values from that.\n\nTarget file: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py\n\
       Lines to modify: 268-292\n"
     status: pending
+    agent: null
     target_files:
     - path: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
       change_type: modify
       change_category: code
-success_criteria:
-- '`agentic orchestrate --mode planning --dry-run` creates a real tmux session with
-  3 panes, prints layout JSON, then cleans up'
-- --dry-run does NOT launch Claude or dashboard processes
-- --dry-run exits with code 0 when layout is correct, non-zero if pane count is wrong
-- _create_inplace_layout uses absolute -l values (or dynamically computed) instead
-  of -p percentages
-- All existing unit tests still pass after changes
-impacted_files:
-- path: modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
-  change_type: modify
-  change_category: code
-  reason: Add --dry-run flag for testable tmux layout verification
-- path: modules/AgenticCLI/src/agenticcli/utils/tmux_layout.py
-  change_type: modify
-  change_category: code
-  reason: Add skip_commands param and fix inplace layout -p flags
-- path: modules/AgenticCLI/src/agenticcli/cli.py
-  change_type: modify
-  change_category: code
-  reason: Add --dry-run Typer option to session_orchestrate() at line 707 (Typer-based
-    CLI, not commands/cli.py)
-notes: 'The original build plan was for the command-too-long fix, which is ALREADY
-  DONE.
+- name: Update UAT Guidance
+  description: 'Update planner-test, orchestration-executor, test-user-simulator,
+    and
 
-  orchestrate.py already uses tempfile + $(cat ...) approach (lines 379-386).
+    planning-standard.yml to enforce real CLI smoke tests in UAT phases.
+
+    '
+  tickets:
+  - id: teach-001
+    name: Add real CLI smoke test fence to planner-test/process.yml
+    description: 'Add a new fence in planner-test/process.yml that mandates UAT tasks
+      for
+
+      CLI commands MUST include a "real CLI smoke test" step.
 
 
-  This new build phase addresses the REAL gap: there is no way to test the tmux
+      VERIFIED COMPLETE: The real_cli_smoke_test_requirement block exists at
 
-  layout path without a human sitting in front of the terminal. The --dry-run flag
+      line 365 in modules/AgenticGuidance/agents/planner/planner-test/process.yml.
 
-  makes the tmux layout creation fully testable in an automated pipeline.
+      The fence, rationale, requirements, and wrong_examples are all present.
 
-  '
+      Do NOT re-apply - the content is already there.
+
+
+      Target file: modules/AgenticGuidance/agents/planner/planner-test/process.yml
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - path: modules/AgenticGuidance/agents/planner/planner-test/process.yml
+      change_type: modify
+      change_category: guidance
+  - id: teach-002
+    name: Add integration smoke test gate to orchestration-executor/process.yml
+    description: 'Add a mandatory integration smoke test gate in orchestration-executor/process.yml
+
+      BEFORE the shutdown sequence. This gate ensures CLI commands are actually tested.
+
+
+      VERIFIED COMPLETE: The integration_smoke_test_gate step exists at line 455 in
+
+      modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml.
+
+      Phase 2.7 header and full step content with detection criteria, execution steps,
+
+      and fence text are all present. Do NOT re-apply.
+
+
+      Target file: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - path: modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+      change_type: modify
+      change_category: guidance
+  - id: teach-003
+    name: Update test-user-simulator to prefer real commands over mocks
+    description: 'Update test-user-simulator/process.yml to add a guideline that strongly
+
+      prefers running real commands over mocked validation.
+
+
+      VERIFIED COMPLETE: The PREFER REAL COMMAND EXECUTION guideline exists at
+
+      line 179 in modules/AgenticGuidance/agents/test/test-user-simulator/process.yml.
+
+      The guideline includes when-to-use-real-commands, when-mocking-is-acceptable,
+
+      and a CLI Command UAT Pattern code example. Do NOT re-apply.
+
+
+      Target file: modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - path: modules/AgenticGuidance/agents/test/test-user-simulator/process.yml
+      change_type: modify
+      change_category: guidance
+  - id: teach-004
+    name: Add CLI smoke test rule to planning-standard.yml
+    description: 'Add a new rule to planning-standard.yml that mandates CLI smoke
+      tests
+
+      for any plan that modifies CLI command implementations.
+
+
+      VERIFIED COMPLETE: The CLI Smoke Test Requirement rule exists at line 128 in
+
+      modules/AgenticGuidance/assets/guidelines/planning-standard.yml.
+
+      The rule includes mandatory: true, fence text, justification, detection_criteria,
+
+      requirements, and good/bad examples. Do NOT re-apply.
+
+
+      Target file: modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - path: modules/AgenticGuidance/assets/guidelines/planning-standard.yml
+      change_type: modify
+      change_category: guidance
+- name: Real Tmux Layout Tests
+  description: 'Create integration tests that launch ACTUAL tmux sessions and verify
+    the
+
+    3-pane orchestration layout. These tests use the real tmux binary, create
+
+    real sessions, verify real pane counts, and clean up after themselves.
+
+
+    NO MOCKING. NO --no-tmux. The whole point is to test the tmux path
+
+    that keeps breaking.
+
+    '
+  tickets:
+  - id: test-001
+    name: Create real tmux layout integration tests
+    description: "Create a new integration test file that tests tmux layout creation\
+      \ with\nreal tmux. NOT mocked subprocess, NOT --no-tmux bypass.\n\nTEST FILE:\
+      \ modules/AgenticCLI/tests/integration/test_tmux_layout_real.py\n\nRequirements\
+      \ for each test:\n- Must call the REAL tmux binary (subprocess.run with actual\
+      \ tmux commands)\n- Must create actual tmux sessions\n- Must verify pane count\
+      \ by running: tmux list-panes -t <session> | wc -l\n- Must verify pane titles\n\
+      - Must clean up the session in a finally block (tmux kill-session)\n- Must skip\
+      \ gracefully if tmux is not available (pytest.mark.skipif)\n\nTests to implement:\n\
+      \n1. test_new_session_creates_three_panes\n   - Call _create_new_session_layout\
+      \ with skip_commands=True\n   - Verify: tmux list-panes -t <session> returns\
+      \ exactly 3 panes\n   - Verify: main pane exists with title \"orchestrator\"\
+      \n   - Verify: status pane exists with title \"sessions\"\n   - Verify: questions\
+      \ pane exists with title \"questions\"\n   - Cleanup: tmux kill-session -t <session>\n\
+      \n2. test_pane_dimensions_are_reasonable\n   - Call _create_new_session_layout\
+      \ with skip_commands=True\n   - Query pane dimensions: tmux list-panes -t <session>\
+      \ -F \"#{pane_width} #{pane_height}\"\n   - Verify: main pane width > status\
+      \ pane width (70/30 split)\n   - Verify: status pane height > questions pane\
+      \ height (60/40 split)\n   - Cleanup: tmux kill-session\n\n3. test_session_name_contains_pid\n\
+      \   - Verify session name starts with \"agentic-orch-\" and contains a number\n\
+      \   - Verify: tmux has-session -t <session> returns 0\n\n4. test_cleanup_kills_orphaned_sessions\n\
+      \   - Create 3 dummy tmux sessions named agentic-orch-test-1, agentic-orch-test-2,\
+      \ etc\n   - Call cleanup_orchestration_sessions()\n   - Verify: all 3 sessions\
+      \ are killed (tmux has-session returns non-zero)\n   - Verify: non-agentic sessions\
+      \ are NOT killed\n\n5. test_dry_run_creates_and_destroys_layout\n   - Run: agentic\
+      \ orchestrate --mode planning --dry-run\n   - Verify: exit code is 0\n   - Verify:\
+      \ stdout contains valid JSON with session_name, pane IDs\n   - Verify: after\
+      \ command completes, tmux session no longer exists\n\n6. test_send_keys_command_reaches_pane\n\
+      \   - Create layout with skip_commands=True\n   - Manually send a test command:\
+      \ tmux send-keys -t <main_pane> \"echo TMUX_TEST_MARKER\" Enter\n   - Wait briefly,\
+      \ then capture pane content: tmux capture-pane -t <main_pane> -p\n   - Verify:\
+      \ \"TMUX_TEST_MARKER\" appears in captured output\n   - This proves send-keys\
+      \ actually works (the $(cat ...) expansion path)\n\n7. test_prompt_file_is_readable_from_pane\n\
+      \   - Write a known string to a temp file\n   - Build the same command string\
+      \ orchestrate.py builds:\n     claude --dangerously-skip-permissions --append-system-prompt\
+      \ \"$(cat /tmp/testfile.md)\"\n   - Instead of running it, send: echo \"$(cat\
+      \ /tmp/testfile.md)\" to a pane\n   - Capture pane output and verify the known\
+      \ string appears\n   - This validates that the $(cat ...) expansion works inside\
+      \ tmux send-keys\n\nEach test MUST have a try/finally to clean up tmux sessions\
+      \ even on failure.\n\nTarget file: modules/AgenticCLI/tests/integration/test_tmux_layout_real.py\n\
+      Change type: create\n"
+    status: pending
+    agent: null
+    target_files:
+    - path: modules/AgenticCLI/tests/integration/test_tmux_layout_real.py
+      change_type: create
+      change_category: test
+  - id: test-002
+    name: Create real CLI orchestrate smoke tests
+    description: "Create integration tests that run the ACTUAL `agentic orchestrate`\
+      \ command\nend-to-end. These complement the tmux-specific tests by testing the\
+      \ full\ncommand path.\n\nTEST FILE: modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py\n\
+      \nTests to implement:\n\n1. test_orchestrate_dry_run_planning\n   - Run: agentic\
+      \ orchestrate --mode planning --dry-run\n   - Verify: exit code 0\n   - Verify:\
+      \ JSON output contains session_name, pane count = 3\n   - Verify: no tmux session\
+      \ left behind\n\n2. test_orchestrate_dry_run_executor\n   - Run: agentic orchestrate\
+      \ --mode executor --dry-run\n   - Verify: exit code 0\n   - Verify: JSON output\
+      \ shows correct layout\n\n3. test_orchestrate_dry_run_loop\n   - Run: agentic\
+      \ orchestrate --mode loop --dry-run\n   - Verify: exit code 0\n\n4. test_orchestrate_invalid_mode\n\
+      \   - Run: agentic orchestrate --mode nonexistent --dry-run\n   - Verify: exit\
+      \ code non-zero\n   - Verify: error message mentions valid modes\n\n5. test_orchestrate_temp_file_created\n\
+      \   - Run: agentic orchestrate --mode planning --dry-run\n   - Parse JSON output\
+      \ for prompt temp file path\n   - Verify: temp file exists (or existed) with\
+      \ .md suffix\n   - Verify: temp file prefix starts with agentic_prompt_\n\n\
+      6. test_no_orphaned_sessions_after_dry_run\n   - Run --dry-run 3 times in sequence\n\
+      \   - After all 3, verify: tmux list-sessions shows NO agentic-orch-* sessions\n\
+      \   - This proves cleanup works correctly\n\nTarget file: modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py\n\
+      Change type: create\n"
+    status: pending
+    agent: null
+    target_files:
+    - path: modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py
+      change_type: create
+      change_category: test
+  - id: test-003
+    name: Add conftest with tmux skip marker and session cleanup fixture
+    description: "Create or update the integration test conftest.py with:\n\n1. A\
+      \ reusable fixture that ensures tmux is available, skips if not\n2. A session-scoped\
+      \ fixture that cleans up any agentic-orch-* sessions\n   after ALL tests complete\
+      \ (safety net)\n3. A per-test fixture that records existing sessions before\
+      \ each test\n   and kills any new agentic-orch-* sessions created during the\
+      \ test\n\nThis prevents test pollution between runs.\n\nTarget file: modules/AgenticCLI/tests/integration/conftest.py\n\
+      Change type: create or modify\n"
+    status: pending
+    agent: null
+    target_files:
+    - path: modules/AgenticCLI/tests/integration/conftest.py
+      change_type: modify
+      change_category: test
+- name: Live Tmux Verification
+  description: 'Validate the tmux orchestration GUI by running REAL commands with
+    REAL tmux.
+
+    Every test runs the actual installed CLI binary and verifies the tmux
+
+    session structure. NO --no-tmux bypass. NO mocking.
+
+    '
+  tickets:
+  - id: uat-001
+    name: Verify 3-pane layout via --dry-run
+    description: 'Run the actual installed CLI with --dry-run and verify the layout.
+
+
+      EXECUTION:
+
+      1. Run: agentic orchestrate --mode planning --dry-run
+
+      2. Parse JSON output
+
+      3. Verify: session_name starts with "agentic-orch-"
+
+      4. Verify: 3 pane IDs are present and distinct
+
+      5. Verify: exit code 0
+
+      6. Verify: no tmux session left behind (tmux list-sessions | grep agentic-orch)
+
+
+      EVIDENCE REQUIRED:
+
+      - JSON output showing 3 pane IDs
+
+      - tmux list-sessions showing no orphaned sessions after exit
+
+      '
+    status: pending
+    agent: null
+  - id: uat-002
+    name: Verify pane titles are correctly set
+    description: "Create a tmux orchestration layout and verify all three pane titles.\n\
+      \nEXECUTION:\n1. Run: agentic orchestrate --mode planning --dry-run\n   (but\
+      \ capture the session name BEFORE it's killed)\n   OR: Use the integration test\
+      \ test_new_session_creates_three_panes\n2. Query: tmux list-panes -t <session>\
+      \ -F \"#{pane_title}\"\n3. Verify output contains exactly: orchestrator, sessions,\
+      \ questions\n\nEVIDENCE REQUIRED:\n- tmux list-panes output showing all 3 titles\n"
+    status: pending
+    agent: null
+  - id: uat-003
+    name: Verify $(cat file) expansion works in tmux send-keys
+    description: "The root cause of the most recent bug was that $(cat file) was wrapped\n\
+      in single quotes by shlex.quote, preventing shell expansion. Verify\nthis is\
+      \ actually fixed.\n\nEXECUTION:\n1. Create a test file: echo \"SMOKE_TEST_MARKER_12345\"\
+      \ > /tmp/smoke_test_prompt.md\n2. Create a tmux session manually:\n   tmux new-session\
+      \ -d -s smoke-test -x 200 -y 50\n3. Send the expansion command:\n   tmux send-keys\
+      \ -t smoke-test 'echo \"$(cat /tmp/smoke_test_prompt.md)\"' Enter\n4. Wait 1\
+      \ second\n5. Capture output:\n   tmux capture-pane -t smoke-test -p\n6. Verify:\
+      \ output contains \"SMOKE_TEST_MARKER_12345\"\n7. Cleanup: tmux kill-session\
+      \ -t smoke-test\n\nEVIDENCE REQUIRED:\n- Captured pane output showing the marker\
+      \ string expanded correctly\n"
+    status: pending
+    agent: null
+  - id: uat-004
+    name: Verify live orchestrate session launches correctly
+    description: "Run the FULL `agentic orchestrate` command (NOT --dry-run, NOT --no-tmux)\n\
+      and verify the session comes up correctly.\n\nEXECUTION:\n1. Run: agentic orchestrate\
+      \ --mode planning\n   (this will create a tmux session and attach)\n2. After\
+      \ attaching, verify 3 panes are visible\n3. Verify the main pane shows Claude\
+      \ starting up\n4. Verify the status pane shows \"session dashboard\" output\n\
+      5. Verify the questions pane shows \"question dashboard\" output\n6. Exit: Ctrl+C\
+      \ or type /exit in Claude\n7. Verify: session is killed on exit (or at least\
+      \ detachable)\n\nThis is the ONLY test that fully validates the end-user experience.\n\
+      All previous UAT plans skipped this step.\n\nVERIFICATION METHOD: manual (requires\
+      \ human to attach to tmux)\n"
+    status: pending
+    agent: null
+  - id: uat-005
+    name: Verify all integration tests pass
+    description: 'Run the full integration test suite to confirm all real tmux tests
+      pass.
+
+
+      EXECUTION:
+
+      1. Run: python3 -m pytest modules/AgenticCLI/tests/integration/test_tmux_layout_real.py
+      -v
+
+      2. Verify: all tests pass
+
+      3. Run: python3 -m pytest modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py
+      -v
+
+      4. Verify: all tests pass
+
+      5. Run: python3 -m pytest modules/AgenticCLI/tests/ -v --ignore=modules/AgenticCLI/tests/integration
+      -x
+
+      6. Verify: existing unit tests still pass (no regressions)
+
+
+      EVIDENCE REQUIRED:
+
+      - pytest output showing all integration tests passing
+
+      - pytest output showing no regressions in unit tests
+
+      '
+    status: pending
+    agent: null
+  - id: uat-006
+    name: Verify cleanup handles zombie sessions
+    description: "Verify that the session cleanup works for real orphaned sessions.\n\
+      \nEXECUTION:\n1. Create 3 fake sessions:\n   tmux new-session -d -s agentic-orch-zombie-1\n\
+      \   tmux new-session -d -s agentic-orch-zombie-2\n   tmux new-session -d -s\
+      \ agentic-orch-zombie-3\n2. Verify they exist: tmux list-sessions | grep agentic-orch\n\
+      3. Run: agentic orchestrate --mode planning --dry-run\n4. Verify: all 3 zombie\
+      \ sessions were killed\n5. Verify: the --dry-run session was also cleaned up\n\
+      \nEVIDENCE REQUIRED:\n- tmux list-sessions before (showing zombies)\n- tmux\
+      \ list-sessions after (showing no agentic-orch sessions)\n"
+    status: pending
+    agent: null

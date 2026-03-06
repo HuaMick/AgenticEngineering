@@ -3,6 +3,51 @@ worktree_path: /home/code/AgenticEngineering
 branch: main
 status: completed
 priority: critical
+objective: "Fix the Ralph Loop CLI command to use correct Claude Code syntax and ensure\
+  \ \nbackground sessions can run unattended using --dangerously-skip-permissions.\n\
+  Validate with User Stories.\n"
+created: ''
+phases:
+- name: 'Phase 1: Diagnosis and Fix'
+  execution: sequential
+  tickets:
+  - id: RE_001
+    name: Fix claude command syntax in ralph.py
+    description: Update start() function to use correct flags.
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    guidance: '- Change ''--prompt @file'' to positional argument if appropriate,
+      or check if ''--system-prompt'' is better.
+
+      - Add ''--dangerously-skip-permissions'' to all Claude invocations in Ralph
+      loop.
+
+      '
+  - id: RE_002
+    name: Add session status verification
+    description: Ensure the tmux session actually starts and doesn't exit immediately.
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+- name: 'Phase 2: Validation via User Stories'
+  execution: sequential
+  tickets:
+  - id: RE_003
+    name: Define User Stories for Ralph Loop
+    description: ''
+    status: completed
+    agent: null
+    target_files:
+    - docs/plans/live/260204RE_ralph_loop_remediation/user_stories/US-RALPH-FIX-001_correct_syntax.yml
+    - docs/plans/live/260204RE_ralph_loop_remediation/user_stories/US-RALPH-FIX-002_unattended_execution.yml
+  - id: RE_004
+    name: Execute blind testing of user stories
+    description: Spawn a test-audit agent to walk through each story.
+    status: completed
+    agent: null
 context: 'The previous implementation of Ralph Loop (Plan 260204AG) introduced critical
   bugs:
 
@@ -13,54 +58,3 @@ context: 'The previous implementation of Ralph Loop (Plan 260204AG) introduced c
   3. No validation of subagent functionality in the previous loop.
 
   '
-objective: "Fix the Ralph Loop CLI command to use correct Claude Code syntax and ensure\
-  \ \nbackground sessions can run unattended using --dangerously-skip-permissions.\n\
-  Validate with User Stories.\n"
-phases:
-- name: 'Phase 1: Diagnosis and Fix'
-  execution: sequential
-  tasks:
-  - id: RE_001
-    name: Fix claude command syntax in ralph.py
-    description: Update start() function to use correct flags.
-    status: completed
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
-    guidance: '- Change ''--prompt @file'' to positional argument if appropriate,
-      or check if ''--system-prompt'' is better.
-
-      - Add ''--dangerously-skip-permissions'' to all Claude invocations in Ralph
-      loop.
-
-      '
-    notes: 'Fixed command to use shell substitution: claude --dangerously-skip-permissions -p "$(cat $prompt_path)"'
-  - id: RE_002
-    name: Add session status verification
-    description: Ensure the tmux session actually starts and doesn't exit immediately.
-    status: completed
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
-    notes: 'Added tmux has-session verification after spawn with error handling for immediate exit.'
-- name: 'Phase 2: Validation via User Stories'
-  execution: sequential
-  tasks:
-  - id: RE_003
-    name: Define User Stories for Ralph Loop
-    status: completed
-    target_files:
-    - docs/plans/live/260204RE_ralph_loop_remediation/user_stories/US-RALPH-FIX-001_correct_syntax.yml
-    - docs/plans/live/260204RE_ralph_loop_remediation/user_stories/US-RALPH-FIX-002_unattended_execution.yml
-    notes: 'User stories reviewed and verified - covers correct syntax validation and unattended execution.'
-  - id: RE_004
-    name: Execute blind testing of user stories
-    status: completed
-    description: Spawn a test-audit agent to walk through each story.
-    notes: |
-      Validated via manual testing:
-      - US-RALPH-FIX-001: agentic ralph start -b creates session successfully
-      - US-RALPH-FIX-002: Claude runs with --dangerously-skip-permissions (confirmed via ps aux)
-      Process: claude --dangerously-skip-permissions -p "$(cat /path/to/ralph.txt)"
-success_criteria:
-- agentic ralph start successfully spawns a working Claude session in tmux
-- Claude session runs unattended without permission prompts
-- All remediation user stories pass validation

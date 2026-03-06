@@ -3,64 +3,6 @@ worktree_path: /home/code/AgenticEngineering
 branch: main
 status: active
 priority: medium
-worktree: /home/code/AgenticEngineering
-plan_file: docs/plans/live/260203QG_question_guidance/plan_build.yml
-context: 'This plan updates agent guidance documents to teach agents how to generate
-  and handle questions
-
-  when they encounter blockers or need clarification during task execution.
-
-
-  ARCHITECTURE DECISION (CLI-First Strategy):
-
-  - Agents generate well-formed YAML questions when blocked
-
-  - Questions follow 260203QF schema
-
-  - Agents reference CLI commands for human operators
-
-  - Resumption logic checks for answers and continues work
-
-
-  Guidance Updates:
-
-  - When to ask questions (blockers vs solvable issues)
-
-  - How to generate question YAML (severity, context, format)
-
-  - Where to write questions (plan-scoped folders)
-
-  - How to check for answers and resume work
-
-  - CLI references for human operators
-
-  '
-dependencies:
-  depends_on:
-  - plan_id: 260203QF
-    description: Question data model schema
-    status: must_complete_first
-  - plan_id: 260203QC
-    description: CLI commands to reference in guidance
-    status: must_complete_first
-  required_by:
-  - plan_id: 260203QT
-    description: Tmux workflow uses updated agent patterns
-  - plan_id: 260203VP
-    description: Voice daemon consumes questions from agents
-inputs:
-- location: modules/AgenticGuidance/README.md
-  description: Agent structure and category organization
-- location: modules/AgenticGuidance/agents/manifest.yml
-  description: Agent registry and metadata
-- location: modules/AgenticGuidance/assets/guidelines/escalation.yml
-  description: Existing escalation patterns (foundation for question generation)
-- location: modules/AgenticGuidance/assets/examples/planner/plan_example.yml
-  description: Plan structure including open_questions section
-- location: docs/plans/live/260203QF_question_foundation/README.md
-  description: Question/Answer data model schema and file structure
-- location: docs/plans/live/260203QC_question_cli/README.md
-  description: CLI commands for question management
 objective: 'Update agent guidance documents (inputs.yml, process.yml) to teach agents
   the question workflow.
 
@@ -92,37 +34,19 @@ objective: 'Update agent guidance documents (inputs.yml, process.yml) to teach a
   5. Resume work after receiving clarification
 
   '
-loop_structures:
-- id: loop_guidance_validation
-  type: guidance-self-review-loop
-  applies_to_phase: Validation Phase
-  trigger: After all guidance updates complete
-  description: 'Agents review updated guidance files for correctness and completeness.
-
-    Validates that question workflow patterns are clear and actionable.
-
-    '
-  exit_criteria:
-    success: All checklist items pass AND spot-check validation passes
-    max_iterations: 3
-    escalation: Escalate to human reviewer with specific gaps identified
-  participants:
-  - agent: planner-reviewer
-    role: Self-reviews guidance against requirements
-  - agent: teacher-update-guidance
-    role: Validates example completeness and clarity
+created: ''
 phases:
 - name: Guideline Asset Creation
   execution: sequential
   description: Create question-workflow.yml guideline asset with complete workflow
     patterns
-  tasks:
+  tickets:
   - id: guide_001
     name: Create question-workflow.yml guideline
     description: Create comprehensive guideline for question generation and resumption
       workflow
-    agent: teacher-update-assets
     status: completed
+    agent: teacher-update-assets
     inputs:
     - modules/AgenticGuidance/assets/guidelines/escalation.yml
     - modules/AgenticGuidance/assets/guidelines/iteration.yml
@@ -166,14 +90,12 @@ phases:
   execution: sequential
   description: Update orchestration agents to detect decision points and coordinate
     question workflow
-  tasks:
+  tickets:
   - id: orch_001
     name: Update orchestration-planning inputs.yml
     description: Add question workflow guidance to orchestration-planning agent
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - guide_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
     - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml
@@ -193,10 +115,8 @@ phases:
   - id: orch_002
     name: Update orchestration-planning process.yml
     description: Add question detection and coordination steps to orchestration process
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - orch_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -221,10 +141,8 @@ phases:
   - id: orch_003
     name: Update orchestration-executor inputs.yml
     description: Add question workflow guidance to orchestration-executor agent
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - guide_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -243,14 +161,12 @@ phases:
   execution: parallel
   description: Update planner agents to populate open_questions and generate questions
     when needed
-  tasks:
+  tickets:
   - id: plan_001
     name: Update planner-build inputs.yml
     description: Add question workflow to planner-build agent
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - guide_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -267,10 +183,8 @@ phases:
   - id: plan_002
     name: Update planner-build process.yml
     description: Add open_questions population step to planner-build process
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - plan_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/planner/planner-build/process.yml
     - modules/AgenticGuidance/assets/examples/planner/plan_example.yml
@@ -305,10 +219,8 @@ phases:
   - id: plan_003
     name: Update planner-test inputs.yml
     description: Add question workflow to planner-test agent
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - guide_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -324,10 +236,8 @@ phases:
   - id: plan_004
     name: Update planner-test process.yml
     description: Add test expectation questions to planner-test process
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - plan_003
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/planner/planner-test/process.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -356,10 +266,8 @@ phases:
   - id: plan_005
     name: Update planner-reviewer inputs.yml
     description: Add question workflow to planner-reviewer agent
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - guide_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -375,10 +283,8 @@ phases:
   - id: plan_006
     name: Update planner-reviewer process.yml
     description: Add open_questions validation to plan review process
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - plan_005
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/planner/planner-reviewer/process.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -408,14 +314,12 @@ phases:
 - name: Builder and Test Agent Updates
   execution: parallel
   description: Update builder and test agents to generate questions when blocked
-  tasks:
+  tickets:
   - id: build_001
     name: Update shared builder inputs (if exists)
     description: Add question workflow to shared builder inputs
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - guide_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/build/manifest.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -434,10 +338,8 @@ phases:
   - id: build_002
     name: Create builder question generation example
     description: Add example of builder question generation to guidelines
-    agent: teacher-update-assets
     status: completed
-    depends_on:
-    - guide_001
+    agent: teacher-update-assets
     inputs:
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
     target_files:
@@ -478,10 +380,8 @@ phases:
   - id: test_001
     name: Update test-builder inputs.yml
     description: Add question workflow to test-builder agent
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - guide_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/test/test-builder/inputs.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -498,10 +398,8 @@ phases:
     name: Update test-builder process.yml
     description: Add question generation to test-builder process when expectations
       unclear
-    agent: teacher-update-guidance
     status: completed
-    depends_on:
-    - test_001
+    agent: teacher-update-guidance
     inputs:
     - modules/AgenticGuidance/agents/test/test-builder/process.yml
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -540,16 +438,12 @@ phases:
 - name: Workflow Example Creation
   execution: sequential
   description: Create end-to-end examples showing complete question-answer workflows
-  tasks:
+  tickets:
   - id: example_001
     name: Create planner workflow example
     description: End-to-end example of planner generating and consuming questions
-    agent: teacher-update-assets
     status: completed
-    depends_on:
-    - plan_002
-    - plan_004
-    - plan_006
+    agent: teacher-update-assets
     inputs:
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
     - modules/AgenticGuidance/assets/examples/planner/plan_example.yml
@@ -573,10 +467,8 @@ phases:
   - id: example_002
     name: Create builder workflow example
     description: End-to-end example of builder blocking and resuming on question
-    agent: teacher-update-assets
     status: completed
-    depends_on:
-    - build_002
+    agent: teacher-update-assets
     inputs:
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
     - modules/AgenticGuidance/assets/examples/builder/question-example.yml
@@ -601,10 +493,8 @@ phases:
   - id: example_003
     name: Create tester workflow example
     description: Example of test-builder asking about expected behavior
-    agent: teacher-update-assets
     status: completed
-    depends_on:
-    - test_002
+    agent: teacher-update-assets
     inputs:
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
     target_files:
@@ -628,24 +518,12 @@ phases:
 - name: Validation Phase
   execution: sequential
   description: Validate that all guidance updates are complete and consistent
-  tasks:
+  tickets:
   - id: val_001
     name: Self-review guidance updates
     description: Review all updated guidance files for completeness and consistency
-    agent: planner-reviewer
     status: completed
-    depends_on:
-    - orch_002
-    - orch_003
-    - plan_002
-    - plan_004
-    - plan_006
-    - build_002
-    - test_002
-    - example_001
-    - example_002
-    - example_003
-    loop: guidance-self-review-loop
+    agent: planner-reviewer
     inputs:
     - modules/AgenticGuidance/assets/guidelines/question-workflow.yml
     - modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml
@@ -683,10 +561,8 @@ phases:
   - id: val_002
     name: Spot-check example validity
     description: Validate that example YAML files are syntactically correct and complete
-    agent: teacher-update-assets
     status: completed
-    depends_on:
-    - val_001
+    agent: teacher-update-assets
     inputs:
     - modules/AgenticGuidance/assets/examples/planner/question-workflow-example.yml
     - modules/AgenticGuidance/assets/examples/builder/question-workflow-complete.yml
@@ -707,36 +583,33 @@ phases:
     - Question schemas match 260203QF specification
     - File paths follow conventions
     - CLI references are accurate
-success_criteria:
-- question-workflow.yml guideline exists with all 7 required sections
-- YAML format examples are syntactically correct and follow 260203QF schema
-- Severity level guidance (high/medium/low) is clear and actionable
-- CLI command references match 260203QC implementation
-- orchestration-planning and orchestration-executor inputs.yml reference question-workflow.yml
-- orchestration-planning process includes question checkpoint before plan approval
-- Question checkpoint distinguishes high-severity (must answer) from medium/low (can
-  defer)
-- All planner inputs.yml files reference question-workflow.yml
-- planner-build process includes open_questions population step with examples
-- planner-test process includes test expectation question generation
-- planner-reviewer process includes open_questions validation checklist
-- Examples show correct open_questions YAML structure in plan files
-- Builder agents have question workflow guidance (via shared inputs or per-agent)
-- test-builder inputs and process include question generation patterns
-- Question generation includes attempted_solutions and context requirements
-- Resumption pattern teaches checking questions/answered/ before escalating
-- Planner workflow example shows complete lifecycle (generate -> answer -> consume)
-- Builder workflow example shows blocking and resumption pattern
-- Tester workflow example shows inference-first, question-second approach
-- All examples use valid YAML matching 260203QF schema
-- 'Examples demonstrate answered_by: HUMAN authority pattern'
-- Question YAML format is consistent across all examples
-- Severity level usage is consistent across agent types
-- CLI command references are consistent and accurate
-- Resumption pattern is consistent across agents
-- No gaps or contradictions found in validation review
-- Agent can read guidance and understand when to ask vs. decide autonomously
-- Agent can generate well-formed question YAML with appropriate severity
-- Agent can check for answers and resume work after human clarification
-- Human can review pending questions and provide answers via CLI
-- Question workflow enables async HITL without blocking agent progress on other tasks
+context: 'This plan updates agent guidance documents to teach agents how to generate
+  and handle questions
+
+  when they encounter blockers or need clarification during task execution.
+
+
+  ARCHITECTURE DECISION (CLI-First Strategy):
+
+  - Agents generate well-formed YAML questions when blocked
+
+  - Questions follow 260203QF schema
+
+  - Agents reference CLI commands for human operators
+
+  - Resumption logic checks for answers and continues work
+
+
+  Guidance Updates:
+
+  - When to ask questions (blockers vs solvable issues)
+
+  - How to generate question YAML (severity, context, format)
+
+  - Where to write questions (plan-scoped folders)
+
+  - How to check for answers and resume work
+
+  - CLI references for human operators
+
+  '

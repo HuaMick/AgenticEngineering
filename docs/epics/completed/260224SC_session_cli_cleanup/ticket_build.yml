@@ -1,365 +1,434 @@
-name: session-cli-cleanup
+name: Session CLI Cleanup - Test Plan
+worktree_path: /home/code/AgenticEngineering
+branch: main
 status: completed
 priority: medium
-worktree_path: /home/code/AgenticEngineering
-affected_stories:
-  - US-CLI-033  # Inspect Session Health and Logs - renamed health -> healthcheck, added --diagnose
-  - US-CLI-034  # Start Ralph Loop - moved from "session ralph" to "session orchestrate ralph"
-  - US-CLI-035  # Stop Running Loop - same command path change
-  - US-CLI-036  # Monitor Loop Progress - same command path change
-context: |
-  The `agentic session` command group has accumulated redundancy and misplaced
-  commands over time. This plan restructures it for clarity:
+objective: 'Validate that the session CLI restructuring correctly:
 
-  1. The `loop` subcommand is redundant with `ralph` and should be removed.
-  2. `ralph` is a meta-orchestration concern and belongs under `orchestrate`.
-  3. `status` duplicates what `list` already shows - remove it.
-  4. `health` should be renamed `healthcheck` with auto-diagnostic spawn
-     made opt-in via `--diagnose` flag (currently it spawns automatically).
+  1. Removes loop subcommand group entirely
 
-  Target structure after cleanup:
-    agentic session spawn
-    agentic session list
-    agentic session stop <id>
-    agentic session healthcheck <id> [--diagnose]
-    agentic session logs <id>
-    agentic session orchestrate planning
-    agentic session orchestrate executing
-    agentic session orchestrate ralph start/stop/status/next/history
+  2. Moves ralph under orchestrate
 
-impacted_artifacts:
-- artifact_type: cli_module
-  artifact_identifier: agenticcli.cli
-  impact_type: modification
-  description: Remove loop_app, status command; move ralph under orchestrate; rename health to healthcheck
-  breaking_change: true
-- artifact_type: cli_module
-  artifact_identifier: agenticcli.commands.session
-  impact_type: modification
-  description: Remove cmd_status, rename cmd_health to cmd_healthcheck, add --diagnose flag
-  breaking_change: true
-- artifact_type: cli_module
-  artifact_identifier: agenticcli.commands.loop
-  impact_type: deletion
-  description: Entire module deleted - redundant with ralph
-  breaking_change: true
-- artifact_type: cli_module
-  artifact_identifier: agenticcli.commands.ralph
-  impact_type: minor_modification
-  description: Update help text references from "session ralph" to "session orchestrate ralph"
-  breaking_change: false
-- artifact_type: test_file
-  artifact_identifier: test_loop_integration.py, test_loop_stop_idempotency.py
-  impact_type: deletion
-  description: Tests for removed loop module
-  breaking_change: false
+  3. Removes status command
 
+  4. Renames health to healthcheck with opt-in --diagnose flag
+
+
+  Tests verify both the positive paths (new commands work) and negative
+
+  paths (old commands are properly removed/unreachable).
+
+  '
+created: ''
 phases:
-- name: "Phase 1 - Remove loop subcommand group"
+- name: Phase 1 - Remove loop subcommand group
   execution: sequential
-  description: |
-    Delete the loop module and all its CLI registration. The loop commands are
+  description: 'Delete the loop module and all its CLI registration. The loop commands
+    are
+
     fully redundant with the ralph commands under session.
-  tasks:
+
+    '
+  tickets:
   - id: SC_001
     name: Delete loop.py module
-    status: completed
-    completed_at: '2026-02-26T10:15:00.000000'
-    agent: build-python
-    description: |
-      Delete modules/AgenticCLI/src/agenticcli/commands/loop.py entirely.
-      This module is redundant with ralph.py - both provide start/stop/status/history
-      for loop execution, but ralph is the canonical implementation backed by
-      RalphLoopService.
-    target_files:
-      - modules/AgenticCLI/src/agenticcli/commands/loop.py
-    success_criteria:
-      - loop.py no longer exists
+    description: 'Delete modules/AgenticCLI/src/agenticcli/commands/loop.py entirely.
 
+      This module is redundant with ralph.py - both provide start/stop/status/history
+
+      for loop execution, but ralph is the canonical implementation backed by
+
+      RalphLoopService.
+
+      '
+    status: completed
+    agent: build-python
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    success_criteria:
+    - loop.py no longer exists
   - id: SC_002
     name: Remove loop_app registration from cli.py
+    description: "Remove from cli.py:\n1. The loop_app Typer instance (line ~778-779)\n\
+      2. The _loop_handle dispatcher (line ~783-784)\n3. All @loop_app.command decorators\
+      \ and functions: loop_start, loop_stop,\n   loop_status, loop_history (lines\
+      \ ~787-845)\n\nDo NOT touch session_app, orchestrate_app, or ralph_app registrations.\n"
     status: completed
-    completed_at: '2026-02-26T10:16:00.000000'
     agent: build-python
-    description: |
-      Remove from cli.py:
-      1. The loop_app Typer instance (line ~778-779)
-      2. The _loop_handle dispatcher (line ~783-784)
-      3. All @loop_app.command decorators and functions: loop_start, loop_stop,
-         loop_status, loop_history (lines ~787-845)
-
-      Do NOT touch session_app, orchestrate_app, or ralph_app registrations.
-    target_files:
-      - modules/AgenticCLI/src/agenticcli/cli.py
     inputs:
-      - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
     success_criteria:
-      - No references to loop_app in cli.py
-      - No references to _loop_handle in cli.py
-      - session_app and orchestrate_app still function correctly
-
+    - No references to loop_app in cli.py
+    - No references to _loop_handle in cli.py
+    - session_app and orchestrate_app still function correctly
   - id: SC_003
     name: Delete loop-specific tests
-    status: completed
-    completed_at: '2026-02-26T10:17:00.000000'
-    agent: build-python
-    description: |
-      Delete test files that test the loop module:
+    description: 'Delete test files that test the loop module:
+
       - modules/AgenticCLI/tests/test_loop_integration.py
+
       - modules/AgenticCLI/tests/test_loop_stop_idempotency.py
+
 
       Check test_session_commands.py and other test files for any loop-related
-      test cases that reference "session loop" commands. Remove those test cases
-      but keep the rest of the file intact.
-    target_files:
-      - modules/AgenticCLI/tests/test_loop_integration.py
-      - modules/AgenticCLI/tests/test_loop_stop_idempotency.py
-      - modules/AgenticCLI/tests/test_session_commands.py
-    success_criteria:
-      - No test files reference "session loop" commands
-      - Remaining tests still pass
 
-- name: "Phase 2 - Move ralph under orchestrate"
+      test cases that reference "session loop" commands. Remove those test cases
+
+      but keep the rest of the file intact.
+
+      '
+    status: completed
+    agent: build-python
+    target_files:
+    - modules/AgenticCLI/tests/test_loop_integration.py
+    - modules/AgenticCLI/tests/test_loop_stop_idempotency.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    success_criteria:
+    - No test files reference "session loop" commands
+    - Remaining tests still pass
+- name: Phase 2 - Move ralph under orchestrate
   execution: sequential
-  description: |
-    Move the ralph Typer app from being a direct child of session_app to being
+  description: 'Move the ralph Typer app from being a direct child of session_app
+    to being
+
     nested under orchestrate_app. This changes the command path from
+
     `agentic session ralph ...` to `agentic session orchestrate ralph ...`.
-  tasks:
+
+    '
+  tickets:
   - id: SC_004
     name: Re-parent ralph_app under orchestrate_app in cli.py
+    description: "In cli.py, change the ralph registration:\n\nBEFORE (line ~614-615):\n\
+      \  from agenticcli.commands.ralph import app as ralph_app\n  session_app.add_typer(ralph_app,\
+      \ name=\"ralph\")\n\nAFTER:\n  from agenticcli.commands.ralph import app as\
+      \ ralph_app\n  orchestrate_app.add_typer(ralph_app, name=\"ralph\")\n\nThe import\
+      \ stays the same; only the parent changes from session_app\nto orchestrate_app.\
+      \ The orchestrate_app is already defined at line ~723.\n"
     status: completed
-    completed_at: '2026-02-26T10:18:00.000000'
     agent: build-python
-    description: |
-      In cli.py, change the ralph registration:
-
-      BEFORE (line ~614-615):
-        from agenticcli.commands.ralph import app as ralph_app
-        session_app.add_typer(ralph_app, name="ralph")
-
-      AFTER:
-        from agenticcli.commands.ralph import app as ralph_app
-        orchestrate_app.add_typer(ralph_app, name="ralph")
-
-      The import stays the same; only the parent changes from session_app
-      to orchestrate_app. The orchestrate_app is already defined at line ~723.
-    target_files:
-      - modules/AgenticCLI/src/agenticcli/cli.py
     inputs:
-      - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
     success_criteria:
-      - ralph_app is registered under orchestrate_app, not session_app
-      - '"agentic session orchestrate ralph status" resolves correctly'
-
+    - ralph_app is registered under orchestrate_app, not session_app
+    - '"agentic session orchestrate ralph status" resolves correctly'
   - id: SC_005
     name: Update ralph.py help text and references
+    description: "Update ralph.py command help text and any hardcoded command references:\n\
+      1. In start() function, update \"Use 'agentic session ralph stop'\" to\n   \"\
+      Use 'agentic session orchestrate ralph stop'\"\n2. In history() function, update\
+      \ \"agentic session ralph start\" to\n   \"agentic session orchestrate ralph\
+      \ start\"\n3. Update module docstring if it references command paths\n\nSearch\
+      \ for all occurrences of \"session ralph\" and replace with\n\"session orchestrate\
+      \ ralph\".\n"
     status: completed
-    completed_at: '2026-02-26T10:19:00.000000'
     agent: build-python
-    description: |
-      Update ralph.py command help text and any hardcoded command references:
-      1. In start() function, update "Use 'agentic session ralph stop'" to
-         "Use 'agentic session orchestrate ralph stop'"
-      2. In history() function, update "agentic session ralph start" to
-         "agentic session orchestrate ralph start"
-      3. Update module docstring if it references command paths
-
-      Search for all occurrences of "session ralph" and replace with
-      "session orchestrate ralph".
-    target_files:
-      - modules/AgenticCLI/src/agenticcli/commands/ralph.py
     inputs:
-      - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/ralph.py
     success_criteria:
-      - No references to "session ralph" in ralph.py (all updated to "session orchestrate ralph")
-
+    - No references to "session ralph" in ralph.py (all updated to "session orchestrate
+      ralph")
   - id: SC_006
     name: Update ralph test expectations
-    status: completed
-    completed_at: '2026-02-26T10:20:00.000000'
-    agent: build-python
-    description: |
-      Update test_ralph_commands.py and any other tests that reference the
+    description: 'Update test_ralph_commands.py and any other tests that reference
+      the
+
       old "session ralph" command path to use "session orchestrate ralph".
 
-      Also update .claude/agents/orchestration-executor.md if it references
-      ralph command paths.
-    target_files:
-      - modules/AgenticCLI/tests/test_ralph_commands.py
-      - .claude/agents/orchestration-executor.md
-    inputs:
-      - modules/AgenticCLI/tests/test_ralph_commands.py
-    success_criteria:
-      - All test references updated to "session orchestrate ralph"
-      - Tests pass
 
-- name: "Phase 3 - Remove status command"
+      Also update .claude/agents/orchestration-executor.md if it references
+
+      ralph command paths.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/tests/test_ralph_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_ralph_commands.py
+    - .claude/agents/orchestration-executor.md
+    success_criteria:
+    - All test references updated to "session orchestrate ralph"
+    - Tests pass
+- name: Phase 3 - Remove status command
   execution: sequential
-  description: |
-    Remove the `session status <id>` command. The `session list` command already
+  description: 'Remove the `session status <id>` command. The `session list` command
+    already
+
     shows status, health, type, age, PID, and description per session.
+
     If single-session detail is needed later, it can be added as `list --detail <id>`.
-  tasks:
+
+    '
+  tickets:
   - id: SC_007
     name: Remove cmd_status from session.py
+    description: "In session.py:\n1. Remove the cmd_status function (lines ~1174-1230+)\n\
+      2. Remove the \"status\" routing from handle() (line ~513-514):\n   elif args.session_command\
+      \ == \"status\":\n       cmd_status(args, ctx)\n3. Update the usage message\
+      \ in the else branch to remove \"status\"\n"
     status: completed
-    completed_at: '2026-02-26T10:21:00.000000'
     agent: build-python
-    description: |
-      In session.py:
-      1. Remove the cmd_status function (lines ~1174-1230+)
-      2. Remove the "status" routing from handle() (line ~513-514):
-         elif args.session_command == "status":
-             cmd_status(args, ctx)
-      3. Update the usage message in the else branch to remove "status"
-    target_files:
-      - modules/AgenticCLI/src/agenticcli/commands/session.py
     inputs:
-      - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
     success_criteria:
-      - No cmd_status function in session.py
-      - handle() no longer routes "status" command
-
+    - No cmd_status function in session.py
+    - handle() no longer routes "status" command
   - id: SC_008
     name: Remove status command registration from cli.py
+    description: "Remove from cli.py the session_status command (lines ~681-691):\n\
+      \  @session_app.command(\"status\")\n  def session_status(...)\n"
     status: completed
-    completed_at: '2026-02-26T10:22:00.000000'
     agent: build-python
-    description: |
-      Remove from cli.py the session_status command (lines ~681-691):
-        @session_app.command("status")
-        def session_status(...)
-    target_files:
-      - modules/AgenticCLI/src/agenticcli/cli.py
     inputs:
-      - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
     success_criteria:
-      - No "status" command registered under session_app
-
+    - No "status" command registered under session_app
   - id: SC_009
     name: Remove status-related test cases
-    status: completed
-    completed_at: '2026-02-26T10:23:00.000000'
-    agent: build-python
-    description: |
-      Search test_session_commands.py and other test files for test cases that
-      invoke or assert on "session status" commands. Remove those test cases.
-      Keep any tests for session list, session health, etc.
-    target_files:
-      - modules/AgenticCLI/tests/test_session_commands.py
-    success_criteria:
-      - No test cases reference "session status" command
-      - Remaining tests pass
+    description: 'Search test_session_commands.py and other test files for test cases
+      that
 
-- name: "Phase 4 - Rename health to healthcheck with --diagnose flag"
+      invoke or assert on "session status" commands. Remove those test cases.
+
+      Keep any tests for session list, session health, etc.
+
+      '
+    status: completed
+    agent: build-python
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    success_criteria:
+    - No test cases reference "session status" command
+    - Remaining tests pass
+- name: Phase 4 - Rename health to healthcheck with --diagnose flag
   execution: sequential
-  description: |
-    Rename the `health` command to `healthcheck` and make diagnostic planner
+  description: 'Rename the `health` command to `healthcheck` and make diagnostic planner
+
     auto-spawn opt-in via `--diagnose` flag. Without the flag, the command is
+
     purely read-only: it shows health signals and verdict but never spawns.
-  tasks:
+
+    '
+  tickets:
   - id: SC_010
     name: Rename cmd_health to cmd_healthcheck in session.py
+    description: "In session.py:\n1. Rename cmd_health to cmd_healthcheck\n2. Add\
+      \ `diagnose` parameter read from args:\n   diagnose = getattr(args, \"diagnose\"\
+      , False)\n3. Guard auto-spawn logic behind `if diagnose:` - currently (lines\
+      \ ~1313-1354)\n   the diagnostic planner spawns unconditionally when stale/unhealthy.\
+      \ Wrap\n   those spawn calls so they only execute when diagnose=True.\n4. Update\
+      \ handle() routing: change \"health\" to \"healthcheck\"\n5. Update the usage\
+      \ message in handle()'s else branch\n"
     status: completed
-    completed_at: '2026-02-26T10:24:00.000000'
     agent: build-python
-    description: |
-      In session.py:
-      1. Rename cmd_health to cmd_healthcheck
-      2. Add `diagnose` parameter read from args:
-         diagnose = getattr(args, "diagnose", False)
-      3. Guard auto-spawn logic behind `if diagnose:` - currently (lines ~1313-1354)
-         the diagnostic planner spawns unconditionally when stale/unhealthy. Wrap
-         those spawn calls so they only execute when diagnose=True.
-      4. Update handle() routing: change "health" to "healthcheck"
-      5. Update the usage message in handle()'s else branch
-    target_files:
-      - modules/AgenticCLI/src/agenticcli/commands/session.py
     inputs:
-      - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
     success_criteria:
-      - Function is named cmd_healthcheck
-      - Diagnostic spawn only happens when diagnose=True
-      - handle() routes "healthcheck" (not "health")
-
+    - Function is named cmd_healthcheck
+    - Diagnostic spawn only happens when diagnose=True
+    - handle() routes "healthcheck" (not "health")
   - id: SC_011
     name: Rename health command to healthcheck in cli.py
+    description: "In cli.py:\n1. Rename @session_app.command(\"health\") to @session_app.command(\"\
+      healthcheck\")\n2. Rename the function from session_health to session_healthcheck\n\
+      3. Add --diagnose flag:\n   diagnose: Annotated[bool, typer.Option(\"--diagnose\"\
+      , help=\"Auto-spawn diagnostic planner for unhealthy sessions\")] = False\n\
+      4. Pass diagnose=diagnose in the _session_handle _ns() call\n5. Update session_command\
+      \ value from \"health\" to \"healthcheck\"\n"
     status: completed
-    completed_at: '2026-02-26T10:24:30.000000'
     agent: build-python
-    description: |
-      In cli.py:
-      1. Rename @session_app.command("health") to @session_app.command("healthcheck")
-      2. Rename the function from session_health to session_healthcheck
-      3. Add --diagnose flag:
-         diagnose: Annotated[bool, typer.Option("--diagnose", help="Auto-spawn diagnostic planner for unhealthy sessions")] = False
-      4. Pass diagnose=diagnose in the _session_handle _ns() call
-      5. Update session_command value from "health" to "healthcheck"
-    target_files:
-      - modules/AgenticCLI/src/agenticcli/cli.py
     inputs:
-      - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
     success_criteria:
-      - Command is registered as "healthcheck"
-      - --diagnose flag is available
-      - session_command passed is "healthcheck"
-
+    - Command is registered as "healthcheck"
+    - --diagnose flag is available
+    - session_command passed is "healthcheck"
   - id: SC_012
     name: Update healthcheck-related tests
-    status: completed
-    completed_at: '2026-02-26T10:25:00.000000'
-    agent: build-python
-    description: |
-      Update test_session_commands.py and any tests that reference "session health"
-      to use "session healthcheck". Also verify that tests exist for both the
-      --diagnose and no-diagnose paths.
-    target_files:
-      - modules/AgenticCLI/tests/test_session_commands.py
-    success_criteria:
-      - All references updated from "session health" to "session healthcheck"
-      - Tests cover both --diagnose and default (no diagnose) behavior
+    description: 'Update test_session_commands.py and any tests that reference "session
+      health"
 
-- name: "Phase 5 - Verification and cleanup"
+      to use "session healthcheck". Also verify that tests exist for both the
+
+      --diagnose and no-diagnose paths.
+
+      '
+    status: completed
+    agent: build-python
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    success_criteria:
+    - All references updated from "session health" to "session healthcheck"
+    - Tests cover both --diagnose and default (no diagnose) behavior
+- name: Phase 5 - Verification and cleanup
   execution: sequential
-  description: |
-    Run full test suite to verify no regressions. Search for any remaining
+  description: 'Run full test suite to verify no regressions. Search for any remaining
+
     stale references to removed/renamed commands.
-  tasks:
+
+    '
+  tickets:
   - id: SC_013
     name: Run full CLI test suite
+    description: "Run the full AgenticCLI test suite:\n  python3 -m pytest modules/AgenticCLI/tests/\
+      \ -x -q\n\nAll tests must pass. Fix any failures before proceeding.\n"
     status: completed
-    completed_at: '2026-02-26T10:38:00.000000'
     agent: test-runner
-    description: |
-      Run the full AgenticCLI test suite:
-        python3 -m pytest modules/AgenticCLI/tests/ -x -q
-
-      All tests must pass. Fix any failures before proceeding.
     success_criteria:
-      - All AgenticCLI tests pass
-      - Zero test failures
-
+    - All AgenticCLI tests pass
+    - Zero test failures
   - id: SC_014
     name: Search for stale command references
-    status: completed
-    completed_at: '2026-02-26T10:40:00.000000'
-    agent: build-python
-    description: |
-      Search the entire codebase for references to removed/renamed commands:
+    description: 'Search the entire codebase for references to removed/renamed commands:
+
       1. "session loop" - should have zero hits
+
       2. "session status" (as a command, not a status field) - should have zero hits
-      3. "session health" (as a command, not a health check) - should be replaced by "session healthcheck"
-      4. "session ralph" (not under orchestrate) - should be "session orchestrate ralph"
+
+      3. "session health" (as a command, not a health check) - should be replaced
+      by "session healthcheck"
+
+      4. "session ralph" (not under orchestrate) - should be "session orchestrate
+      ralph"
+
 
       Fix any stale references found in:
+
       - Source code help text
+
       - Agent guidance files (.claude/)
+
       - Documentation
+
       - Ralph loop config files
+
+      '
+    status: completed
+    agent: build-python
     target_files:
-      - .claude/
-      - docs/
-      - modules/AgenticCLI/src/
+    - .claude/
+    - docs/
+    - modules/AgenticCLI/src/
     success_criteria:
-      - No stale references to removed/renamed commands remain
+    - No stale references to removed/renamed commands remain
+- name: Phase 1 - Removal Verification
+  execution: sequential
+  description: 'Verify that removed commands are actually gone and produce appropriate
+
+    errors when invoked.
+
+    '
+  tickets:
+  - id: TSC_001
+    name: Verify loop commands are removed
+    description: "Run existing loop tests (should fail/be deleted):\n  python3 -m\
+      \ pytest modules/AgenticCLI/tests/test_loop_integration.py -x -q\n  python3\
+      \ -m pytest modules/AgenticCLI/tests/test_loop_stop_idempotency.py -x -q\n\n\
+      Both should either not exist or fail with ImportError.\n\nAlso verify that \"\
+      agentic session loop\" is not a recognized command\n(should produce help/error\
+      \ output without \"loop\" subcommand).\n"
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - Loop test files do not exist
+    - '"session loop" is not a recognized CLI command'
+  - id: TSC_002
+    name: Verify status command is removed
+    description: 'Verify "agentic session status" is no longer a recognized command.
+
+      The Typer help for "agentic session" should not list "status" as a subcommand.
+
+      '
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - '"session status" is not in the CLI help output'
+    - No cmd_status function in session.py
+- name: Phase 2 - New Command Structure Verification
+  execution: sequential
+  description: 'Verify the new command structure works correctly.
+
+    '
+  tickets:
+  - id: TSC_003
+    name: Verify ralph is under orchestrate
+    description: "Test that ralph commands work under the new path:\n  python3 -m\
+      \ pytest modules/AgenticCLI/tests/test_ralph_commands.py -x -q\n\nVerify \"\
+      agentic session orchestrate ralph\" is a valid command group.\nVerify \"agentic\
+      \ session ralph\" is NOT a valid command group.\n"
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - Ralph commands work under "session orchestrate ralph"
+    - '"session ralph" is not a recognized subcommand'
+  - id: TSC_004
+    name: Verify healthcheck command with --diagnose
+    description: 'Verify:
+
+      1. "agentic session healthcheck" is a valid command
+
+      2. "agentic session health" is NOT a valid command
+
+      3. Without --diagnose, healthcheck is read-only (no diagnostic spawn)
+
+      4. With --diagnose, healthcheck spawns diagnostic on unhealthy sessions
+
+      '
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - '"healthcheck" is listed in session help'
+    - '"health" is NOT listed in session help'
+    - Default behavior is read-only
+    - --diagnose enables diagnostic spawning
+- name: Phase 3 - Full Regression Suite
+  execution: sequential
+  description: 'Run the complete test suite to catch any regressions.
+
+    '
+  tickets:
+  - id: TSC_005
+    name: Run full AgenticCLI test suite
+    description: "Run complete test suite:\n  python3 -m pytest modules/AgenticCLI/tests/\
+      \ -x -q\n\nAll tests must pass with zero failures.\n"
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - All tests pass
+    - Zero failures or errors
+  - id: TSC_006
+    name: Run AgenticGuidance test suite (regression check)
+    description: "Run guidance tests to ensure ralph service layer wasn't broken:\n\
+      \  python3 -m pytest modules/AgenticGuidance/tests/ -x -q\n\nFocus on ralph-related\
+      \ tests.\n"
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - All guidance tests pass
+    - Ralph service tests unaffected
+context: "The `agentic session` command group has accumulated redundancy and misplaced\n\
+  commands over time. This plan restructures it for clarity:\n\n1. The `loop` subcommand\
+  \ is redundant with `ralph` and should be removed.\n2. `ralph` is a meta-orchestration\
+  \ concern and belongs under `orchestrate`.\n3. `status` duplicates what `list` already\
+  \ shows - remove it.\n4. `health` should be renamed `healthcheck` with auto-diagnostic\
+  \ spawn\n   made opt-in via `--diagnose` flag (currently it spawns automatically).\n\
+  \nTarget structure after cleanup:\n  agentic session spawn\n  agentic session list\n\
+  \  agentic session stop <id>\n  agentic session healthcheck <id> [--diagnose]\n\
+  \  agentic session logs <id>\n  agentic session orchestrate planning\n  agentic\
+  \ session orchestrate executing\n  agentic session orchestrate ralph start/stop/status/next/history\n"

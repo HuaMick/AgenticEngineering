@@ -1,259 +1,160 @@
-# CLI Main-First Planning Implementation Plan
-# Created: 2026-01-19
-# Objective: Modify `agentic plan init` to ALWAYS create plans in main worktree
+name: cli-main-first-planning
+worktree_path: /home/code/AgenticEngineering-agentic-cli
+branch: cli_main_first_planning
+status: completed
+priority: high
+objective: 'Modify the `agentic plan init` CLI command to ALWAYS create plan folders
+  in
 
-# ========================================
-# ROOT-LEVEL PLAN METADATA
-# ========================================
-name: "cli-main-first-planning"
-worktree_path: "/home/code/AgenticEngineering-agentic-cli"
-branch: "cli_main_first_planning"
-status: "completed"
-priority: "high"
-
-# File paths for plan management
-plan_file: "docs/plans/live/260119CL_cli_main_first_planning/live/plan_live_build.yml"
-completed_plan: "docs/plans/live/260119CL_cli_main_first_planning/completed/plan_completed.yml"
-
-# ========================================
-# OBJECTIVE
-# ========================================
-objective: |
-  Modify the `agentic plan init` CLI command to ALWAYS create plan folders in
   the main worktree, regardless of where the command is run. This is the
+
   single happy path for Main-First Planning.
+
 
   NO FLAGS NEEDED - just change the default behavior.
 
-# ========================================
-# CONTEXT
-# ========================================
-context: |
-  Current behavior (plan.py lines 128, 192-193):
+  '
+created: ''
+phases:
+- name: Implement Main Worktree Detection
+  execution: sequential
+  description: Add helper function to find the main worktree path
+  tickets:
+  - id: '01.1'
+    name: Add find_main_worktree() helper function
+    description: Create function to detect main worktree from git worktree list
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Add a new helper function near the top of plan.py (after find_plan_folder):\n\
+      \ndef find_main_worktree(repo_root: Path) -> Path | None:\n    \"\"\"Find the\
+      \ main worktree path (branch main or master).\n\n    Args:\n        repo_root:\
+      \ Path to any worktree in the repository.\n\n    Returns:\n        Path to main\
+      \ worktree, or None if not found.\n    \"\"\"\n    import subprocess\n\n   \
+      \ try:\n        result = subprocess.run(\n            [\"git\", \"worktree\"\
+      , \"list\", \"--porcelain\"],\n            capture_output=True,\n          \
+      \  text=True,\n            check=True,\n            cwd=repo_root,\n       \
+      \ )\n        lines = result.stdout.strip().split(\"\\n\")\n        i = 0\n \
+      \       while i < len(lines):\n            if lines[i].startswith(\"worktree\
+      \ \"):\n                wt_path = lines[i].split(\" \", 1)[1]\n            \
+      \    for j in range(i + 1, min(i + 5, len(lines))):\n                    if\
+      \ lines[j].startswith(\"branch \"):\n                        wt_branch = lines[j].split(\"\
+      \ \", 1)[1].replace(\"refs/heads/\", \"\")\n                        if wt_branch\
+      \ in (\"main\", \"master\"):\n                            return Path(wt_path)\n\
+      \                        break\n                    elif lines[j].startswith(\"\
+      worktree \"):\n                        break\n            i += 1\n    except\
+      \ subprocess.CalledProcessError:\n        pass\n    return None\n"
+    success_criteria:
+    - Function returns Path to main worktree when found
+    - Function returns None when main worktree not found
+    - Function handles both 'main' and 'master' branch names
+- name: Modify cmd_init() Logic
+  execution: sequential
+  description: Update cmd_init to ALWAYS use main worktree for plan folder
+  tickets:
+  - id: '02.1'
+    name: Update plan path to always use main worktree
+    description: Modify cmd_init() to always create plans in main worktree
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "In cmd_init(), after repo_root detection (line ~125), add main worktree\
+      \ detection.\n\nAfter line 125 (repo_name = ...), add:\n\n# Main-First Planning:\
+      \ Always create plans in main worktree\nmain_worktree_path = find_main_worktree(repo_root)\n\
+      if main_worktree_path is None:\n    # Fallback: use repo_root if main worktree\
+      \ detection fails\n    main_worktree_path = repo_root\n\nThen replace line 193\
+      \ (plan_path = worktree_path / ...):\n\n# Main-First Planning: Plan goes in\
+      \ main worktree, execution in feature worktree\nplan_path = main_worktree_path\
+      \ / \"docs\" / \"plans\" / \"live\" / plan_folder_name\n"
+    success_criteria:
+    - Plan path ALWAYS uses main worktree
+    - Feature worktree is still created for execution
+    - Fallback to repo_root if main detection fails
+  - id: '02.2'
+    name: Update output messages
+    description: Update console and JSON output to reflect Main-First
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Update JSON output (around line 205):\n\nif is_json_output():\n   \
+      \ print_json({\n        \"worktree\": str(worktree_path),\n        \"worktree_created\"\
+      : not worktree_exists,\n        \"branch\": branch,\n        \"base\": base,\n\
+      \        \"plan_folder\": str(plan_path),\n        \"plan_folder_name\": plan_folder_name,\n\
+      \        \"main_worktree\": str(main_worktree_path),  # NEW: Always show main\n\
+      \    })\n\nUpdate console output:\n\nelse:\n    console.print(f\"  [green]Created\
+      \ plan folder[/green] at {plan_path}\")\n    console.print(\"  [dim](Main-First\
+      \ Planning: plan in main worktree)[/dim]\")\n    console.print()\n    print_success(f\"\
+      Plan initialized: {plan_folder_name}\")\n    console.print(f\"[dim]Execution\
+      \ worktree:[/dim] {worktree_path}\")\n    console.print(f\"[dim]Plan folder:[/dim]\
+      \ {plan_path}\")\n"
+    success_criteria:
+    - JSON output includes main_worktree field
+    - Console output clarifies Main-First behavior
+    - Output distinguishes plan location vs execution worktree
+- name: Build Verification
+  execution: sequential
+  description: Verify the implementation builds and runs correctly
+  tickets:
+  - id: '03.1'
+    name: Run syntax validation
+    description: Verify Python files have no syntax errors
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: 'Run Python syntax check:
+
+      python -m py_compile modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+      '
+    success_criteria:
+    - No Python syntax errors
+    - File compiles successfully
+  - id: '03.2'
+    name: Integration test
+    description: Test that plan init always creates in main
+    status: pending
+    agent: null
+    guidance: 'Test scenario:
+
+      1. From a feature worktree, run: agentic plan init test-feature --description
+      test
+
+      2. Verify: Plan folder created in MAIN worktree''s docs/plans/live/
+
+      3. Verify: Feature worktree created for execution
+
+      4. Cleanup: Remove test artifacts
+
+      '
+    success_criteria:
+    - Plan created in main worktree (not feature)
+    - Feature worktree still created for execution
+    - No errors during execution
+context: 'Current behavior (plan.py lines 128, 192-193):
+
   - Creates plan at `worktree_path / "docs" / "plans" / "live" / plan_folder_name`
+
   - Result: Plans created in the FEATURE worktree
 
+
   Required change:
+
   - ALWAYS detect the main worktree
-  - ALWAYS create plan folder in main worktree's docs/plans/live/
+
+  - ALWAYS create plan folder in main worktree''s docs/plans/live/
+
   - Feature worktree still used for execution
+
   - No flags or options - single happy path
 
-# ========================================
-# ROOT-LEVEL INPUTS
-# ========================================
-inputs:
-  - location: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-    description: "Main file to modify - contains cmd_init() function"
-
-# ========================================
-# PHASES
-# ========================================
-phases:
-  # ----------------------------------------
-  # PHASE 1: Implement Main Worktree Detection
-  # ----------------------------------------
-  - name: "Implement Main Worktree Detection"
-    id: "phase_01"
-    execution: sequential
-    description: "Add helper function to find the main worktree path"
-    status: "pending"
-
-    tasks:
-      - id: "01.1"
-        name: "Add find_main_worktree() helper function"
-        description: "Create function to detect main worktree from git worktree list"
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        guidance: |
-          Add a new helper function near the top of plan.py (after find_plan_folder):
-
-          def find_main_worktree(repo_root: Path) -> Path | None:
-              """Find the main worktree path (branch main or master).
-
-              Args:
-                  repo_root: Path to any worktree in the repository.
-
-              Returns:
-                  Path to main worktree, or None if not found.
-              """
-              import subprocess
-
-              try:
-                  result = subprocess.run(
-                      ["git", "worktree", "list", "--porcelain"],
-                      capture_output=True,
-                      text=True,
-                      check=True,
-                      cwd=repo_root,
-                  )
-                  lines = result.stdout.strip().split("\n")
-                  i = 0
-                  while i < len(lines):
-                      if lines[i].startswith("worktree "):
-                          wt_path = lines[i].split(" ", 1)[1]
-                          for j in range(i + 1, min(i + 5, len(lines))):
-                              if lines[j].startswith("branch "):
-                                  wt_branch = lines[j].split(" ", 1)[1].replace("refs/heads/", "")
-                                  if wt_branch in ("main", "master"):
-                                      return Path(wt_path)
-                                  break
-                              elif lines[j].startswith("worktree "):
-                                  break
-                      i += 1
-              except subprocess.CalledProcessError:
-                  pass
-              return None
-        success_criteria:
-          - "Function returns Path to main worktree when found"
-          - "Function returns None when main worktree not found"
-          - "Function handles both 'main' and 'master' branch names"
-
-    success_criteria:
-      - "find_main_worktree() function exists"
-      - "Function correctly identifies main worktree from git output"
-
-  # ----------------------------------------
-  # PHASE 2: Modify cmd_init() Logic
-  # ----------------------------------------
-  - name: "Modify cmd_init() Logic"
-    id: "phase_02"
-    execution: sequential
-    description: "Update cmd_init to ALWAYS use main worktree for plan folder"
-    status: "pending"
-    dependencies:
-      - "phase_01"
-
-    tasks:
-      - id: "02.1"
-        name: "Update plan path to always use main worktree"
-        description: "Modify cmd_init() to always create plans in main worktree"
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        guidance: |
-          In cmd_init(), after repo_root detection (line ~125), add main worktree detection.
-
-          After line 125 (repo_name = ...), add:
-
-          # Main-First Planning: Always create plans in main worktree
-          main_worktree_path = find_main_worktree(repo_root)
-          if main_worktree_path is None:
-              # Fallback: use repo_root if main worktree detection fails
-              main_worktree_path = repo_root
-
-          Then replace line 193 (plan_path = worktree_path / ...):
-
-          # Main-First Planning: Plan goes in main worktree, execution in feature worktree
-          plan_path = main_worktree_path / "docs" / "plans" / "live" / plan_folder_name
-        success_criteria:
-          - "Plan path ALWAYS uses main worktree"
-          - "Feature worktree is still created for execution"
-          - "Fallback to repo_root if main detection fails"
-
-      - id: "02.2"
-        name: "Update output messages"
-        description: "Update console and JSON output to reflect Main-First"
-        status: "pending"
-        agent_type: "build"
-        inputs:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        guidance: |
-          Update JSON output (around line 205):
-
-          if is_json_output():
-              print_json({
-                  "worktree": str(worktree_path),
-                  "worktree_created": not worktree_exists,
-                  "branch": branch,
-                  "base": base,
-                  "plan_folder": str(plan_path),
-                  "plan_folder_name": plan_folder_name,
-                  "main_worktree": str(main_worktree_path),  # NEW: Always show main
-              })
-
-          Update console output:
-
-          else:
-              console.print(f"  [green]Created plan folder[/green] at {plan_path}")
-              console.print("  [dim](Main-First Planning: plan in main worktree)[/dim]")
-              console.print()
-              print_success(f"Plan initialized: {plan_folder_name}")
-              console.print(f"[dim]Execution worktree:[/dim] {worktree_path}")
-              console.print(f"[dim]Plan folder:[/dim] {plan_path}")
-        success_criteria:
-          - "JSON output includes main_worktree field"
-          - "Console output clarifies Main-First behavior"
-          - "Output distinguishes plan location vs execution worktree"
-
-    success_criteria:
-      - "Plans ALWAYS created in main worktree"
-      - "Output clearly shows where plan was created"
-      - "Feature worktree still created for execution"
-
-  # ----------------------------------------
-  # PHASE 3: Build Verification
-  # ----------------------------------------
-  - name: "Build Verification"
-    id: "phase_03"
-    execution: sequential
-    description: "Verify the implementation builds and runs correctly"
-    status: "pending"
-    dependencies:
-      - "phase_02"
-
-    tasks:
-      - id: "03.1"
-        name: "Run syntax validation"
-        description: "Verify Python files have no syntax errors"
-        status: "pending"
-        agent_type: "test"
-        inputs:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        target_files: []
-        guidance: |
-          Run Python syntax check:
-          python -m py_compile modules/AgenticCLI/src/agenticcli/commands/plan.py
-        success_criteria:
-          - "No Python syntax errors"
-          - "File compiles successfully"
-
-      - id: "03.2"
-        name: "Integration test"
-        description: "Test that plan init always creates in main"
-        status: "pending"
-        agent_type: "test"
-        inputs: []
-        target_files: []
-        guidance: |
-          Test scenario:
-          1. From a feature worktree, run: agentic plan init test-feature --description test
-          2. Verify: Plan folder created in MAIN worktree's docs/plans/live/
-          3. Verify: Feature worktree created for execution
-          4. Cleanup: Remove test artifacts
-        success_criteria:
-          - "Plan created in main worktree (not feature)"
-          - "Feature worktree still created for execution"
-          - "No errors during execution"
-
-    success_criteria:
-      - "All syntax checks pass"
-      - "Integration test confirms Main-First behavior"
-
-# ========================================
-# SUCCESS CRITERIA
-# ========================================
-success_criteria:
-  - "`agentic plan init branch --description desc` ALWAYS creates plan in main worktree"
-  - "No flags or options needed - single happy path"
-  - "Feature worktree is still created for execution"
-  - "Output clearly shows plan location vs execution location"
+  '

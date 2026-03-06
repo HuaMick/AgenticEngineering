@@ -49,7 +49,7 @@ def create_mock_plan(
     plan_data = {
         "name": name,
         "status": "active",
-        "phases": [{"name": "Phase 1", "tasks": tasks}],
+        "phases": [{"name": "Phase 1", "tickets": tasks}],
     }
 
     # Add dependencies if provided
@@ -77,7 +77,7 @@ def complete_plan_tasks(plan_dir: Path, task_ids: list[str] | None = None) -> No
     plan_data = yaml.safe_load(plan_file.read_text())
 
     for phase in plan_data.get("phases", []):
-        for task in phase.get("tasks", []):
+        for task in phase.get("tickets", []):
             if task_ids is None or task["id"] in task_ids:
                 task["status"] = "completed"
 
@@ -567,7 +567,7 @@ class TestCompletionVerification:
         # Add a pending task to PlanB
         plan_file = tmp_path / "PlanB" / "plan_build.yml"
         plan_data = yaml.safe_load(plan_file.read_text())
-        plan_data["phases"][0]["tasks"].append(
+        plan_data["phases"][0]["tickets"].append(
             {"id": "B2", "name": "Task B2", "status": "pending"}
         )
         plan_file.write_text(yaml.dump(plan_data))

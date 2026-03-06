@@ -1,31 +1,438 @@
-name: Consolidate orchestration state into a single pool and remove session dashboard
-worktree_path: /home/code/AgenticEngineering-cli-nesting
+name: Test Plan - Consolidate Orchestration State into Single Pool
+worktree_path: /home/code/AgenticEngineering
 branch: consolidate_orchestration_state
-status: completed
+status: pending
 priority: high
-context: 'Consolidate multiple CLI session state pools (sessions, loops, orchestration_loops)
-  into a single unified ''sessions'' pool, and remove the session dashboard command
-  as it is no longer a priority.
+objective: 'Test plan for validating the consolidation of CLI session state pools
+
+  (sessions, loops, orchestration_loops) into a single unified ''sessions'' pool,
+
+  and the removal of the ''agentic session dashboard'' command.
+
+
+  Key changes under test:
+
+  - StateStore("sessions") used by session.py, loop.py, orchestrate.py
+
+  - Records use ''type'' field to differentiate: session, loop, orchestration
+
+  - agentic session list shows all types with --type filter
+
+  - agentic session dashboard removed
+
+  - Loop records now stored in ~/.agentic/sessions/ (not ~/.agentic/loops/)
+
+  - Orchestration records now stored in ~/.agentic/sessions/ (not ~/.agentic/orchestration_loops/)
 
   '
+created: ''
 phases:
 - name: Consolidate State Pools
-  tasks:
+  tickets:
   - id: RM_DB_001
     name: Remove session dashboard
-    status: completed
     description: Remove the `agentic session dashboard` command and its related implementations.
-    completed_at: '2026-02-23T08:51:39.560778'
+    status: completed
+    agent: null
   - id: CONS_001
     name: Consolidate loop state stores
-    status: completed
     description: Update the CLI commands (loop, orchestrate, session) to use a unified
       state store ('sessions') instead of separate pools. And migrate old records
       if necessary.
-    completed_at: '2026-02-23T08:53:14.304533'
+    status: completed
+    agent: null
   - id: VER_001
     name: Verify CLI commands
-    status: completed
     description: Run tests to ensure `agentic session list` displays all active background
       sessions smoothly.
-    completed_at: '2026-02-23T08:53:47.126999'
+    status: completed
+    agent: null
+- name: Environment Setup
+  execution: sequential
+  description: Install latest code and verify CLI accessibility
+  tickets:
+  - id: env_001
+    name: Install latest code
+    description: "Install the latest AgenticCLI code in editable mode to ensure\n\
+      tests run against current implementation:\n  uv pip install -e modules/AgenticCLI\n\
+      Verify:\n  uv pip show agenticcli\n  agentic --version\n"
+    status: completed
+    agent: null
+  - id: env_002
+    name: Verify unified state directory
+    description: 'Verify that ~/.agentic/sessions/ directory exists and is the
+
+      sole state directory used by all commands. Check that old
+
+      directories (loops/, orchestration_loops/) are not actively written to.
+
+      '
+    status: completed
+    agent: null
+- name: Component Testing
+  execution: sequential
+  description: Run existing tests to validate state consolidation
+  tickets:
+  - id: test_001
+    name: Run state store unit tests
+    description: "Run tests for the StateStore class to validate basic CRUD operations:\n\
+      \  pytest modules/AgenticCLI/tests/ -k \"state_store\" -v\nVerify: save, load,\
+      \ list_all, and filter_fn work correctly.\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+  - id: test_002
+    name: Run session command tests
+    description: "Run all session-related tests to verify list/stop/status commands\n\
+      work with the unified store:\n  pytest modules/AgenticCLI/tests/test_session_commands.py\
+      \ -v\n  pytest modules/AgenticCLI/tests/test_session_stop_idempotency.py -v\n\
+      Verify: session list, stop, status work with type-based filtering.\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/tests/test_session_stop_idempotency.py
+  - id: test_003
+    name: Run loop command tests
+    description: "Run loop-related tests to verify loop commands use unified store:\n\
+      \  pytest modules/AgenticCLI/tests/test_loop_integration.py -v\n  pytest modules/AgenticCLI/tests/test_loop_stop_idempotency.py\
+      \ -v\nVerify: loop start/stop/status/history work with type=loop filter.\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_loop_integration.py
+    - modules/AgenticCLI/tests/test_loop_stop_idempotency.py
+  - id: test_004
+    name: Run orchestrate command tests
+    description: "Run orchestration-related tests:\n  pytest modules/AgenticCLI/tests/test_orchestrate_command.py\
+      \ -v\n  pytest modules/AgenticCLI/tests/test_orchestration_workflow.py -v\n\
+      Verify: orchestration records use type=orchestration in unified store.\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    - modules/AgenticCLI/tests/test_orchestration_workflow.py
+  - id: test_005
+    name: Run integration tests
+    description: "Run integration tests that exercise cross-command interactions:\n\
+      \  pytest modules/AgenticCLI/tests/integration/ -k \"session or orchestrat or\
+      \ loop\" -v\nVerify: integration scenarios work with consolidated state.\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_orchestrate_integration.py
+    - modules/AgenticCLI/tests/integration/test_orchestrate_smoke.py
+    - modules/AgenticCLI/tests/integration/test_stop_idempotency_e2e.py
+- name: Cleanup
+  execution: sequential
+  description: Remove test artifacts and verify no stale state
+  tickets:
+  - id: clean_001
+    name: Clean up test state files
+    description: 'Remove any test-generated state files from ~/.agentic/sessions/
+
+      that were created during component testing. Verify no stale
+
+      loop or orchestration state files remain in old directories.
+
+      '
+    status: completed
+    agent: null
+- name: Test Audit
+  execution: sequential
+  description: Mandatory audit to validate test quality and catch reward hacking
+  tickets:
+  - id: audit_001
+    name: Audit state store tests
+    description: 'Review test files for reward hacking patterns:
+
+      - Verify tests actually create/read state files, not just mock them
+
+      - Check that type-based filtering is tested (type=loop, type=orchestration)
+
+      - Ensure StateStore is instantiated with correct subdir ("sessions")
+
+      - Validate no tests still reference old pools ("loops", "orchestration_loops")
+
+
+      Files to audit:
+
+      - modules/AgenticCLI/tests/test_session_commands.py
+
+      - modules/AgenticCLI/tests/test_loop_integration.py
+
+      - modules/AgenticCLI/tests/test_orchestrate_command.py
+
+      - modules/AgenticCLI/tests/test_orchestration_workflow.py
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/tests/test_loop_integration.py
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    - modules/AgenticCLI/tests/test_orchestration_workflow.py
+  - id: audit_002
+    name: Verify dashboard removal is complete
+    description: 'Audit that the dashboard command is fully removed:
+
+      - No references to ''cmd_dashboard'' in session.py
+
+      - No references to ''dashboard'' subcommand in cli.py or handle() router
+
+      - No dangling imports or dead code related to dashboard
+
+      - Test that ''agentic session dashboard'' returns an error or unrecognized command
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+- name: UAT Validation
+  execution: sequential
+  description: 'Validate complete user journeys using the real CLI binary.
+
+    FENCE: All UAT tasks MUST execute the actual installed CLI,
+
+    not mocked subprocess calls.
+
+    '
+  tickets:
+  - id: uat_US-CLI-031
+    name: Validate List and Monitor Sessions (unified)
+    description: 'User Story: US-CLI-031
+
+
+      Journey:
+
+      1. Create test state files in ~/.agentic/sessions/ with different types
+
+      2. Run ''agentic session list'' and verify all types shown
+
+      3. Run ''agentic session list --type loop'' and verify only loops shown
+
+      4. Run ''agentic session list --type orchestration'' and verify only orchestrations
+      shown
+
+      5. Run ''agentic session list --active'' and verify filtering works
+
+      6. Run ''agentic -j session list'' and verify JSON output
+
+
+      Acceptance Criteria:
+
+      - agentic session list shows all tracked sessions with status, PID, start time
+
+      - The --active flag filters to running sessions only
+
+      - Session status includes: running, completed, failed, stopped
+
+      - JSON output is supported for scripting
+
+      - Prompt summary is truncated for readability
+
+      - NEW: --type flag filters by session type (session, loop, orchestration)
+
+      - NEW: All session types visible in unified list
+
+
+      Verification Steps:
+
+      1. Execute ''agentic session list --no-tmux'' with real binary
+
+      2. Verify output contains columns for session type
+
+      3. Test --type filter with each type value
+
+      4. Verify JSON output includes ''type'' field
+
+
+      Evidence Required:
+
+      - Command output from ''agentic session list'' showing mixed types
+
+      - Command output from ''agentic session list --type loop'' showing only loops
+
+      - JSON output confirming type field present
+
+      '
+    status: completed
+    agent: null
+  - id: uat_US-CLI-034
+    name: Validate Start Ralph Loop (unified store)
+    description: 'User Story: US-CLI-034
+
+
+      Journey:
+
+      1. Run ''agentic loop start --prompt "test" --background --no-tmux''
+
+      2. Verify loop record created in ~/.agentic/sessions/ (not ~/.agentic/loops/)
+
+      3. Verify record has type=loop field
+
+      4. Run ''agentic session list'' and verify loop appears in unified list
+
+      5. Run ''agentic loop status <id>'' to verify status retrieval
+
+      6. Stop the loop with ''agentic loop stop <id>''
+
+
+      Acceptance Criteria:
+
+      - agentic loop start --prompt <text> begins a Ralph Loop
+
+      - Loop metadata is persisted to ~/.agentic/sessions/ (unified pool)
+
+      - Loop record includes type=loop field
+
+      - Loop is visible in ''agentic session list'' unified view
+
+
+      Verification Steps:
+
+      1. Start a background loop with real CLI
+
+      2. Check state file exists in ~/.agentic/sessions/
+
+      3. Verify state file JSON contains type=loop
+
+      4. Verify ''agentic session list'' shows the loop
+
+      5. Clean up by stopping the loop
+
+
+      Evidence Required:
+
+      - Command output from loop start showing session ID
+
+      - State file contents showing type=loop
+
+      - Session list output showing the loop entry
+
+      '
+    status: completed
+    agent: null
+  - id: uat_US-CLI-036
+    name: Validate Monitor Loop Progress (unified store)
+    description: 'User Story: US-CLI-036
+
+
+      Journey:
+
+      1. Run ''agentic loop history'' to list past loops
+
+      2. Verify history only shows type=loop records
+
+      3. Run ''agentic loop history --active'' to filter running loops
+
+      4. Run ''agentic -j loop history'' for JSON output
+
+
+      Acceptance Criteria:
+
+      - agentic loop history lists all past loops sorted by most recent
+
+      - The --active flag filters to running loops only
+
+      - History only shows loop-type records, not sessions or orchestrations
+
+
+      Verification Steps:
+
+      1. Execute ''agentic loop history --no-tmux'' with real binary
+
+      2. Verify output contains only loop records
+
+      3. Test JSON output format
+
+
+      Evidence Required:
+
+      - Command output from ''agentic loop history''
+
+      - Confirmation that non-loop records are filtered out
+
+      '
+    status: completed
+    agent: null
+  - id: uat_dashboard_removed
+    name: Validate Dashboard Command Removed
+    description: 'Verify that the removed dashboard command is no longer accessible.
+
+
+      Journey:
+
+      1. Run ''agentic session dashboard''
+
+      2. Verify command returns error (unrecognized command or similar)
+
+      3. Run ''agentic session --help'' and verify dashboard not listed
+
+
+      Acceptance Criteria:
+
+      - ''agentic session dashboard'' returns a non-zero exit code
+
+      - Dashboard is not listed in ''agentic session --help'' output
+
+
+      Verification Steps:
+
+      1. Execute ''agentic session dashboard'' and verify it fails
+
+      2. Execute ''agentic session --help'' and grep for ''dashboard''
+
+
+      Evidence Required:
+
+      - Error output from ''agentic session dashboard''
+
+      - Help output showing dashboard is absent
+
+      '
+    status: completed
+    agent: null
+- name: Documentation Review
+  execution: sequential
+  description: Verify documentation reflects the state consolidation
+  tickets:
+  - id: doc_001
+    name: Review CLI README
+    description: 'Check that modules/AgenticCLI/README.md reflects the unified
+
+      session state model. Verify no references to separate loop or
+
+      orchestration state directories.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/README.md
+context: 'Test plan for validating the consolidation of CLI session state pools
+
+  (sessions, loops, orchestration_loops) into a single unified ''sessions'' pool,
+
+  and the removal of the ''agentic session dashboard'' command.
+
+
+  Key changes under test:
+
+  - StateStore("sessions") used by session.py, loop.py, orchestrate.py
+
+  - Records use ''type'' field to differentiate: session, loop, orchestration
+
+  - agentic session list shows all types with --type filter
+
+  - agentic session dashboard removed
+
+  - Loop records now stored in ~/.agentic/sessions/ (not ~/.agentic/loops/)
+
+  - Orchestration records now stored in ~/.agentic/sessions/ (not ~/.agentic/orchestration_loops/)
+
+  '

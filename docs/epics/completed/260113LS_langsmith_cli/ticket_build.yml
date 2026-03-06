@@ -1,329 +1,265 @@
-# Plan: AgenticCLI LangSmith Commands (Frontend)
-# Status: approved
-# Created: 2026-01-13
-# Summary: Add LangSmith CLI commands to agentic-cli for trace querying.
+name: langsmith-cli-frontend
+worktree_path: /home/code/AgenticEngineering-agentic-cli
+branch: agentic-cli
+status: completed
+priority: high
+objective: 'Add LangSmith trace querying commands to the agentic CLI.
 
-name: "langsmith-cli-frontend"
-worktree_path: "/home/code/AgenticEngineering-agentic-cli"
-branch: "agentic-cli"
-plan_file: "docs/plans/live/260113_langsmith_cli/live/plan_live_build.yml"
-status: "completed"
-priority: "high"
-
-context: |
-  Add LangSmith trace querying commands to the agentic CLI.
   Commands will consume the AgenticLangSmith backend module.
 
+
   The implementation will:
-  - Add 'agentic langsmith' command group with 'ls' alias
+
+  - Add ''agentic langsmith'' command group with ''ls'' alias
+
   - Implement subcommands: runs, run, projects, stats
+
   - Support JSON output for scripting
+
   - Provide rich table formatting for human-readable output
 
-# ========================================
-# PARALLEL EXECUTION CONTEXT
-# ========================================
-# This plan runs in the agentic-cli worktree and can execute
-# in parallel with the backend plan in agenticlangsmith worktree.
-#
-# DEPENDENCY: This plan requires agenticlangsmith package to be importable.
-# Development can proceed with mocked imports until backend is ready.
-#
-# Related plan: docs/plans/live/260113_langsmith_backend/live/plan_live_build.yml
-parallel_context:
-  sibling_plan: "/home/code/AgenticEngineering-agenticlangsmith/docs/plans/live/260113_langsmith_backend"
-  requires: "agenticlangsmith package with LangSmithService class"
-  mock_strategy: "Mock agenticlangsmith.service.LangSmithService during development"
-
-# ========================================
-# INPUTS
-# ========================================
-inputs:
-  - location: "modules/AgenticCLI/src/agenticcli/cli.py"
-    description: "Main CLI structure - how to add command groups"
-
-  - location: "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
-    description: "Example command with subcommands pattern"
-
-  - location: "modules/AgenticCLI/src/agenticcli/commands/health.py"
-    description: "Example command with JSON output support"
-
-  - location: "modules/AgenticCLI/src/agenticcli/console.py"
-    description: "Console utilities: is_json_output(), print_json(), rich console"
-
-  - location: "modules/AgenticCLI/tests/conftest.py"
-    description: "Test fixtures including cli_runner"
-
-# ========================================
-# RESOLVED QUESTIONS
-# ========================================
-resolved_questions:
-  - id: "QUESTION-003"
-    question: "Default limit for listing runs"
-    answer: "20 (moderate)"
-    answered_by: "HUMAN"
-
-dependencies:
-  - package: "agenticlangsmith"
-    version: "local"
-    purpose: "Backend module for LangSmith API interaction"
-
-# ========================================
-# PHASES AND TASKS
-# ========================================
+  '
+created: ''
 phases:
-  # ----------------------------------------
-  # PHASE 1: CLI Commands
-  # ----------------------------------------
-  - name: "Phase 1: CLI Commands"
-    execution: sequential
-    status: "completed"
-    started_at: "2026-01-16T23:30:00Z"
-    completed_at: "2026-01-16T23:45:00Z"
-    agent_used: "orchestration-executor"
-    description: "Implement LangSmith command group and subcommands"
-    tasks:
-      - id: "cli_01"
-        name: "Create langsmith Command Group"
-        status: "completed"
-        description: "Add 'agentic langsmith' command group with subcommand routing"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
-          - "modules/AgenticCLI/src/agenticcli/cli.py"
-          - "modules/AgenticCLI/src/agenticcli/commands/__init__.py"
-        inputs:
-          - modules/AgenticCLI/src/agenticcli/cli.py
-          - modules/AgenticCLI/src/agenticcli/commands/worktree.py
-        guidance: |
-          1. Create: modules/AgenticCLI/src/agenticcli/commands/langsmith.py
-             - handle(args, ctx=None) function for subcommand routing
-             - Route to: runs, run, projects, stats subcommand handlers
-             - Import pattern: from agenticlangsmith.service import LangSmithService
-             - Follow worktree.py pattern
+- name: 'Phase 1: CLI Commands'
+  execution: sequential
+  description: Implement LangSmith command group and subcommands
+  tickets:
+  - id: cli_01
+    name: Create langsmith Command Group
+    description: Add 'agentic langsmith' command group with subcommand routing
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/langsmith.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/__init__.py
+    guidance: "1. Create: modules/AgenticCLI/src/agenticcli/commands/langsmith.py\n\
+      \   - handle(args, ctx=None) function for subcommand routing\n   - Route to:\
+      \ runs, run, projects, stats subcommand handlers\n   - Import pattern: from\
+      \ agenticlangsmith.service import LangSmithService\n   - Follow worktree.py\
+      \ pattern\n\n2. Update: modules/AgenticCLI/src/agenticcli/cli.py\n   - Add _add_langsmith_parser(subparsers)\
+      \ function\n   - Call it from create_parser()\n   - Add alias \"ls\" for langsmith\
+      \ command\n   - Define subparsers: runs, run, projects, stats\n\n3. Update:\
+      \ modules/AgenticCLI/src/agenticcli/commands/__init__.py\n   - Export langsmith\
+      \ module\n\n4. Update run_cli() command routing to handle \"langsmith\"\n\n\
+      Subcommand signatures:\n- runs [--project NAME] [--limit N] [--type TYPE] [--error]\n\
+      - run RUN_ID [--url]\n- projects [--detail]\n- stats --project NAME [--since\
+      \ DATE] [--until DATE]\n"
+  - id: cli_02
+    name: Implement runs Subcommand
+    description: Query and display recent runs with filtering
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/langsmith.py
+    - modules/AgenticCLI/src/agenticcli/console.py
+    guidance: 'Implement `agentic langsmith runs`:
 
-          2. Update: modules/AgenticCLI/src/agenticcli/cli.py
-             - Add _add_langsmith_parser(subparsers) function
-             - Call it from create_parser()
-             - Add alias "ls" for langsmith command
-             - Define subparsers: runs, run, projects, stats
+      - List recent runs with key info
 
-          3. Update: modules/AgenticCLI/src/agenticcli/commands/__init__.py
-             - Export langsmith module
+      - Support --project filter
 
-          4. Update run_cli() command routing to handle "langsmith"
+      - Support --limit (default 20)
 
-          Subcommand signatures:
-          - runs [--project NAME] [--limit N] [--type TYPE] [--error]
-          - run RUN_ID [--url]
-          - projects [--detail]
-          - stats --project NAME [--since DATE] [--until DATE]
-        acceptance_criteria:
-          - "langsmith command group registered in CLI"
-          - "Help text displays available subcommands"
-          - "Alias 'ls' works for langsmith"
-          - "Subcommand routing works correctly"
+      - Support --type filter (llm, chain, tool, retriever)
 
-      - id: "cli_02"
-        name: "Implement runs Subcommand"
-        status: "completed"
-        description: "Query and display recent runs with filtering"
-        target_file: "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
-        inputs:
-          - modules/AgenticCLI/src/agenticcli/commands/langsmith.py
-          - modules/AgenticCLI/src/agenticcli/console.py
-        guidance: |
-          Implement `agentic langsmith runs`:
-          - List recent runs with key info
-          - Support --project filter
-          - Support --limit (default 20)
-          - Support --type filter (llm, chain, tool, retriever)
-          - Support --error flag for errors only
-          - JSON output via is_json_output() / print_json()
-          - Table format with rich.table for human output
+      - Support --error flag for errors only
 
-          Display columns: ID (truncated 8 chars), Name, Type, Latency (ms), Tokens, Status
-        acceptance_criteria:
-          - "Runs displayed in table format with rich"
-          - "JSON output works with --json flag"
-          - "All filters function correctly"
-          - "Limit defaults to 20"
+      - JSON output via is_json_output() / print_json()
 
-      - id: "cli_03"
-        name: "Implement run Detail Subcommand"
-        status: "completed"
-        description: "Show detailed info for a single run"
-        target_file: "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
-        guidance: |
-          Implement `agentic langsmith run <run-id>`:
-          - Display full run details in structured format
-          - Show inputs/outputs (truncated to 500 chars)
-          - Show child runs if present
-          - Include feedback if any
-          - Generate shareable URL with --url flag
-          - JSON output support
+      - Table format with rich.table for human output
 
-          Use rich.panel for formatted output.
-        acceptance_criteria:
-          - "Full run details displayed"
-          - "Child runs listed"
-          - "URL generation works with --url"
-          - "Truncation works for long content"
 
-      - id: "cli_04"
-        name: "Implement projects Subcommand"
-        status: "completed"
-        description: "List all projects with run counts"
-        target_file: "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
-        guidance: |
-          Implement `agentic langsmith projects`:
-          - List all projects in workspace
-          - Show run counts per project
-          - Support --detail flag for more info
-          - Table format: Name, ID, Run Count, Created
-          - JSON output support
-        acceptance_criteria:
-          - "Projects listed with basic stats"
-          - "Detail view shows additional metrics"
-          - "JSON output works"
+      Display columns: ID (truncated 8 chars), Name, Type, Latency (ms), Tokens, Status
 
-      - id: "cli_05"
-        name: "Implement stats Subcommand"
-        status: "completed"
-        description: "Show usage statistics for a project"
-        target_file: "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
-        guidance: |
-          Implement `agentic langsmith stats`:
-          - Requires --project argument
-          - Total runs, tokens, latency distribution
-          - Error rate percentage
-          - Optional --since, --until time filters
-          - Panel format with sections
-          - JSON output support
-        acceptance_criteria:
-          - "Stats displayed for specified project"
-          - "Token usage and latency shown"
-          - "Error rate calculated"
-          - "Time range filter works"
+      '
+  - id: cli_03
+    name: Implement run Detail Subcommand
+    description: Show detailed info for a single run
+    status: completed
+    agent: null
+    guidance: 'Implement `agentic langsmith run <run-id>`:
 
-  # ----------------------------------------
-  # PHASE 2: Dependencies
-  # ----------------------------------------
-  - name: "Phase 2: Dependencies"
-    execution: sequential
-    description: "Update project dependencies"
-    tasks:
-      - id: "deps_01"
-        name: "Add agenticlangsmith Dependency"
-        status: "completed"
-        description: "Add agenticlangsmith package to CLI dependencies"
-        target_file: "modules/AgenticCLI/pyproject.toml"
-        inputs:
-          - modules/AgenticCLI/pyproject.toml
-        guidance: |
-          Update modules/AgenticCLI/pyproject.toml:
-          - Add "agenticlangsmith" to dependencies list
-          - This assumes the package is installed in the environment
-        acceptance_criteria:
-          - "agenticlangsmith added to dependencies"
-          - "Package installs correctly"
+      - Display full run details in structured format
 
-  # ----------------------------------------
-  # PHASE 3: Testing (test-fix-loop)
-  # ----------------------------------------
-  - name: "Phase 3: Testing"
-    execution: sequential
-    description: "CLI command tests"
-    loop: "test-fix-loop"
-    tasks:
-      - id: "test_01"
-        name: "CLI Command Tests"
-        status: "completed"
-        description: "Test CLI command registration and argument parsing"
-        target_file: "modules/AgenticCLI/tests/test_langsmith_commands.py"
-        inputs:
-          - modules/AgenticCLI/tests/conftest.py
-          - modules/AgenticCLI/tests/test_cli.py
-        guidance: |
-          Create: modules/AgenticCLI/tests/test_langsmith_commands.py
+      - Show inputs/outputs (truncated to 500 chars)
 
-          Test cases:
-          - test_langsmith_command_exists
-          - test_langsmith_alias_ls_works
-          - test_langsmith_runs_parsing
-          - test_langsmith_run_parsing
-          - test_langsmith_projects_parsing
-          - test_langsmith_stats_requires_project
-          - test_langsmith_json_output
+      - Show child runs if present
 
-          Mock agenticlangsmith.service.LangSmithService to avoid
-          dependency on actual API or backend implementation.
-        acceptance_criteria:
-          - "CLI tests pass"
-          - "Help text verified"
-          - "Argument parsing correct"
-          - "Mocking isolates from backend"
+      - Include feedback if any
 
-      - id: "test_02"
-        name: "Run Test Suite"
-        status: "completed"
-        description: "Execute full test suite"
-        guidance: |
-          Run from worktree:
-          cd /home/code/AgenticEngineering-agentic-cli/modules/AgenticCLI
-          pytest tests/ -v
+      - Generate shareable URL with --url flag
 
-          Expected: All tests pass including new langsmith tests.
-        acceptance_criteria:
-          - "pytest runs without errors"
-          - "All tests pass"
-          - "No regressions"
+      - JSON output support
 
-  # ----------------------------------------
-  # PHASE 4: Audit (audit-test-fix-loop)
-  # ----------------------------------------
-  - name: "Phase 4: Audit"
-    execution: sequential
-    description: "Validate commands work from user perspective"
-    loop: "audit-test-fix-loop"
-    tasks:
-      - id: "audit_01"
-        name: "User Acceptance Test"
-        status: "completed"
-        description: "Validate commands work from user perspective"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/langsmith.py"
-        guidance: |
-          Manually validate the user experience:
-          1. Run: agentic langsmith --help
-          2. Verify help text is clear
-          3. Run: agentic ls projects (test alias)
-          4. Run without API key: should show clear error
 
-          Document any UX issues found.
-        acceptance_criteria:
-          - "Help text is user-friendly"
-          - "Error messages are clear"
-          - "Alias works correctly"
+      Use rich.panel for formatted output.
 
-      - id: "audit_02"
-        name: "Fix Audit Findings"
-        status: "completed"
-        description: "Address any issues found during audit"
-        guidance: |
-          Based on audit findings:
-          1. Improve error messages
-          2. Fix any UX issues
-          3. Re-run tests to verify fixes
-        acceptance_criteria:
-          - "All audit findings addressed"
-          - "Tests still pass"
+      '
+  - id: cli_04
+    name: Implement projects Subcommand
+    description: List all projects with run counts
+    status: completed
+    agent: null
+    guidance: 'Implement `agentic langsmith projects`:
 
-success_criteria:
-  - "agentic langsmith command group functional"
-  - "agentic langsmith runs lists recent runs"
-  - "agentic langsmith run <id> shows details"
-  - "agentic langsmith projects lists projects"
-  - "agentic langsmith stats shows statistics"
-  - "JSON output works for scripting"
-  - "Clear error when API key missing"
-  - "All CLI tests pass"
+      - List all projects in workspace
+
+      - Show run counts per project
+
+      - Support --detail flag for more info
+
+      - Table format: Name, ID, Run Count, Created
+
+      - JSON output support
+
+      '
+  - id: cli_05
+    name: Implement stats Subcommand
+    description: Show usage statistics for a project
+    status: completed
+    agent: null
+    guidance: 'Implement `agentic langsmith stats`:
+
+      - Requires --project argument
+
+      - Total runs, tokens, latency distribution
+
+      - Error rate percentage
+
+      - Optional --since, --until time filters
+
+      - Panel format with sections
+
+      - JSON output support
+
+      '
+- name: 'Phase 2: Dependencies'
+  execution: sequential
+  description: Update project dependencies
+  tickets:
+  - id: deps_01
+    name: Add agenticlangsmith Dependency
+    description: Add agenticlangsmith package to CLI dependencies
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/pyproject.toml
+    guidance: 'Update modules/AgenticCLI/pyproject.toml:
+
+      - Add "agenticlangsmith" to dependencies list
+
+      - This assumes the package is installed in the environment
+
+      '
+- name: 'Phase 3: Testing'
+  execution: sequential
+  description: CLI command tests
+  tickets:
+  - id: test_01
+    name: CLI Command Tests
+    description: Test CLI command registration and argument parsing
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/conftest.py
+    - modules/AgenticCLI/tests/test_cli.py
+    guidance: 'Create: modules/AgenticCLI/tests/test_langsmith_commands.py
+
+
+      Test cases:
+
+      - test_langsmith_command_exists
+
+      - test_langsmith_alias_ls_works
+
+      - test_langsmith_runs_parsing
+
+      - test_langsmith_run_parsing
+
+      - test_langsmith_projects_parsing
+
+      - test_langsmith_stats_requires_project
+
+      - test_langsmith_json_output
+
+
+      Mock agenticlangsmith.service.LangSmithService to avoid
+
+      dependency on actual API or backend implementation.
+
+      '
+  - id: test_02
+    name: Run Test Suite
+    description: Execute full test suite
+    status: completed
+    agent: null
+    guidance: 'Run from worktree:
+
+      cd /home/code/AgenticEngineering-agentic-cli/modules/AgenticCLI
+
+      pytest tests/ -v
+
+
+      Expected: All tests pass including new langsmith tests.
+
+      '
+- name: 'Phase 4: Audit'
+  execution: sequential
+  description: Validate commands work from user perspective
+  tickets:
+  - id: audit_01
+    name: User Acceptance Test
+    description: Validate commands work from user perspective
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/langsmith.py
+    guidance: 'Manually validate the user experience:
+
+      1. Run: agentic langsmith --help
+
+      2. Verify help text is clear
+
+      3. Run: agentic ls projects (test alias)
+
+      4. Run without API key: should show clear error
+
+
+      Document any UX issues found.
+
+      '
+  - id: audit_02
+    name: Fix Audit Findings
+    description: Address any issues found during audit
+    status: completed
+    agent: null
+    guidance: 'Based on audit findings:
+
+      1. Improve error messages
+
+      2. Fix any UX issues
+
+      3. Re-run tests to verify fixes
+
+      '
+context: 'Add LangSmith trace querying commands to the agentic CLI.
+
+  Commands will consume the AgenticLangSmith backend module.
+
+
+  The implementation will:
+
+  - Add ''agentic langsmith'' command group with ''ls'' alias
+
+  - Implement subcommands: runs, run, projects, stats
+
+  - Support JSON output for scripting
+
+  - Provide rich table formatting for human-readable output
+
+  '

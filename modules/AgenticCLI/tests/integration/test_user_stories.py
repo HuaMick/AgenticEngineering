@@ -148,7 +148,7 @@ class TestUserStoriesWorkflow:
                         "id": "P1",
                         "name": "Implementation",
                         "status": "pending",
-                        "tasks": [
+                        "tickets": [
                             {
                                 "id": "T1",
                                 "description": "Implement feature",
@@ -879,7 +879,7 @@ class TestUserStoriesIntegrationWithOtherCommands:
                         "id": "P1",
                         "name": "Build",
                         "status": "pending",
-                        "tasks": [{"id": "T1", "description": "Build task"}],
+                        "tickets": [{"id": "T1", "description": "Build task"}],
                     }
                 ],
             },

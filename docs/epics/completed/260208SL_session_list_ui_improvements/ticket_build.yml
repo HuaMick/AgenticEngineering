@@ -1,67 +1,26 @@
-name: session-list-ui-improvements
+name: session-list-ui-improvements-test-plan
 worktree_path: /home/code/AgenticEngineering
 branch: main
-status: active
+status: pending
 priority: medium
-context: 'The `agentic session list` command currently shows ALL sessions (completed,
-  failed,
+objective: 'Verify the session list UI improvements work correctly:
 
-  stopped, running) by default. Over time this becomes polluted with old sessions,
+  - Default filtering shows only running/starting sessions
 
-  making it hard to see what''s actually running. Columns are too narrow to read,
+  - --all flag shows all sessions
 
-  the prompt is truncated at 40 chars, and timestamps use raw ISO format.
+  - Relative time formatting works correctly
 
+  - Table layout improvements display properly
 
-  The existing implementation lives in:
+  - Status summary line is accurate
 
-  - modules/AgenticCLI/src/agenticcli/commands/session.py (cmd_list function, lines
-  435-504)
+  - JSON output respects filtering
 
-  - modules/AgenticCLI/src/agenticcli/cli.py (session_list Typer command, lines 684-689)
-
-
-  The session list uses Rich Table for display. Session data is stored as JSON files
-
-  in ~/.agentic/sessions/*.json. Each session has: session_id, pid, prompt, status,
-
-  started_at, ended_at, background, working_dir, estimated_tokens, context_usage_percent.
-
-
-  Current --active flag filters to running-only but is opt-in. We need to invert the
-
-  default so running sessions are shown by default, and --all shows everything.
+  - No regressions in other session commands
 
   '
-objective: 'Improve the session list UI to:
-
-  1. Show only running/starting sessions by default (was: show all)
-
-  2. Add --all flag to show all sessions including completed/stopped/failed
-
-  3. Widen description column to 60 chars and show meaningful prompt excerpt
-
-  4. Replace raw ISO timestamps with relative time ("2m ago", "1h ago", "3d ago")
-
-  5. Improve column widths for better readability
-
-  6. Add status summary line ("2 running, 5 completed, 1 failed")
-
-  '
-dependencies: []
-affected_stories: []
-impacted_artifacts:
-- artifact_type: cli_command
-  artifact_identifier: agentic session list
-  impact_type: behavior_change
-  description: Default changes from showing all sessions to showing only active (running/starting)
-  breaking_change: true
-- artifact_type: cli_module
-  artifact_identifier: agenticcli.commands.session:cmd_list
-  impact_type: modification
-  description: Updated table layout, filtering logic, relative time formatting
-  breaking_change: false
-open_questions: []
+created: ''
 phases:
 - name: 'Phase 1: Invert Default Filtering and Add --all Flag'
   execution: sequential
@@ -72,7 +31,7 @@ phases:
     Remove the now-redundant --active flag (since active is the default).
 
     '
-  tasks:
+  tickets:
   - id: SL_001
     name: Add --all flag to CLI entrypoint and update default filtering
     description: 'In cli.py, replace the --active flag with --all flag on session_list.
@@ -127,7 +86,7 @@ phases:
     time display, improve column widths, and add status summary.
 
     '
-  tasks:
+  tickets:
   - id: SL_002
     name: Add relative time helper function
     description: 'Create a _format_relative_time(iso_timestamp) helper in session.py
@@ -203,7 +162,7 @@ phases:
     new default filtering behavior and table layout changes.
 
     '
-  tasks:
+  tickets:
   - id: SL_004
     name: Update TestSessionListCommand tests for new defaults
     description: 'Update the existing tests in test_session_commands.py to match the
@@ -240,11 +199,305 @@ phases:
     - Default filtering tested (shows running only)
     - --all flag tested (shows all sessions)
     - All tests pass
-success_criteria:
-- '`agentic session list` shows only running/starting sessions by default'
-- '`agentic session list --all` shows all sessions'
-- Table columns are readable with relative time and wider description
-- Status summary line shows session counts
-- JSON output respects filtering flags
-- All existing tests updated and passing
-- No regressions in session spawn, stop, or status commands
+- name: 'T1: Default Filtering Tests'
+  execution: sequential
+  description: 'Tests validating the inverted default filtering behavior and --all
+    flag.
+
+    '
+  tickets:
+  - id: TSL_001
+    name: Test default shows only running/starting sessions
+    description: 'Verify that cmd_list with show_all=False (default) filters to only
+
+      sessions with status "running" or "starting".
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create a mix of sessions: 2 running, 1 completed, 1 failed, 1 stopped
+
+      2. Call cmd_list with show_all=False
+
+      3. Assert only the 2 running sessions appear in output
+
+      4. Assert completed/failed/stopped sessions do NOT appear
+
+      5. Mock _is_process_running to return True for running sessions
+
+      6. Test both human and JSON output modes
+
+      '
+    success_criteria:
+    - Only running/starting sessions shown by default
+    - Completed/failed/stopped sessions hidden
+  - id: TSL_002
+    name: Test --all flag shows all sessions
+    description: 'Verify that cmd_list with show_all=True shows all sessions
+
+      regardless of status.
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create sessions with mixed statuses (running, completed, failed,
+      stopped)
+
+      2. Call cmd_list with show_all=True
+
+      3. Assert ALL sessions appear in output
+
+      4. Verify in both human and JSON output modes
+
+      5. Verify session count reflects all sessions
+
+      '
+    success_criteria:
+    - All sessions shown when --all is used
+    - JSON output includes all sessions
+  - id: TSL_003
+    name: Test empty active sessions message
+    description: 'Verify the appropriate message when no active sessions exist
+
+      but completed sessions do exist.
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create only completed/stopped sessions (no running)
+
+      2. Call cmd_list with show_all=False
+
+      3. Assert message says "No active sessions" (not "No sessions found")
+
+      4. Assert hint about --all is shown
+
+      5. Test completely empty state too (no sessions at all)
+
+      '
+    success_criteria:
+    - '''No active sessions'' message shown when no running sessions'
+    - Hint about --all flag shown
+    - Empty state still works correctly
+- name: 'T2: Table Layout Tests'
+  execution: sequential
+  description: 'Tests for the improved table layout, relative time formatting,
+
+    and status summary line.
+
+    '
+  tickets:
+  - id: TSL_004
+    name: Test relative time formatting
+    description: 'Unit test the _format_relative_time helper function with various
+
+      time deltas.
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Test "just now" for timestamps < 60 seconds ago
+
+      2. Test "Nm ago" for timestamps 1-59 minutes ago
+
+      3. Test "Nh ago" for timestamps 1-23 hours ago
+
+      4. Test "Nd ago" for timestamps 1-6 days ago
+
+      5. Test month+day format for timestamps >= 7 days ago
+
+      6. Test graceful fallback on invalid/empty strings
+
+      7. Use monkeypatch or freezegun to control datetime.now()
+
+      '
+    success_criteria:
+    - All time ranges produce correct relative time strings
+    - Edge cases handled (just now boundary, day boundary)
+    - Invalid input returns fallback gracefully
+  - id: TSL_005
+    name: Test description column shows prompt excerpt
+    description: 'Verify the Description column shows first 60 chars of prompt
+
+      with proper truncation and newline handling.
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create session with short prompt (< 60 chars) -> no truncation
+
+      2. Create session with long prompt (> 60 chars) -> truncated with "..."
+
+      3. Create session with multi-line prompt -> newlines replaced with spaces
+
+      4. Create session with empty prompt -> shows empty or "N/A"
+
+      5. Verify in table output (Rich Table rendering)
+
+      '
+    success_criteria:
+    - Short prompts displayed in full
+    - Long prompts truncated at 60 chars with '...'
+    - Newlines in prompts replaced with spaces
+  - id: TSL_006
+    name: Test status summary line
+    description: 'Verify the status summary line at the bottom of the table output
+
+      shows correct counts by status.
+
+      '
+    status: completed
+    agent: test-builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: '1. Create 2 running, 3 completed, 1 failed sessions
+
+      2. Call cmd_list with show_all=True
+
+      3. Assert summary line contains "2 running"
+
+      4. Assert summary line contains "3 completed"
+
+      5. Assert summary line contains "1 failed"
+
+      6. Test default (active-only) shows hint: "Showing N active of M total"
+
+      7. Test with only one status type (e.g., all running)
+
+      '
+    success_criteria:
+    - Summary line shows correct counts per status
+    - Only non-zero counts shown
+    - Active-only mode shows total count hint
+- name: 'T3: Test Audit'
+  execution: sequential
+  description: 'MANDATORY audit to validate test quality. Must pass before UAT.
+
+    '
+  tickets:
+  - id: TSL_007
+    name: Audit session list test quality
+    description: 'Comprehensive audit of all session list tests for quality issues.
+
+      '
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: 'Audit Checklist:
+
+      1. Skipped tests: Find @pytest.mark.skip decorators, validate justification
+
+      2. Reward hacking: Tests that mock too much, hardcoded paths, trivial assertions
+
+      3. Coverage gaps: Error paths, edge cases, both output modes (human/JSON)
+
+      4. Test quality: Missing cleanup, global state modification, loose assertions
+
+      5. Implementation validation: Tests actually call implementation code
+
+      6. New behavior tested: Default filtering, --all flag, relative time, summary
+
+      '
+    success_criteria:
+    - No unjustified skipped tests
+    - No reward hacking detected
+    - Coverage gaps identified and addressed
+- name: 'T4: UAT Validation'
+  execution: sequential
+  description: 'MANDATORY user acceptance testing - PRIMARY SUCCESS CRITERIA.
+
+    Validates the improved session list experience from a user perspective.
+
+    '
+  tickets:
+  - id: TSL_008
+    name: 'UAT: Default session list shows only active sessions'
+    description: 'Validate that a user running `agentic session list` sees only their
+
+      active sessions, not cluttered by old completed ones.
+
+      '
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "User Journey:\n1. User has 10+ sessions (mix of running, completed,\
+      \ failed)\n2. User runs: agentic session list\n   Expected: Only running sessions\
+      \ shown (not polluted by completed)\n3. User sees a hint about using --all to\
+      \ see all sessions\n4. User runs: agentic session list --all\n   Expected: All\
+      \ sessions shown with status summary\n\nAcceptance Criteria:\n- Default view\
+      \ is clean and uncluttered\n- Active sessions are clearly visible\n- Hint about\
+      \ --all is discoverable\n"
+    success_criteria:
+    - Default view shows only active sessions
+    - --all shows complete history
+    - Transition between views is intuitive
+  - id: TSL_009
+    name: 'UAT: Improved readability of session list'
+    description: 'Validate that the improved table layout is more readable than before.
+
+      '
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: "User Journey:\n1. User runs: agentic session list --all\n2. User sees:\n\
+      \   - Session ID (8 chars, readable)\n   - Status with color coding\n   - Relative\
+      \ time (\"2h ago\" not \"2026-02-08T10:00:00\")\n   - PID for process management\n\
+      \   - Description showing meaningful prompt excerpt (60 chars)\n3. User sees\
+      \ status summary at bottom (\"2 running, 5 completed\")\n4. User can quickly\
+      \ identify which sessions are doing what\n\nAcceptance Criteria:\n- Relative\
+      \ time is more scannable than ISO timestamps\n- Description column provides\
+      \ context about session purpose\n- Status summary gives quick overview\n- Table\
+      \ fits in a standard 120-char terminal width\n"
+    success_criteria:
+    - Relative time is human-readable
+    - Description column shows useful prompt excerpt
+    - Status summary present and accurate
+    - Table layout fits standard terminal
+context: 'Test plan for the session list UI improvements (260208SL). Validates the
+  three
+
+  build phases: default filtering inversion, table layout improvements, and
+
+  existing test updates.
+
+
+  Key test file: modules/AgenticCLI/tests/test_session_commands.py
+
+  Implementation file: modules/AgenticCLI/src/agenticcli/commands/session.py
+
+
+  The existing test file already has a TestSessionListCommand class with tests
+
+  for empty list, list with sessions, active-only filter, and JSON output.
+
+  These need to be updated to reflect the new default behavior.
+
+  '

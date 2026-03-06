@@ -1012,7 +1012,7 @@ class EpicRepository:
                         }
                     )
 
-                for task in phase.get("tickets", phase.get("tasks", [])):
+                for task in phase.get("tickets", []):
                     task_id = task.get("id") or task.get("task_id", "")
                     if not task_id or task_id in seen_tickets:
                         continue

@@ -127,7 +127,7 @@ class TestPlanWorkflowSequence:
                         "id": "phase-1",
                         "name": "Phase 1",
                         "status": "in_progress",
-                        "tasks": [
+                        "tickets": [
                             {"id": "task-1", "name": "Task 1", "status": "pending"},
                             {"id": "task-2", "name": "Task 2", "status": "completed"},
                         ],

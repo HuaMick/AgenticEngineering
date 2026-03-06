@@ -1,0 +1,101 @@
+name: Fix plan validation - make worktree_path optional
+worktree_path: /home/code/AgenticEngineering
+branch: ''
+status: active
+priority: high
+objective: "The PlanService.validate_plan_structure() method in\nmodules/AgenticGuidance/src/agenticguidance/services/plan.py\
+  \ (line 1157)\nlists worktree_path as a required field:\n\n  required_fields = [\"\
+  name\", \"worktree_path\", \"status\", \"phases\"]\n\nHowever, not all plans use\
+  \ worktrees. Plans that operate directly on the\nmain repository (e.g. 260219NS_fix_nested_session_spawn)\
+  \ have no\nworktree_path field because there is no worktree to point to. This causes\n\
+  the integration test test_validate_real_plan_structure_passes to fail.\n\nAdditionally,\
+  \ the test only validates the FIRST plan folder returned by\niterdir(), making it\
+  \ filesystem-order-dependent. It should validate ALL\nlive plans to catch structural\
+  \ issues across the board.\n\nRoot cause analysis:\n- worktree_path was added as\
+  \ a required field after some plans were already\n  created without it\n- 3 of 6\
+  \ live plans lack worktree_path (260214UT, 260219NS, 260221NE_remove)\n- The field\
+  \ is semantically optional: plans without worktrees don't need it\n\nFix approach:\n\
+  - Move worktree_path from required_fields to optional (warn, don't error)\n- Update\
+  \ the test to validate ALL live plans, not just the first found\n- Optionally backfill\
+  \ worktree_path into existing plans for consistency\n"
+created: ''
+phases:
+- name: Make worktree_path optional in validation
+  tickets:
+  - id: P1_T1
+    name: Move worktree_path from required_fields to optional with warning
+    description: "Edit modules/AgenticGuidance/src/agenticguidance/services/plan.py\n\
+      \nAt line 1157, change:\n  required_fields = [\"name\", \"worktree_path\", \"\
+      status\", \"phases\"]\nto:\n  required_fields = [\"name\", \"status\", \"phases\"\
+      ]\n\nAdd a warning check for worktree_path after the required fields loop\n\
+      (after line 1178):\n  if \"worktree_path\" not in data:\n      warnings.append(f\"\
+      Missing recommended field 'worktree_path' in {plan_file.name}\")\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+    success_criteria:
+    - required_fields list contains only ["name", "status", "phases"]
+    - Missing worktree_path generates a warning, not an error
+    - validate_plan_structure() returns valid=True for plans without worktree_path
+- name: Fix integration test to validate all live plans
+  tickets:
+  - id: P2_T1
+    name: Update test to validate all live plans instead of just the first
+    description: "Edit modules/AgenticGuidance/tests/test_services_plan_service_integration.py\n\
+      \nIn test_validate_real_plan_structure_passes (line 87), change the test\nto\
+      \ iterate ALL plan folders with plan_*.yml files, not just the first.\n\nReplace\
+      \ the current \"find first valid plan folder\" loop + single\nvalidation with\
+      \ a loop that validates every plan folder and collects\nany failures into one\
+      \ report.\n\nExample approach:\n  plan_folders = [\n      d for d in plans_dir.iterdir()\n\
+      \      if d.is_dir() and \"_\" in d.name\n      and len(d.name.split(\"_\")[0])\
+      \ == 8\n      and list(d.glob(\"plan_*.yml\"))\n  ]\n  if not plan_folders:\n\
+      \      pytest.skip(\"No valid plan with plan_*.yml files found\")\n\n  failures\
+      \ = []\n  for plan_folder in plan_folders:\n      result = service.validate_plan_structure(plan_folder)\n\
+      \      if not result.valid:\n          errors = \"; \".join(result.errors)\n\
+      \          failures.append(f\"{plan_folder.name}: {errors}\")\n\n  if failures:\n\
+      \      pytest.fail(\"Plan validation failed:\\n\" + \"\\n\".join(f\"  - {f}\"\
+      \ for f in failures))\n"
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
+    success_criteria:
+    - Test validates ALL live plans, not just the first found
+    - Test passes with all current live plans
+    - Failures are reported with plan names for debugging
+- name: Verify fix and run full test suite
+  tickets:
+  - id: P3_T1
+    name: Run integration tests to confirm fix
+    description: "Run the full integration test file:\n  python3 -m pytest modules/AgenticGuidance/tests/test_services_plan_service_integration.py\
+      \ -v\n\nAlso run the broader PlanService unit tests:\n  python3 -m pytest modules/AgenticGuidance/tests/test_services_plan_service.py\
+      \ -v\n\nEnsure no regressions.\n"
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_plan_service_integration.py
+    - modules/AgenticGuidance/tests/test_services_plan_service.py
+    success_criteria:
+    - All integration tests pass
+    - All unit tests pass
+    - No regressions in PlanService functionality
+context: "The PlanService.validate_plan_structure() method in\nmodules/AgenticGuidance/src/agenticguidance/services/plan.py\
+  \ (line 1157)\nlists worktree_path as a required field:\n\n  required_fields = [\"\
+  name\", \"worktree_path\", \"status\", \"phases\"]\n\nHowever, not all plans use\
+  \ worktrees. Plans that operate directly on the\nmain repository (e.g. 260219NS_fix_nested_session_spawn)\
+  \ have no\nworktree_path field because there is no worktree to point to. This causes\n\
+  the integration test test_validate_real_plan_structure_passes to fail.\n\nAdditionally,\
+  \ the test only validates the FIRST plan folder returned by\niterdir(), making it\
+  \ filesystem-order-dependent. It should validate ALL\nlive plans to catch structural\
+  \ issues across the board.\n\nRoot cause analysis:\n- worktree_path was added as\
+  \ a required field after some plans were already\n  created without it\n- 3 of 6\
+  \ live plans lack worktree_path (260214UT, 260219NS, 260221NE_remove)\n- The field\
+  \ is semantically optional: plans without worktrees don't need it\n\nFix approach:\n\
+  - Move worktree_path from required_fields to optional (warn, don't error)\n- Update\
+  \ the test to validate ALL live plans, not just the first found\n- Optionally backfill\
+  \ worktree_path into existing plans for consistency\n"

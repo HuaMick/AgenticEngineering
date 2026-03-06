@@ -1,0 +1,339 @@
+name: consolidate-orchestrate-finalization
+worktree_path: ''
+branch: ''
+status: pending
+priority: medium
+objective: 'The build phase (plan_cleaning.yml) consolidates the CLI by:
+
+  - Deleting commands/planner.py (agentic session planner start/stop/status)
+
+  - Removing --mode flag from orchestrate command
+
+  - Making `agentic session orchestrate planning` the sole entry point
+
+  - Removing --planning-loop flag (planning loop is now the default)
+
+
+  Code changes are partially reflected in unstaged git changes. This finalization
+
+  plan ensures cleanup of stale references, validates test quality, confirms
+
+  user stories, and updates documentation.
+
+  '
+created: ''
+phases:
+- name: Cleanup stale references
+  execution: sequential
+  description: 'Remove stale references to the deleted planner subcommand and --mode
+    flag
+
+    from documentation, comments, and prompt files. These are noise that will
+
+    confuse future agents and users.
+
+    '
+  tickets:
+  - id: clean_01
+    name: Update state_store.py comment
+    description: Remove reference to deleted planner.py from state_store.py module
+      docstring
+    status: pending
+    agent: build-python
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/state_store.py
+    guidance: 'Line 4 of state_store.py references "planner.py" which no longer exists.
+
+      Update the comment to only reference existing files: session.py, loop.py, orchestrate.py.
+
+      '
+    success_criteria:
+    - state_store.py docstring no longer references planner.py
+    - Comment accurately lists only existing command modules
+  - id: clean_02
+    name: Update orchestration prompt docs
+    description: Remove stale --mode flag references from docs/prompts/ orchestration
+      files
+    status: pending
+    agent: build-python
+    target_files:
+    - docs/prompts/orchestration.md
+    - docs/prompts/orchestration_executor.md
+    - docs/prompts/orchestration_planner.md
+    guidance: 'These prompt reference files still document the old --mode flag syntax:
+
+      - orchestration.md: Lines 8-10, 18 reference --mode planning/executor/friction
+
+      - orchestration_executor.md: Lines 8-9, 33-34 reference --mode executor
+
+      - orchestration_planner.md: Lines 8-9, 105-106 reference --mode planning
+
+
+      Update all to reflect the new syntax:
+
+      - `agentic session orchestrate planning` (positional action, not --mode flag)
+
+      - Remove references to --mode executor, --mode friction (no longer valid)
+
+      - Document the new simplified command structure
+
+      '
+    success_criteria:
+    - No --mode flag references in docs/prompts/orchestration*.md files
+    - Command examples use positional 'planning' syntax
+    - Stale modes (executor, friction, loop) removed from documentation
+  - id: clean_03
+    name: Flag stale references in other live plans
+    description: Document stale --mode references in other live plans for future cleanup
+    status: pending
+    agent: build-python
+    target_files:
+    - docs/plans/live/260221CO_consolidate_orchestrate_command/analysis/stale_references.md
+    guidance: 'Other live plans reference the old --mode syntax. These should NOT
+      be
+
+      directly modified (they are owned by their respective plans), but should
+
+      be documented for awareness:
+
+
+      Plans with stale --mode references:
+
+      - 260214UT_enforce_real_cli_smoke_tests: plan_uat.yml, plan_build.yml, plan_test.yml
+
+      - 260221NE_hide_plan_new_user_entrypoint: plan_build.yml
+
+
+      Create an analysis/stale_references.md file listing these for tracking.
+
+      These plans should update their own references when they are next modified.
+
+      '
+    success_criteria:
+    - analysis/stale_references.md documents affected plans
+    - No direct modifications to other plans' files
+- name: Test quality audit
+  execution: sequential
+  description: 'Validate that tests for the consolidated orchestrate command are fair,
+
+    complete, and not exhibiting reward hacking patterns.
+
+    '
+  tickets:
+  - id: audit_01_t01
+    name: Audit test quality for orchestrate command tests
+    description: Review test files for reward hacking, overly permissive assertions,
+      and proper coverage
+    status: pending
+    agent: test-audit
+    inputs:
+    - location: modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+      description: Source code being tested
+    - location: modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
+      description: Orchestration workflow being tested
+    - location: modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+      description: Planner loop workflow being tested
+    target_files:
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    - modules/AgenticCLI/tests/test_orchestration_workflow.py
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    - modules/AgenticCLI/tests/integration/test_orchestrate_integration.py
+    guidance: 'Focus areas:
+
+      1. Do tests verify the new positional ''planning'' action is required?
+
+      2. Do tests verify that --mode flag is NOT accepted?
+
+      3. Do tests verify that planner subcommand is NOT registered?
+
+      4. Are assertions specific enough (not just checking exit code)?
+
+      5. Are subprocess mocks appropriate (not mocking the behavior being tested)?
+
+      6. Is the PlanningRunner workflow tested with realistic inputs?
+
+      '
+    success_criteria:
+    - No reward hacking patterns identified
+    - Tests verify positive behavior (planning action works)
+    - Tests verify negative behavior (old flags/commands rejected)
+    - Assertions are specific to the behavior being validated
+  - id: audit_01_t02
+    name: Run all orchestrate-related tests
+    description: Execute the test suite to confirm all tests pass after consolidation
+    status: pending
+    agent: test-runner
+    target_files:
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    - modules/AgenticCLI/tests/test_orchestration_workflow.py
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    - modules/AgenticCLI/tests/test_cli.py
+    guidance: 'Run the test suite focused on orchestrate and planner loop:
+
+      ```bash
+
+      cd modules/AgenticCLI && python3 -m pytest tests/test_orchestrate_command.py
+      tests/test_orchestration_workflow.py tests/test_planner_loop.py tests/test_cli.py
+      -v
+
+      ```
+
+      Report any failures with full traceback.
+
+      '
+    success_criteria:
+    - All orchestrate-related tests pass
+    - No import errors from deleted planner.py
+    - CLI registration tests pass without planner subcommand
+  - id: audit_01_t03
+    name: Fix any issues found by audit
+    description: Address test quality issues or test failures identified by audit
+    status: pending
+    agent: build-python
+    target_files:
+    - modules/AgenticCLI/tests/test_orchestrate_command.py
+    - modules/AgenticCLI/tests/test_orchestration_workflow.py
+    - modules/AgenticCLI/tests/test_planner_loop.py
+    guidance: 'Fix issues ONLY if traced to source code or test code defects.
+
+      Do NOT fix test quality issues by weakening assertions.
+
+      If audit identifies missing test cases, add them.
+
+      '
+    success_criteria:
+    - All audit findings addressed
+    - All tests pass after fixes
+- name: User Story Validation
+  execution: sequential
+  description: 'PRIMARY SUCCESS CRITERIA: Validate that user stories related to
+
+    orchestration and session management work correctly after consolidation.
+
+    '
+  tickets:
+  - id: uat_01_t01
+    name: Validate orchestration planning user stories
+    description: Execute user story tests for orchestration planning workflow
+    status: pending
+    agent: test-user-simulator
+    inputs:
+    - location: docs/userstories/Orchestration/01_planning_workflow.yml
+      description: Planning workflow user stories (US-ORCH-001 through US-ORCH-006)
+    - location: docs/userstories/Orchestration/02_execution_workflow.yml
+      description: Execution workflow user stories
+    guidance: 'Agent-blind-test approach: Follow the user stories in the documentation
+
+      and verify each acceptance criterion. Focus on:
+
+      - US-ORCH-001: Planning initiation works without --mode flag
+
+      - US-ORCH-003: Specialized planner agents still spawn correctly
+
+      - US-ORCH-005: MMD generation works via the consolidated entry point
+
+      - Verify `agentic session orchestrate planning` is the documented path
+
+      - Verify no references to old --mode syntax in user-facing paths
+
+      '
+    success_criteria:
+    - All orchestration planning user stories pass validation
+    - User journeys complete successfully via new command syntax
+    - No broken user paths from removed --mode flag
+  - id: uat_01_t02
+    name: Validate session management user stories
+    description: Execute user story tests for session management
+    status: pending
+    agent: test-user-simulator
+    inputs:
+    - location: docs/userstories/AgenticCLI/03_session_and_loop.yml
+      description: Session spawn, list, stop, status stories (US-CLI-030 through US-CLI-036)
+    guidance: 'Verify session management is unaffected by consolidation:
+
+      - US-CLI-030: Session spawn still works
+
+      - US-CLI-031: Session list still works
+
+      - US-CLI-032: Session stop still works
+
+      - Verify no regressions from planner subcommand removal
+
+      '
+    success_criteria:
+    - All session management user stories pass
+    - No regressions from planner subcommand removal
+- name: Documentation update
+  execution: sequential
+  description: 'Update user-facing documentation to reflect the consolidated orchestrate
+
+    command structure. Ensure CLI README and guidance assets are accurate.
+
+    '
+  tickets:
+  - id: docs_01_t01
+    name: Update AgenticCLI README
+    description: Update CLI README to reflect consolidated orchestrate command
+    status: pending
+    agent: build-python
+    target_files:
+    - modules/AgenticCLI/README.md
+    guidance: 'Ensure the README reflects:
+
+      - `agentic session orchestrate planning` as the sole automated planning entry
+      point
+
+      - No mention of --mode flag or planner subcommand
+
+      - Updated command reference table if applicable
+
+      - Simplified workflow description
+
+      '
+    success_criteria:
+    - README documents `agentic session orchestrate planning` correctly
+    - No stale --mode or planner subcommand references
+  - id: docs_01_t02
+    name: Update CLI command definitions in guidance
+    description: Update cli-commands.yml if it references the old command structure
+    status: pending
+    agent: build-python
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    guidance: 'Check cli-commands.yml for any references to:
+
+      - `agentic session planner` (removed)
+
+      - `--mode` flag on orchestrate (removed)
+
+      - `--planning-loop` flag (removed)
+
+
+      Update to reflect:
+
+      - `agentic session orchestrate planning` as the sole orchestration entry point
+
+      - Positional ''planning'' action instead of --mode flag
+
+      '
+    success_criteria:
+    - cli-commands.yml reflects the consolidated command structure
+    - No stale command references
+context: 'The build phase (plan_cleaning.yml) consolidates the CLI by:
+
+  - Deleting commands/planner.py (agentic session planner start/stop/status)
+
+  - Removing --mode flag from orchestrate command
+
+  - Making `agentic session orchestrate planning` the sole entry point
+
+  - Removing --planning-loop flag (planning loop is now the default)
+
+
+  Code changes are partially reflected in unstaged git changes. This finalization
+
+  plan ensures cleanup of stale references, validates test quality, confirms
+
+  user stories, and updates documentation.
+
+  '

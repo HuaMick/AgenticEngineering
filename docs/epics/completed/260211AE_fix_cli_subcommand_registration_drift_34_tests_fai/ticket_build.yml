@@ -1,143 +1,128 @@
-plan_name: "Fix CLI Subcommand Registration Drift (Typer Migration)"
-worktree: 260211AE_fix_cli_subcommand_registration_drift_34_tests_fai
+name: 260211AE_fix_cli_subcommand_registration_drift_34_tests_fai
+worktree_path: ''
 branch: main
 status: approved
-target_project_path: /home/code/AgenticEngineering
-objective: >
-  Fix 34 tests failing with exit code 2 due to Typer migration argument
-  mismatches. The CLI migrated from argparse to Typer but the bridge layer
-  has argument name mismatches and tests use old positional syntax.
+priority: medium
+objective: 'Fix 34 tests failing with exit code 2 due to Typer migration argument
+  mismatches. The CLI migrated from argparse to Typer but the bridge layer has argument
+  name mismatches and tests use old positional syntax.
 
-context: >
-  The CLI has been migrated to Typer (cli.py). Subcommands ARE registered
-  but have argument mismatches:
-
-  1. plan phase add: Typer expects --id/--name flags, tests pass positional args
-  2. plan status/validate/archive: Typer bridge passes path= but handlers read args.plan
-  3. plan task list/current: May have similar bridge attribute issues
-  4. plan nested tasks: Task start/complete may have bridge issues
-
-  The bridge pattern is: Typer function -> _plan_handle(_ns(...)) -> old handler.
-  The _ns() call builds a namespace but attribute names don't always match.
-
-  DECISION: Fix the TESTS to use new Typer syntax, since the Typer migration
-  is the intended direction. Do NOT revert to argparse.
-
+  '
+created: ''
 phases:
-- phase_id: build_01
-  name: Fix Typer Bridge Attribute Names
-  status: pending
-  dependencies: []
-  tasks:
-  - task_id: build_01_01
-    description: Fix plan status/validate/archive bridge to pass plan= instead of path=
+- name: Fix Typer Bridge Attribute Names
+  tickets:
+  - id: build_01_01
+    name: ''
+    description: Fix plan status/validate/archive bridge to pass plan= instead of
+      path=
     status: pending
-    file_inputs:
-    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
-    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
+    agent: null
     target_files:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
-    guidance: >
-      In cli.py, find the Typer functions for plan status, validate, archive
-      (around lines 1323-1356). They pass path= to _ns() but the old handlers
-      in plan.py read args.plan. Fix by either:
-      a) Changing _ns(..., path=path) to _ns(..., plan=path) in the bridge, OR
-      b) Adding plan=path alongside path=path in the _ns() call
+    guidance: 'In cli.py, find the Typer functions for plan status, validate, archive
+      (around lines 1323-1356). They pass path= to _ns() but the old handlers in plan.py
+      read args.plan. Fix by either: a) Changing _ns(..., path=path) to _ns(..., plan=path)
+      in the bridge, OR b) Adding plan=path alongside path=path in the _ns() call
 
-      Also check plan task commands (start, complete, list, current) for similar
-      mismatches between Typer parameter names and handler attribute expectations.
+      Also check plan task commands (start, complete, list, current) for similar mismatches
+      between Typer parameter names and handler attribute expectations.
+
+      '
     success_criteria:
     - plan status --plan <folder> works (exit 0)
     - plan validate --plan <folder> works (exit 0)
     - plan archive --plan <folder> works (exit 0)
     - plan task list --plan <folder> works (exit 0)
     - plan task current --plan <folder> works (exit 0)
-
-- phase_id: build_02
-  name: Fix Test Argument Syntax for Typer
-  status: pending
-  dependencies:
-  - build_01
-  tasks:
-  - task_id: build_02_01
+- name: Fix Test Argument Syntax for Typer
+  tickets:
+  - id: build_02_01
+    name: ''
     description: Update test_plan_phase.py to use Typer flag syntax
     status: pending
-    file_inputs:
-    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_phase.py
-    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
+    agent: null
     target_files:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_phase.py
-    guidance: >
-      Update tests to use flag syntax instead of positional:
-      OLD: ["plan", "phase", "add", "P1", "Initial Setup", "--plan", path]
-      NEW: ["plan", "phase", "add", "--id", "P1", "--name", "Initial Setup", "--plan", path]
+    guidance: 'Update tests to use flag syntax instead of positional: OLD: ["plan",
+      "phase", "add", "P1", "Initial Setup", "--plan", path] NEW: ["plan", "phase",
+      "add", "--id", "P1", "--name", "Initial Setup", "--plan", path]
 
-      Check the Typer function signatures in cli.py (around line 1575) for
-      the exact flag names, then update all test invocations.
+      Check the Typer function signatures in cli.py (around line 1575) for the exact
+      flag names, then update all test invocations.
+
+      '
     success_criteria:
     - All 9 tests in test_plan_phase.py pass
-
-  - task_id: build_02_02
+  - id: build_02_02
+    name: ''
     description: Update test_plan_path_arguments.py for Typer syntax
     status: pending
-    file_inputs:
-    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_plan_path_arguments.py
+    agent: null
     target_files:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/integration/test_plan_path_arguments.py
-    guidance: >
-      After build_01_01 fixes the bridge, these tests should work with --plan
-      flag. If any still fail, check if the test is using positional path
-      syntax that needs converting to --plan flag syntax.
+    guidance: 'After build_01_01 fixes the bridge, these tests should work with --plan
+      flag. If any still fail, check if the test is using positional path syntax that
+      needs converting to --plan flag syntax.
+
+      '
     success_criteria:
     - All 14 tests in test_plan_path_arguments.py pass
-
-  - task_id: build_02_03
+  - id: build_02_03
+    name: ''
     description: Update test_task_list_commands.py for Typer syntax
     status: pending
-    file_inputs:
-    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_task_list_commands.py
+    agent: null
     target_files:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_task_list_commands.py
-    guidance: >
-      Tests use -j flag for JSON output. In Typer, this is a global flag
-      --json. Update tests to use the correct flag syntax. Check if the
-      test's cli_runner passes --json correctly as a root-level flag.
+    guidance: 'Tests use -j flag for JSON output. In Typer, this is a global flag
+      --json. Update tests to use the correct flag syntax. Check if the test''s cli_runner
+      passes --json correctly as a root-level flag.
+
+      '
     success_criteria:
     - All 5 tests in test_task_list_commands.py pass
-
-  - task_id: build_02_04
+  - id: build_02_04
+    name: ''
     description: Update test_plan_nested_tasks.py for Typer syntax
     status: pending
-    file_inputs:
-    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_nested_tasks.py
+    agent: null
     target_files:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_plan_nested_tasks.py
-    guidance: >
-      Tests for plan task start/complete/list with nested phase structures.
-      Update any argument syntax that doesn't match Typer expectations.
-      Verify task IDs are found correctly in nested plan_build.yml structures.
+    guidance: 'Tests for plan task start/complete/list with nested phase structures.
+      Update any argument syntax that doesn''t match Typer expectations. Verify task
+      IDs are found correctly in nested plan_build.yml structures.
+
+      '
     success_criteria:
     - All 6 tests in test_plan_nested_tasks.py pass
-
-- phase_id: test_01
-  name: Verify All 34 Tests Pass
-  status: pending
-  dependencies:
-  - build_02
-  tasks:
-  - task_id: test_01_01
+- name: Verify All 34 Tests Pass
+  tickets:
+  - id: test_01_01
+    name: ''
     description: Run all affected test files
     status: pending
-    target_files: []
-    guidance: >
-      Run: cd /home/code/AgenticEngineering/modules/AgenticCLI &&
-      python3 -m pytest tests/test_plan_phase.py tests/test_plan_nested_tasks.py
-      tests/test_task_list_commands.py tests/integration/test_plan_path_arguments.py -v
+    agent: null
+    guidance: 'Run: cd /home/code/AgenticEngineering/modules/AgenticCLI && python3
+      -m pytest tests/test_plan_phase.py tests/test_plan_nested_tasks.py tests/test_task_list_commands.py
+      tests/integration/test_plan_path_arguments.py -v
+
+      '
     success_criteria:
     - All 34 previously failing tests pass
     - No regressions in other test files
+context: 'The CLI has been migrated to Typer (cli.py). Subcommands ARE registered
+  but have argument mismatches:
 
-success_criteria:
-- Typer bridge passes correct attribute names to old handlers
-- Tests use correct Typer argument syntax
-- All 34 tests pass
+  1. plan phase add: Typer expects --id/--name flags, tests pass positional args 2.
+  plan status/validate/archive: Typer bridge passes path= but handlers read args.plan
+  3. plan task list/current: May have similar bridge attribute issues 4. plan nested
+  tasks: Task start/complete may have bridge issues
+
+  The bridge pattern is: Typer function -> _plan_handle(_ns(...)) -> old handler.
+  The _ns() call builds a namespace but attribute names don''t always match.
+
+  DECISION: Fix the TESTS to use new Typer syntax, since the Typer migration is the
+  intended direction. Do NOT revert to argparse.
+
+  '

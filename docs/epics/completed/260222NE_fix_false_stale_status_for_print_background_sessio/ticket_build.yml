@@ -1,391 +1,516 @@
-name: Fix false STALE status for (--print) background sessions
-worktree_path: /home/code/AgenticEngineering-cli-nesting
+name: 'Test: Fix false STALE status for print_mode background sessions'
+worktree_path: /home/code/AgenticEngineering
 branch: fix-stale-background-sessions
 status: active
 priority: high
-context: |
-  Background sessions spawned with `--print` (via `agentic session spawn -b`)
-  use `claude --print` which buffers all output to log files and does NOT create
-  tmux windows. The current health check system has several issues:
+objective: 'Test plan for validating the print_mode health check changes in session.py.
 
-  1. **Tmux signal false-negative**: Signal 4 (`_check_tmux_session`) runs
-     `tmux has-session -t {session_id}` for all background+running sessions.
-     Since --print sessions never create a tmux session, this always returns
-     False, adding a failing signal that misleads health reports.
+  The build plan adds a print_mode flag to session data, skips tmux checks for
 
-  2. **10-minute stale threshold too aggressive**: `--print` sessions using
-     `claude --print` may buffer output for extended periods (e.g., during
-     large tool calls or file reads). The hardcoded 10-minute threshold in
-     `_check_session_health()` (line 416) triggers false STALE on sessions
-     that are actively working but haven't flushed output yet.
+  print_mode sessions, adds a child-process heartbeat signal, raises the stale
 
-  3. **Auto-diagnostic spawning on false stale**: When `cmd_health()` detects
-     stale OR unhealthy, it auto-spawns a diagnostic planner session via
-     `_spawn_diagnostic_planner()`. False STALE from --print sessions causes
-     unnecessary diagnostic sessions to be spawned, adding system load.
+  threshold to 30 min for print_mode, and gates auto-diagnostic spawning.
 
-  4. **No CPU/child-process heartbeat**: For sessions without tmux windows,
-     there's no alternative liveness signal beyond PID alive + log recency.
-     Checking whether the PID has active child processes or CPU usage would
-     provide a better heartbeat for --print sessions.
 
-  Key code locations:
-    - _check_session_health(): session.py:354-443
-    - _check_tmux_session(): session.py:332-351
-    - _spawn_diagnostic_planner(): session.py:242-329
-    - cmd_health() auto-diagnostic trigger: session.py:1439-1451
-    - stale_threshold hardcoded at 10 min: session.py:416
-    - Session data has "background: True" but no "print_mode" flag
+  All changes are in modules/AgenticCLI/src/agenticcli/commands/session.py.
 
-success_criteria:
-  - --print background sessions are NOT checked for tmux session existence.
-  - A new "process_children" or "cpu_active" signal is added for --print
-    background sessions to provide a heartbeat when tmux is unavailable.
-  - The staleness threshold for --print sessions is configurable and defaults
-    to a higher value (e.g., 30 minutes) than the 10-minute default.
-  - Auto-diagnostic spawning is gated so it does NOT fire for sessions that
-    have an alive PID and active child processes (even if log files are stale).
-  - Existing health check behavior for non-print sessions is unchanged.
-  - All existing tests pass (no regressions).
-  - New unit tests cover the --print-specific health check logic.
+  Tests target modules/AgenticCLI/tests/test_session_commands.py.
 
+
+  Testing strategy: Local-only (pure Python logic, no Docker/Cloud Build needed).
+
+  No CLI entry points modified, so real-CLI smoke tests are not required.
+
+  No pyproject.toml changes, so US-INSTALL-* stories are not applicable.
+
+  '
+created: ''
 phases:
-  - id: P1
-    name: Add print_mode flag to session data
+- name: Add print_mode flag to session data
+  tickets:
+  - id: P1_T1
+    name: Record print_mode flag when spawning background sessions
+    description: "Edit:\n  /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py\n\
+      \nIn cmd_spawn(), after the session_data dict is created (around line 772-786),\n\
+      add a \"print_mode\" field that is True when the session is background (since\n\
+      all background sessions use --print):\n\nCurrent session_data dict (line 772-786):\n\
+      ```python\nsession_data = {\n    \"session_id\": session_id,\n    \"pid\": None,\n\
+      \    \"prompt\": prompt,\n    ...\n    \"background\": background,\n    ...\n\
+      }\n```\n\nAdd after \"background\": background,:\n```python\n    \"print_mode\"\
+      : background,  # --print sessions buffer output, no tmux\n```\n\nAlso update\
+      \ _spawn_diagnostic_planner() (line 302-317) to include\n\"print_mode\": True\
+      \ in the diagnostic session data dict, since diagnostic\nsessions are also spawned\
+      \ with --print.\n"
     status: pending
-    tasks:
-      - id: P1_T1
-        name: Record print_mode flag when spawning background sessions
-        status: pending
-        description: |
-          Edit:
-            /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-
-          In cmd_spawn(), after the session_data dict is created (around line 772-786),
-          add a "print_mode" field that is True when the session is background (since
-          all background sessions use --print):
-
-          Current session_data dict (line 772-786):
-          ```python
-          session_data = {
-              "session_id": session_id,
-              "pid": None,
-              "prompt": prompt,
-              ...
-              "background": background,
-              ...
-          }
-          ```
-
-          Add after "background": background,:
-          ```python
-              "print_mode": background,  # --print sessions buffer output, no tmux
-          ```
-
-          Also update _spawn_diagnostic_planner() (line 302-317) to include
-          "print_mode": True in the diagnostic session data dict, since diagnostic
-          sessions are also spawned with --print.
-
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        success_criteria:
-          - session_data includes "print_mode": True for background sessions.
-          - Diagnostic session data includes "print_mode": True.
-          - Foreground sessions have "print_mode": False.
-
-  - id: P2
-    name: Skip tmux check for print_mode sessions
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - session_data includes "print_mode": True for background sessions.
+    - Diagnostic session data includes "print_mode": True.
+    - Foreground sessions have "print_mode": False.
+- name: Skip tmux check for print_mode sessions
+  tickets:
+  - id: P2_T1
+    name: Gate tmux signal on print_mode flag
+    description: "Edit:\n  /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py\n\
+      \nIn _check_session_health() at the Signal 4 block (lines 424-432), change\n\
+      the condition to exclude print_mode sessions:\n\nBEFORE (line 424-425):\n```python\n\
+      # Signal 4: tmux session existence (only for background sessions)\nif session.get(\"\
+      background\") and status == \"running\":\n```\n\nAFTER:\n```python\n# Signal\
+      \ 4: tmux session existence (only for non-print background sessions)\nif session.get(\"\
+      background\") and status == \"running\" and not session.get(\"print_mode\"):\n\
+      ```\n\nThis prevents the tmux check from running on --print sessions that never\n\
+      create tmux windows, eliminating the false-negative signal.\n"
     status: pending
-    tasks:
-      - id: P2_T1
-        name: Gate tmux signal on print_mode flag
-        status: pending
-        description: |
-          Edit:
-            /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-
-          In _check_session_health() at the Signal 4 block (lines 424-432), change
-          the condition to exclude print_mode sessions:
-
-          BEFORE (line 424-425):
-          ```python
-          # Signal 4: tmux session existence (only for background sessions)
-          if session.get("background") and status == "running":
-          ```
-
-          AFTER:
-          ```python
-          # Signal 4: tmux session existence (only for non-print background sessions)
-          if session.get("background") and status == "running" and not session.get("print_mode"):
-          ```
-
-          This prevents the tmux check from running on --print sessions that never
-          create tmux windows, eliminating the false-negative signal.
-
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        success_criteria:
-          - _check_session_health() does NOT add a tmux_session signal for print_mode sessions.
-          - Non-print background sessions still get the tmux check.
-
-  - id: P3
-    name: Add child-process heartbeat signal for print_mode sessions
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - _check_session_health() does NOT add a tmux_session signal for print_mode sessions.
+    - Non-print background sessions still get the tmux check.
+- name: Add child-process heartbeat signal for print_mode sessions
+  tickets:
+  - id: P3_T1
+    name: Implement _check_child_processes helper
+    description: "Edit:\n  /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py\n\
+      \nAdd a new helper function near the existing _check_tmux_session() function\n\
+      (around line 332):\n\n```python\ndef _check_child_processes(pid: int) -> bool\
+      \ | None:\n    \"\"\"Check if a process has active child processes.\n\n    Uses\
+      \ /proc/{pid}/task or psutil-free ps command to detect child\n    processes.\
+      \ This serves as a heartbeat for --print sessions that\n    don't have tmux\
+      \ windows.\n\n    Args:\n        pid: Process ID to check.\n\n    Returns:\n\
+      \        True if child processes found, False if none, None if check failed.\n\
+      \    \"\"\"\n    try:\n        # Use ps to find child processes (works on Linux/macOS\
+      \ without psutil)\n        result = subprocess.run(\n            [\"ps\", \"\
+      --ppid\", str(pid), \"--no-headers\", \"-o\", \"pid\"],\n            capture_output=True,\
+      \ text=True, timeout=5,\n        )\n        if result.returncode == 0:\n   \
+      \         children = [line.strip() for line in result.stdout.strip().splitlines()\
+      \ if line.strip()]\n            return len(children) > 0\n        return False\n\
+      \    except (FileNotFoundError, subprocess.TimeoutExpired):\n        return\
+      \ None\n```\n"
     status: pending
-    tasks:
-      - id: P3_T1
-        name: Implement _check_child_processes helper
-        status: pending
-        description: |
-          Edit:
-            /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-
-          Add a new helper function near the existing _check_tmux_session() function
-          (around line 332):
-
-          ```python
-          def _check_child_processes(pid: int) -> bool | None:
-              """Check if a process has active child processes.
-
-              Uses /proc/{pid}/task or psutil-free ps command to detect child
-              processes. This serves as a heartbeat for --print sessions that
-              don't have tmux windows.
-
-              Args:
-                  pid: Process ID to check.
-
-              Returns:
-                  True if child processes found, False if none, None if check failed.
-              """
-              try:
-                  # Use ps to find child processes (works on Linux/macOS without psutil)
-                  result = subprocess.run(
-                      ["ps", "--ppid", str(pid), "--no-headers", "-o", "pid"],
-                      capture_output=True, text=True, timeout=5,
-                  )
-                  if result.returncode == 0:
-                      children = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
-                      return len(children) > 0
-                  return False
-              except (FileNotFoundError, subprocess.TimeoutExpired):
-                  return None
-          ```
-
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        success_criteria:
-          - _check_child_processes() returns True when a process has children.
-          - Returns False when no children found.
-          - Returns None on failure (no ps command, timeout).
-          - Does not require psutil dependency.
-
-      - id: P3_T2
-        name: Add child_processes signal to health check for print_mode sessions
-        status: pending
-        description: |
-          Edit:
-            /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-
-          In _check_session_health(), after the tmux signal block (after line 432),
-          add a new signal for print_mode sessions:
-
-          ```python
-          # Signal 5: child process heartbeat (only for print_mode sessions)
-          if session.get("print_mode") and status == "running" and pid:
-              has_children = _check_child_processes(pid)
-              if has_children is not None:
-                  signals.append({
-                      "name": "child_processes",
-                      "ok": has_children,
-                      "detail": f"Child processes {'active' if has_children else 'none'}",
-                  })
-          ```
-
-          This provides an alternative liveness signal for --print sessions:
-          when claude --print is running, it spawns tool-call subprocesses
-          that appear as child processes of the main PID.
-
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        success_criteria:
-          - child_processes signal is added for print_mode sessions.
-          - Signal is NOT added for non-print sessions.
-          - Signal detail includes whether children are active or none.
-
-  - id: P4
-    name: Increase staleness threshold for print_mode sessions
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - _check_child_processes() returns True when a process has children.
+    - Returns False when no children found.
+    - Returns None on failure (no ps command, timeout).
+    - Does not require psutil dependency.
+  - id: P3_T2
+    name: Add child_processes signal to health check for print_mode sessions
+    description: "Edit:\n  /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py\n\
+      \nIn _check_session_health(), after the tmux signal block (after line 432),\n\
+      add a new signal for print_mode sessions:\n\n```python\n# Signal 5: child process\
+      \ heartbeat (only for print_mode sessions)\nif session.get(\"print_mode\") and\
+      \ status == \"running\" and pid:\n    has_children = _check_child_processes(pid)\n\
+      \    if has_children is not None:\n        signals.append({\n            \"\
+      name\": \"child_processes\",\n            \"ok\": has_children,\n          \
+      \  \"detail\": f\"Child processes {'active' if has_children else 'none'}\",\n\
+      \        })\n```\n\nThis provides an alternative liveness signal for --print\
+      \ sessions:\nwhen claude --print is running, it spawns tool-call subprocesses\n\
+      that appear as child processes of the main PID.\n"
     status: pending
-    tasks:
-      - id: P4_T1
-        name: Use higher stale threshold for print_mode sessions
-        status: pending
-        description: |
-          Edit:
-            /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-
-          In _check_session_health(), change the hardcoded stale_threshold (line 416)
-          to use a higher value for print_mode sessions:
-
-          BEFORE (line 416):
-          ```python
-          stale_threshold = 10  # minutes
-          ```
-
-          AFTER:
-          ```python
-          # print_mode sessions buffer output longer; use a more generous threshold
-          stale_threshold = 30 if session.get("print_mode") else 10  # minutes
-          ```
-
-          This prevents false STALE on --print sessions that are actively working
-          but haven't flushed buffered output to their log files in a while.
-
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        success_criteria:
-          - print_mode sessions use 30-minute stale threshold.
-          - Non-print sessions still use 10-minute stale threshold.
-
-  - id: P5
-    name: Gate auto-diagnostic spawning for print_mode sessions
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - child_processes signal is added for print_mode sessions.
+    - Signal is NOT added for non-print sessions.
+    - Signal detail includes whether children are active or none.
+- name: Increase staleness threshold for print_mode sessions
+  tickets:
+  - id: P4_T1
+    name: Use higher stale threshold for print_mode sessions
+    description: "Edit:\n  /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py\n\
+      \nIn _check_session_health(), change the hardcoded stale_threshold (line 416)\n\
+      to use a higher value for print_mode sessions:\n\nBEFORE (line 416):\n```python\n\
+      stale_threshold = 10  # minutes\n```\n\nAFTER:\n```python\n# print_mode sessions\
+      \ buffer output longer; use a more generous threshold\nstale_threshold = 30\
+      \ if session.get(\"print_mode\") else 10  # minutes\n```\n\nThis prevents false\
+      \ STALE on --print sessions that are actively working\nbut haven't flushed buffered\
+      \ output to their log files in a while.\n"
     status: pending
-    tasks:
-      - id: P5_T1
-        name: Prevent auto-diagnostic spawn when PID has active children
-        status: pending
-        description: |
-          Edit:
-            /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-
-          In cmd_health(), at the auto-spawn diagnostic block (lines 1439-1451),
-          add a guard that skips auto-diagnostic spawning for sessions that have
-          an alive PID and active child processes:
-
-          BEFORE (line 1440):
-          ```python
-          if health["stale"] or not health["healthy"]:
-              if not session.get("diagnostic_spawned", False):
-                  new_id = _spawn_diagnostic_planner(session)
-          ```
-
-          AFTER:
-          ```python
-          # Check if child processes are active (indicates real work happening)
-          has_active_children = False
-          if session.get("print_mode") and session.get("pid"):
-              children_check = _check_child_processes(session["pid"])
-              has_active_children = children_check is True
-
-          if (health["stale"] or not health["healthy"]) and not has_active_children:
-              if not session.get("diagnostic_spawned", False):
-                  new_id = _spawn_diagnostic_planner(session)
-          ```
-
-          Apply the same guard to the JSON output path (lines 1410-1418):
-
-          BEFORE (line 1411):
-          ```python
-          if health["stale"] or not health["healthy"]:
-          ```
-
-          AFTER:
-          ```python
-          has_active_children_json = False
-          if session.get("print_mode") and session.get("pid"):
-              children_check_json = _check_child_processes(session["pid"])
-              has_active_children_json = children_check_json is True
-
-          if (health["stale"] or not health["healthy"]) and not has_active_children_json:
-          ```
-
-          This prevents unnecessary diagnostic sessions from being spawned when
-          a --print session appears stale by log recency but is actually working
-          (has active child processes from tool calls).
-
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-        success_criteria:
-          - Auto-diagnostic is NOT spawned when session has active child processes.
-          - Auto-diagnostic is still spawned for truly stuck sessions (no children, stale).
-          - Both JSON and Rich output paths are guarded.
-
-  - id: P6
-    name: Write unit tests for new health check behavior
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - print_mode sessions use 30-minute stale threshold.
+    - Non-print sessions still use 10-minute stale threshold.
+- name: Gate auto-diagnostic spawning for print_mode sessions
+  tickets:
+  - id: P5_T1
+    name: Prevent auto-diagnostic spawn when PID has active children
+    description: "Edit:\n  /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py\n\
+      \nIn cmd_health(), at the auto-spawn diagnostic block (lines 1439-1451),\nadd\
+      \ a guard that skips auto-diagnostic spawning for sessions that have\nan alive\
+      \ PID and active child processes:\n\nBEFORE (line 1440):\n```python\nif health[\"\
+      stale\"] or not health[\"healthy\"]:\n    if not session.get(\"diagnostic_spawned\"\
+      , False):\n        new_id = _spawn_diagnostic_planner(session)\n```\n\nAFTER:\n\
+      ```python\n# Check if child processes are active (indicates real work happening)\n\
+      has_active_children = False\nif session.get(\"print_mode\") and session.get(\"\
+      pid\"):\n    children_check = _check_child_processes(session[\"pid\"])\n   \
+      \ has_active_children = children_check is True\n\nif (health[\"stale\"] or not\
+      \ health[\"healthy\"]) and not has_active_children:\n    if not session.get(\"\
+      diagnostic_spawned\", False):\n        new_id = _spawn_diagnostic_planner(session)\n\
+      ```\n\nApply the same guard to the JSON output path (lines 1410-1418):\n\nBEFORE\
+      \ (line 1411):\n```python\nif health[\"stale\"] or not health[\"healthy\"]:\n\
+      ```\n\nAFTER:\n```python\nhas_active_children_json = False\nif session.get(\"\
+      print_mode\") and session.get(\"pid\"):\n    children_check_json = _check_child_processes(session[\"\
+      pid\"])\n    has_active_children_json = children_check_json is True\n\nif (health[\"\
+      stale\"] or not health[\"healthy\"]) and not has_active_children_json:\n```\n\
+      \nThis prevents unnecessary diagnostic sessions from being spawned when\na --print\
+      \ session appears stale by log recency but is actually working\n(has active\
+      \ child processes from tool calls).\n"
     status: pending
-    tasks:
-      - id: P6_T1
-        name: Write tests for print_mode health check changes
-        status: pending
-        description: |
-          Create or extend test file at:
-            /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands.py
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    success_criteria:
+    - Auto-diagnostic is NOT spawned when session has active child processes.
+    - Auto-diagnostic is still spawned for truly stuck sessions (no children, stale).
+    - Both JSON and Rich output paths are guarded.
+- name: Write unit tests for new health check behavior
+  tickets:
+  - id: P6_T1
+    name: Write tests for print_mode health check changes
+    description: "Create or extend test file at:\n  /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands.py\n\
+      \nAdd tests covering the new behavior. Use monkeypatch to mock subprocess\n\
+      calls and session data:\n\n1. test_print_mode_skips_tmux_check:\n   - Create\
+      \ session with print_mode=True, background=True, status=\"running\"\n   - Mock\
+      \ _check_tmux_session to track if called\n   - Call _check_session_health()\n\
+      \   - Assert _check_tmux_session was NOT called\n   - Assert no \"tmux_session\"\
+      \ signal in result\n\n2. test_non_print_mode_still_checks_tmux:\n   - Create\
+      \ session with print_mode=False, background=True, status=\"running\"\n   - Call\
+      \ _check_session_health()\n   - Assert tmux_session signal IS present\n\n3.\
+      \ test_print_mode_has_child_processes_signal:\n   - Create session with print_mode=True,\
+      \ status=\"running\", pid=12345\n   - Mock _check_child_processes to return\
+      \ True\n   - Call _check_session_health()\n   - Assert \"child_processes\" signal\
+      \ present with ok=True\n\n4. test_print_mode_stale_threshold_is_30_minutes:\n\
+      \   - Create session with print_mode=True, status=\"running\"\n   - Set log\
+      \ mtime to 15 minutes ago\n   - Call _check_session_health()\n   - Assert NOT\
+      \ stale (15 < 30)\n\n5. test_non_print_mode_stale_threshold_is_10_minutes:\n\
+      \   - Create session with print_mode=False, status=\"running\"\n   - Set log\
+      \ mtime to 15 minutes ago\n   - Call _check_session_health()\n   - Assert IS\
+      \ stale (15 > 10)\n\n6. test_auto_diagnostic_skipped_when_children_active:\n\
+      \   - Create session with print_mode=True, stale health\n   - Mock _check_child_processes\
+      \ to return True\n   - Call cmd_health()\n   - Assert _spawn_diagnostic_planner\
+      \ was NOT called\n\n7. test_auto_diagnostic_fires_when_no_children:\n   - Create\
+      \ session with print_mode=True, stale health\n   - Mock _check_child_processes\
+      \ to return False\n   - Call cmd_health()\n   - Assert _spawn_diagnostic_planner\
+      \ WAS called\n\nUse pytest with monkeypatch and tmp_path for session state files.\n\
+      Run tests after creation:\n  python3 -m pytest /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands.py\
+      \ -v -k \"print_mode or stale_threshold or auto_diagnostic\"\n"
+    status: pending
+    agent: null
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands.py
+    success_criteria:
+    - All 7 new tests pass.
+    - No existing tests regress.
+    - Tests cover all new code paths (tmux skip, child processes signal, threshold,
+      diagnostic gate).
+- name: Environment Setup
+  execution: sequential
+  description: Install latest code to ensure tests run against current implementation
+  tickets:
+  - id: env_001
+    name: Install latest AgenticCLI
+    description: "Install the latest AgenticCLI code in editable mode:\n  uv pip install\
+      \ -e modules/AgenticCLI\nVerify installation:\n  uv pip show agenticcli\n  agentic\
+      \ --version\n"
+    status: pending
+    agent: null
+    success_criteria:
+    - uv pip install -e modules/AgenticCLI succeeds
+    - agentic --version reports current version
+  - id: env_002
+    name: Verify build changes are present
+    description: 'Verify the build plan changes exist in session.py:
 
-          Add tests covering the new behavior. Use monkeypatch to mock subprocess
-          calls and session data:
+      1. Grep for "print_mode" in session.py (confirms P1 changes)
 
-          1. test_print_mode_skips_tmux_check:
-             - Create session with print_mode=True, background=True, status="running"
-             - Mock _check_tmux_session to track if called
-             - Call _check_session_health()
-             - Assert _check_tmux_session was NOT called
-             - Assert no "tmux_session" signal in result
+      2. Grep for "_check_child_processes" in session.py (confirms P3 changes)
 
-          2. test_non_print_mode_still_checks_tmux:
-             - Create session with print_mode=False, background=True, status="running"
-             - Call _check_session_health()
-             - Assert tmux_session signal IS present
+      3. Grep for "stale_threshold = 30" in session.py (confirms P4 changes)
 
-          3. test_print_mode_has_child_processes_signal:
-             - Create session with print_mode=True, status="running", pid=12345
-             - Mock _check_child_processes to return True
-             - Call _check_session_health()
-             - Assert "child_processes" signal present with ok=True
+      If any are missing, STOP and report which build phases are incomplete.
 
-          4. test_print_mode_stale_threshold_is_30_minutes:
-             - Create session with print_mode=True, status="running"
-             - Set log mtime to 15 minutes ago
-             - Call _check_session_health()
-             - Assert NOT stale (15 < 30)
+      '
+    status: pending
+    agent: null
+    success_criteria:
+    - print_mode field exists in session_data dict
+    - _check_child_processes function defined
+    - Conditional stale threshold (30 for print_mode, 10 otherwise) present
+- name: Component and Integration Testing
+  execution: sequential
+  description: 'Run the unit tests created in build phase P6 to validate all new behavior.
 
-          5. test_non_print_mode_stale_threshold_is_10_minutes:
-             - Create session with print_mode=False, status="running"
-             - Set log mtime to 15 minutes ago
-             - Call _check_session_health()
-             - Assert IS stale (15 > 10)
+    Uses test-fix-loop: run tests, fix failures, re-run until all pass.
 
-          6. test_auto_diagnostic_skipped_when_children_active:
-             - Create session with print_mode=True, stale health
-             - Mock _check_child_processes to return True
-             - Call cmd_health()
-             - Assert _spawn_diagnostic_planner was NOT called
+    '
+  tickets:
+  - id: test_001
+    name: Run print_mode unit tests
+    description: "Execute the print_mode-specific tests from test_session_commands.py:\n\
+      \  python3 -m pytest modules/AgenticCLI/tests/test_session_commands.py -v \\\
+      \n    -k \"print_mode or stale_threshold or auto_diagnostic\"\n\nExpected tests\
+      \ (7 total from build P6_T1):\n1. test_print_mode_skips_tmux_check\n2. test_non_print_mode_still_checks_tmux\n\
+      3. test_print_mode_has_child_processes_signal\n4. test_print_mode_stale_threshold_is_30_minutes\n\
+      5. test_non_print_mode_stale_threshold_is_10_minutes\n6. test_auto_diagnostic_skipped_when_children_active\n\
+      7. test_auto_diagnostic_fires_when_no_children\n"
+    status: pending
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    success_criteria:
+    - All 7 print_mode tests pass
+    - No test uses mocking that bypasses the code under test
+  - id: test_002
+    name: Run full session test suite for regression
+    description: "Run the entire session test file to verify no regressions:\n  python3\
+      \ -m pytest modules/AgenticCLI/tests/test_session_commands.py -v\n\nAll existing\
+      \ tests must continue to pass. If any fail, investigate\nwhether the build changes\
+      \ caused the regression.\n"
+    status: pending
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    success_criteria:
+    - All existing tests pass (zero regressions)
+    - Test count is at least 7 more than before build changes
+  - id: test_003
+    name: Verify _check_child_processes isolation
+    description: 'Verify that _check_child_processes() is independently testable:
 
-          7. test_auto_diagnostic_fires_when_no_children:
-             - Create session with print_mode=True, stale health
-             - Mock _check_child_processes to return False
-             - Call cmd_health()
-             - Assert _spawn_diagnostic_planner WAS called
+      1. Test with a real PID (os.getpid()) - should return True or False
 
-          Use pytest with monkeypatch and tmp_path for session state files.
-          Run tests after creation:
-            python3 -m pytest /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands.py -v -k "print_mode or stale_threshold or auto_diagnostic"
+      2. Test with PID 999999999 (unlikely to exist) - should return False
 
-        inputs:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/session.py
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands.py
-        target_files:
-          - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_session_commands.py
-        success_criteria:
-          - All 7 new tests pass.
-          - No existing tests regress.
-          - Tests cover all new code paths (tmux skip, child processes signal, threshold, diagnostic gate).
+      3. Test error handling by mocking subprocess.run to raise TimeoutExpired
+
+
+      This validates the helper works correctly in isolation before it''s
+
+      used by _check_session_health() and cmd_health().
+
+      '
+    status: pending
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    success_criteria:
+    - _check_child_processes returns bool for valid PIDs
+    - _check_child_processes returns None on failure
+- name: Cleanup
+  execution: sequential
+  description: Remove any test artifacts and verify clean state
+  tickets:
+  - id: clean_001
+    name: Remove test artifacts
+    description: 'Clean up any temporary files created during testing:
+
+      - Remove __pycache__ dirs in test directories
+
+      - Remove .pytest_cache if present
+
+      - Verify no temp session files leaked outside tmp_path fixtures
+
+      '
+    status: pending
+    agent: null
+    success_criteria:
+    - No leftover test artifacts in the working tree
+- name: Test Audit
+  execution: sequential
+  description: 'MANDATORY audit phase to detect reward hacking and validate test quality.
+
+    Reviews all new tests for shortcuts, excessive mocking, and false positives.
+
+    '
+  tickets:
+  - id: audit_001
+    name: Audit print_mode test quality
+    description: 'Review all 7 new tests in test_session_commands.py for:
+
+
+      REWARD HACKING CHECKS:
+
+      - Tests must NOT mock _check_session_health() itself
+
+      - Tests must NOT mock the session dict to always return expected values
+
+      - Tests must assert specific signal names/values, not just "healthy=True"
+
+      - Stale threshold tests must use realistic time values, not zero
+
+
+      MOCKING QUALITY:
+
+      - Only mock external calls: subprocess.run (for ps command), tmux checks
+
+      - Session data should be constructed realistically (all required fields)
+
+      - Mock _check_tmux_session only to verify it''s called/not called
+
+      - Do NOT mock _check_child_processes when testing health check integration
+
+
+      ASSERTION QUALITY:
+
+      - Each test must have at least 2 meaningful assertions
+
+      - Tests should verify signal names in the signals list
+
+      - Stale tests should verify the exact threshold boundary
+
+      - Diagnostic gating tests should verify spawn/no-spawn explicitly
+
+
+      If issues found, report them for test-builder to fix.
+
+      '
+    status: pending
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    success_criteria:
+    - No reward hacking patterns detected
+    - All tests use realistic session data
+    - Mocking is limited to external boundaries (subprocess, tmux)
+    - Each test has meaningful, specific assertions
+- name: UAT Validation
+  execution: sequential
+  description: 'Validate the build plan''s success criteria are met. Since no CLI
+    entry
+
+    points were modified, UAT validates internal behavior through targeted
+
+    verification rather than real CLI execution.
+
+
+    Related story: US-CLI-031 (List and Monitor Sessions) - health monitoring
+
+    aspect is indirectly validated.
+
+    '
+  tickets:
+  - id: uat_001
+    name: 'Validate: print_mode sessions skip tmux check'
+    description: "Build Success Criterion:\n  \"--print background sessions are NOT\
+      \ checked for tmux session existence.\"\n\nVerification Steps:\n1. Create a\
+      \ session dict with print_mode=True, background=True, status=\"running\"\n2.\
+      \ Call _check_session_health() with mocked externals\n3. Verify no \"tmux_session\"\
+      \ signal appears in the result\n4. Create a session with print_mode=False, background=True\n\
+      5. Verify \"tmux_session\" signal DOES appear\n\nEvidence Required:\n- Test\
+      \ output showing print_mode session has no tmux signal\n- Test output showing\
+      \ non-print session has tmux signal\n"
+    status: pending
+    agent: null
+    success_criteria:
+    - print_mode=True sessions produce no tmux_session signal
+    - print_mode=False sessions still produce tmux_session signal
+  - id: uat_002
+    name: 'Validate: child-process heartbeat signal exists'
+    description: "Build Success Criterion:\n  \"A new 'process_children' or 'cpu_active'\
+      \ signal is added for --print\n   background sessions to provide a heartbeat\
+      \ when tmux is unavailable.\"\n\nVerification Steps:\n1. Create a print_mode\
+      \ session with a real PID (os.getpid())\n2. Call _check_session_health()\n3.\
+      \ Verify \"child_processes\" signal present in signals list\n4. Verify signal\
+      \ has \"ok\" and \"detail\" fields\n5. Verify signal is NOT present for non-print\
+      \ sessions\n\nEvidence Required:\n- Signal dict with name=\"child_processes\"\
+      , ok=True/False, detail present\n"
+    status: pending
+    agent: null
+    success_criteria:
+    - child_processes signal exists for print_mode sessions
+    - Signal includes ok boolean and detail string
+    - Signal absent for non-print sessions
+  - id: uat_003
+    name: 'Validate: stale threshold is 30 minutes for print_mode'
+    description: "Build Success Criterion:\n  \"The staleness threshold for --print\
+      \ sessions is configurable and\n   defaults to a higher value (e.g., 30 minutes).\"\
+      \n\nVerification Steps:\n1. Create print_mode session with log mtime 15 minutes\
+      \ ago\n2. Call _check_session_health() - verify NOT stale (15 < 30)\n3. Create\
+      \ print_mode session with log mtime 35 minutes ago\n4. Call _check_session_health()\
+      \ - verify IS stale (35 > 30)\n5. Create non-print session with log mtime 15\
+      \ minutes ago\n6. Verify IS stale (15 > 10) for non-print session\n\nEvidence\
+      \ Required:\n- Test output showing 15-min print_mode session is NOT stale\n\
+      - Test output showing 35-min print_mode session IS stale\n- Test output showing\
+      \ 15-min non-print session IS stale\n"
+    status: pending
+    agent: null
+    success_criteria:
+    - print_mode sessions use 30-minute stale threshold
+    - Non-print sessions still use 10-minute stale threshold
+    - Boundary values are correct
+  - id: uat_004
+    name: 'Validate: auto-diagnostic gated by active children'
+    description: "Build Success Criterion:\n  \"Auto-diagnostic spawning is gated\
+      \ so it does NOT fire for sessions\n   that have an alive PID and active child\
+      \ processes.\"\n\nVerification Steps:\n1. Create print_mode session marked stale\
+      \ with active child processes\n2. Call cmd_health() - verify _spawn_diagnostic_planner\
+      \ NOT called\n3. Create print_mode session marked stale with NO child processes\n\
+      4. Call cmd_health() - verify _spawn_diagnostic_planner IS called\n5. Create\
+      \ non-print stale session - verify normal diagnostic behavior\n\nEvidence Required:\n\
+      - Mock call log showing diagnostic NOT spawned with active children\n- Mock\
+      \ call log showing diagnostic IS spawned without children\n"
+    status: pending
+    agent: null
+    success_criteria:
+    - Diagnostic not spawned when print_mode session has active children
+    - Diagnostic spawned when print_mode session has no children
+    - Non-print sessions unaffected by child process check
+  - id: uat_005
+    name: 'Validate: existing behavior unchanged for non-print sessions'
+    description: "Build Success Criterion:\n  \"Existing health check behavior for\
+      \ non-print sessions is unchanged.\"\n  \"All existing tests pass (no regressions).\"\
+      \n\nVerification Steps:\n1. Run full test suite: python3 -m pytest modules/AgenticCLI/tests/test_session_commands.py\
+      \ -v\n2. Verify all pre-existing tests pass\n3. Verify no changes to non-print\
+      \ session health check flow\n4. Confirm tmux check, 10-min threshold, and diagnostic\
+      \ spawn\n   still work for non-print background sessions\n\nEvidence Required:\n\
+      - Full pytest output showing all tests pass\n- Count of tests unchanged from\
+      \ before build (plus 7 new)\n"
+    status: pending
+    agent: null
+    success_criteria:
+    - All pre-existing tests pass without modification
+    - Non-print session behavior verified unchanged
+context: 'Test plan for validating the print_mode health check changes in session.py.
+
+  The build plan adds a print_mode flag to session data, skips tmux checks for
+
+  print_mode sessions, adds a child-process heartbeat signal, raises the stale
+
+  threshold to 30 min for print_mode, and gates auto-diagnostic spawning.
+
+
+  All changes are in modules/AgenticCLI/src/agenticcli/commands/session.py.
+
+  Tests target modules/AgenticCLI/tests/test_session_commands.py.
+
+
+  Testing strategy: Local-only (pure Python logic, no Docker/Cloud Build needed).
+
+  No CLI entry points modified, so real-CLI smoke tests are not required.
+
+  No pyproject.toml changes, so US-INSTALL-* stories are not applicable.
+
+  '

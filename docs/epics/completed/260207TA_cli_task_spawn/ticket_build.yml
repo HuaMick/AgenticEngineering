@@ -1,143 +1,157 @@
-# Plan: CLI Task-Level Spawning
-# Adds --task, --role, and --plan flags to agentic session spawn
+name: cli-task-spawn
+worktree_path: /home/code/AgenticEngineering-session-spawn-task
+branch: session-spawn-task
+status: active
+priority: high
+objective: 'This plan adds --task, --role, and --plan flags to the `agentic session
+  spawn` command.
 
-name: "cli-task-spawn"
-worktree_path: "/home/code/AgenticEngineering-session-spawn-task"
-branch: "session-spawn-task"
-status: "active"
-priority: "high"
+  This enables the orchestration executor to spawn agents by role or for specific
+  tasks,
 
-context: |
-  This plan adds --task, --role, and --plan flags to the `agentic session spawn` command.
-  This enables the orchestration executor to spawn agents by role or for specific tasks,
   allowing parallel execution of non-conflicting tasks within a single plan.
+
   Also includes dogfood strategy in spawned agent prompts for self-healing gaps.
 
+
   DECISION: Task-level file scoping is the ONLY mechanism for parallelization.
+
   Plan-level impacted_files will be deprecated by a separate guidance plan.
 
-impacted_artifacts:
-  - artifact_type: cli_command
-    artifact_identifier: "agentic session spawn --task"
-    impact_type: new
-    description: "New --task flag for task-level agent spawning"
-    breaking_change: false
-  - artifact_type: cli_command
-    artifact_identifier: "agentic session spawn --role"
-    impact_type: new
-    description: "New --role flag for role-based agent spawning"
-    breaking_change: false
-  - artifact_type: cli_command
-    artifact_identifier: "agentic session spawn --plan"
-    impact_type: new
-    description: "New --plan flag for plan context injection"
-    breaking_change: false
-
+  '
+created: ''
 phases:
-  - name: "CLI Implementation Phase"
-    execution: sequential
-    tasks:
-      - id: "CLI_001"
-        name: "Add --task argument to session spawn command"
-        status: "completed"
-        completed_date: "2026-02-07"
-        description: |
-          Add optional --task <task_id> argument to the session spawn command.
-          When provided, the spawned agent receives task-specific context.
-        target_files:
-          - modules/AgenticCLI/src/agenticcli/commands/session.py
-        inputs:
-          - modules/AgenticCLI/src/agenticcli/commands/plan.py
-          - modules/AgenticGuidance/assets/definitions/cli-commands.yml
-        guidance: |
-          1. Add --task argument to spawn subparser (optional, conflicts with --role)
-          2. When --task is provided:
-             - Load plan YAML to find task by ID
-             - Extract task's inputs, target_files, guidance
-             - Pass to spawned agent as structured context
-          3. Argument validation:
-             - --task requires --plan to be set
-             - --task and --role are mutually exclusive
-          4. Error handling for invalid task IDs
+- name: CLI Implementation Phase
+  execution: sequential
+  tickets:
+  - id: CLI_001
+    name: Add --task argument to session spawn command
+    description: 'Add optional --task <task_id> argument to the session spawn command.
 
-      - id: "CLI_002"
-        name: "Implement task context loading"
-        status: "completed"
-        completed_date: "2026-02-07"
-        description: |
-          Add function to load task details from plan YAML for context injection.
-          Reused existing TaskService from agenticguidance.services.task.
-        target_files:
-          - modules/AgenticCLI/src/agenticcli/commands/session.py
-        guidance: |
-          Used existing TaskService.get_task() from agenticguidance.services.task
-          instead of creating a new service. _build_task_prompt() loads task details
-          and constructs a structured prompt.
+      When provided, the spawned agent receives task-specific context.
 
-      - id: "CLI_003"
-        name: "Add tests for task spawn"
-        status: "completed"
-        completed_date: "2026-02-07"
-        description: |
-          Unit tests for the new --task flag functionality.
-        target_files:
-          - modules/AgenticCLI/tests/test_session_commands.py
-        guidance: |
-          Test cases covered:
-          1. spawn with --task and --plan succeeds
-          2. spawn with --task but no --plan fails
-          3. spawn with --task and --role fails (mutual exclusion via argparse)
-          4. spawn with invalid task_id fails gracefully
-          5. task context is correctly loaded and passed
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: "1. Add --task argument to spawn subparser (optional, conflicts with\
+      \ --role)\n2. When --task is provided:\n   - Load plan YAML to find task by\
+      \ ID\n   - Extract task's inputs, target_files, guidance\n   - Pass to spawned\
+      \ agent as structured context\n3. Argument validation:\n   - --task requires\
+      \ --plan to be set\n   - --task and --role are mutually exclusive\n4. Error\
+      \ handling for invalid task IDs\n"
+    completed_date: '2026-02-07'
+  - id: CLI_002
+    name: Implement task context loading
+    description: 'Add function to load task details from plan YAML for context injection.
 
-      - id: "CLI_004"
-        name: "Add --role argument for role-based spawning"
-        status: "completed"
-        completed_date: "2026-02-07"
-        description: |
-          Add --role argument that loads agent context via bootstrap pattern
-          and constructs prompt automatically.
-        target_files:
-          - modules/AgenticCLI/src/agenticcli/commands/session.py
-          - modules/AgenticCLI/src/agenticcli/cli.py
+      Reused existing TaskService from agenticguidance.services.task.
 
-      - id: "CLI_005"
-        name: "Add --plan argument for plan context"
-        status: "completed"
-        completed_date: "2026-02-07"
-        description: |
-          Add --plan argument that passes plan folder to spawned agent context.
-          Works with both --role and --task.
-        target_files:
-          - modules/AgenticCLI/src/agenticcli/commands/session.py
-          - modules/AgenticCLI/src/agenticcli/cli.py
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    guidance: 'Used existing TaskService.get_task() from agenticguidance.services.task
 
-      - id: "CLI_006"
-        name: "Update argparse with mutual exclusion group"
-        status: "completed"
-        completed_date: "2026-02-07"
-        description: |
-          Add mutual exclusion group for --role vs --task in spawn_parser.
-          Make --prompt optional when --role or --task is provided.
-        target_files:
-          - modules/AgenticCLI/src/agenticcli/cli.py
+      instead of creating a new service. _build_task_prompt() loads task details
 
-      - id: "CLI_007"
-        name: "Add dogfood strategy to spawned agent prompts"
-        status: "completed"
-        completed_date: "2026-02-07"
-        description: |
-          Embed dogfood strategy in all auto-generated prompts (role and task).
-          Teaches spawned agents to self-heal gaps by creating planning folders
-          and orchestrating subagents rather than working around issues.
-        target_files:
-          - modules/AgenticCLI/src/agenticcli/commands/session.py
+      and constructs a structured prompt.
 
-success_criteria:
-  - "`agentic session spawn --task CLI_001 --plan 260207TA` spawns agent with task context"
-  - "`agentic session spawn --role build-python --plan 260207TA` spawns agent with role context"
-  - "All 48 tests pass"
-  - "--task and --role mutual exclusion enforced"
-  - "Invalid task ID produces clear error message"
-  - "--prompt still works standalone"
-  - "Dogfood strategy embedded in generated prompts"
+      '
+    completed_date: '2026-02-07'
+  - id: CLI_003
+    name: Add tests for task spawn
+    description: 'Unit tests for the new --task flag functionality.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_session_commands.py
+    guidance: 'Test cases covered:
+
+      1. spawn with --task and --plan succeeds
+
+      2. spawn with --task but no --plan fails
+
+      3. spawn with --task and --role fails (mutual exclusion via argparse)
+
+      4. spawn with invalid task_id fails gracefully
+
+      5. task context is correctly loaded and passed
+
+      '
+    completed_date: '2026-02-07'
+  - id: CLI_004
+    name: Add --role argument for role-based spawning
+    description: 'Add --role argument that loads agent context via bootstrap pattern
+
+      and constructs prompt automatically.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    completed_date: '2026-02-07'
+  - id: CLI_005
+    name: Add --plan argument for plan context
+    description: 'Add --plan argument that passes plan folder to spawned agent context.
+
+      Works with both --role and --task.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    completed_date: '2026-02-07'
+  - id: CLI_006
+    name: Update argparse with mutual exclusion group
+    description: 'Add mutual exclusion group for --role vs --task in spawn_parser.
+
+      Make --prompt optional when --role or --task is provided.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    completed_date: '2026-02-07'
+  - id: CLI_007
+    name: Add dogfood strategy to spawned agent prompts
+    description: 'Embed dogfood strategy in all auto-generated prompts (role and task).
+
+      Teaches spawned agents to self-heal gaps by creating planning folders
+
+      and orchestrating subagents rather than working around issues.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/session.py
+    completed_date: '2026-02-07'
+context: 'This plan adds --task, --role, and --plan flags to the `agentic session
+  spawn` command.
+
+  This enables the orchestration executor to spawn agents by role or for specific
+  tasks,
+
+  allowing parallel execution of non-conflicting tasks within a single plan.
+
+  Also includes dogfood strategy in spawned agent prompts for self-healing gaps.
+
+
+  DECISION: Task-level file scoping is the ONLY mechanism for parallelization.
+
+  Plan-level impacted_files will be deprecated by a separate guidance plan.
+
+  '

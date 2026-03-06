@@ -1,8 +1,8 @@
-plan_id: 260208NB
-plan_name: ntfy Bidirectional Question Answering
+name: 260208NB_ntfy_bidirectional_questions
+worktree_path: ''
+branch: ''
 status: approved
-created: '2026-02-08'
-updated: '2026-02-08'
+priority: medium
 objective: 'Enable bidirectional ntfy communication so users can reply to question
 
   notifications directly in the ntfy app and have those replies automatically
@@ -17,40 +17,9 @@ objective: 'Enable bidirectional ntfy communication so users can reply to questi
   ntfy app -> Watcher polls ntfy -> Auto-answers question
 
   '
-architecture_notes: 'ntfy.sh supports a JSON polling endpoint: GET /{topic}/json?since=<timestamp>&poll=1
-
-  This returns all messages posted to the topic since the given timestamp.
-
-  When a user replies to a notification in the ntfy app, their reply appears as a
-
-  new message on the same topic. We match replies to questions by embedding the
-
-  question_id in the outgoing notification message footer, and parsing incoming
-
-  messages for question_id patterns.
-
-
-  Key design decisions:
-
-  - poll_ntfy() uses urllib.request (stdlib only, matching send_ntfy pattern)
-
-  - Question ID embedded in message body as "[QID: Q-XXXXXXXX-XXXXXX-XXXX]" footer
-
-  - Reply matching uses regex to find QID in message text (user may quote original)
-
-  - Polling integrated into existing watcher loop with configurable interval
-
-  - Confirmation notification sent back after successful auto-answer
-
-  '
-files_modified:
-- modules/AgenticCLI/src/agenticcli/utils/ntfy.py
-- modules/AgenticCLI/src/agenticcli/commands/question.py
-- modules/AgenticCLI/src/agenticcli/services/question_watcher.py
-- modules/AgenticCLI/tests/test_ntfy.py
+created: '2026-02-08'
 phases:
-- id: P1
-  name: Add poll_ntfy() function
+- name: Add poll_ntfy() function
   description: 'Add a poll_ntfy() function to utils/ntfy.py that fetches recent messages
 
     from an ntfy topic using the JSON polling API. This is the low-level
@@ -58,11 +27,9 @@ phases:
     building block for receiving replies.
 
     '
-  tasks:
+  tickets:
   - id: P1-T1
     name: Implement poll_ntfy() in ntfy.py
-    status: completed
-    file: modules/AgenticCLI/src/agenticcli/utils/ntfy.py
     description: "Add poll_ntfy(topic, since, server) function that:\n1. Constructs\
       \ URL: {server}/{topic}/json?since={since}&poll=1\n2. Sends GET request via\
       \ urllib.request (matching send_ntfy pattern)\n3. Parses response as newline-delimited\
@@ -76,6 +43,8 @@ phases:
       \ \"p1234\" (resume from specific message)\n\nEach returned dict has at minimum:\n\
       \  {\"id\": str, \"time\": int, \"message\": str}\nAdditional fields (title,\
       \ tags, event) may be present.\n"
+    status: completed
+    agent: null
     success_criteria:
     - poll_ntfy returns list of dicts from ntfy JSON endpoint
     - Empty list returned on network error (no exception raised)
@@ -84,8 +53,6 @@ phases:
     - 5-second timeout on request (matching send_ntfy)
   - id: P1-T2
     name: Add parse_question_id_from_message() helper
-    status: completed
-    file: modules/AgenticCLI/src/agenticcli/utils/ntfy.py
     description: "Add helper function to extract question ID from an ntfy message\
       \ body.\nUsed to match incoming replies to outgoing question notifications.\n\
       \nFunction signature:\n  def parse_question_id_from_message(message: str) ->\
@@ -93,22 +60,21 @@ phases:
       \   using regex: r'\\[QID:\\s*(Q-\\d{8}-\\d{6}-[0-9a-f]{4})\\]'\n2. Return the\
       \ captured question ID, or None if no match\n3. If multiple QIDs found, return\
       \ the first (most recent in quoted reply)\n"
+    status: completed
+    agent: null
     success_criteria:
     - Extracts QID from "[QID: Q-20260208-120000-abc1]" format
     - Returns None when no QID present
     - Handles multiline messages (user may reply with quoted text)
-- id: P2
-  name: Update notify_new_question() to include question ID
+- name: Update notify_new_question() to include question ID
   description: 'Modify the outgoing notification to embed the question ID in the message
 
     body. This allows matching incoming replies to the original question.
 
     '
-  tasks:
+  tickets:
   - id: P2-T1
     name: Add question ID footer to notification message
-    status: completed
-    file: modules/AgenticCLI/src/agenticcli/utils/ntfy.py
     description: "Modify notify_new_question() to append question ID to the message\
       \ body.\n\nCurrent message format:\n  \"Should we use pytest or unittest?\"\n\
       \nNew message format:\n  \"Should we use pytest or unittest?\\n\\n[QID: Q-20260208-120000-abc1]\"\
@@ -118,6 +84,8 @@ phases:
       \ text to 200 chars, then append QID)\n\nThis is a small change to the existing\
       \ function. The QID tag format\nmust match what parse_question_id_from_message()\
       \ expects.\n"
+    status: completed
+    agent: null
     success_criteria:
     - Message body includes "[QID: Q-...]" footer
     - QID is appended AFTER text truncation
@@ -125,8 +93,6 @@ phases:
     - Long questions still truncated at 200 chars before QID
   - id: P2-T2
     name: Update existing notify_new_question tests
-    status: completed
-    file: modules/AgenticCLI/tests/test_ntfy.py
     description: 'Update TestNotifyNewQuestion tests to expect the new message format
 
       with QID footer. Tests that assert on exact message content will need
@@ -148,22 +114,21 @@ phases:
       - test_message_includes_question_id: verify QID format in message
 
       '
+    status: completed
+    agent: null
     success_criteria:
     - All existing tests pass with updated assertions
     - New test verifies QID is present in message body
     - QID format matches parse_question_id_from_message regex
-- id: P3
-  name: Integrate reply polling into question watcher
+- name: Integrate reply polling into question watcher
   description: 'Add ntfy reply polling to the question watcher service so that replies
 
     from the ntfy app are detected and automatically processed as answers.
 
     '
-  tasks:
+  tickets:
   - id: P3-T1
     name: Add NtfyReplyPoller class to question_watcher.py
-    status: completed
-    file: modules/AgenticCLI/src/agenticcli/services/question_watcher.py
     description: "Add a new class NtfyReplyPoller that runs alongside the filesystem\n\
       watcher. It periodically polls ntfy for new messages and processes\nreplies\
       \ as answers.\n\nClass design:\n  class NtfyReplyPoller:\n      def __init__(self,\
@@ -220,6 +185,8 @@ phases:
       \ (starts with \"New Question\")\n- answer_text extracted from text before [QID:]\
       \ tag\n- Confirmation notification sent after successful answer\n- Errors logged\
       \ but never raised (resilient polling)\n"
+    status: completed
+    agent: null
     success_criteria:
     - Polls ntfy at configurable interval
     - Matches incoming messages to pending questions by QID
@@ -229,8 +196,6 @@ phases:
     - Thread-safe, runs as daemon thread
   - id: P3-T2
     name: Wire NtfyReplyPoller into cmd_watch callback
-    status: completed
-    file: modules/AgenticCLI/src/agenticcli/commands/question.py
     description: "Update the cmd_watch() function to optionally start an NtfyReplyPoller\n\
       alongside the filesystem watcher when ntfy is configured.\n\nChanges to cmd_watch():\n\
       1. After starting the filesystem observer, check if ntfy is configured\n   (same\
@@ -248,6 +213,8 @@ phases:
       ),\n      )\n      poller.start()\n      console.print(\"[green]ntfy reply polling\
       \ active[/green]\")\n\n  # ... existing watcher loop ...\n\n  # In signal_handler\
       \ and KeyboardInterrupt:\n  if poller:\n      poller.stop()\n"
+    status: completed
+    agent: null
     success_criteria:
     - NtfyReplyPoller starts when ntfy is configured
     - Poller stops cleanly on Ctrl+C / SIGTERM
@@ -255,8 +222,6 @@ phases:
     - Status message shown when polling is active
   - id: P3-T3
     name: Extract _get_ntfy_config() helper
-    status: completed
-    file: modules/AgenticCLI/src/agenticcli/commands/question.py
     description: "Extract the ntfy config reading logic from _send_ntfy_if_configured()\n\
       into a reusable _get_ntfy_config() function. This avoids duplicating\nthe preferences\
       \ reading code in cmd_watch().\n\nNew function:\n  def _get_ntfy_config() ->\
@@ -274,20 +239,19 @@ phases:
       \          }\n      except Exception:\n          return None\n\nThen refactor\
       \ _send_ntfy_if_configured() to use _get_ntfy_config()\ninternally (reducing\
       \ duplication).\n"
+    status: completed
+    agent: null
     success_criteria:
     - _get_ntfy_config() returns dict or None
     - _send_ntfy_if_configured() refactored to use it
     - Existing ntfy notification behavior unchanged
-- id: P4
-  name: Add tests for new functionality
+- name: Add tests for new functionality
   description: 'Add unit tests for all new functions and integration points.
 
     '
-  tasks:
+  tickets:
   - id: P4-T1
     name: Add tests for poll_ntfy()
-    status: completed
-    file: modules/AgenticCLI/tests/test_ntfy.py
     description: 'Add TestPollNtfy class with tests:
 
       - test_poll_success: mock urlopen, return ndjson, verify parsed list
@@ -305,13 +269,13 @@ phases:
       - test_poll_since_parameter: verify since param in URL
 
       '
+    status: completed
+    agent: null
     success_criteria:
     - All poll_ntfy paths tested (success, errors, edge cases)
     - Mock-based (no real network calls)
   - id: P4-T2
     name: Add tests for parse_question_id_from_message()
-    status: completed
-    file: modules/AgenticCLI/tests/test_ntfy.py
     description: 'Add TestParseQuestionId class with tests:
 
       - test_parse_valid_qid: "[QID: Q-20260208-120000-abc1]" -> Q-20260208-120000-abc1
@@ -323,14 +287,14 @@ phases:
       - test_parse_partial_match: "[QID: invalid]" -> None
 
       '
+    status: completed
+    agent: null
     success_criteria:
     - Valid QID extracted correctly
     - None returned for non-matching text
     - Works with multiline quoted messages
   - id: P4-T3
     name: Add tests for NtfyReplyPoller
-    status: completed
-    file: modules/AgenticCLI/tests/test_ntfy.py
     description: "Add TestNtfyReplyPoller class with tests:\n- test_poller_processes_reply:\
       \ mock poll_ntfy returning a message with\n  QID, verify answer_question called\n\
       - test_poller_skips_outgoing_notifications: message starting with\n  \"New Question\"\
@@ -339,6 +303,8 @@ phases:
       - test_poller_sends_confirmation: verify send_ntfy called after answer\n- test_poller_extracts_answer_text:\
       \ text before [QID:] extracted\n\nUse mock patches for poll_ntfy, QuestionQueue,\
       \ send_ntfy.\nTest _check_for_replies() directly (no need to test thread lifecycle).\n"
+    status: completed
+    agent: null
     success_criteria:
     - Reply processing logic fully tested
     - Dedup behavior verified
@@ -346,8 +312,6 @@ phases:
     - No real network calls or filesystem operations
   - id: P4-T4
     name: Add tests for _get_ntfy_config()
-    status: completed
-    file: modules/AgenticCLI/tests/test_ntfy.py
     description: 'Add TestGetNtfyConfig class with tests:
 
       - test_returns_config_when_configured: topic + server from prefs
@@ -361,7 +325,27 @@ phases:
       - test_default_server: server defaults to https://ntfy.sh
 
       '
+    status: completed
+    agent: null
     success_criteria:
     - Config loading works correctly
     - Returns None for all "not configured" cases
     - Default server URL applied
+- name: Unit Tests - poll_ntfy()
+  description: Tests for the new ntfy polling function
+  tickets: []
+- name: Unit Tests - parse_question_id_from_message()
+  description: Tests for the QID extraction helper
+  tickets: []
+- name: Unit Tests - notify_new_question() updated message format
+  description: Tests verifying the QID footer is included in notifications
+  tickets: []
+- name: Unit Tests - NtfyReplyPoller
+  description: Tests for the reply polling service
+  tickets: []
+- name: Unit Tests - _get_ntfy_config()
+  description: Tests for the config extraction helper
+  tickets: []
+- name: Integration Tests
+  description: End-to-end flow tests using mocked network
+  tickets: []

@@ -138,7 +138,7 @@ class TestMainFirstEpicResolver:
 phases:
   - name: "Build Phase"
     id: "phase_1"
-    tasks:
+    tickets:
       - id: "task_001"
         name: "First task"
         description: "Do something"
@@ -161,7 +161,7 @@ phases:
         plan_content = """
 phases:
   - name: "Build"
-    tasks:
+    tickets:
       - id: "task_001"
         name: "Pending task"
         status: "pending"
@@ -183,7 +183,7 @@ phases:
         plan_content = """
 phases:
   - name: "Build"
-    tasks:
+    tickets:
       - id: "task_001"
         name: "First pending"
         status: "pending"

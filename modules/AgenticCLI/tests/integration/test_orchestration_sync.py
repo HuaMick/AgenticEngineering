@@ -197,7 +197,7 @@ class TestOrchestrationSyncWorkflow:
                 "phase_id": "P1",
                 "name": "Setup Phase",
                 "status": "completed",
-                "tasks": [
+                "tickets": [
                     {"id": "P1-001", "name": "Initialize project", "status": "completed"},
                 ],
             },
@@ -205,7 +205,7 @@ class TestOrchestrationSyncWorkflow:
                 "phase_id": "P2",
                 "name": "Build Phase",
                 "status": "in_progress",
-                "tasks": [
+                "tickets": [
                     {"id": "P2-001", "name": "Implement core module", "status": "pending"},
                 ],
             },
@@ -249,7 +249,7 @@ class TestOrchestrationSyncWorkflow:
             "phase_id": "P3",
             "name": "Testing Phase",
             "status": "pending",
-            "tasks": [
+            "tickets": [
                 {"id": "P3-001", "name": "Unit tests", "status": "pending"},
                 {"id": "P3-002", "name": "Integration tests", "status": "pending"},
             ],
@@ -260,7 +260,7 @@ class TestOrchestrationSyncWorkflow:
             "phase_id": "P4",
             "name": "Documentation Phase",
             "status": "pending",
-            "tasks": [
+            "tickets": [
                 {"id": "P4-001", "name": "API documentation", "status": "pending"},
             ],
         }
@@ -323,7 +323,7 @@ class TestOrchestrationSyncWorkflow:
                 "phase_id": "P1",
                 "name": "Phase One",
                 "status": "pending",
-                "tasks": [],
+                "tickets": [],
             },
         ]
         self._create_plan_with_phases(plan_path, initial_phases)
@@ -340,7 +340,7 @@ class TestOrchestrationSyncWorkflow:
             "phase_id": "P2",
             "name": "Phase Two",
             "status": "pending",
-            "tasks": [],
+            "tickets": [],
         }
         self._add_phase_to_plan(plan_path, new_phase)
 
@@ -396,7 +396,7 @@ class TestOrchestrationSyncWorkflow:
                 "phase_id": "P1",
                 "name": "Build Phase",
                 "status": "in_progress",
-                "tasks": [
+                "tickets": [
                     {"id": "P1-001", "name": "First task", "status": "completed"},
                 ],
             },
@@ -410,13 +410,13 @@ class TestOrchestrationSyncWorkflow:
         )
         assert code == 0
 
-        # Add more tasks to the same phase (creates task drift)
+        # Add more tickets to the same phase (creates task drift)
         plan_file = plan_path / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
-        content["phases"][0]["tasks"].append(
+        content["phases"][0]["tickets"].append(
             {"id": "P1-002", "name": "Second task", "status": "pending"}
         )
-        content["phases"][0]["tasks"].append(
+        content["phases"][0]["tickets"].append(
             {"id": "P1-003", "name": "Third task", "status": "pending"}
         )
         with open(plan_file, "w") as f:
@@ -548,9 +548,9 @@ class TestOrchestrationSyncEdgeCases:
             "objective": "Test phase removal sync",
             "status": "in_progress",
             "phases": [
-                {"phase_id": "P1", "name": "Phase 1", "status": "completed", "tasks": []},
-                {"phase_id": "P2", "name": "Phase 2", "status": "in_progress", "tasks": []},
-                {"phase_id": "P3", "name": "Phase 3", "status": "pending", "tasks": []},
+                {"phase_id": "P1", "name": "Phase 1", "status": "completed", "tickets": []},
+                {"phase_id": "P2", "name": "Phase 2", "status": "in_progress", "tickets": []},
+                {"phase_id": "P3", "name": "Phase 3", "status": "pending", "tickets": []},
             ],
         }
         plan_file = plan_path / "plan_build.yml"
@@ -592,7 +592,7 @@ class TestOrchestrationSyncEdgeCases:
             "objective": "Test phase ID change sync",
             "status": "pending",
             "phases": [
-                {"phase_id": "P1", "name": "Original Phase", "status": "pending", "tasks": []},
+                {"phase_id": "P1", "name": "Original Phase", "status": "pending", "tickets": []},
             ],
         }
         plan_file = plan_path / "plan_build.yml"
@@ -632,7 +632,7 @@ class TestOrchestrationSyncEdgeCases:
         plan_build = {
             "name": "build-plan",
             "phases": [
-                {"phase_id": "B1", "name": "Build Phase", "status": "pending", "tasks": []},
+                {"phase_id": "B1", "name": "Build Phase", "status": "pending", "tickets": []},
             ],
         }
         with open(plan_path / "plan_build.yml", "w") as f:
@@ -642,7 +642,7 @@ class TestOrchestrationSyncEdgeCases:
         plan_test = {
             "name": "test-plan",
             "phases": [
-                {"phase_id": "T1", "name": "Test Phase", "status": "pending", "tasks": []},
+                {"phase_id": "T1", "name": "Test Phase", "status": "pending", "tickets": []},
             ],
         }
         with open(plan_path / "plan_test.yml", "w") as f:
@@ -670,7 +670,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Add a phase to one file
         plan_build["phases"].append(
-            {"phase_id": "B2", "name": "Build Phase 2", "status": "pending", "tasks": []}
+            {"phase_id": "B2", "name": "Build Phase 2", "status": "pending", "tickets": []}
         )
         with open(plan_path / "plan_build.yml", "w") as f:
             yaml.dump(plan_build, f)
@@ -698,8 +698,8 @@ class TestOrchestrationSyncEdgeCases:
             "objective": "Test idempotency",
             "status": "pending",
             "phases": [
-                {"phase_id": "P1", "name": "Phase 1", "status": "pending", "tasks": []},
-                {"phase_id": "P2", "name": "Phase 2", "status": "pending", "tasks": []},
+                {"phase_id": "P1", "name": "Phase 1", "status": "pending", "tickets": []},
+                {"phase_id": "P2", "name": "Phase 2", "status": "pending", "tickets": []},
             ],
         }
         plan_file = plan_path / "plan_build.yml"
@@ -834,7 +834,7 @@ class TestOrchestrationSyncValidationDetails:
         plan_content = {
             "name": "file-report-plan",
             "phases": [
-                {"phase_id": "P1", "name": "Phase 1", "status": "pending", "tasks": []},
+                {"phase_id": "P1", "name": "Phase 1", "status": "pending", "tickets": []},
             ],
         }
         with open(plan_path / "plan_build.yml", "w") as f:
@@ -867,7 +867,7 @@ class TestOrchestrationSyncValidationDetails:
                     "phase_id": "P1",
                     "name": "Phase 1",
                     "status": "pending",
-                    "tasks": [
+                    "tickets": [
                         {"id": "P1-001", "name": "Task 1", "status": "pending"},
                         {"id": "P1-002", "name": "Task 2", "status": "pending"},
                     ],
@@ -876,7 +876,7 @@ class TestOrchestrationSyncValidationDetails:
                     "phase_id": "P2",
                     "name": "Phase 2",
                     "status": "pending",
-                    "tasks": [
+                    "tickets": [
                         {"id": "P2-001", "name": "Task 3", "status": "pending"},
                     ],
                 },
@@ -913,7 +913,7 @@ class TestOrchestrationSyncValidationDetails:
         plan_content = {
             "name": "error-detail-plan",
             "phases": [
-                {"phase_id": "P1", "name": "Initial Phase", "status": "pending", "tasks": []},
+                {"phase_id": "P1", "name": "Initial Phase", "status": "pending", "tickets": []},
             ],
         }
         with open(plan_path / "plan_build.yml", "w") as f:
@@ -924,8 +924,8 @@ class TestOrchestrationSyncValidationDetails:
 
         # Add multiple new phases to create multiple drift errors
         plan_content["phases"].extend([
-            {"phase_id": "P2", "name": "Second Phase", "status": "pending", "tasks": []},
-            {"phase_id": "P3", "name": "Third Phase", "status": "pending", "tasks": []},
+            {"phase_id": "P2", "name": "Second Phase", "status": "pending", "tickets": []},
+            {"phase_id": "P3", "name": "Third Phase", "status": "pending", "tickets": []},
         ])
         with open(plan_path / "plan_build.yml", "w") as f:
             yaml.dump(plan_content, f)

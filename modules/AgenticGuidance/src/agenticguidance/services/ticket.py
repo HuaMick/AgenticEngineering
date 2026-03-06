@@ -196,7 +196,7 @@ class TicketService:
         phases = data.get("phases", [])
         if phases:
             for phase in phases:
-                tasks = phase.get("tasks", [])
+                tasks = phase.get("tickets", [])
                 for ticket_data in tasks:
                     if self._get_ticket_id(ticket_data) == ticket_id:
                         return self._ticket_dict_to_dataclass(ticket_data)
@@ -244,7 +244,7 @@ class TicketService:
         phases = data.get("phases", [])
         if phases:
             for phase in phases:
-                tasks = phase.get("tasks", [])
+                tasks = phase.get("tickets", [])
                 for ticket_data in tasks:
                     ticket = self._ticket_dict_to_dataclass(ticket_data)
                     all_tickets.append(ticket)
@@ -293,7 +293,7 @@ class TicketService:
         phases = data.get("phases", [])
         if phases:
             for phase in phases:
-                tasks = phase.get("tasks", [])
+                tasks = phase.get("tickets", [])
                 for ticket_data in tasks:
                     ticket = self._ticket_dict_to_dataclass(ticket_data)
                     if ticket.status == TicketStatus.IN_PROGRESS and in_progress_ticket is None:
@@ -362,7 +362,7 @@ class TicketService:
                 phases = data.get("phases", [])
                 if phases:
                     for phase in phases:
-                        tasks = phase.get("tasks", [])
+                        tasks = phase.get("tickets", [])
                         for ticket_data in tasks:
                             if self._get_ticket_id(ticket_data) == ticket_id:
                                 ticket_data["status"] = status.value

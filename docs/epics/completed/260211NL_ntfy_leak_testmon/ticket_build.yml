@@ -1,60 +1,18 @@
-description: Fix ntfy notification leak in UAT tests + integrate pytest-testmon
-plan_type: build
+name: 260211NL_ntfy_leak_testmon
+worktree_path: ''
+branch: ''
+status: pending
+priority: medium
+objective: ''
 created: '2026-02-11'
-problem_statement: 'test_uat_ask_with_suggestions.py calls question.cmd_ask() which
-  invokes
-
-  _send_ntfy_if_configured() and _ensure_reply_poller(). These functions read
-
-  the developer''s REAL ~/.config/agenticcli/preferences.yml. If ntfy is
-
-  configured, every test run sends real push notifications to the developer''s
-
-  phone and starts background reply poller threads.
-
-
-  Root cause: cmd_ask() at question.py:587-593 always calls ntfy functions.
-
-  The test file does NOT mock get_config_dir or _send_ntfy_if_configured,
-
-  unlike test_uat_e2e_notification_flow.py which correctly patches both.
-
-
-  Additionally, heavy UAT tests (ntfy, daemon, interactive wizards) should
-
-  be excluded from the regular feedback loop and only run on-demand.
-
-
-  Finally, pytest-testmon should be integrated to optimize test execution
-
-  by only running tests affected by code changes.
-
-  '
-root_cause_analysis: "File: modules/AgenticCLI/tests/test_uat_ask_with_suggestions.py\n\
-  Functions affected: test_ask_question_with_multiple_suggestions (line 30),\n  test_ask_question_without_suggestions_backward_compatible\
-  \ (line 62),\n  test_ask_question_single_suggestion (line 93),\n  test_yaml_file_contains_suggested_answers_field\
-  \ (line 121),\n  test_suggested_answers_stored_as_list (line 259),\n  test_cli_output_shows_suggestion_count\
-  \ (line 324)\n\nThese 6 tests call question.cmd_ask(args) which triggers:\n  1.\
-  \ _send_ntfy_if_configured(plan_path, [question])  [question.py:588]\n  2. _ensure_reply_poller(plan_path)\
-  \                   [question.py:593]\n\n_get_ntfy_config() reads the real config\
-  \ dir (not mocked), so if the\ndeveloper has ntfy.topic set, real HTTP POST to ntfy.sh\
-  \ occurs.\n\nCompare with test_uat_e2e_notification_flow.py which correctly does:\n\
-  \  monkeypatch.setattr('agenticcli.commands.config.get_config_dir', lambda: config_dir)\n\
-  \  with patch('agenticcli.utils.ntfy.urlopen') as mock_urlopen: ...\n\nThe ask_with_suggestions\
-  \ tests lack both of these protections.\n"
-strategy: "Three-pronged approach:\n1. FIX: Patch _send_ntfy_if_configured and _ensure_reply_poller\
-  \ in the\n   leaking test file so they never reach real ntfy.\n2. MARK: Add pytest\
-  \ markers (@pytest.mark.uat, @pytest.mark.ntfy) to\n   categorize heavy tests. Configure\
-  \ pytest to exclude uat/ntfy by\n   default via addopts, runnable on-demand with\
-  \ -m uat.\n3. TESTMON: Integrate pytest-testmon for change-aware test execution.\n"
 phases:
-- id: P1
-  name: Fix ntfy notification leak in test_uat_ask_with_suggestions.py
+- name: Fix ntfy notification leak in test_uat_ask_with_suggestions.py
   description: Prevent real ntfy calls during test execution
-  tasks:
+  tickets:
   - id: P1-T1
     name: Add conftest fixture or monkeypatch to neutralize ntfy in ask_with_suggestions
       tests
+    description: ''
     status: completed
     agent: build-python
     success_criteria:
@@ -62,44 +20,34 @@ phases:
     - 'Approach: add an autouse fixture or per-test monkeypatch that stubs _send_ntfy_if_configured
       and _ensure_reply_poller to no-ops'
     - 'Alternative: patch _get_ntfy_config to return None in these tests'
-    - "Do NOT over-mock \u2014 the tests should still validate question creation logic"
-    files:
-    - modules/AgenticCLI/tests/test_uat_ask_with_suggestions.py
+    - Do NOT over-mock — the tests should still validate question creation logic
   - id: P1-T2
     name: Audit all test_uat_*.py files for similar leaks
+    description: ''
     status: completed
     agent: build-python
-    depends_on:
-    - P1-T1
     success_criteria:
     - Review test_uat_interactive_answer.py for same pattern
     - Confirm test_uat_e2e_notification_flow.py and test_uat_phone_notifications.py
       are already properly mocked
     - Fix any additional leaks found
-    files:
-    - modules/AgenticCLI/tests/test_uat_interactive_answer.py
-    - modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py
-    - modules/AgenticCLI/tests/test_uat_phone_notifications.py
   - id: P1-T3
     name: Add global conftest safety net for ntfy
+    description: ''
     status: completed
     agent: build-python
-    depends_on:
-    - P1-T1
     success_criteria:
     - Add an autouse session-scoped fixture to modules/AgenticCLI/tests/conftest.py
       that patches _get_ntfy_config to return None by default
     - Tests that intentionally test ntfy can opt out by providing their own mock config
       (monkeypatch takes precedence)
     - This prevents any future test from accidentally sending real notifications
-    files:
-    - modules/AgenticCLI/tests/conftest.py
-- id: P2
-  name: Add UAT/ntfy pytest markers and default exclusion
+- name: Add UAT/ntfy pytest markers and default exclusion
   description: Mark heavy UAT tests for on-demand execution only
-  tasks:
+  tickets:
   - id: P2-T1
     name: Define uat and ntfy markers in pyproject.toml
+    description: ''
     status: completed
     agent: build-python
     success_criteria:
@@ -107,110 +55,85 @@ phases:
     - 'uat: marks tests as UAT acceptance tests (on-demand, not in regular feedback
       loop)'
     - 'ntfy: marks tests that exercise ntfy notification paths (require mock HTTP)'
-    files:
-    - modules/AgenticCLI/pyproject.toml
   - id: P2-T2
     name: Apply @pytest.mark.uat to all test_uat_*.py files
+    description: ''
     status: completed
     agent: build-python
-    depends_on:
-    - P2-T1
     success_criteria:
     - All test functions in test_uat_ask_with_suggestions.py marked @pytest.mark.uat
     - All test functions in test_uat_e2e_notification_flow.py marked @pytest.mark.uat
     - All test functions in test_uat_phone_notifications.py marked @pytest.mark.uat
     - All test functions in test_uat_interactive_answer.py marked @pytest.mark.uat
     - Use pytestmark = pytest.mark.uat at module level for brevity
-    files:
-    - modules/AgenticCLI/tests/test_uat_ask_with_suggestions.py
-    - modules/AgenticCLI/tests/test_uat_e2e_notification_flow.py
-    - modules/AgenticCLI/tests/test_uat_phone_notifications.py
-    - modules/AgenticCLI/tests/test_uat_interactive_answer.py
   - id: P2-T3
     name: Configure default marker exclusion in pyproject.toml
+    description: ''
     status: completed
     agent: build-python
-    depends_on:
-    - P2-T1
     success_criteria:
     - Add addopts = '-m "not uat"' to [tool.pytest.ini_options]
     - Running 'pytest' excludes UAT tests by default
     - Running 'pytest -m uat' runs only UAT tests
     - Running 'pytest -m ""' runs everything (override)
-    files:
-    - modules/AgenticCLI/pyproject.toml
-- id: P3
-  name: Integrate pytest-testmon
+- name: Integrate pytest-testmon
   description: Add pytest-testmon for change-aware test execution
-  tasks:
+  tickets:
   - id: P3-T1
     name: Add pytest-testmon to dev dependencies
+    description: ''
     status: completed
     agent: build-python
     success_criteria:
     - Add pytest-testmon>=2.0 to [project.optional-dependencies].dev in pyproject.toml
     - Add pytest-testmon>=2.0 to [dependency-groups].dev in pyproject.toml
     - pip install -e '.[dev]' installs pytest-testmon
-    files:
-    - modules/AgenticCLI/pyproject.toml
   - id: P3-T2
     name: Install pytest-testmon and generate initial database
+    description: ''
     status: completed
     agent: build-python
-    depends_on:
-    - P3-T1
     success_criteria:
     - pip install pytest-testmon succeeds
     - pytest --testmon generates .testmondata database
     - Add .testmondata to .gitignore (developer-local, not committed)
-    files:
-    - .gitignore
   - id: P3-T3
     name: Configure testmon in pyproject.toml
+    description: ''
     status: completed
     agent: build-python
-    depends_on:
-    - P3-T2
     success_criteria:
     - Add --testmon to addopts for default testmon usage
     - 'Final addopts should be: -m ''not uat'' --testmon'
     - Document that --no-testmon can override to run all tests
     - Verify pytest --testmon runs only changed tests
     - Verify pytest --no-testmon --testmon-nocollect bypasses testmon
-    files:
-    - modules/AgenticCLI/pyproject.toml
-- id: P4
-  name: Verification
+- name: Verification
   description: Run full test suite and verify all changes work together
-  tasks:
+  tickets:
   - id: P4-T1
     name: Run full test suite without UAT marker
+    description: ''
     status: completed
     agent: test-runner
-    depends_on:
-    - P1-T3
-    - P2-T3
-    - P3-T3
     success_criteria:
     - 'pytest modules/AgenticCLI/tests/ passes (default: excludes UAT)'
     - No ntfy notifications sent during test run
     - testmon database created
   - id: P4-T2
     name: Run UAT tests explicitly
+    description: ''
     status: completed
     agent: test-runner
-    depends_on:
-    - P4-T1
     success_criteria:
     - pytest -m uat modules/AgenticCLI/tests/ passes
     - No real ntfy notifications sent (conftest safety net active)
     - All UAT tests still validate their acceptance criteria
   - id: P4-T3
     name: Verify testmon change detection works
+    description: ''
     status: completed
     agent: test-runner
-    depends_on:
-    - P4-T1
     success_criteria:
     - Run pytest --testmon twice with no changes - second run skips all tests
     - Touch a source file - affected tests re-run

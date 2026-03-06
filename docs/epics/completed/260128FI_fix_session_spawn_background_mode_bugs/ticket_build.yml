@@ -1,29 +1,13 @@
 name: fix-session-spawn-bugs
+worktree_path: ''
+branch: ''
 status: active
 priority: high
+objective: ''
 created: '2026-01-28'
-problem: 'agentic session spawn --background has two critical bugs:
-
-  1. Invalid --prompt flag (claude CLI expects positional argument)
-
-  2. PIPE buffer blocking (>64KB output causes process to hang)
-
-
-  Sessions complete in 4-15 seconds without doing work because
-
-  the --prompt flag causes immediate error exit.
-
-  '
-success_criteria:
-- Background sessions execute prompts correctly
-- Output is captured to log files
-- Sessions can produce >64KB output without blocking
-- Users can view session output via CLI
 phases:
-- phase_id: P1
-  name: Fix CLI argument bug
-  status: pending
-  tasks:
+- name: Fix CLI argument bug
+  tickets:
   - id: SS-001
     name: Fix command construction
     description: 'Change: cmd.extend(["--prompt", prompt])
@@ -37,15 +21,11 @@ phases:
 
       '
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/session.py
-    acceptance_criteria:
-    - Command uses positional argument for prompt
-    - Uses claude --print PROMPT format
-- phase_id: P2
-  name: Fix output handling
-  status: pending
-  tasks:
+- name: Fix output handling
+  tickets:
   - id: SS-002
     name: Add logs directory helper
     description: 'Create _get_logs_dir() function similar to _get_sessions_dir().
@@ -56,35 +36,28 @@ phases:
 
       '
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/session.py
-    acceptance_criteria:
-    - Function exists and creates directory
   - id: SS-003
     name: Replace PIPE with file handles
     description: "In background mode, replace:\n  stdout=subprocess.PIPE\n  stderr=subprocess.PIPE\n\
       With file handles opened for writing.\n\nAlso add stdin=subprocess.DEVNULL\n\
       \nLog files use session_id.stdout.log and session_id.stderr.log\n"
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/session.py
-    acceptance_criteria:
-    - Output written to files
-    - No PIPE blocking
-    - Log files created in logs directory
-- phase_id: P3
-  name: Add log visibility
-  status: pending
-  tasks:
+- name: Add log visibility
+  tickets:
   - id: SS-004
     name: Store log paths in session data
     description: "Add to session_data dict:\n  stdout_log: path to stdout log\n  stderr_log:\
       \ path to stderr log\n\nThese paths saved to session JSON file.\n"
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/session.py
-    acceptance_criteria:
-    - Session JSON includes log paths
   - id: SS-005
     name: Update status to show logs
     description: 'In cmd_status(), display log file paths.
@@ -93,11 +66,9 @@ phases:
 
       '
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/session.py
-    acceptance_criteria:
-    - Status shows log file paths
-    - --show-output displays contents
   - id: SS-006
     name: Add argument parser for show-output flag
     description: 'Update argument parser (main.py or session subcommand setup).
@@ -106,14 +77,11 @@ phases:
 
       '
     status: completed
+    agent: null
     target_files:
     - modules/AgenticCLI/src/agenticcli/main.py
-    acceptance_criteria:
-    - Flag recognized by CLI
-- phase_id: P4
-  name: Test and validate
-  status: pending
-  tasks:
+- name: Test and validate
+  tickets:
   - id: SS-007
     name: Test simple background spawn
     description: 'Command: agentic session spawn -p "Say hello world" --background
@@ -124,9 +92,7 @@ phases:
 
       '
     status: completed
-    acceptance_criteria:
-    - Session completes successfully
-    - Log file has content
+    agent: null
   - id: SS-008
     name: Test file reference prompt
     description: 'Create prompt file, spawn session with @path reference.
@@ -135,9 +101,7 @@ phases:
 
       '
     status: completed
-    acceptance_criteria:
-    - File reference works
-    - Content processed correctly
+    agent: null
   - id: SS-009
     name: Test large output over 64KB
     description: 'Spawn session that produces substantial output.
@@ -146,9 +110,7 @@ phases:
 
       '
     status: completed
-    acceptance_criteria:
-    - No blocking on large output
-    - Session completes
+    agent: null
   - id: SS-010
     name: Test view session output
     description: 'Command: agentic session status ID --show-output
@@ -157,6 +119,4 @@ phases:
 
       '
     status: completed
-    acceptance_criteria:
-    - Output displayed correctly
-    - Both stdout and stderr shown
+    agent: null

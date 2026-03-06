@@ -80,7 +80,7 @@ def create_test_plan(
     plan_data = {
         "name": name,
         "status": status,
-        "phases": [{"tasks": tasks}],
+        "phases": [{"tickets": tasks}],
     }
 
     # Add dependencies if provided
@@ -514,7 +514,7 @@ class TestDependencyResolution:
         plan_data = {
             "name": "test_plan",
             "status": "active",
-            "phases": [{"tasks": [{"id": "T1", "status": "pending"}]}],
+            "phases": [{"tickets": [{"id": "T1", "status": "pending"}]}],
             "dependencies": {
                 "depends_on": [
                     {"plan_id": "dep1", "description": "First dependency"},

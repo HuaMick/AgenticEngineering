@@ -43,7 +43,7 @@ def plan_with_phases():
                 "phase_id": "P1",
                 "name": "Phase 1 - Setup",
                 "status": "completed",
-                "tasks": [
+                "tickets": [
                     {"id": "T1", "name": "Task 1", "status": "completed"},
                 ],
             },
@@ -51,7 +51,7 @@ def plan_with_phases():
                 "phase_id": "P2",
                 "name": "Phase 2 - Build",
                 "status": "in_progress",
-                "tasks": [
+                "tickets": [
                     {"id": "T2", "name": "Task 2", "status": "pending"},
                     {"id": "T3", "name": "Task 3", "status": "pending"},
                 ],
@@ -80,7 +80,7 @@ def plan_with_nested_structure():
                     "phase_id": "NP1",
                     "name": "Nested Phase 1",
                     "status": "pending",
-                    "tasks": [],
+                    "tickets": [],
                 },
             ],
         }
@@ -114,7 +114,7 @@ class TestPhaseAddToEmptyPlan:
         assert data["phases"][0]["phase_id"] == "P1"
         assert data["phases"][0]["name"] == "Initial Setup"
         assert data["phases"][0]["status"] == "pending"
-        assert data["phases"][0]["tasks"] == []
+        assert data["phases"][0]["tickets"] == []
 
     def test_phase_add_with_description(self, empty_plan, cli_runner):
         """Test adding a phase with a description."""

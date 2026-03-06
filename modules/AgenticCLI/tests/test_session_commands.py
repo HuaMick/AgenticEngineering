@@ -731,7 +731,7 @@ class TestBuildTaskPrompt:
         plan_file.write_text("""
 phases:
   - name: "Test Phase"
-    tasks:
+    tickets:
       - id: "CLI_001"
         name: "Add --task argument"
         status: "pending"
@@ -761,7 +761,7 @@ phases:
         plan_file.write_text("""
 phases:
   - name: "Test Phase"
-    tasks:
+    tickets:
       - id: "CLI_001"
         name: "Existing task"
         status: "pending"
@@ -842,7 +842,7 @@ class TestSpawnWithRoleAndPlan:
         plan_file.write_text("""
 phases:
   - name: "Build Phase"
-    tasks:
+    tickets:
       - id: "CLI_001"
         name: "Add feature"
         status: "pending"
@@ -949,7 +949,7 @@ phases:
         plan_file.write_text("""
 phases:
   - name: "Build Phase"
-    tasks:
+    tickets:
       - id: "CLI_001"
         name: "Real task"
         status: "pending"

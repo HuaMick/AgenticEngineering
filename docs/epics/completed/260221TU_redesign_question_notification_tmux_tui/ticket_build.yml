@@ -1,169 +1,69 @@
-name: redesign_question_notification_tmux_tui
+name: redesign_question_notification_tmux_tui - test
 worktree_path: /home/code/AgenticEngineering
 branch: main
-status: completed
+status: pending
 priority: high
-objective: 'Replace the ntfy push-notification system with a tmux-based TUI for question
+objective: 'Validate the tmux TUI redesign with unit tests for new components and
+  regression
 
-  notification and answering. The new TUI will run as a persistent tmux window
+  tests for the unchanged question CLI commands. Ensure no ntfy imports remain
 
-  showing all pending questions in real-time and allow answering directly from
-
-  the terminal. This works well over Termux/SSH on Android.
-
-
-  The existing QuestionQueue service and YAML storage are kept unchanged.
-
-  The existing user-facing CLI commands (list, show, answer) continue to work.
-
-  The `agentic question dashboard` command evolves into the full TUI entry point.
-
-
-  ntfy STAYS for notification-only (alerting user to jump into Termux).
-
-  ntfy reply/answer flow is removed (NtfyReplyPoller, NtfyQuestionAgent,
-
-  ntfy_state.yml). The user answers questions in the TUI, not via ntfy replies.
-
-
-  See ui_design.md in this plan folder for detailed UI wireframes, interaction
-
-  flows, and the clear-reprint-select rendering pattern.
+  anywhere in the question system after cleanup.
 
   '
-affected_stories:
-- US-CLI-060
-- US-CLI-061
-- US-CLI-066
-- US-CLI-120
-open_questions:
-- id: OQ-1
-  text: 'Should the TUI run in a dedicated tmux window (new window in current session)
-
-    or as a split pane? A window gives more screen space on small Termux screens;
-
-    a pane keeps everything in view simultaneously.
-
-    '
-  severity: medium
-  context: 'Termux on Android typically uses small screens. The existing notification
-    pane
-
-    code uses split-window -h (horizontal split, 30%). A dedicated window avoids
-
-    squeezing both the agent and the TUI into one screen.
-
-    '
-  decision: Use a dedicated tmux window named 'questions' for the TUI dashboard.
-- id: OQ-2
-  text: 'Should the TUI support multi-plan view (all live plans) or be scoped to one
-
-    plan at a time? The current dashboard already scans all live plans.
-
-    '
-  severity: low
-  context: 'Multi-plan view is more useful because multiple agents may be running
-    concurrently.
-
-    The existing `cmd_dashboard` already scans docs/plans/live/*/questions/pending/*.
-
-    '
-  decision: Multi-plan view (scan all live plans) matching current dashboard behavior.
-- id: OQ-3
-  text: 'Which rendering pattern: Rich Live (start/stop around input), or
-
-    clear-reprint-select (console.clear + print + select.select on stdin)?
-
-    '
-  severity: high
-  context: 'Rich Live conflicts with stdin reads. The pause-resume dance is fragile
-
-    on Termux. We need single-keypress navigation (arrow keys, Tab, Enter)
-
-    for a navigable list. This requires tty.setcbreak() mode. Rich Live is
-
-    incompatible with cbreak mode.
-
-    '
-  decision: 'Use cbreak mode (tty.setcbreak) for single-keypress navigation +
-
-    Rich Console for rendering (clear + print). Restore line mode for
-
-    freeform text input. No Rich Live. See ui_design.md Sections 3 and 8.
-
-    '
-- id: OQ-4
-  text: 'How should iterative Q&A work when the user needs more information
-
-    before answering a question?
-
-    '
-  severity: medium
-  context: 'Some questions require context the agent hasn''t provided. The user
-
-    needs a way to say "I need more info about X" and have the agent
-
-    respond with clarification (possibly as a new follow-up question).
-
-    '
-  decision: 'Add ''m'' key action (more info). Submits answer with need_more_info:
-    true
-
-    flag. Agent reads this flag, provides clarification as a new question.
-
-    TUI auto-refreshes to show the follow-up. See ui_design.md Section 5.
-
-    '
-success_criteria:
-- ntfy still sends push notifications when a question is asked (notification only,
-  no reply)
-- '`agentic question dashboard` launches a Rich TUI in a dedicated tmux window named
-  ''questions'''
-- TUI auto-refreshes pending questions from all live plans (polling interval configurable)
-- 'TUI supports inline answering: select a question, type answer, press Enter'
-- TUI shows question ID, severity (color-coded), plan name, question text, suggested
-  answers
-- Answering via TUI calls the existing QuestionQueue.answer() service method
-- TUI supports deferring a question (equivalent to `agentic question defer`)
-- Watch daemon (`agentic agent question watch-daemon`) uses tmux window notification
-  instead of ntfy
-- NtfyQuestionAgent and NtfyReplyPoller removed; ntfy.py kept for notification-only
-- ntfy_state.yml is no longer created by any command
-- Existing `agentic question list/show/answer` CLI commands continue to work
-- All existing question-related tests pass with no regressions
-impacted_artifacts:
-  modified_files:
-  - path: modules/AgenticCLI/src/agenticcli/commands/question.py
-    change_type: modify
-    reason: Evolve cmd_dashboard into TUI launcher; remove ntfy answer loop from cmd_ask
-  - path: modules/AgenticCLI/src/agenticcli/services/question_watcher.py
-    change_type: modify
-    reason: Replace NtfyReplyPoller with tmux window notification callback
-  - path: modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
-    change_type: modify
-    reason: Add notify_question_window() to open/focus the questions tmux window
-  - path: modules/AgenticCLI/src/agenticcli/utils/question_formatter.py
-    change_type: modify
-    reason: Add Rich-compatible formatter used by the TUI panel
-  - path: modules/AgenticGuidance/src/agenticguidance/models/question.py
-    change_type: modify
-    reason: 'Add need_more_info: bool field to Question dataclass for iterative Q&A'
-  created_files:
-  - path: modules/AgenticCLI/src/agenticcli/tui/question_tui.py
-    change_type: create
-    reason: 'New TUI class: QuestionTUI with navigable list, cbreak keyboard, Rich
-      rendering'
-  - path: modules/AgenticCLI/src/agenticcli/tui/__init__.py
-    change_type: create
-    reason: Package init for tui subpackage
-  deleted_files:
-  - path: modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
-    change_type: delete
-    reason: ntfy reply/answer agent replaced by TUI answering
+created: ''
 phases:
-- id: P01
-  name: Build QuestionTUI core (Rich Live)
-  status: completed
+- name: Plan folder compliance audit
+  tickets:
+  - id: A01_T01
+    name: Verify plan folder structure and YAML correctness
+    description: ''
+    status: completed
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/docs/plans/live/260221TU_redesign_question_notification_tmux_tui/
+    guidance: 'Run `agentic plan validate` and confirm no warnings or errors for this
+      plan folder.
+
+      Verify all plan YAML files have correct root-level keys (not nested under "plan:").
+
+      Confirm plan_completed.yml is updated when all build tasks are done.
+
+      '
+    success_criteria:
+    - '`agentic plan validate` returns no errors for 260221TU plan folder'
+    - All plan YAMLs use root-level keys (phases:, tasks:, status:)
+    - plan_completed.yml tracks completed items
+- name: Code quality audit
+  tickets:
+  - id: A02_T01
+    name: Verify tui/ subpackage structure
+    description: ''
+    status: completed
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/
+    guidance: "Confirm the following files exist and have correct content:\n  - agenticcli/tui/__init__.py\
+      \ (empty package marker)\n  - agenticcli/tui/question_tui.py (QuestionTUI class)\n\
+      \nConfirm question_tui.py has module docstring, class docstring, and method\
+      \ docstrings.\nConfirm no bare except clauses (use specific exception types).\n\
+      Confirm no hardcoded paths (uses Path / repo_root parameter).\n"
+    success_criteria:
+    - tui/__init__.py exists
+    - tui/question_tui.py has QuestionTUI with proper docstrings
+    - No hardcoded absolute paths in question_tui.py
+  - id: A02_T02
+    name: Final ntfy residue scan
+    description: ''
+    status: completed
+    agent: build-python
+    guidance: "Final scan confirming complete ntfy removal:\n\n  find /home/code/AgenticEngineering/modules\
+      \ -name \"ntfy*.py\" 2>/dev/null\n  grep -r \"ntfy\" /home/code/AgenticEngineering/modules/AgenticCLI/src/\
+      \ 2>/dev/null\n\nBoth should return no results. If any found, block audit completion.\n"
+    success_criteria:
+    - No ntfy*.py files exist under modules/
+    - No references to 'ntfy' in agenticcli source files
+- name: Build QuestionTUI core (Rich Live)
   description: 'Create the new `agenticcli/tui/` subpackage and implement `QuestionTUI`
     using
 
@@ -176,11 +76,11 @@ phases:
     at the bottom.
 
     '
-  tasks:
+  tickets:
   - id: P01_T01
     name: Create tui/ package and question_tui.py scaffold
+    description: ''
     status: completed
-    priority: high
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -217,10 +117,10 @@ phases:
       \ None:\n          \"\"\"Restore line mode, get info request, submit with need_more_info.\"\
       \"\"\n\n      def _handle_show(self) -> None:\n          \"\"\"Show full detail\
       \ read-only, any key returns to list.\"\"\"\n\nKeyboard controls (ui_design.md\
-      \ Section 3):\n  \u2191/k = cursor up, \u2193/j = cursor down, Tab = next (wraps)\n\
-      \  Enter = answer selected, d = defer selected, m = more info\n  s = show detail,\
-      \ q/Ctrl-C = quit\n\nThe cursor row uses Rich [reverse] style for highlighting.\n\
-      After answering/deferring, cursor auto-advances to next question.\n\nTable columns\
+      \ Section 3):\n  ↑/k = cursor up, ↓/j = cursor down, Tab = next (wraps)\n  Enter\
+      \ = answer selected, d = defer selected, m = more info\n  s = show detail, q/Ctrl-C\
+      \ = quit\n\nThe cursor row uses Rich [reverse] style for highlighting.\nAfter\
+      \ answering/deferring, cursor auto-advances to next question.\n\nTable columns\
       \ (ui_design.md Section 2):\n  Plan (14 chars, truncated) | Severity (color)\
       \ | Question (rest)\nNo # column needed - cursor replaces numbered selection.\n\
       \nAdaptive widths based on console.width:\n  < 65 cols: Plan=10, Severity abbreviated\
@@ -237,8 +137,8 @@ phases:
     - File imports do not include ntfy or watchdog
   - id: P01_T02
     name: Implement answer flow inside QuestionTUI
+    description: ''
     status: completed
-    priority: high
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
@@ -255,27 +155,27 @@ phases:
       \ highlighted question\n2. _handle_answer():\n   - Restore line mode: termios.tcsetattr(sys.stdin,\
       \ TCSADRAIN, old_settings)\n   - console.clear()\n   - Print full question detail\
       \ (severity, text, context, asked_by, time)\n   - If suggested_answers: show\
-      \ navigable menu (\u2191\u2193 + Enter in cbreak)\n     OR if freeform: use\
-      \ input() for text (line mode)\n   - Confirm: single-keypress y/n/e (back in\
-      \ cbreak)\n   - Submit via QuestionQueue(plan_path).answer_question(id, text,\
-      \ answered_by=\"human\")\n   - Auto-advance: self.cursor moves to next question\n\
-      \   - Re-enter cbreak: tty.setcbreak(sys.stdin.fileno())\n\nNOTE on suggested\
-      \ answer navigation: if the question has suggested_answers,\nstay in cbreak\
-      \ mode and let \u2191\u2193 navigate the options, Enter selects, c\nswitches\
-      \ to freeform input. Only switch to line mode for freeform typing.\n\nMore info\
-      \ flow (ui_design.md Section 5):\n1. User presses 'm' on highlighted question\n\
-      2. _handle_more_info():\n   - Restore line mode\n   - Show question text briefly\n\
-      \   - Prompt: \"What info do you need?\"\n   - input() for the request text\n\
-      \   - Submit as answer with need_more_info=True:\n     QuestionQueue.answer_question(id,\
-      \ f\"Need more info: {text}\",\n         answered_by=\"human\", confidence=None)\n\
-      \   - The answer YAML should include need_more_info: true\n   - Re-enter cbreak\n\
-      \nDefer flow (ui_design.md Section 6):\n1. User presses 'd' on highlighted question\n\
-      2. _handle_defer():\n   - Stay in cbreak mode (single-keypress y/n)\n   - Show:\
-      \ \"Defer? [Y/n]\"\n   - y/Enter: mark_deferred() + write YAML, auto-advance\
-      \ cursor\n   - n: cancel, back to list\n\nShow flow (ui_design.md Section 7):\n\
-      1. User presses 's' on highlighted question\n2. _handle_show():\n   - console.clear()\n\
-      \   - Print full question detail (read-only)\n   - \"Press any key to return...\"\
-      \n   - Read single keypress (cbreak), return to list\n\nAuto-advance after answer/defer:\n\
+      \ navigable menu (↑↓ + Enter in cbreak)\n     OR if freeform: use input() for\
+      \ text (line mode)\n   - Confirm: single-keypress y/n/e (back in cbreak)\n \
+      \  - Submit via QuestionQueue(plan_path).answer_question(id, text, answered_by=\"\
+      human\")\n   - Auto-advance: self.cursor moves to next question\n   - Re-enter\
+      \ cbreak: tty.setcbreak(sys.stdin.fileno())\n\nNOTE on suggested answer navigation:\
+      \ if the question has suggested_answers,\nstay in cbreak mode and let ↑↓ navigate\
+      \ the options, Enter selects, c\nswitches to freeform input. Only switch to\
+      \ line mode for freeform typing.\n\nMore info flow (ui_design.md Section 5):\n\
+      1. User presses 'm' on highlighted question\n2. _handle_more_info():\n   - Restore\
+      \ line mode\n   - Show question text briefly\n   - Prompt: \"What info do you\
+      \ need?\"\n   - input() for the request text\n   - Submit as answer with need_more_info=True:\n\
+      \     QuestionQueue.answer_question(id, f\"Need more info: {text}\",\n     \
+      \    answered_by=\"human\", confidence=None)\n   - The answer YAML should include\
+      \ need_more_info: true\n   - Re-enter cbreak\n\nDefer flow (ui_design.md Section\
+      \ 6):\n1. User presses 'd' on highlighted question\n2. _handle_defer():\n  \
+      \ - Stay in cbreak mode (single-keypress y/n)\n   - Show: \"Defer? [Y/n]\"\n\
+      \   - y/Enter: mark_deferred() + write YAML, auto-advance cursor\n   - n: cancel,\
+      \ back to list\n\nShow flow (ui_design.md Section 7):\n1. User presses 's' on\
+      \ highlighted question\n2. _handle_show():\n   - console.clear()\n   - Print\
+      \ full question detail (read-only)\n   - \"Press any key to return...\"\n  \
+      \ - Read single keypress (cbreak), return to list\n\nAuto-advance after answer/defer:\n\
       \  After submitting, self.cursor should point to the next pending question.\n\
       \  If the answered question was the last one, cursor moves up to the new last.\n\
       \  If no questions remain, show empty state.\n\nError handling: if QuestionQueue\
@@ -283,7 +183,7 @@ phases:
       \ return to list. Never crash the TUI.\n"
     success_criteria:
     - Enter on cursor row opens answer flow for that question
-    - "Suggested answers navigable with \u2191\u2193 + Enter (stays in cbreak)"
+    - Suggested answers navigable with ↑↓ + Enter (stays in cbreak)
     - Freeform answer switches to line mode for input(), then back to cbreak
     - Answering calls QuestionQueue.answer_question() on correct plan path
     - '''m'' opens more-info flow, submits with need_more_info flag'
@@ -292,9 +192,7 @@ phases:
     - Cursor auto-advances to next question after answer/defer
     - Terminal always restored to original settings on exit (try/finally)
     - Ctrl-C exits cleanly (no traceback, terminal restored)
-- id: P02
-  name: Wire TUI into dashboard command and tmux window launcher
-  status: completed
+- name: Wire TUI into dashboard command and tmux window launcher
   description: "Replace the existing `cmd_dashboard` in question.py with a launcher\
     \ that:\n(a) If already inside tmux: opens a new tmux window named 'questions'\
     \ and runs\n    `agentic question dashboard --no-tmux-window` inside it, OR runs\
@@ -302,11 +200,11 @@ phases:
     \ directly in the current terminal.\nAlso update tmux_notify.py to add a `notify_question_window()`\
     \ function that\nfocuses/creates the 'questions' tmux window instead of using\
     \ a split pane.\n"
-  tasks:
+  tickets:
   - id: P02_T01
     name: Replace cmd_dashboard with QuestionTUI launcher
+    description: ''
     status: completed
-    priority: high
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -354,8 +252,8 @@ phases:
     - Old inline `build_table()` helper removed from `cmd_dashboard`
   - id: P02_T02
     name: Add notify_question_window() to tmux_notify.py
+    description: ''
     status: completed
-    priority: medium
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
@@ -378,9 +276,7 @@ phases:
     - Function calls `tmux display-message` with question count
     - Returns True when tmux is available, False otherwise
     - Old `notify_questions_in_tmux` still exists (not yet deleted)
-- id: P03
-  name: Replace ntfy notification in watch-daemon with tmux window notification
-  status: completed
+- name: Replace ntfy notification in watch-daemon with tmux window notification
   description: 'Update `question_watcher.py` and `cmd_watch_daemon` so that when a
     new
 
@@ -391,11 +287,11 @@ phases:
     is removed from the watcher service.
 
     '
-  tasks:
+  tickets:
   - id: P03_T01
     name: Remove NtfyReplyPoller from question_watcher.py
+    description: ''
     status: completed
-    priority: high
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/question_watcher.py
@@ -435,8 +331,8 @@ phases:
     - QuestionWatcher (or equivalent Observer wrapper) still starts/stops correctly
   - id: P03_T02
     name: Wire notify_question_window as watcher callback in cmd_watch_daemon
+    description: ''
     status: completed
-    priority: high
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -461,8 +357,8 @@ phases:
     - cmd_watch and cmd_watch_daemon start/stop lifecycle unchanged
   - id: P03_T03
     name: Remove ntfy integration from cmd_ask
+    description: ''
     status: completed
-    priority: high
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -485,9 +381,7 @@ phases:
     - cmd_ask calls notify_question_window() after persisting
     - Module-level `_reply_poller` singleton removed from question.py
     - No import of NtfyQuestionAgent or NtfyReplyPoller in question.py
-- id: P04
-  name: Cleanup ntfy files and deprecated code
-  status: completed
+- name: Cleanup ntfy files and deprecated code
   description: 'Delete the ntfy source files (ntfy.py, ntfy_question_agent.py) and
     remove
 
@@ -496,15 +390,14 @@ phases:
     Update any remaining imports across the codebase.
 
     '
-  tasks:
+  tickets:
   - id: P04_T01
     name: Delete ntfy_question_agent.py (keep ntfy.py for notifications)
+    description: ''
     status: completed
-    priority: high
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py
-    target_files: []
     guidance: "Delete ntfy_question_agent.py ONLY. Keep ntfy.py - it is still used\
       \ for\nsending push notifications (notification-only, no reply flow).\n\nDelete:\n\
       \  - modules/AgenticCLI/src/agenticcli/services/ntfy_question_agent.py\n\nSearch\
@@ -521,8 +414,8 @@ phases:
     - _send_ntfy_if_configured simplified to direct send (no agent, no state)
   - id: P04_T02
     name: Remove deprecated notify_questions_in_tmux from tmux_notify.py
+    description: ''
     status: completed
-    priority: low
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
@@ -541,17 +434,15 @@ phases:
     - '`notify_question_window()` exists in tmux_notify.py'
     - '`display_tmux_message()` still exists in tmux_notify.py'
     - No unused imports remain in tmux_notify.py
-- id: P05
-  name: UAT issues and polish
-  status: active
+- name: UAT issues and polish
   description: 'Issues discovered during UAT testing and polish items.
 
     '
-  tasks:
+  tickets:
   - id: P05_T01
     name: Standardize deprecation message format
+    description: ''
     status: completed
-    priority: low
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
@@ -598,21 +489,24 @@ phases:
       Use ''agentic plan question dashboard'' instead.'
   - id: P05_T02
     name: Simplify ntfy message to summary only
+    description: ''
     status: completed
-    priority: medium
     agent: build-python
     target_files:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
-    guidance: "COMPLETED: ntfy message now sends plan name + count instead of question\
-      \ text.\nTitle: \"N questions pending\", Body: \"Plan: <name> \u2014 open TUI\
-      \ to answer\"\n"
+    guidance: 'COMPLETED: ntfy message now sends plan name + count instead of question
+      text.
+
+      Title: "N questions pending", Body: "Plan: <name> — open TUI to answer"
+
+      '
     success_criteria:
     - ntfy body does not contain question text
     - ntfy body shows plan folder name and count
   - id: P05_T03
     name: Fix deferred questions appearing in pending list
+    description: ''
     status: completed
-    priority: high
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -650,8 +544,8 @@ phases:
     - Pending (non-deferred) questions still appear in the default list
   - id: P05_T04
     name: Show answer confidence in question show command
+    description: ''
     status: completed
-    priority: medium
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -692,8 +586,8 @@ phases:
     - show command still works for pending/deferred questions (no answer file expected)
   - id: P05_T05
     name: Add valid values to --confidence help text
+    description: ''
     status: completed
-    priority: low
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
@@ -713,8 +607,8 @@ phases:
       (high, medium, low)'
   - id: P05_T06
     name: Add creation time column to question list
+    description: ''
     status: completed
-    priority: medium
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -747,8 +641,8 @@ phases:
       all)
   - id: P05_T07
     name: Sort blocking questions first in list
+    description: ''
     status: completed
-    priority: medium
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -781,8 +675,8 @@ phases:
     - Answered and deferred views remain sorted by created_at (no regression)
   - id: P05_T08
     name: Fix asked_by attribution on agent question ask
+    description: ''
     status: completed
-    priority: low
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -807,8 +701,8 @@ phases:
     - Line 639 of commands/question.py reads asked_by="agent"
   - id: P05_T09
     name: Fix missing ProcessStateRegistry for watch-daemon/watch-stop
+    description: ''
     status: completed
-    priority: critical
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -903,8 +797,8 @@ phases:
     - '`from agenticguidance.services.state import StateRegistry` used instead'
   - id: P05_T10
     name: Update user stories with new command paths
+    description: ''
     status: completed
-    priority: medium
     agent: build-python
     inputs:
     - /home/code/AgenticEngineering/docs/userstories/AgenticCLI/06_question_queue.yml
@@ -968,10 +862,9 @@ phases:
     - acceptance_criteria text updated to match new command paths
   - id: P05_T11
     name: Clean stale .pyc cache for deleted ntfy_question_agent
+    description: ''
     status: completed
-    priority: low
     agent: build-python
-    target_files: []
     guidance: "The source file agenticcli/services/ntfy_question_agent.py was deleted\
       \ in P04_T01,\nbut its compiled bytecode cache was not removed. The stale .pyc\
       \ file causes Python\nto emit import warnings and can confuse IDEs and test\
@@ -985,24 +878,121 @@ phases:
     success_criteria:
     - No ntfy_question_agent*.pyc files exist anywhere under modules/AgenticCLI/
     - ntfy.cpython-*.pyc still exists (ntfy.py is kept)
-loops:
-- type: test-fix-loop
-  max_iterations: 5
-  trigger: after P03
-  scope:
-  - /home/code/AgenticEngineering/modules/AgenticCLI
-  command: 'cd /home/code/AgenticEngineering && python3 -m pytest modules/AgenticCLI/tests/
-    -v -k "question" 2>&1
-
-    '
-  exit_criteria: All question-related tests pass (exit code 0)
-- type: test-fix-loop
-  max_iterations: 3
-  trigger: after P04
-  scope:
-  - /home/code/AgenticEngineering/modules/AgenticCLI
-  command: 'cd /home/code/AgenticEngineering && python3 -m pytest modules/AgenticCLI/tests/
-    -v 2>&1
-
-    '
-  exit_criteria: All tests pass (exit code 0), no import errors for ntfy
+- name: Architecture decision notes
+  tickets:
+  - id: G01_T01
+    name: Document TUI technology choice rationale
+    description: ''
+    status: completed
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    guidance: "Add a detailed module docstring to question_tui.py explaining:\n\n\
+      1. Why Rich Live was chosen over Textual:\n   - Textual requires a proper TTY\
+      \ with full terminal control sequences.\n     In some Termux + tmux combinations\
+      \ the PTY handling is limited,\n     causing Textual apps to render incorrectly\
+      \ or fail to accept input.\n   - Rich Live works over any terminal that supports\
+      \ ANSI codes, including\n     Termux on Android and SSH sessions.\n   - Rich\
+      \ is already a dependency; adding Textual would increase install size.\n\n2.\
+      \ The answer-input design (pause-Live, input(), resume-Live):\n   - Rich Live\
+      \ and stdin input cannot run concurrently in the same thread.\n   - Stopping/restarting\
+      \ Live around input() is the simplest approach that\n     works on all terminals\
+      \ including SSH/Termux.\n   - An alternative (background refresh thread + main\
+      \ thread input) is more\n     complex and has race conditions on some terminals.\n\
+      \n3. The tmux window design:\n   - Using a dedicated tmux window (not a split\
+      \ pane) gives maximum screen\n     space on the small Termux screen.\n   - The\
+      \ launcher creates the window the first time and switches focus to\n     it;\
+      \ on subsequent calls it simply switches focus (idempotent).\n\nThe docstring\
+      \ should be written in plain prose, not bullet lists, and kept\nunder 40 lines.\n"
+    success_criteria:
+    - question_tui.py module docstring explains Rich vs Textual choice
+    - Docstring explains the pause-Live input pattern
+    - Docstring explains the tmux window design decision
+    - Docstring is under 40 lines
+- name: Unit tests for QuestionTUI
+  tickets:
+  - id: T01_T01
+    name: Write tests for QuestionTUI._build_questions_table()
+    description: ''
+    status: completed
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/tui/question_tui.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_question_tui.py
+    guidance: "Create test_question_tui.py in the AgenticCLI tests directory.\n\n\
+      Tests to cover:\n1. test_build_table_empty_plans: tmp_path has no live plans\
+      \ dir ->\n   table has one row with \"No pending questions\" message\n2. test_build_table_no_pending_questions:\
+      \ live plan dir exists but no\n   questions/pending/*.yml files -> \"No pending\
+      \ questions\" row\n3. test_build_table_one_question: one pending question YAML\
+      \ exists ->\n   table has one data row with correct plan, id, severity, question\
+      \ text\n4. test_build_table_multi_plan: two plans each with one pending question\
+      \ ->\n   table has two rows\n5. test_build_table_severity_ordering: critical\
+      \ question appears before low ->\n   rows ordered by severity (critical, high,\
+      \ medium, low)\n\nUse pytest tmp_path for creating fake plan folder structures.\n\
+      Mock agenticguidance imports if needed (use monkeypatch or try/except skip).\n\
+      Use Rich's Table introspection to verify row count and content.\n"
+    success_criteria:
+    - test_question_tui.py exists with at least 5 test functions
+    - 'All tests pass: python3 -m pytest modules/AgenticCLI/tests/test_question_tui.py
+      -v'
+    - Tests do not import ntfy or watchdog
+  - id: T01_T02
+    name: Write tests for notify_question_window()
+    description: ''
+    status: completed
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
+    target_files:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_tmux_notify.py
+    guidance: "Create or extend test_tmux_notify.py.\n\nTests to cover:\n1. test_notify_question_window_not_in_tmux:\
+      \ TMUX env var not set ->\n   returns False, no subprocess call\n2. test_notify_question_window_in_tmux_success:\
+      \ TMUX env var set,\n   subprocess.run succeeds -> returns True\n3. test_notify_question_window_in_tmux_failure:\
+      \ subprocess.run raises\n   CalledProcessError -> returns False (graceful degradation)\n\
+      4. test_deprecated_functions_removed: importing tmux_notify should NOT\n   expose\
+      \ notify_questions_in_tmux or clear_notification_pane\n\nUse monkeypatch to\
+      \ set os.environ[\"TMUX\"] and mock subprocess.run.\n"
+    success_criteria:
+    - 'All tests pass: python3 -m pytest modules/AgenticCLI/tests/test_tmux_notify.py
+      -v'
+    - test_deprecated_functions_removed passes (functions do not exist)
+- name: Regression tests for question CLI commands
+  tickets:
+  - id: T02_T01
+    name: Verify existing question command tests still pass
+    description: ''
+    status: completed
+    agent: build-python
+    inputs:
+    - /home/code/AgenticEngineering/modules/AgenticCLI/tests/
+    guidance: "Run the existing question-related tests and verify they all pass:\n\
+      \n  python3 -m pytest modules/AgenticCLI/tests/ -v -k \"question\" 2>&1\n\n\
+      If any tests fail due to missing ntfy imports, fix the tests by removing\nthose\
+      \ imports (they should test the new behavior, not ntfy).\n\nIf tests mock ntfy.send_ntfy,\
+      \ update mocks to mock notify_question_window\ninstead.\n\nThis is a read-and-fix\
+      \ task - inspect the test files, identify any ntfy\nreferences, and update them.\n"
+    success_criteria:
+    - All question-related tests pass with exit code 0
+    - No test file imports from agenticcli.utils.ntfy
+    - No test file imports from agenticcli.services.ntfy_question_agent
+- name: 'Smoke test: no ntfy references remain'
+  tickets:
+  - id: T03_T01
+    name: Codebase scan for remaining ntfy references
+    description: ''
+    status: completed
+    agent: build-python
+    guidance: "Run the following commands and verify each returns no matches:\n\n\
+      \  grep -r \"from agenticcli.utils.ntfy\" /home/code/AgenticEngineering/modules/\n\
+      \  grep -r \"from agenticcli.services.ntfy_question_agent\" /home/code/AgenticEngineering/modules/\n\
+      \  grep -r \"import send_ntfy\" /home/code/AgenticEngineering/modules/\n  grep\
+      \ -r \"NtfyReplyPoller\" /home/code/AgenticEngineering/modules/\n  grep -r \"\
+      NtfyQuestionAgent\" /home/code/AgenticEngineering/modules/\n  grep -r \"ntfy_state.yml\"\
+      \ /home/code/AgenticEngineering/modules/\n\nIf any matches are found, fix them\
+      \ before marking this task complete.\n"
+    success_criteria:
+    - Zero matches for all grep commands above
+    - No ntfy files exist under modules/AgenticCLI/src/agenticcli/

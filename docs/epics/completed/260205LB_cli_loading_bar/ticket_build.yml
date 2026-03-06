@@ -1,17 +1,8 @@
-name: cli-loading-bar-and-metrics
+name: cli-loading-bar-and-metrics-tests
 worktree_path: /home/code/AgenticEngineering
 branch: main
 status: active
 priority: high
-context: 'The current ''agentic session spawn'' command captures output until completion,
-
-  leaving the user without feedback on progress or context window usage.
-
-  This plan addresses this by implementing a streaming approach with a
-
-  Rich progress bar and context metrics.
-
-  '
 objective: '1. Add progress/loading indicators to the CLI.
 
   2. Implement an estimation mechanism for context window usage (%).
@@ -21,11 +12,12 @@ objective: '1. Add progress/loading indicators to the CLI.
   4. Use 200k tokens as the 100% mark, with a 75% warning threshold.
 
   '
+created: ''
 phases:
 - name: 'Phase 1: Infrastructure'
   execution: sequential
   description: Add progress bar and token estimation utilities
-  tasks:
+  tickets:
   - id: LB_001
     name: Add progress bar support to console.py
     description: Expose Rich Progress and Status utilities in the console module
@@ -66,7 +58,7 @@ phases:
 - name: 'Phase 2: CLI Integration'
   execution: sequential
   description: Update commands to use the new indicators
-  tasks:
+  tickets:
   - id: LB_003
     name: Update session spawn for streaming and progress
     description: Change cmd_spawn to stream output and show a progress bar
@@ -117,7 +109,7 @@ phases:
 - name: 'Phase 3: Verification'
   execution: sequential
   description: Verify metrics and UI
-  tasks:
+  tickets:
   - id: LB_005
     name: Manual UAT for loading bar
     description: Run a session and verify the loading bar appears and shows metrics
@@ -142,7 +134,7 @@ phases:
 - name: 'Phase 4: Documentation & Compliance'
   execution: sequential
   description: Update user stories and documentation
-  tasks:
+  tickets:
   - id: LB_006
     name: Update User Stories for feedback metrics
     description: Create/Update user stories to include loading bar and context metrics
@@ -163,3 +155,56 @@ phases:
     success_criteria:
     - New user story file exists with relevant stories
     - Stories include success criteria for loading bar visibility and metric accuracy
+- name: 'Phase 1: Unit Testing'
+  execution: sequential
+  tickets:
+  - id: UNIT_001
+    name: Test token estimation
+    description: Verify tokens.py heuristic matches expected character-to-token ratios
+    status: completed
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/test_tokens.py
+    success_criteria:
+    - 1000 characters =~ 250 tokens
+    - Handles empty strings and edge cases
+- name: 'Phase 2: Functional Testing'
+  execution: sequential
+  tickets:
+  - id: FUNC_001
+    name: Test streaming output
+    description: Verify that 'session spawn' doesn't buffer output until completion
+    status: completed
+    agent: test-builder
+    guidance: '1. Use an agent to spawn ''agentic session spawn''.
+
+      2. The agent should be able to see the output streaming in its own terminal/context
+      window before the process exits.
+
+      '
+    success_criteria:
+    - Output is printed as it arrives from the process
+  - id: FUNC_002
+    name: Test progress bar thresholds
+    description: Mock token usage to trigger yellow/red bar states
+    status: completed
+    agent: test-builder
+    guidance: '1. Mock the token estimation to return values > 150,000.
+
+      2. Verify the terminal output captured by the agent reflects the color/style
+      changes in the loading bar.
+
+      '
+    success_criteria:
+    - Bar is cyan at 10%
+    - Bar is yellow at 76%
+    - Bar is red at 91%
+context: 'The current ''agentic session spawn'' command captures output until completion,
+
+  leaving the user without feedback on progress or context window usage.
+
+  This plan addresses this by implementing a streaming approach with a
+
+  Rich progress bar and context metrics.
+
+  '

@@ -3,8 +3,8 @@ worktree_path: /home/code/AgenticEngineering
 branch: main
 status: completed
 priority: high
-context: 'The AgenticCLI currently exposes all commands (70+ subcommands) at the top
-  level or
+objective: 'The AgenticCLI currently exposes all commands (70+ subcommands) at the
+  top level or
 
   one level deep. This overwhelms human users with agent-internal plumbing they never
 
@@ -23,36 +23,9 @@ context: 'The AgenticCLI currently exposes all commands (70+ subcommands) at the
   paths. These must continue to work via hidden aliases during the transition period.
 
   '
-impacted_files:
-- path: modules/AgenticCLI/src/agenticcli/cli.py
-  change_type: modify
-  change_category: implementation
-  reason: Primary restructure target - add agent group, migrate commands, add aliases
-- path: modules/AgenticCLI/tests/test_cli.py
-  change_type: modify
-  change_category: test
-  reason: Update help text assertions for restructured command tree
-- path: modules/AgenticCLI/tests/test_cli_restructure.py
-  change_type: create
-  change_category: test
-  reason: New tests for agent namespace, hidden group, backward compat aliases
-- path: .claude/agents/*.md
-  change_type: modify
-  change_category: documentation
-  reason: Update CLI command references in agent instructions (optional - aliases
-    provide compat)
-- path: .agent/instructions.md
-  change_type: modify
-  change_category: documentation
-  reason: Update CLI command references in agent instructions
-- path: agents.md
-  change_type: modify
-  change_category: documentation
-  reason: Update CLI command table to reflect new structure
+created: ''
 phases:
 - name: Analysis and Command Mapping
-  id: P01
-  status: completed
   description: 'Create a complete current-to-target command mapping and validate the
 
     categorization with the user before proceeding. Produce a detailed
@@ -60,10 +33,9 @@ phases:
     migration checklist.
 
     '
-  tasks:
+  tickets:
   - id: P01_T01
     name: Document complete command inventory with categorization
-    status: completed
     description: 'Read cli.py and every command handler module. For each command,
 
       document: (1) current path, (2) target path, (3) tier (user/agent),
@@ -76,6 +48,8 @@ phases:
       every command''s before/after path.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/
@@ -85,10 +59,7 @@ phases:
     - migration_map.md lists every CLI command (70+ commands)
     - Each command has current path, target path, and tier label
     - Agent guidance files that reference each command are identified
-    completed_at: '2026-02-20T22:14:02.488237'
 - name: Create Agent Group Infrastructure
-  id: P02
-  status: completed
   description: 'Add the `agentic agent` Typer group to cli.py as a hidden top-level
 
     group. Create empty sub-groups: agent plan, agent context, agent
@@ -98,10 +69,9 @@ phases:
     This phase is purely additive - no existing commands are moved yet.
 
     '
-  tasks:
+  tickets:
   - id: P02_T01
     name: Add hidden agent Typer group with sub-groups
-    status: completed
     description: "In cli.py, create:\n  agent_group = typer.Typer(help=\"Agent-facing\
       \ plumbing commands (internal)\", no_args_is_help=True)\n  app.add_typer(agent_group,\
       \ name=\"agent\", hidden=True)\n\nThen create sub-groups under agent_group:\n\
@@ -121,6 +91,8 @@ phases:
       \ (under agent_plan_app)\n  agent_plan_orch_app (under agent_plan_app)\n  agent_plan_stories_app\
       \ (under agent_plan_app)\n\nDo NOT move any commands yet. Just create the empty\
       \ group structure.\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -131,10 +103,8 @@ phases:
     - '`agentic agent` does NOT appear in `agentic --help` output (hidden=True)'
     - '`agentic --help` still shows all existing commands unchanged'
     - All existing tests still pass without modification
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P02_T02
     name: Write infrastructure tests for agent group
-    status: completed
     description: 'Create test_cli_restructure.py with tests verifying:
 
       1. `agentic agent --help` returns 0 and shows sub-groups
@@ -156,6 +126,8 @@ phases:
       9. All existing test_cli.py tests still pass
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/conftest.py
@@ -166,10 +138,7 @@ phases:
     - test_cli_restructure.py verifies agent is hidden from main help
     - pytest test_cli_restructure.py passes
     - pytest test_cli.py still passes
-    completed_at: '2026-02-20T23:00:00.000000'
 - name: Migrate Plan Plumbing to Agent Plan
-  id: P03
-  status: completed
   description: 'Move all plan plumbing commands (task CRUD, phase management, archive,
 
     validate, scaffold, init, bootstrap, move, orchestration, plan stories)
@@ -186,10 +155,9 @@ phases:
     their old paths (hidden aliases).
 
     '
-  tasks:
+  tickets:
   - id: P03_T01
     name: Copy plan task commands to agent plan task
-    status: completed
     description: "Register all plan_task_app commands (start, complete, prefill, list,\n\
       status, add, update, current) on agent_plan_task_app.\n\nStrategy: Use the SAME\
       \ handler functions. Each agent command definition\ncalls the same _plan_handle()\
@@ -199,6 +167,8 @@ phases:
       \ plan_task_app by marking it hidden:\n  plan_app.add_typer(plan_task_app, name=\"\
       task\", hidden=True)\n\nThis ensures `agentic plan task start` still works but\
       \ is hidden\nfrom `agentic plan --help`.\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -210,15 +180,15 @@ phases:
     - '`agentic plan task start` still works (hidden alias)'
     - '`agentic plan --help` does NOT show ''task'' subcommand'
     - All existing plan task tests pass without modification
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P03_T02
     name: Copy plan phase commands to agent plan phase
-    status: completed
     description: 'Register plan phase commands (add, list, update) on agent_plan_phase_app.
 
       Hide the original plan_phase_app.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -227,11 +197,9 @@ phases:
     - '`agentic agent plan phase add --help` works'
     - '`agentic plan phase add` still works (hidden alias)'
     - '`agentic plan --help` does NOT show ''phase'' subcommand'
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P03_T03
     name: Copy plan archive/unarchive, validate, scaffold, init, bootstrap to agent
       plan
-    status: completed
     description: "Register these commands directly on agent_plan_app:\n- archive,\
       \ unarchive, validate, scaffold, init, bootstrap\n\nThen hide them from the\
       \ user-facing plan_app. The approach:\nCreate new command definitions on agent_plan_app\
@@ -240,6 +208,8 @@ phases:
       \ parameter on the plan_app versions:\n  @plan_app.command(\"archive\", hidden=True)\n\
       \nIMPORTANT: Do NOT remove the original commands. They must continue to\nwork\
       \ for backward compatibility.\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -252,10 +222,8 @@ phases:
     - '`agentic agent plan bootstrap --help` works'
     - '`agentic plan archive` still works (hidden alias)'
     - '`agentic plan --help` only shows: new, list, status, cancel'
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P03_T04
     name: Copy plan move and plan orchestration to agent plan
-    status: completed
     description: 'Register plan_move_app commands (task, tasks, folder) under
 
       agent_plan_move_app. Register plan_orch_app commands (generate,
@@ -263,6 +231,8 @@ phases:
       validate) under agent_plan_orch_app. Hide originals.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -272,15 +242,15 @@ phases:
     - '`agentic agent plan orchestration generate --help` works'
     - '`agentic plan move task` still works (hidden alias)'
     - '`agentic plan orchestration generate` still works (hidden alias)'
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P03_T05
     name: Copy plan stories to agent plan stories
-    status: completed
     description: 'Register plan_stories_app commands (list, test) under
 
       agent_plan_stories_app. Hide original.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -288,10 +258,8 @@ phases:
     success_criteria:
     - '`agentic agent plan stories list --help` works'
     - '`agentic plan stories list` still works (hidden alias)'
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P03_T06
     name: Add plan cancel command
-    status: completed
     description: 'Add a new `agentic plan cancel` command to the user-facing plan_app.
 
       This command should:
@@ -310,6 +278,8 @@ phases:
       This completes the user-facing plan command set: new, list, status, cancel.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/commands/plan.py
@@ -320,25 +290,23 @@ phases:
     - '`agentic plan cancel --help` works and shows description'
     - '`agentic plan --help` shows exactly: new, list, status, cancel'
     - plan cancel sets status to cancelled in the plan YAML
-    completed_at: '2026-02-20T23:00:00.000000'
 - name: Migrate Other Agent-Facing Commands
-  id: P04
-  status: completed
   description: 'Move context, entrypoint, manifest, stories, and question plumbing
 
     commands under the agent namespace. Keep hidden aliases at original paths.
 
     '
-  tasks:
+  tickets:
   - id: P04_T01
     name: Migrate context commands to agent context
-    status: completed
     description: "Register all context_app commands (bootstrap, role, task, inputs,\n\
       generate-agent) on agent_context_app.\n\nThen hide the top-level context group:\n\
       \  app.add_typer(context_app, name=\"context\", hidden=True)\n\nThe ctx alias\
       \ is already hidden, so it stays hidden.\n\nAfter this: `agentic context bootstrap`\
       \ still works (hidden alias),\n`agentic agent context bootstrap` is the new\
       \ canonical path,\n`agentic --help` no longer shows \"context\".\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -349,10 +317,8 @@ phases:
     - '`agentic agent context task --help` works'
     - '`agentic context bootstrap` still works (hidden alias)'
     - '`agentic --help` does NOT show ''context'''
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P04_T02
     name: Migrate entrypoint commands to agent entrypoint
-    status: completed
     description: 'Register all entrypoint_app commands (list, show, execute) on
 
       agent_entrypoint_app. Hide the top-level entrypoint group.
@@ -360,6 +326,8 @@ phases:
       The ep alias is already hidden.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -368,10 +336,8 @@ phases:
     - '`agentic agent entrypoint list --help` works'
     - '`agentic entrypoint list` still works (hidden alias)'
     - '`agentic --help` does NOT show ''entrypoint'''
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P04_T03
     name: Migrate manifest commands to agent manifest
-    status: completed
     description: 'Register all manifest_app commands (show, list, validate) on
 
       agent_manifest_app. Hide the top-level manifest group.
@@ -379,6 +345,8 @@ phases:
       The mf alias is already hidden.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -387,10 +355,8 @@ phases:
     - '`agentic agent manifest show --help` works'
     - '`agentic manifest show` still works (hidden alias)'
     - '`agentic --help` does NOT show ''manifest'''
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P04_T04
     name: Migrate stories commands to agent stories
-    status: completed
     description: 'Register all stories_app commands (find, init, cat, status, update,
 
       report, untested, batch-update, affected) on agent_stories_app.
@@ -398,6 +364,8 @@ phases:
       Hide the top-level stories group. The st alias is already hidden.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -407,16 +375,16 @@ phases:
     - '`agentic agent stories update --help` works'
     - '`agentic stories find` still works (hidden alias)'
     - '`agentic --help` does NOT show ''stories'''
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P04_T05
     name: Migrate question plumbing commands to agent question
-    status: completed
     description: "The question group has both user-facing and agent-facing commands.\n\
       \nUser-facing (stay visible on top-level question_app):\n  - list, show, answer,\
       \ dashboard\n\nAgent-facing (copy to agent_question_app AND hide on question_app):\n\
       \  - ask, defer, watch, watch-daemon, watch-stop\n\nAfter this, `agentic question\
       \ --help` shows: list, show, answer, dashboard.\n`agentic agent question ask`\
       \ is the canonical agent path.\n`agentic question ask` still works (hidden alias).\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     target_files:
@@ -427,10 +395,7 @@ phases:
     - '`agentic agent question ask --help` works'
     - '`agentic agent question watch --help` works'
     - '`agentic question ask` still works (hidden alias)'
-    completed_at: '2026-02-20T23:00:00.000000'
 - name: Update Tests
-  id: P05
-  status: completed
   description: 'Update all test files that assert on help output or invoke commands
 
     via the old paths. Tests that invoke commands via handle() functions
@@ -440,16 +405,17 @@ phases:
     command-line args may need path updates.
 
     '
-  tasks:
+  tickets:
   - id: P05_T01
     name: Update test_cli.py help assertions
-    status: completed
     description: "Update TestCLIHelp and TestSubcommandHelp tests:\n- test_main_help:\
       \ Assert \"agent\" is NOT in stdout (hidden)\n- test_main_help: Remove assertions\
       \ for commands that moved\n  (stories, manifest, context, entrypoint are now\
       \ hidden)\n- test_plan_help: Update to assert only new, list, status, cancel\n\
       \  are visible (not scaffold, validate etc.)\n- Add new tests for `agentic agent\
       \ --help`, `agentic agent plan --help`\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/conftest.py
@@ -459,10 +425,8 @@ phases:
     - test_main_help passes and asserts agent is hidden
     - test_plan_help passes and only checks for user-facing commands
     - pytest test_cli.py passes
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P05_T02
     name: Update test_cli_restructure.py with comprehensive agent path tests
-    status: completed
     description: 'Expand test_cli_restructure.py (created in P02_T02) with tests for:
 
       1. Every agent plan subcommand help output
@@ -482,6 +446,8 @@ phases:
       8. Hidden verification: old paths not in main help
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/test_cli_restructure.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/conftest.py
@@ -491,16 +457,16 @@ phases:
     - Tests cover all agent subcommand help outputs
     - Tests verify backward compatibility for every migrated command
     - pytest test_cli_restructure.py passes
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P05_T03
     name: Run full test suite and fix any failures
-    status: completed
     description: "Run the complete AgenticCLI test suite:\n  cd /home/code/AgenticEngineering/modules/AgenticCLI\n\
       \  python3 -m pytest tests/ -v\n\nFix any test failures caused by the restructure.\
       \ Common issues:\n- Tests asserting specific commands in help output\n- Tests\
       \ using cli_runner with old command paths\n- Tests checking GLOBAL_COMMANDS\
       \ or PROJECT_COMMANDS sets\n\nThe GLOBAL_COMMANDS and PROJECT_COMMANDS sets\
       \ in cli.py may need\nupdating if commands were removed from top-level registration.\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
@@ -509,10 +475,7 @@ phases:
     success_criteria:
     - Full pytest suite passes with 0 failures
     - No tests were deleted (only modified or added)
-    completed_at: '2026-02-20T23:00:00.000000'
 - name: Update Agent Prompts and Guidance
-  id: P06
-  status: completed
   description: 'Update agent instruction files to reference the new canonical paths.
 
     Since hidden aliases provide backward compatibility, this is not
@@ -527,10 +490,9 @@ phases:
     breaking change.
 
     '
-  tasks:
+  tickets:
   - id: P06_T01
     name: Update .claude/agents/*.md files to use agent namespace
-    status: completed
     description: "Update all agent instruction files that reference CLI commands.\n\
       These files contain instructions like:\n  agentic context bootstrap --role <role>\
       \ -j\n  agentic plan task current -j\n  agentic plan task start <task_id> --plan\
@@ -545,6 +507,8 @@ phases:
       \    planner-cleaning.md, planner-audit.md, planner-reviewer.md,\n    planner-orchestration.md,\
       \ planner-guidance-testing.md\n  - test-runner.md, test-builder.md, test-service.md,\
       \ test-audit.md,\n    test-final-output.md, test-guidance-simulator.md, test-user-simulator.md\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/.claude/agents/
     target_files:
@@ -552,10 +516,8 @@ phases:
     success_criteria:
     - All .claude/agents/*.md files use 'agentic agent ...' paths
     - No references to bare 'agentic context' or 'agentic plan task' remain
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P06_T02
     name: Update .agent/instructions.md and agents.md
-    status: completed
     description: "Update the root-level agent instruction files:\n- .agent/instructions.md:\
       \ Update CLI command references\n- agents.md: Update the command table and workflow\
       \ examples\n\nChange references like:\n  agentic plan init -> agentic agent\
@@ -564,6 +526,8 @@ phases:
       \  agentic entrypoint -> agentic agent entrypoint\n  agentic manifest -> agentic\
       \ agent manifest\n\nAlso update the command table in agents.md to reflect the\
       \ new\ntwo-tier structure.\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/.agent/instructions.md
     - /home/code/AgenticEngineering/agents.md
@@ -574,15 +538,15 @@ phases:
     - .agent/instructions.md uses 'agentic agent ...' for plumbing commands
     - agents.md command table shows two-tier structure
     - User-facing commands (plan new/list/status/cancel) remain as 'agentic plan ...'
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P06_T03
     name: Update docs/prompts/*.md files
-    status: completed
     description: 'Update orchestration_planner.md and friction_analysis.md to
 
       reference the new command paths where appropriate.
 
       '
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/docs/prompts/orchestration_planner.md
     - /home/code/AgenticEngineering/docs/prompts/friction_analysis.md
@@ -592,22 +556,15 @@ phases:
     success_criteria:
     - Agent-facing command references use 'agentic agent ...' paths
     - User-facing command references remain as 'agentic plan ...'
-    completed_at: '2026-02-20T23:00:00.000000'
 - name: Backward Compatibility Verification
-  id: P07
-  status: active
   description: 'Comprehensive verification that all old command paths still work
 
     via hidden aliases. This is the critical acceptance gate.
 
     '
-  tasks:
-  # NOTE: P07_T01 is the ONLY remaining deliverable. test_backward_compat.py has
-  # not been created yet. All other tasks in this plan are confirmed complete via
-  # audit of the codebase.
+  tickets:
   - id: P07_T01
     name: Create backward compatibility test suite
-    status: pending
     description: "Create test_backward_compat.py with parametrized tests that verify\n\
       every old command path still works. Use @pytest.mark.parametrize\nwith a list\
       \ of all old paths and their expected behavior.\n\nTest categories:\n1. Help\
@@ -623,6 +580,8 @@ phases:
       \ --help\n  agentic context role --help\n  agentic context task --help\n  agentic\
       \ entrypoint list --help\n  agentic manifest list --help\n  agentic stories\
       \ find --help\n  agentic question ask --help\n"
+    status: pending
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/conftest.py
@@ -634,7 +593,6 @@ phases:
     - At least 20 old paths are tested
   - id: P07_T02
     name: Verify clean user-facing help output
-    status: completed
     description: "Final verification that user-facing help is clean and minimal.\n\
       \nAssert that `agentic --help` shows ONLY these top-level groups:\n  - setup\n\
       \  - configure (alias: cfg)\n  - session\n  - plan\n  - question\n  - langsmith\
@@ -644,6 +602,8 @@ phases:
       \ plan --help` shows ONLY:\n  - new\n  - list\n  - status\n  - cancel\n\nAssert\
       \ that `agentic question --help` shows ONLY:\n  - list\n  - show\n  - answer\n\
       \  - dashboard\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/src/agenticcli/cli.py
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/conftest.py
@@ -654,60 +614,35 @@ phases:
     - Plan help shows exactly 4 commands
     - Question help shows exactly 4 commands
     - No agent-internal commands leak into user-facing help
-    completed_at: '2026-02-20T23:00:00.000000'
   - id: P07_T03
     name: Run complete test suite as final gate
-    status: completed
     description: "Run the complete test suite one final time:\n  cd /home/code/AgenticEngineering/modules/AgenticCLI\n\
       \  python3 -m pytest tests/ -v --tb=short\n\nAll tests must pass. Any failures\
       \ must be fixed before the plan\nis considered complete.\n"
+    status: completed
+    agent: null
     inputs:
     - /home/code/AgenticEngineering/modules/AgenticCLI/tests/
-    target_files: []
     success_criteria:
     - Full pytest suite passes with 0 failures
     - No tests were disabled or skipped to achieve this
-    completed_at: '2026-02-20T23:00:00.000000'
-user_stories:
-- id: US_001
-  title: As a human user, I see a clean minimal CLI help
-  acceptance: 'When I run `agentic --help`, I see only the groups I care about:
+context: 'The AgenticCLI currently exposes all commands (70+ subcommands) at the top
+  level or
 
-    setup, configure, session, plan, question, langsmith, devops.
+  one level deep. This overwhelms human users with agent-internal plumbing they never
 
-    I do not see context, entrypoint, manifest, stories, or agent.
+  call directly. The goal is to split the CLI into two tiers:
 
-    '
-- id: US_002
-  title: As a human user, plan commands are simple
-  acceptance: 'When I run `agentic plan --help`, I see only: new, list, status, cancel.
 
-    I am not overwhelmed by task/phase/archive/scaffold plumbing.
+  Tier 1 (User-Facing): Clean, minimal commands humans type daily.
 
-    '
-- id: US_003
-  title: As an agent, all plumbing commands still work
-  acceptance: 'My bootstrap command `agentic context bootstrap --role <role> -j` still
-    works.
+  Tier 2 (Agent-Facing): Hidden `agentic agent` namespace for agent plumbing.
 
-    My task tracking commands `agentic plan task start/complete` still work.
 
-    I also have new canonical paths under `agentic agent`.
+  The key constraint is backward compatibility: agent prompt files (.claude/agents/*.md),
 
-    '
-- id: US_004
-  title: As an agent, I can discover all plumbing commands
-  acceptance: 'When I run `agentic agent --help`, I see all available sub-groups:
+  .agent/instructions.md, agents.md, and docs/prompts/*.md all reference current command
 
-    plan, context, entrypoint, manifest, stories, question.
+  paths. These must continue to work via hidden aliases during the transition period.
 
-    Each sub-group shows all available plumbing commands.
-
-    '
-- id: US_005
-  title: As a developer, no existing tests break
-  acceptance: 'The full pytest suite passes after the restructure.
-
-    No tests were deleted. Tests were updated to reflect the new structure.
-
-    '
+  '

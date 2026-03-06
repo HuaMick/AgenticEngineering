@@ -117,7 +117,7 @@ def mock_claude_subprocess():
 objective: Mock objective
 phases:
   - name: Phase 1
-    tasks:
+    tickets:
       - id: MOCK_001
         name: Mock task
         status: pending
@@ -682,7 +682,7 @@ class TestPlanNewOrchestration:
                     plan_build.write_text("""name: Test Plan
 phases:
   - name: Phase 1
-    tasks:
+    tickets:
       - id: TASK_001
         name: Test task
         status: pending
@@ -794,7 +794,7 @@ class TestPlanNewBuilderSpawning:
 phases:
   - name: Build Phase
     execution: sequential
-    tasks:
+    tickets:
       - id: BUILD_001
         name: Task 1
         status: pending
@@ -863,13 +863,13 @@ phases:
 phases:
   - name: Phase 1
     execution: sequential
-    tasks:
+    tickets:
       - id: SEQ_001
         name: Task 1
         status: pending
   - name: Phase 2
     execution: sequential
-    tasks:
+    tickets:
       - id: SEQ_002
         name: Task 2
         status: pending
@@ -933,7 +933,7 @@ phases:
                     plan_build.write_text("""name: Mixed Status
 phases:
   - name: Phase
-    tasks:
+    tickets:
       - id: DONE_001
         name: Already done
         status: completed
@@ -1088,7 +1088,7 @@ class TestPlanNewIntegration:
                     plan_build.write_text("""name: E2E Test
 phases:
   - name: Build
-    tasks:
+    tickets:
       - id: E2E_001
         name: Build task
         status: pending

@@ -819,7 +819,7 @@ class TestGetPlanStatus:
             epics_dir,
             "active_plan",
             "status: active\nphases:\n"
-            "  - tasks:\n"
+            "  - tickets:\n"
             "      - {name: task1, status: completed}\n"
             "      - {name: task2, status: completed}\n",
         )
@@ -836,7 +836,7 @@ class TestGetPlanStatus:
             epics_dir,
             "wip_plan",
             "status: in_progress\nphases:\n"
-            "  - tasks:\n"
+            "  - tickets:\n"
             "      - {name: task1, status: completed}\n",
         )
 
@@ -856,7 +856,7 @@ class TestGetPlanStatus:
             epics_dir,
             "implicit_done",
             "phases:\n"
-            "  - tasks:\n"
+            "  - tickets:\n"
             "      - {name: task1, status: completed}\n"
             "      - {name: task2, status: completed}\n",
         )
@@ -873,7 +873,7 @@ class TestGetPlanStatus:
             epics_dir,
             "partial_plan",
             "phases:\n"
-            "  - tasks:\n"
+            "  - tickets:\n"
             "      - {name: task1, status: completed}\n"
             "      - {name: task2, status: pending}\n",
         )
@@ -894,7 +894,7 @@ class TestGetPlanStatus:
             epics_dir,
             "done_plan",
             "status: completed\nphases:\n"
-            "  - tasks:\n"
+            "  - tickets:\n"
             "      - {name: task1, status: completed}\n",
         )
 
@@ -912,7 +912,7 @@ class TestGetPlanStatus:
             epics_dir,
             "weird_plan",
             "status: completed\nphases:\n"
-            "  - tasks:\n"
+            "  - tickets:\n"
             "      - {name: task1, status: pending}\n",
         )
 
@@ -960,7 +960,7 @@ class TestGetPlanStatus:
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
-        self._make_plan(epics_dir, "empty_plan", "phases:\n  - tasks: []\n")
+        self._make_plan(epics_dir, "empty_plan", "phases:\n  - tickets: []\n")
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("empty_plan") is None

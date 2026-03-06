@@ -3,9 +3,7 @@ worktree_path: /home/code/AgenticEngineering
 branch: main
 status: active
 priority: high
-worktree: /home/code/AgenticEngineering
-plan_file: docs/plans/live/260203TS_task_service/live/plan_build.yml
-context: 'This plan implements TaskService in AgenticGuidance to provide CRUD operations
+objective: 'This plan implements TaskService in AgenticGuidance to provide CRUD operations
 
   for tasks within plan YAML files. Currently, tasks are embedded in plan files
 
@@ -32,93 +30,12 @@ context: 'This plan implements TaskService in AgenticGuidance to provide CRUD op
   real plan files.
 
   '
-inputs:
-- location: modules/AgenticGuidance/docs/ARCHITECTURE.md
-  description: Architecture patterns for domain service implementation
-- location: modules/AgenticGuidance/src/agenticguidance/services/plan.py
-  description: Existing plan service showing YAML manipulation patterns
-- location: modules/AgenticGuidance/src/agenticguidance/services/state.py
-  description: Service patterns for dataclasses and enum usage
-- location: modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
-  description: Plan structure reference for task location patterns
-open_questions:
-- id: QUESTION-001
-  question: Should TaskService handle nested tasks in phases or flat task lists?
-  severity: high
-  status: ANSWERED
-  answer: Support both patterns. Plan files use phases[].tasks[] while some legacy
-    files use flat plan.tasks[].
-  answered_by: HUMAN
-  context: 'Analysis of existing plan files shows both patterns in use:
-
-    - Modern plans: phases[].tasks[] (nested)
-
-    - Legacy/simple plans: plan.tasks[] (flat)
-
-    TaskService must handle both for backward compatibility.
-
-    '
-- id: QUESTION-002
-  question: How should get_current_task() prioritize when multiple tasks are in_progress?
-  severity: medium
-  status: ANSWERED
-  answer: Return first in_progress task found. If none, return first pending task.
-  answered_by: HUMAN
-  context: 'Single-agent execution model means only one task should be in_progress
-
-    at a time. Multiple in_progress tasks indicates error state - return
-
-    first found and log warning for human review.
-
-    '
-loop_structures:
-- id: loop_implementation
-  type: test-fix-loop
-  applies_to_phase: Implementation Phase
-  trigger: After service implementation completes
-  description: 'Iterative testing pattern where TaskService implementation is validated
-
-    against unit tests. Each iteration runs tests, identifies failures, and
-
-    fixes issues until all tests pass.
-
-    '
-  exit_criteria:
-    success: All unit tests pass AND integration tests with real plan files pass
-    max_iterations: 5
-    escalation: Escalate to user with test results and remaining failures
-  participants:
-  - agent: builder
-    role: Implements TaskService and fixes test failures
-  - agent: test-runner
-    role: Executes pytest suite and reports results
-- id: loop_quality_audit
-  type: audit-test-fix-loop
-  applies_to_phase: Quality Validation Phase
-  trigger: After implementation tests pass
-  description: 'MANDATORY validation loop to verify test quality and prevent reward
-    hacking.
-
-    Auditor examines tests for proper assertions, edge case coverage, and
-
-    real behavior validation.
-
-    '
-  exit_criteria:
-    success: Audit passes with no test quality issues
-    max_iterations: 3
-    escalation: BLOCK deployment - test quality issues must be resolved
-  participants:
-  - agent: test-audit
-    role: Audits test quality and detects reward hacking
-  - agent: builder
-    role: Fixes test quality issues identified by auditor
-  mandatory: true
+created: ''
 phases:
 - name: Service Implementation Phase
   execution: sequential
   description: Implement TaskService domain service with CRUD operations
-  tasks:
+  tickets:
   - id: impl_001
     name: Create TaskService class structure
     description: Implement TaskService skeleton with core methods and dataclasses
@@ -152,8 +69,6 @@ phases:
     description: Add get_task(), list_tasks(), get_current_task()
     status: completed
     agent: builder
-    depends_on:
-    - impl_001
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
     - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
@@ -185,8 +100,6 @@ phases:
     description: Add update_task_status(), start_task(), complete_task()
     status: completed
     agent: builder
-    depends_on:
-    - impl_002
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
     - modules/AgenticGuidance/src/agenticguidance/services/state.py
@@ -219,8 +132,6 @@ phases:
     description: Add TaskService exports to services package
     status: completed
     agent: builder
-    depends_on:
-    - impl_003
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/__init__.py
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -241,15 +152,12 @@ phases:
 - name: Test Implementation Phase
   execution: sequential
   description: Create comprehensive test suite for TaskService
-  loop: test-fix-loop
-  tasks:
+  tickets:
   - id: test_001
     name: Create test file structure
     description: Create test_services_task.py with fixtures and test classes
     status: completed
     agent: builder
-    depends_on:
-    - impl_004
     inputs:
     - modules/AgenticGuidance/tests/test_services_plan.py
     - modules/AgenticGuidance/tests/test_services_state.py
@@ -280,8 +188,6 @@ phases:
     description: Test get_task(), list_tasks(), get_current_task()
     status: completed
     agent: builder
-    depends_on:
-    - test_001
     inputs:
     - modules/AgenticGuidance/tests/test_services_task.py
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -313,8 +219,6 @@ phases:
     description: Test update_task_status(), start_task(), complete_task()
     status: completed
     agent: builder
-    depends_on:
-    - test_002
     inputs:
     - modules/AgenticGuidance/tests/test_services_task.py
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -348,8 +252,6 @@ phases:
     description: Test error handling, malformed data, missing fields
     status: completed
     agent: builder
-    depends_on:
-    - test_003
     inputs:
     - modules/AgenticGuidance/tests/test_services_task.py
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -382,9 +284,6 @@ phases:
     description: Execute pytest and iterate on failures
     status: completed
     agent: builder
-    depends_on:
-    - test_004
-    loop: test-fix-loop
     inputs:
     - modules/AgenticGuidance/tests/test_services_task.py
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -405,14 +304,12 @@ phases:
 - name: Integration Validation Phase
   execution: sequential
   description: Validate TaskService against real plan files
-  tasks:
+  tickets:
   - id: integ_001
     name: Test with real plan files
     description: Validate TaskService works with actual plan YAML files
     status: completed
     agent: builder
-    depends_on:
-    - test_005
     inputs:
     - docs/plans/live/260203TS_task_service/live/plan_build.yml
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -436,16 +333,12 @@ phases:
 - name: Quality Validation Phase
   execution: sequential
   description: Audit test quality and prevent reward hacking
-  loop: audit-test-fix-loop
-  mandatory: true
-  tasks:
+  tickets:
   - id: audit_001
     name: Test quality audit
     description: Review tests for proper assertions and real behavior validation
     status: completed
     agent: test-audit
-    depends_on:
-    - integ_001
     inputs:
     - modules/AgenticGuidance/tests/test_services_task.py
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -474,9 +367,6 @@ phases:
     description: Address test quality issues identified by auditor
     status: completed
     agent: builder
-    depends_on:
-    - audit_001
-    condition: audit_001 reports findings
     inputs:
     - modules/AgenticGuidance/tests/test_services_task.py
     - modules/AgenticGuidance/src/agenticguidance/services/task.py
@@ -493,14 +383,30 @@ phases:
     - Tests strengthened with specific assertions
     - Missing tests added
     - Re-run audit passes with no issues
-success_criteria:
-- TaskService class implemented with all 6 required methods
-- Task dataclass supports all plan task fields
-- TaskStatus enum provides pending/in_progress/completed states
-- All unit tests pass (>90% coverage)
-- Integration tests validate against real plan files
-- Test audit passes with no reward hacking detected
-- TaskService exported from agenticguidance.services package
-- Both nested (phases[].tasks[]) and flat (plan.tasks[]) structures supported
-- File locking prevents concurrent modification issues
-- YAML formatting preserved after task updates
+context: 'This plan implements TaskService in AgenticGuidance to provide CRUD operations
+
+  for tasks within plan YAML files. Currently, tasks are embedded in plan files
+
+  under phases[].tasks[] with no dedicated service layer for task manipulation.
+
+
+  OBJECTIVE: Create TaskService following existing service patterns (plan.py,
+
+  state.py, config.py) to enable programmatic task access and status updates.
+
+
+  ARCHITECTURE ALIGNMENT: Domain service layer only (no workflow/entrypoint yet).
+
+  Future work may add CLI commands using this service.
+
+
+  UPDATE 2026-02-03 (Session 1): Initial planning. Analyzed existing service
+
+  patterns and test structure. Ready for implementation.
+
+
+  NEXT: Implement TaskService with comprehensive tests, then validate against
+
+  real plan files.
+
+  '

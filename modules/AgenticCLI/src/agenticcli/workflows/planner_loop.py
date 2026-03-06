@@ -738,7 +738,7 @@ class PlannerLoopWorkflow:
                 pending = 0
                 completed = 0
                 for phase in content.get("phases", []):
-                    for task in phase.get("tasks", []):
+                    for task in phase.get("tickets", []):
                         status = task.get("status", "pending")
                         if status == "completed":
                             completed += 1

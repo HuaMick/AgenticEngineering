@@ -145,11 +145,11 @@ class TestBootstrapPlannerWorkflow:
         # Planner needs initial tasks to start planning
         assert "phases" in plan_data
         assert len(plan_data["phases"]) > 0
-        assert "tasks" in plan_data["phases"][0]
-        assert len(plan_data["phases"][0]["tasks"]) > 0
+        assert "tickets" in plan_data["phases"][0]
+        assert len(plan_data["phases"][0]["tickets"]) > 0
 
         # Verify task structure
-        first_task = plan_data["phases"][0]["tasks"][0]
+        first_task = plan_data["phases"][0]["tickets"][0]
         assert "id" in first_task
         assert "name" in first_task
         assert "status" in first_task

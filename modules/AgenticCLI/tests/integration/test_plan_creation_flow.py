@@ -42,7 +42,7 @@ def _write_plan_file(output_file: Path, *, objective: str = "", phases: list[str
             "id": phase_id,
             "name": phase_name,
             "status": "pending",
-            "tasks": [],
+            "tickets": [],
         })
 
     plan = {
@@ -206,7 +206,7 @@ class TestFullPlanCreationFlow:
         # Verify tasks were added
         plan_content = yaml.safe_load(output_file.read_text())
         phases = plan_content.get("phases", [])
-        total_tasks = sum(len(p.get("tasks", [])) for p in phases)
+        total_tasks = sum(len(p.get("tickets", [])) for p in phases)
         assert total_tasks >= 3, f"Expected at least 3 tasks, found {total_tasks}"
 
         # Step 4: Generate orchestration MMD file

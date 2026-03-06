@@ -53,7 +53,7 @@ def resurrected_plan(plans_base):
         "phases": [
             {
                 "name": "Build Phase",
-                "tasks": [
+                "tickets": [
                     {"id": "BU_001", "name": "Build task", "status": "completed"},
                 ],
             }
@@ -72,7 +72,7 @@ def resurrected_plan(plans_base):
         "phases": [
             {
                 "name": "Build Phase",
-                "tasks": [
+                "tickets": [
                     {"id": "BU_001", "name": "Build task", "status": "completed"},
                     {"id": "BU_002", "name": "New task", "status": "pending"},
                 ],
@@ -355,7 +355,7 @@ class TestDeathLoopSimulation:
             "phases": [
                 {
                     "name": "Build",
-                    "tasks": [
+                    "tickets": [
                         {"id": "T1", "name": "Task 1", "status": "completed"},
                     ],
                 }
@@ -374,7 +374,7 @@ class TestDeathLoopSimulation:
         # Step 3: Recreate live/ (resurrection)
         live_dir.mkdir(parents=True)
         plan_yml["status"] = "in_progress"
-        plan_yml["phases"][0]["tasks"].append(
+        plan_yml["phases"][0]["tickets"].append(
             {"id": "T2", "name": "Task 2", "status": "pending"}
         )
         with open(live_dir / "plan_build.yml", "w") as f:
@@ -455,7 +455,7 @@ class TestResyncPlanFolder:
                 "phases": [
                     {
                         "name": "Phase 1",
-                        "tasks": [
+                        "tickets": [
                             {"id": "R1", "name": "Task R1", "status": "pending"},
                         ],
                     }

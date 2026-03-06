@@ -130,7 +130,7 @@ class TestTaskListCommand:
                     "phase_id": "phase_01",
                     "name": "Phase One",
                     "status": "in_progress",
-                    "tasks": [
+                    "tickets": [
                         {"task_id": "task_01_001", "description": "First task", "status": "completed"},
                         {"task_id": "task_01_002", "description": "Second task", "status": "pending"},
                         {"task_id": "task_01_003", "description": "Third task", "status": "in_progress"},
@@ -140,7 +140,7 @@ class TestTaskListCommand:
                     "phase_id": "phase_02",
                     "name": "Phase Two",
                     "status": "pending",
-                    "tasks": [
+                    "tickets": [
                         {"task_id": "task_02_001", "description": "Fourth task", "status": "pending"},
                     ]
                 }
@@ -241,7 +241,7 @@ class TestTaskStatusCommand:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "in_progress",
-                    "tasks": [
+                    "tickets": [
                         {
                             "task_id": "build_01_001",
                             "description": "Implement feature X",
@@ -330,7 +330,7 @@ class TestTaskAddCommand:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "pending",
-                    "tasks": []
+                    "tickets": []
                 }
             ]
         }
@@ -353,7 +353,7 @@ class TestTaskAddCommand:
         # Verify task was added
         plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
-        tasks = content["phases"][0]["tasks"]
+        tasks = content["phases"][0]["tickets"]
         assert len(tasks) == 1
         assert tasks[0]["description"] == "New task description"
 
@@ -370,7 +370,7 @@ class TestTaskAddCommand:
         # Verify priority was set
         plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
-        tasks = content["phases"][0]["tasks"]
+        tasks = content["phases"][0]["tickets"]
         assert tasks[0]["priority"] == "high"
 
     def test_add_with_custom_id(self, cli_runner, empty_plan):
@@ -386,7 +386,7 @@ class TestTaskAddCommand:
         # Verify custom ID was used
         plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
-        tasks = content["phases"][0]["tasks"]
+        tasks = content["phases"][0]["tickets"]
         assert tasks[0]["task_id"] == "custom_999"
 
     def test_add_auto_generates_id(self, cli_runner, empty_plan):
@@ -401,7 +401,7 @@ class TestTaskAddCommand:
         # Verify ID was auto-generated
         plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
-        tasks = content["phases"][0]["tasks"]
+        tasks = content["phases"][0]["tickets"]
         assert tasks[0]["task_id"] is not None
         assert len(tasks[0]["task_id"]) > 0
 
@@ -437,7 +437,7 @@ class TestTaskAddCommand:
         # Verify both tasks exist
         plan_file = empty_plan / "plan_build.yml"
         content = yaml.safe_load(plan_file.read_text())
-        tasks = content["phases"][0]["tasks"]
+        tasks = content["phases"][0]["tickets"]
         assert len(tasks) == 2
         descriptions = [t["description"] for t in tasks]
         assert "First task" in descriptions

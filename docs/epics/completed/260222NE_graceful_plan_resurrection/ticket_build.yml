@@ -1,0 +1,555 @@
+name: graceful-plan-resurrection-test
+worktree_path: /home/code/AgenticEngineering
+branch: graceful-plan-resurrection
+status: active
+priority: high
+objective: 'Validate the graceful plan resurrection feature: when a plan is manually
+
+  resurrected (live/ folder recreated after archival), the system should detect
+
+  the stale TinyDB path, prefer the live/ version, and auto-correct TinyDB.
+
+
+  Test targets:
+
+  - find_plan_folder() live-preference (BU_001)
+
+  - PlanService.get_plan() live-preference (BU_002)
+
+  - PlanService.list_plans() filesystem merge (BU_003)
+
+  - PlanRepository.resync_plan_folder() (BU_004)
+
+  - cmd_unarchive() --force flag (BU_005)
+
+  '
+created: ''
+phases:
+- name: Initial Research and Planning
+  tickets:
+  - id: IM_001
+    name: Research existing implementation
+    description: Analyze the codebase to understand the failure mode when a plan is
+      resurrected.
+    status: completed
+    agent: null
+- name: Fix find_plan_folder to prefer live/
+  execution: sequential
+  description: 'The primary fix: make find_plan_folder() prefer live/ over completed/
+    when
+
+    both folders exist. This breaks the death loop by ensuring CLI commands
+
+    always operate on the live/ version of a resurrected plan.
+
+    '
+  tickets:
+  - id: BU_001
+    name: Add live-preference logic to find_plan_folder()
+    description: "In find_plan_folder() (plan.py), after getting a TinyDB result that\
+      \ points\nto completed/, check if a live/ version of the same plan folder exists.\n\
+      If so, prefer the live/ path and trigger a TinyDB path correction.\n\nTarget:\
+      \ modules/AgenticCLI/src/agenticcli/commands/plan.py\nFunction: find_plan_folder()\
+      \ at ~line 476\n\nLogic:\n1. After TinyDB returns plan_data, check if plan_data.plan_folder\n\
+      \   contains \"/plans/completed/\"\n2. Derive the equivalent live/ path\n3.\
+      \ If the live/ path exists as a directory, use it instead\n4. Auto-update TinyDB\
+      \ plan_folder to the live/ path (non-fatal)\n"
+    status: completed
+    agent: build-python
+    success_criteria:
+    - find_plan_folder returns live/ path when plan exists in both live/ and completed/
+    - TinyDB plan_folder is auto-corrected to live/ path
+  - id: BU_002
+    name: Add live-preference logic to PlanService.get_plan()
+    description: 'In PlanService.get_plan() (plan.py), apply the same live-preference
+      logic
+
+      when TinyDB returns a completed/ path but a live/ version exists.
+
+
+      Target: modules/AgenticGuidance/src/agenticguidance/services/plan.py
+
+      Function: get_plan() at ~line 884
+
+
+      Logic: Same as BU_001 - check if TinyDB result points to completed/,
+
+      look for live/ equivalent, prefer live/ if it exists.
+
+      '
+    status: completed
+    agent: build-python
+    success_criteria:
+    - get_plan returns live/ PlanData when plan exists in both live/ and completed/
+  - id: BU_003
+    name: Fix PlanService.list_plans() to detect resurrected plans
+    description: 'PlanService.list_plans(status="live") silently drops resurrected
+      plans because
+
+      TinyDB''s plan_folder path still has "/plans/completed/". Fix this by:
+
+
+      Target: modules/AgenticGuidance/src/agenticguidance/services/plan.py
+
+      Function: list_plans() at ~line 1004
+
+
+      Option A: After TinyDB query, also scan live/ filesystem and merge any
+
+      plans that TinyDB missed.
+
+      Option B: Before returning TinyDB results, cross-check plan_folder paths
+
+      against actual filesystem.
+
+
+      Prefer Option A as it''s simpler and already has YAML fallback logic.
+
+      '
+    status: completed
+    agent: build-python
+    success_criteria:
+    - list_plans('live') includes resurrected plans whose TinyDB path is stale
+- name: Add TinyDB auto-sync on stale path detection
+  execution: sequential
+  description: 'When any of the fixed functions detects a stale TinyDB path (completed/
+    vs live/),
+
+    automatically correct TinyDB. This is a defense-in-depth measure.
+
+    '
+  tickets:
+  - id: BU_004
+    name: Add _auto_resync_plan_folder() helper to PlanRepository
+    description: 'Add a method to PlanRepository that updates the plan_folder field
+      when
+
+      a stale path is detected. Called from the guards in get_plan(),
+
+      find_plan_folder(), etc.
+
+
+      Target: modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+
+
+      Signature: def resync_plan_folder(self, plan_folder_name: str, new_folder: str)
+      -> bool
+
+
+      This should update both the plans table and trigger re-import of tasks/phases
+
+      if the path changed.
+
+      '
+    status: completed
+    agent: build-python
+    success_criteria:
+    - resync_plan_folder updates plan_folder in TinyDB
+    - Subsequent get_plan returns the corrected path
+  - id: BU_005
+    name: Fix cmd_unarchive to handle live/ already existing
+    description: "cmd_unarchive() currently refuses to unarchive if dest (live/) already\
+      \ exists.\nAdd a --force flag that:\n1. If live/ already exists and --force\
+      \ is set, remove the completed/ version\n   and update TinyDB to point to live/.\n\
+      2. Without --force, provide a helpful error message explaining the situation\n\
+      \   and suggesting --force.\n\nTarget: modules/AgenticCLI/src/agenticcli/commands/plan.py\n\
+      Function: cmd_unarchive() at ~line 2663\n"
+    status: completed
+    agent: build-python
+    success_criteria:
+    - unarchive --force works when live/ already exists
+    - unarchive without --force gives helpful error with --force suggestion
+- name: Testing
+  execution: sequential
+  description: Test the resurrection flow end-to-end.
+  tickets:
+  - id: TE_001
+    name: Unit tests for find_plan_folder live-preference
+    description: 'Test that find_plan_folder() returns live/ path when:
+
+      1. Plan exists in both live/ and completed/ (TinyDB points to completed/)
+
+      2. Plan exists only in live/ (TinyDB has no entry)
+
+      3. Plan exists only in completed/ (normal archived plan)
+
+
+      Also test TinyDB auto-correction happens.
+
+      '
+    status: completed
+    agent: test-builder
+    success_criteria:
+    - All three scenarios pass
+    - TinyDB auto-correction is verified
+  - id: TE_002
+    name: Unit tests for PlanService live-preference
+    description: 'Test PlanService.get_plan() and list_plans() with resurrected plans.
+
+      '
+    status: completed
+    agent: test-builder
+    success_criteria:
+    - get_plan returns live/ data for resurrected plans
+    - list_plans('live') includes resurrected plans
+  - id: TE_003
+    name: 'Integration test: orchestration loop with resurrected plan'
+    description: 'Simulate the death loop scenario:
+
+      1. Create a plan in live/, archive it to completed/
+
+      2. Recreate the live/ folder manually
+
+      3. Run orchestration planning/MMD generation
+
+      4. Verify it operates on the live/ folder (not completed/)
+
+      5. Verify no infinite loop
+
+      '
+    status: completed
+    agent: test-builder
+    success_criteria:
+    - MMD is generated in live/ folder
+    - No death loop detected
+- name: Environment Setup
+  execution: sequential
+  description: Install latest code to ensure tests validate current implementation.
+  tickets:
+  - id: P1-T1
+    name: Install latest AgenticGuidance and AgenticCLI
+    description: 'Install the latest version of both packages to ensure tests run
+
+      against the current implementation, not a stale installed version.
+
+
+      Steps:
+
+      1. Run: uv pip install -e modules/AgenticGuidance
+
+      2. Run: uv pip install -e modules/AgenticCLI
+
+      3. Verify: uv pip show agenticguidance (version matches source)
+
+      4. Verify: agentic --version (CLI accessible)
+
+      '
+    status: pending
+    agent: null
+    success_criteria:
+    - uv pip install -e completes without errors for both packages
+    - agentic --version returns successfully
+- name: Component Testing
+  execution: sequential
+  description: 'Run existing unit and integration tests from test_plan_resurrection.py.
+
+    Uses test-fix-loop: if tests fail, fix and re-run up to 5 iterations.
+
+    '
+  tickets:
+  - id: P2-T1
+    name: Run resurrection unit tests
+    description: 'Execute all tests in test_plan_resurrection.py:
+
+      - TestFindPlanFolderLivePreference (3 tests): find_plan_folder live-preference
+
+      - TestPlanServiceResurrection (4 tests): get_plan/list_plans with resurrected
+      plans
+
+      - TestDeathLoopSimulation (2 tests): archive-then-resurrect scenario
+
+      - TestResyncPlanFolder (3 tests): PlanRepository.resync_plan_folder()
+
+
+      Command: python3 -m pytest modules/AgenticGuidance/tests/test_plan_resurrection.py
+      -v
+
+      '
+    status: pending
+    agent: null
+    target_files:
+    - modules/AgenticGuidance/tests/test_plan_resurrection.py
+    success_criteria:
+    - All 12 tests pass
+    - No skipped tests without documented justification
+- name: Test Audit
+  execution: sequential
+  description: 'MANDATORY audit to detect reward hacking and verify test quality.
+
+    Reviews test_plan_resurrection.py for proper assertions, mocking
+
+    correctness, and that tests actually validate the live-preference logic.
+
+    '
+  tickets:
+  - id: P3-T1
+    name: Audit test quality and detect reward hacking
+    description: 'Review test_plan_resurrection.py for:
+
+      1. Assertions that actually validate live-preference behavior (not just mock
+      calls)
+
+      2. Mocking correctness: only external dependencies mocked, not the SUT
+
+      3. No skipped tests without valid justification
+
+      4. Test isolation: each test can run independently
+
+      5. Edge cases covered: empty TinyDB, missing folders, concurrent access
+
+
+      Specific checks:
+
+      - find_plan_folder tests must verify the returned Path, not just mock calls
+
+      - PlanService tests must verify plan_folder field points to live/
+
+      - resync_plan_folder tests must verify TinyDB state after resync
+
+      - Death loop tests must prove the loop breaks (not just that a method was called)
+
+      '
+    status: pending
+    agent: null
+    target_files:
+    - modules/AgenticGuidance/tests/test_plan_resurrection.py
+    success_criteria:
+    - No reward hacking detected
+    - All assertions validate actual behavior
+    - Mocking is appropriate (only external dependencies)
+    - All skipped tests have valid justifications
+- name: UAT Validation
+  execution: sequential
+  description: 'Validate complete user journeys for plan resurrection.
+
+    FENCE: CLI commands MUST execute the real installed binary, not mocks.
+
+    Uses user-story-validation-loop pattern.
+
+    '
+  tickets:
+  - id: uat_US-CLI-013
+    name: 'Validate US-CLI-013: List All Plans shows resurrected plans'
+    description: 'User Story: US-CLI-013 - List All Plans
+
+
+      Journey:
+
+      1. Create a plan in live/ (agentic plan init or manual creation)
+
+      2. Archive it to completed/ (agentic plan archive)
+
+      3. Manually recreate the live/ folder (cp -r or git checkout)
+
+      4. Run: agentic -j agent plan list
+
+      5. Verify the resurrected plan appears in the live list
+
+
+      Acceptance Criteria:
+
+      - agentic plan list shows all plans in docs/plans/live/ and docs/plans/completed/
+
+      - Plans are organized by status (live vs completed)
+
+      - JSON output mode is supported for scripting
+
+      - Resurrected plan (live/ folder recreated after archive) appears in live list
+
+
+      Verification Steps:
+
+      1. Run agentic -j agent plan list and capture JSON output
+
+      2. Check that the resurrected plan appears with correct status
+
+      3. Verify no duplicate entries (plan should not appear in both live and completed)
+
+
+      Evidence Required:
+
+      - JSON output from agentic -j agent plan list showing resurrected plan
+
+      - Confirmation that plan appears exactly once in the correct category
+
+
+      FENCE: Must use real CLI binary, not mocked subprocess.
+
+      '
+    status: pending
+    agent: null
+  - id: uat_US-CLI-017
+    name: 'Validate US-CLI-017: Unarchive with --force handles existing live/'
+    description: 'User Story: US-CLI-017 - Archive Completed Plans (unarchive aspect)
+
+
+      Journey:
+
+      1. Create and archive a plan (set up completed/ version)
+
+      2. Manually recreate the live/ folder (simulating resurrection)
+
+      3. Run: agentic plan unarchive --plan <name> (without --force)
+
+      4. Verify helpful error message suggesting --force
+
+      5. Run: agentic plan unarchive --plan <name> --force
+
+      6. Verify completed/ copy is removed and TinyDB points to live/
+
+      7. Verify plan is accessible via normal plan commands
+
+
+      Acceptance Criteria:
+
+      - agentic plan unarchive --plan <name> without --force gives helpful error
+
+      - Error message suggests using --force
+
+      - agentic plan unarchive --plan <name> --force removes completed/ copy
+
+      - After --force, TinyDB correctly points to live/
+
+      - Plan is fully accessible after unarchive --force
+
+
+      Verification Steps:
+
+      1. Create test plan, archive it, recreate live/ folder
+
+      2. Run unarchive without --force, check error message
+
+      3. Run unarchive with --force, check success
+
+      4. Verify completed/ folder is removed
+
+      5. Run agentic plan list to confirm plan appears in live
+
+
+      Evidence Required:
+
+      - Error output showing --force suggestion
+
+      - Success output after --force
+
+      - ls output confirming completed/ folder removed
+
+      - Plan list output confirming live/ status
+
+
+      FENCE: Must use real CLI binary, not mocked subprocess.
+
+      '
+    status: pending
+    agent: null
+  - id: uat_US-GD-200
+    name: 'Validate US-GD-200: PlanRepository resync_plan_folder works'
+    description: 'User Story: US-GD-200 - TinyDB Plan Repository CRUD
+
+
+      Journey:
+
+      1. Import a plan from completed/ into TinyDB
+
+      2. Recreate the plan folder in live/
+
+      3. Call resync_plan_folder(plan_name, live_path)
+
+      4. Verify TinyDB now points to live/
+
+      5. Verify tasks are re-imported from the live/ version
+
+
+      Acceptance Criteria:
+
+      - resync_plan_folder updates plan_folder in TinyDB
+
+      - Subsequent get_plan returns the corrected live/ path
+
+      - Tasks are re-imported from the new location
+
+      - Non-existent plan returns False
+
+      - Invalid path returns False
+
+
+      Verification Steps:
+
+      1. Run test_plan_resurrection.py::TestResyncPlanFolder tests
+
+      2. Verify all 3 resync tests pass
+
+      3. Check that TinyDB state is correct after resync
+
+
+      Evidence Required:
+
+      - pytest output showing all TestResyncPlanFolder tests pass
+
+      - Verification that resync_plan_folder returns True on success
+
+      '
+    status: pending
+    agent: null
+  - id: uat_US-GD-206
+    name: 'Validate US-GD-206: Backward compatibility with stale TinyDB paths'
+    description: 'User Story: US-GD-206 - Backward Compatibility During Migration
+
+
+      Journey:
+
+      1. Simulate stale TinyDB state (plan_folder points to completed/)
+
+      2. Recreate plan folder in live/
+
+      3. Call PlanService.get_plan(plan_name)
+
+      4. Verify it returns the live/ version (not completed/)
+
+      5. Call PlanService.list_plans(status="live")
+
+      6. Verify the resurrected plan appears in results
+
+
+      Acceptance Criteria:
+
+      - PlanService falls back to filesystem when TinyDB path is stale
+
+      - get_plan auto-corrects stale completed/ paths to live/
+
+      - list_plans merges filesystem-discovered plans with TinyDB results
+
+      - Auto-correction of TinyDB is non-fatal (best-effort)
+
+
+      Verification Steps:
+
+      1. Run test_plan_resurrection.py::TestPlanServiceResurrection tests
+
+      2. Run test_plan_resurrection.py::TestDeathLoopSimulation tests
+
+      3. Verify all tests pass demonstrating backward compatibility
+
+
+      Evidence Required:
+
+      - pytest output showing all PlanService resurrection tests pass
+
+      - pytest output showing death loop simulation passes
+
+      '
+    status: pending
+    agent: null
+context: 'The build phase implemented graceful handling for prematurely completed
+  plans
+
+  being manually resurrected in live/. Before this fix, TinyDB continued to
+
+  point at completed/, causing the orchestration loop to enter a death loop.
+
+
+  Tests were created during build (TE_001-TE_003) in test_plan_resurrection.py.
+
+  This test plan validates those tests, audits quality, and runs UAT.
+
+  '

@@ -1,90 +1,97 @@
-# Implementation Plan: Worktree Reuse and Auto-Cleanup
-# Plan ID: 260208WR
-# Created: 2026-02-08
+name: Worktree Reuse and Auto-Cleanup
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: completed
+priority: high
+objective: 'The CLI (agentic plan init) always creates a new worktree and never checks
 
-name: "Worktree Reuse and Auto-Cleanup"
-worktree_path: "/home/code/AgenticEngineering"
-branch: "main"
-status: "completed"
-priority: "high"
-
-context: |
-  The CLI (agentic plan init) always creates a new worktree and never checks
   for available idle ones. The error-driven-planning-protocol says:
+
   - "Only create new worktree if ALL existing worktrees have active sessions"
+
   - "Multiple plans per worktree are allowed"
+
   - "New worktree creation is a last resort"
+
   Also, worktrees never get cleaned up - removal is manual only.
 
+  '
+created: ''
 phases:
-  - name: "Worktree Reuse in Plan Init"
-    id: "WR_01"
-    status: "completed"
-    tasks:
-      - id: "WR_001"
-        name: "Add find_idle_worktrees utility"
-        status: "completed"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
-        description: "Add function to check sessions and return idle worktrees"
+- name: Worktree Reuse in Plan Init
+  tickets:
+  - id: WR_001
+    name: Add find_idle_worktrees utility
+    description: Add function to check sessions and return idle worktrees
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+  - id: WR_002
+    name: Modify cmd_init to check for idle worktrees before creating
+    description: Before creating new worktree, check if idle ones can be reused
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+- name: Auto-Cleanup on Archive
+  tickets:
+  - id: WR_003
+    name: Add worktree cleanup utilities
+    description: Add worktree_has_live_plans and cleanup_worktree_if_idle
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+  - id: WR_004
+    name: Add _get_plan_branch and _try_worktree_cleanup_after_archive
+    description: Extract branch from plan metadata and trigger cleanup after archive
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+  - id: WR_005
+    name: Hook cleanup into all three auto-archive locations
+    description: cmd_new, cmd_task_complete, cmd_task_update all trigger cleanup
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+- name: Guidance Updates
+  tickets:
+  - id: WR_006
+    name: Update deploy-worktree process.yml
+    description: Document new reuse behavior and worktree_reused output field
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+  - id: WR_007
+    name: Update error-driven-planning-protocol.yml
+    description: Add auto_cleanup section and update enforcement text
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
+- name: Testing
+  tickets:
+  - id: WR_008
+    name: Write unit tests for all new functions
+    description: 22 tests covering find_idle, has_plans, cleanup, branch extraction
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_worktree_reuse.py
+context: 'The CLI (agentic plan init) always creates a new worktree and never checks
 
-      - id: "WR_002"
-        name: "Modify cmd_init to check for idle worktrees before creating"
-        status: "completed"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        description: "Before creating new worktree, check if idle ones can be reused"
+  for available idle ones. The error-driven-planning-protocol says:
 
-  - name: "Auto-Cleanup on Archive"
-    id: "WR_02"
-    status: "completed"
-    tasks:
-      - id: "WR_003"
-        name: "Add worktree cleanup utilities"
-        status: "completed"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/worktree.py"
-        description: "Add worktree_has_live_plans and cleanup_worktree_if_idle"
+  - "Only create new worktree if ALL existing worktrees have active sessions"
 
-      - id: "WR_004"
-        name: "Add _get_plan_branch and _try_worktree_cleanup_after_archive"
-        status: "completed"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        description: "Extract branch from plan metadata and trigger cleanup after archive"
+  - "Multiple plans per worktree are allowed"
 
-      - id: "WR_005"
-        name: "Hook cleanup into all three auto-archive locations"
-        status: "completed"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-        description: "cmd_new, cmd_task_complete, cmd_task_update all trigger cleanup"
+  - "New worktree creation is a last resort"
 
-  - name: "Guidance Updates"
-    id: "WR_03"
-    status: "completed"
-    tasks:
-      - id: "WR_006"
-        name: "Update deploy-worktree process.yml"
-        status: "completed"
-        target_files:
-          - "modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml"
-        description: "Document new reuse behavior and worktree_reused output field"
+  Also, worktrees never get cleaned up - removal is manual only.
 
-      - id: "WR_007"
-        name: "Update error-driven-planning-protocol.yml"
-        status: "completed"
-        target_files:
-          - "modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml"
-        description: "Add auto_cleanup section and update enforcement text"
-
-  - name: "Testing"
-    id: "WR_04"
-    status: "completed"
-    tasks:
-      - id: "WR_008"
-        name: "Write unit tests for all new functions"
-        status: "completed"
-        target_files:
-          - "modules/AgenticCLI/tests/test_worktree_reuse.py"
-        description: "22 tests covering find_idle, has_plans, cleanup, branch extraction"
+  '

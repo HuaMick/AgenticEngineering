@@ -352,8 +352,8 @@ class TestPlanBootstrap:
 
         assert "phases" in data
         assert len(data["phases"]) > 0
-        assert "tasks" in data["phases"][0]
-        assert len(data["phases"][0]["tasks"]) > 0
+        assert "tickets" in data["phases"][0]
+        assert len(data["phases"][0]["tickets"]) > 0
 
 
 class TestPlanBootstrapErrors:

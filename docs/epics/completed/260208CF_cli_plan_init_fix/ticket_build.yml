@@ -1,0 +1,494 @@
+name: CLI Plan Init Fix - Test Plan
+worktree_path: ''
+branch: ''
+status: active
+priority: critical
+objective: 'Test plan for the 2-char code extraction bug fix. The build plan has 4
+  phases
+
+  (P1_FIX, P2_TESTS, P3_VALIDATION, P4_UAT) and 6 tasks that fix the path where
+
+  `agentic plan init 260208PN -d "desc"` incorrectly produces `26020826_desc`
+
+  instead of `260208PN_desc`. Tests verify the fix at unit, integration, and
+
+  user acceptance levels against all three user stories.
+
+  '
+created: ''
+phases:
+- name: Fix naming.py to Accept Branch Parameter
+  execution: sequential
+  tickets:
+  - id: CF-001
+    name: Add branch parameter to generate_plan_folder_name() in naming.py
+    description: 'The function at naming.py:116 calls get_worktree_id(worktree_path)
+      without passing branch. Add an optional branch parameter and forward it so that
+      registry lookup can occur.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    guidance: "1. Change function signature at line 116:\n   def generate_plan_folder_name(\n\
+      \       worktree_path: Path,\n       description: str,\n       date: datetime\
+      \ | None = None,\n       branch: str | None = None,\n   ) -> str:\n2. Update\
+      \ line 142 to pass branch:\n   worktree_id = get_worktree_id(worktree_path,\
+      \ branch=branch)\n3. Update docstring to document the new branch parameter\n\
+      4. Update Examples in docstring to show branch usage\n"
+    success_criteria:
+    - generate_plan_folder_name() accepts optional branch parameter
+    - branch is forwarded to get_worktree_id()
+    - Existing callers without branch continue to work (backward-compatible)
+  - id: CF-002
+    name: Pass branch to generate_plan_folder_name() in plan.py cmd_init()
+    description: 'The call site at plan.py:416 calls generate_plan_folder_name(worktree_path,
+      description) without passing the branch variable that is already available at
+      line 329. Add branch=branch to the call.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. Change line 416 from:\n   plan_folder_name = generate_plan_folder_name(worktree_path,\
+      \ description)\n   to:\n   plan_folder_name = generate_plan_folder_name(worktree_path,\
+      \ description, branch=branch)\n2. The branch variable is already defined at\
+      \ line 329: branch = args.branch\n3. No other changes needed in this file\n"
+    success_criteria:
+    - cmd_init() passes branch to generate_plan_folder_name()
+    - Branch variable is the same args.branch already used for worktree creation
+- name: Add Tests for Branch Parameter
+  execution: sequential
+  tickets:
+  - id: CF-003
+    name: Add test for generate_plan_folder_name with branch parameter
+    description: 'Add tests to TestGeneratePlanFolderName that verify the branch parameter
+      is forwarded to get_worktree_id and that registry lookup works when branch is
+      provided.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/test_naming.py
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    target_files:
+    - modules/AgenticCLI/tests/test_naming.py
+    guidance: "Add these test methods to TestGeneratePlanFolderName (after line 129):\n\
+      \n1. test_branch_parameter_forwarded:\n   - Mock agenticcli.commands.worktree.load_worktree_registry\
+      \ to return\n     a registry with branch \"agentic-cli\" -> abbreviation \"\
+      AC\"\n   - Mock agenticcli.commands.worktree.lookup_abbreviation to return \"\
+      AC\"\n   - Call generate_plan_folder_name(path, \"feature\", date, branch=\"\
+      agentic-cli\")\n   - Assert result starts with date + \"AC\"\n   - Use @patch\
+      \ for the mocks on the import path in naming.py\n\n2. test_branch_none_uses_path_fallback:\n\
+      \   - Call generate_plan_folder_name(Path(\"/repo-test\"), \"feature\", date,\
+      \ branch=None)\n   - Assert uses \"TE\" from path suffix (existing behavior\
+      \ preserved)\n\n3. test_branch_not_in_registry_uses_path:\n   - Mock registry\
+      \ to return empty / no match\n   - Call with branch=\"unknown-branch\"\n   -\
+      \ Assert falls back to path suffix extraction\n\nPattern: Use unittest.mock.patch\
+      \ to mock the worktree imports\ninside get_worktree_id(). The imports are lazy\
+      \ (inside the function),\nso patch \"agenticcli.commands.worktree.load_worktree_registry\"\
+      \ and\n\"agenticcli.commands.worktree.lookup_abbreviation\".\n"
+    success_criteria:
+    - Test verifies branch parameter is forwarded to get_worktree_id
+    - Test verifies registry lookup produces correct 2-char code
+    - Test verifies None branch preserves existing fallback behavior
+    - Test verifies unregistered branch falls back to path extraction
+  - id: CF-004
+    name: Add test for get_worktree_id with branch and registry
+    description: 'Add tests to TestGetWorktreeId that exercise the registry lookup
+      path when branch is provided.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/test_naming.py
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    target_files:
+    - modules/AgenticCLI/tests/test_naming.py
+    guidance: "Add these test methods to TestGetWorktreeId (after line 56):\n\n1.\
+      \ test_branch_triggers_registry_lookup:\n   - Mock load_worktree_registry to\
+      \ return valid registry\n   - Mock lookup_abbreviation to return \"PN\"\n  \
+      \ - Call get_worktree_id(Path(\"/repo-260208PN\"), branch=\"260208PN\")\n  \
+      \ - Assert returns \"PN\" (from registry, not \"26\" from path)\n\n2. test_branch_registry_import_error_falls_back:\n\
+      \   - Mock import to raise ImportError\n   - Call get_worktree_id(Path(\"/repo-feature\"\
+      ), branch=\"feature\")\n   - Assert falls back to path suffix \"FE\"\n\n3. test_branch_registry_no_match_falls_back:\n\
+      \   - Mock registry to return no match\n   - Call get_worktree_id(Path(\"/repo-myfeature\"\
+      ), branch=\"myfeature\")\n   - Assert falls back to path suffix \"MY\"\n\nPattern:\
+      \ Use @patch on \"agenticcli.commands.worktree.load_worktree_registry\"\nand\
+      \ \"agenticcli.commands.worktree.lookup_abbreviation\".\n"
+    success_criteria:
+    - Test confirms registry lookup is triggered when branch is provided
+    - Test confirms ImportError is caught and fallback works
+    - Test confirms no-match falls back to path suffix
+- name: Validation Gate
+  execution: sequential
+  tickets:
+  - id: CF-005
+    name: Run full test suite and verify no regressions
+    description: 'Run pytest on the AgenticCLI test suite to confirm all existing
+      tests pass and the new tests pass.
+
+      '
+    status: completed
+    agent: null
+    guidance: '1. Run: python3 -m pytest modules/AgenticCLI/tests/test_naming.py -v
+
+      2. Run: python3 -m pytest modules/AgenticCLI/tests/ -v
+
+      3. All tests must pass
+
+      4. No import errors or fixture failures
+
+      '
+    success_criteria:
+    - All test_naming.py tests pass including new branch parameter tests
+    - No regressions in other AgenticCLI tests
+- name: User Acceptance Testing
+  execution: sequential
+  tickets:
+  - id: CF-006
+    name: UAT - Verify plan init produces correct folder names
+    description: 'Validate all three user stories by testing the complete agentic
+      plan init flow with different branch scenarios.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - docs/plans/live/260208CF_cli_plan_init_fix/user_stories.yml
+    guidance: 'Test each user story from user_stories.yml:
+
+
+      US-PLAN-INIT-001: Branch suffix code extraction
+
+      - generate_plan_folder_name with branch="260208PN", description="phone_notifications"
+
+      - Verify folder name contains "PN" not "26"
+
+
+      US-PLAN-INIT-002: Registry lookup for known branches
+
+      - Mock registry with branch "agentic-cli" -> abbreviation "AC"
+
+      - Verify folder name uses "AC" from registry
+
+
+      US-PLAN-INIT-003: Fallback for unregistered branches
+
+      - Call without registry match
+
+      - Verify path suffix extraction works as fallback
+
+
+      Update story test_status in user_stories.yml after each test.
+
+      '
+    success_criteria:
+    - 'US-PLAN-INIT-001: Branch suffix correctly extracted as 2-char code'
+    - 'US-PLAN-INIT-002: Registry abbreviation used when branch is registered'
+    - 'US-PLAN-INIT-003: Path suffix fallback works for unregistered branches'
+    - All story test_status updated to pass or fail
+- name: Verify P1_FIX - naming.py Branch Parameter
+  execution: sequential
+  tickets:
+  - id: CT-001
+    name: Test generate_plan_folder_name accepts branch parameter
+    description: 'Verify CF-001 output: generate_plan_folder_name() now has an optional
+
+      branch parameter that is forwarded to get_worktree_id().
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    - modules/AgenticCLI/tests/test_naming.py
+    target_files:
+    - modules/AgenticCLI/tests/test_naming.py
+    guidance: 'Run existing tests to verify backward compatibility:
+
+      1. python3 -m pytest modules/AgenticCLI/tests/test_naming.py -v -k "TestGeneratePlanFolderName"
+
+      2. Verify all existing tests still pass (no regressions from signature change)
+
+      3. Inspect naming.py to confirm branch parameter exists in function signature
+
+      4. Inspect that branch is forwarded to get_worktree_id() call
+
+      '
+    success_criteria:
+    - generate_plan_folder_name() has branch parameter in signature
+    - branch parameter is forwarded to get_worktree_id()
+    - All existing TestGeneratePlanFolderName tests pass unchanged
+  - id: CT-002
+    name: Test cmd_init passes branch to generate_plan_folder_name
+    description: 'Verify CF-002 output: plan.py cmd_init() now passes branch=branch
+
+      to generate_plan_folder_name().
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: 'Verify the call site change:
+
+      1. Read plan.py and confirm generate_plan_folder_name call includes branch=branch
+
+      2. Confirm the branch variable comes from args.branch (line ~329)
+
+      3. Run: python3 -c "import ast; tree = ast.parse(open(''modules/AgenticCLI/src/agenticcli/commands/plan.py'').read());
+      print(''syntax OK'')"
+
+      4. Verify no import errors: python3 -c "from agenticcli.commands.plan import
+      cmd_init"
+
+      '
+    success_criteria:
+    - cmd_init() passes branch=branch to generate_plan_folder_name()
+    - plan.py has no syntax errors
+    - plan.py imports resolve correctly
+- name: Verify P2_TESTS - New Test Coverage
+  execution: sequential
+  tickets:
+  - id: CT-003
+    name: Run new generate_plan_folder_name branch tests (CF-003)
+    description: 'Execute the new tests added by CF-003 that cover branch parameter
+
+      forwarding, registry lookup, and fallback behavior.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/test_naming.py
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    target_files:
+    - modules/AgenticCLI/tests/test_naming.py
+    guidance: "1. Run: python3 -m pytest modules/AgenticCLI/tests/test_naming.py -v\
+      \ -k \"TestGeneratePlanFolderName\"\n2. Verify these new test methods exist\
+      \ and pass:\n   - test_branch_parameter_forwarded: branch=\"agentic-cli\" ->\
+      \ \"AC\" from registry\n   - test_branch_none_uses_path_fallback: branch=None\
+      \ -> path suffix \"TE\"\n   - test_branch_not_in_registry_uses_path: unknown\
+      \ branch -> path suffix\n3. Verify mocks target correct import paths (agenticcli.commands.worktree.*)\n"
+    success_criteria:
+    - test_branch_parameter_forwarded passes - registry lookup returns correct code
+    - test_branch_none_uses_path_fallback passes - None branch uses path suffix
+    - test_branch_not_in_registry_uses_path passes - fallback works for unknown branch
+  - id: CT-004
+    name: Run new get_worktree_id branch tests (CF-004)
+    description: 'Execute the new tests added by CF-004 that cover get_worktree_id
+
+      registry lookup and error handling.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/test_naming.py
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    target_files:
+    - modules/AgenticCLI/tests/test_naming.py
+    guidance: "1. Run: python3 -m pytest modules/AgenticCLI/tests/test_naming.py -v\
+      \ -k \"TestGetWorktreeId\"\n2. Verify these new test methods exist and pass:\n\
+      \   - test_branch_triggers_registry_lookup: branch -> \"PN\" from registry\n\
+      \   - test_branch_registry_import_error_falls_back: ImportError -> path suffix\n\
+      \   - test_branch_registry_no_match_falls_back: no match -> path suffix\n3.\
+      \ Confirm mocks correctly simulate registry scenarios\n"
+    success_criteria:
+    - test_branch_triggers_registry_lookup passes - registry returns 'PN'
+    - test_branch_registry_import_error_falls_back passes - graceful degradation
+    - test_branch_registry_no_match_falls_back passes - path suffix fallback
+- name: Test Quality Audit
+  execution: sequential
+  tickets:
+  - id: CT-005
+    name: Audit test quality - detect reward hacking
+    description: 'MANDATORY audit of all new and modified tests. Detect reward hacking
+
+      patterns: over-mocking, trivial assertions, tests that pass for wrong
+
+      reasons, or tests that don''t exercise real code paths.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/test_naming.py
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    - docs/plans/live/260208CF_cli_plan_init_fix/user_stories.yml
+    target_files:
+    - modules/AgenticCLI/tests/test_naming.py
+    guidance: "Audit checklist:\n1. MOCK SCOPE: Are mocks minimal? Do tests mock only\
+      \ external dependencies\n   (registry loading, abbreviation lookup) and not\
+      \ internal logic?\n2. ASSERTION STRENGTH: Do assertions check actual output\
+      \ values, not just\n   \"was called\" or \"is not None\"?\n3. CODE PATH COVERAGE:\
+      \ Does each test exercise the real generate_plan_folder_name\n   and get_worktree_id\
+      \ code paths, not just mocked wrappers?\n4. EDGE CASES: Are edge cases from\
+      \ user stories covered?\n   - Short suffix padding (US-PLAN-INIT-003: single\
+      \ char 'a' -> 'AX')\n   - Registry precedence over path suffix (US-PLAN-INIT-002)\n\
+      5. FALSE POSITIVE RISK: Could any test pass even if the fix were reverted?\n\
+      \   Run with intentionally wrong mock values to verify sensitivity.\n6. STORY\
+      \ ALIGNMENT: Does each test trace to at least one user story?\n"
+    success_criteria:
+    - No reward hacking patterns detected
+    - All assertions verify meaningful output values
+    - Mocks are minimal and correctly scoped
+    - Tests would fail if the fix were reverted
+    - Each user story has at least one test covering its acceptance criteria
+- name: Full Regression Gate
+  execution: sequential
+  tickets:
+  - id: CT-006
+    name: Run full AgenticCLI test suite
+    description: 'Run the complete test suite to verify no regressions from the fix.
+
+      This gates UAT - no UAT until all tests pass.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/
+    guidance: "1. Run: python3 -m pytest modules/AgenticCLI/tests/ -v\n2. All tests\
+      \ must pass (0 failures, 0 errors)\n3. Specifically verify:\n   - test_naming.py:\
+      \ All old + new tests pass\n   - test_plan.py: No regressions from plan.py changes\n\
+      \   - test_worktree.py: No regressions from any worktree-related changes\n4.\
+      \ Record total test count and pass rate\n"
+    success_criteria:
+    - All test_naming.py tests pass (old and new)
+    - All other AgenticCLI tests pass - 0 regressions
+    - No import errors or fixture failures
+- name: User Acceptance Testing (PRIMARY SUCCESS CRITERIA)
+  execution: sequential
+  tickets:
+  - id: CT-007
+    name: 'UAT: US-PLAN-INIT-001 - Branch suffix code extraction'
+    description: 'Validate that plan init correctly extracts the 2-char code from
+      the
+
+      branch suffix. This is the primary bug that triggered this plan.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - docs/plans/live/260208CF_cli_plan_init_fix/user_stories.yml
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Execute US-PLAN-INIT-001 acceptance criteria:\n\nTest Input 1:\n  branch:\
+      \ \"260208PN\"\n  description: \"phone_notifications\"\n  Expected folder: \"\
+      260208PN_phone_notifications\"\n  Expected code: \"PN\" (from branch suffix,\
+      \ NOT \"26\" from path)\n\nTest Input 2:\n  branch: \"260208CF\"\n  description:\
+      \ \"cli_fix\"\n  Expected folder: \"260208CF_cli_fix\"\n  Expected code: \"\
+      CF\"\n\nValidation method:\n1. Call generate_plan_folder_name(worktree_path,\
+      \ description, date, branch=branch)\n2. Verify the 2-char code in the result\
+      \ matches expected_code\n3. Verify the full folder name matches expected_folder\
+      \ pattern\n4. THIS IS THE CORE BUG FIX - must produce \"PN\" not \"26\"\n\n\
+      Update user_stories.yml test_status for US-PLAN-INIT-001 to pass/fail.\n"
+    success_criteria:
+    - branch='260208PN' produces code 'PN' (not '26')
+    - branch='260208CF' produces code 'CF' (not '26')
+    - Folder name matches YYMMDDXX_description pattern correctly
+    - US-PLAN-INIT-001 test_status updated to pass
+  - id: CT-008
+    name: 'UAT: US-PLAN-INIT-002 - Registry lookup for known branches'
+    description: 'Validate that plan init consults worktrees.yml registry and uses
+
+      the registered abbreviation for known branches.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - docs/plans/live/260208CF_cli_plan_init_fix/user_stories.yml
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    - docs/worktrees.yml
+    guidance: "Execute US-PLAN-INIT-002 acceptance criteria:\n\nTest Input 1:\n  branch:\
+      \ \"agentic-cli\"\n  description: \"test_feature\"\n  Expected code: \"AC\"\
+      \ (from worktrees.yml abbreviation)\n\nTest Input 2:\n  branch: \"agenticguidance\"\
+      \n  description: \"new_module\"\n  Expected code: \"AG\" (from worktrees.yml\
+      \ abbreviation)\n\nValidation method:\n1. Verify worktrees.yml contains the\
+      \ expected registry entries\n2. Call generate_plan_folder_name with registered\
+      \ branch names\n3. Verify the abbreviation comes from registry, not path suffix\n\
+      4. Registry lookup MUST take precedence over path suffix extraction\n\nUpdate\
+      \ user_stories.yml test_status for US-PLAN-INIT-002 to pass/fail.\n"
+    success_criteria:
+    - branch='agentic-cli' produces code 'AC' from registry
+    - branch='agenticguidance' produces code 'AG' from registry
+    - Registry lookup takes precedence over path suffix extraction
+    - US-PLAN-INIT-002 test_status updated to pass
+  - id: CT-009
+    name: 'UAT: US-PLAN-INIT-003 - Fallback for unregistered branches'
+    description: 'Validate that plan init falls back to path suffix extraction when
+
+      the branch is not in the worktrees.yml registry.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - docs/plans/live/260208CF_cli_plan_init_fix/user_stories.yml
+    - modules/AgenticCLI/src/agenticcli/utils/naming.py
+    guidance: "Execute US-PLAN-INIT-003 acceptance criteria:\n\nTest Scenario 1: Standard\
+      \ unregistered branch\n  worktree path: /home/code/AgenticEngineering-myfeature\n\
+      \  branch: \"myfeature\" (not in registry)\n  Expected code: \"MY\" (from path\
+      \ suffix \"myfeature\" -> first 2 chars uppercased)\n\nTest Scenario 2: Short\
+      \ suffix padding\n  worktree path: /home/code/AgenticEngineering-a\n  branch:\
+      \ \"a\" (single char, not in registry)\n  Expected code: \"AX\" (padded with\
+      \ X)\n\nValidation method:\n1. Call generate_plan_folder_name with unregistered\
+      \ branch names\n2. Verify fallback to path suffix extraction works correctly\n\
+      3. Verify short suffixes are padded with 'X'\n\nUpdate user_stories.yml test_status\
+      \ for US-PLAN-INIT-003 to pass/fail.\n"
+    success_criteria:
+    - Unregistered branch falls back to path suffix extraction
+    - Path suffix 'myfeature' produces code 'MY'
+    - Short suffix 'a' produces padded code 'AX'
+    - US-PLAN-INIT-003 test_status updated to pass
+  - id: CT-010
+    name: 'UAT: Final story status summary and sign-off'
+    description: 'Aggregate all UAT results. Verify all three user stories pass.
+
+      Update user_stories.yml with final test_status values.
+
+      Plan cannot complete unless all stories pass.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - docs/plans/live/260208CF_cli_plan_init_fix/user_stories.yml
+    target_files:
+    - docs/plans/live/260208CF_cli_plan_init_fix/user_stories.yml
+    guidance: "1. Read user_stories.yml and verify all test_status fields\n2. Expected\
+      \ final state:\n   - US-PLAN-INIT-001: test_status: pass\n   - US-PLAN-INIT-002:\
+      \ test_status: pass\n   - US-PLAN-INIT-003: test_status: pass\n3. If any story\
+      \ has test_status != pass, report which and why\n4. Generate UAT summary:\n\
+      \   - Total stories: 3\n   - Passed: X/3\n   - Failed: list any failures with\
+      \ reasons\n5. GATE: Plan CANNOT be marked complete unless all 3 stories pass\n"
+    success_criteria:
+    - US-PLAN-INIT-001 test_status is pass
+    - US-PLAN-INIT-002 test_status is pass
+    - US-PLAN-INIT-003 test_status is pass
+    - All 3/3 user stories pass UAT
+    - user_stories.yml updated with final test_status values
+context: 'Test plan for the 2-char code extraction bug fix. The build plan has 4 phases
+
+  (P1_FIX, P2_TESTS, P3_VALIDATION, P4_UAT) and 6 tasks that fix the path where
+
+  `agentic plan init 260208PN -d "desc"` incorrectly produces `26020826_desc`
+
+  instead of `260208PN_desc`. Tests verify the fix at unit, integration, and
+
+  user acceptance levels against all three user stories.
+
+  '

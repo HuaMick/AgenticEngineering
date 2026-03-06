@@ -1,50 +1,12 @@
-title: Planner Loop CLI Command
-description: 'Implement an ''agentic planner start'' command that automates the orchestration
-  planning
-
-  process defined in docs/prompts/orchestration_planner.md. The command runs a planning
-
-  loop that: bootstraps with role orchestration-planning, discovers stories, iterates
-
-  over live plans missing orchestration MMDs, spawns specialized planners and reviewers,
-
-  manages review loops (max 3 iterations), generates and validates orchestration MMDs,
-
-  and updates plan task status.
-
-
-  The command is modeled after ''agentic loop start'' (Ralph Loop) but is specialized
-
-  for the planning workflow. It supports background execution (--background) and
-
-  max iterations (--max-iterations).
-
-  '
-plan_type: build
+name: 260211PL_planner_loop_cli_command
+worktree_path: ''
+branch: ''
+status: pending
+priority: medium
+objective: ''
 created: '2026-02-11'
-affected_stories:
-- US-CLI-03-01
-- US-ORCH-01-01
-- US-ORCH-01-02
-success_criteria:
-- '''agentic planner start'' launches the planning loop and iterates over live plans'
-- Plans missing orchestration MMDs are identified and processed
-- Story discovery runs before phase determination for each plan
-- Specialized planners (planner-build, planner-test, etc.) are spawned per plan type
-- Review loops with planner-reviewer run up to 3 iterations before escalating
-- Orchestration MMDs are generated via 'agentic plan orchestration generate' or planner-orchestration
-  spawn
-- Generated MMDs are validated via 'agentic plan orchestration validate'
-- Plan task status is updated via 'agentic plan task start/complete'
-- '''--background'' flag runs the loop in background with PID tracking'
-- '''--max-iterations'' controls maximum loop iterations (default 10)'
-- Loop exits with completion promise when all plans have orchestration MMDs
-- Health check runs before any work (agentic --version && agentic plan list)
-- CLI error recovery protocol is followed when commands fail
-- All new code has unit tests
 phases:
-- id: P1
-  name: Planner workflow service
+- name: Planner workflow service
   description: 'Create the core planning loop workflow as a service module. This encapsulates
 
     the orchestration planner logic from docs/prompts/orchestration_planner.md into
@@ -52,11 +14,9 @@ phases:
     a Python service that the CLI command will invoke.
 
     '
-  tasks:
+  tickets:
   - id: P1-T1
-    title: Create PlannerLoopWorkflow service
-    status: completed
-    agent: build-python
+    name: ''
     description: "Create modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py\
       \ with\na PlannerLoopWorkflow class that encapsulates the planning loop logic.\n\
       \nKey responsibilities:\n- discover_plans_needing_orchestration(): List live\
@@ -76,12 +36,12 @@ phases:
       \ calls should use subprocess.run with capture_output=True.\nFollow the pattern\
       \ from commands/loop.py for process management.\nUse logging module for structured\
       \ logging (import logging; logger = logging.getLogger(__name__)).\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
   - id: P1-T2
-    title: Create PlannerLoopRunner orchestrator
-    status: completed
-    agent: build-python
+    name: ''
     description: "In the same planner_loop.py file, add a PlannerLoopRunner class\
       \ that\norchestrates the full planning loop:\n\ndef run(self, max_iterations=10,\
       \ completion_promise=None):\n  1. Run health check\n  2. For each iteration\
@@ -100,10 +60,11 @@ phases:
       \ plans processed, iteration count) for\nstatus reporting. Use a simple dict\
       \ stored in memory during execution.\n\nThe default completion_promise is:\n\
       \"Planning complete. All plans have orchestration MMDs.\"\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
-- id: P2
-  name: CLI command registration
+- name: CLI command registration
   description: 'Register the ''agentic planner'' command group with ''start'', ''stop'',
     and ''status''
 
@@ -112,11 +73,9 @@ phases:
     for planning.
 
     '
-  tasks:
+  tickets:
   - id: P2-T1
-    title: Create planner command handler
-    status: completed
-    agent: build-python
+    name: ''
     description: "Create modules/AgenticCLI/src/agenticcli/commands/planner.py with:\n\
       \nhandle(args, ctx) router function dispatching to:\n- cmd_start(args, ctx):\
       \ Start the planner loop\n  Options:\n  - --max-iterations / -m (int, default\
@@ -134,12 +93,12 @@ phases:
       \ output support (check is_json_output())\n- Console output formatting (use\
       \ print_success, print_error, etc.)\n\nStore planner loop state in ~/.agentic/planner_loops/\
       \ (parallel to loops/).\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/planner.py
   - id: P2-T2
-    title: Register planner commands in cli.py
-    status: completed
-    agent: build-python
+    name: ''
     description: 'Add the ''planner'' command group to modules/AgenticCLI/src/agenticcli/cli.py.
 
       Follow the exact pattern of the ''loop'' command group:
@@ -176,20 +135,19 @@ phases:
       Add "planner" to the GLOBAL_COMMANDS set (not project-scoped).
 
       '
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/cli.py
-- id: P3
-  name: Background execution and state management
+- name: Background execution and state management
   description: 'Implement background execution support, PID tracking, and loop state
 
     persistence. Reuse patterns from the existing loop command.
 
     '
-  tasks:
+  tickets:
   - id: P3-T1
-    title: Implement planner loop state persistence
-    status: completed
-    agent: build-python
+    name: ''
     description: "In the planner command handler (commands/planner.py), implement\
       \ state\npersistence for planner loops. Follow the loop.py pattern:\n\nState\
       \ directory: ~/.agentic/planner_loops/\nState file per loop: {loop_id}.json\n\
@@ -203,12 +161,12 @@ phases:
       - _save_state(state, state_dir): Write state to JSON file\n- _load_state(loop_id,\
       \ state_dir): Load state from JSON file\n- _list_states(state_dir, active_only=False):\
       \ List all loop states\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/planner.py
   - id: P3-T2
-    title: Implement background process forking
-    status: completed
-    agent: build-python
+    name: ''
     description: "In cmd_start(), implement background execution:\n\nIf --background:\n\
       1. Build the command line to re-invoke 'agentic planner start' with\n   same\
       \ flags but without --background (to run in foreground in subprocess)\n2. Use\
@@ -216,10 +174,11 @@ phases:
       3. Store PID in state file\n4. Print loop ID and PID to console\n5. Return immediately\n\
       \nFollow loop.py's _run_background_loop() pattern exactly.\nUse the StateRegistry\
       \ for process tracking if available.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/commands/planner.py
-- id: P4
-  name: Integration with orchestration planner prompt
+- name: Integration with orchestration planner prompt
   description: 'Wire the planner loop to use the orchestration planner prompt engineering
 
     from docs/prompts/orchestration_planner.md. The prompt content drives the
@@ -227,11 +186,9 @@ phases:
     spawned sessions'' behavior.
 
     '
-  tasks:
+  tickets:
   - id: P4-T1
-    title: Implement prompt compilation for spawned planners
-    status: completed
-    agent: build-python
+    name: ''
     description: "In PlannerLoopWorkflow, implement prompt compilation for the spawned\n\
       planner sessions. When spawning a planner (planner-build, planner-test, etc.),\n\
       the session should be bootstrapped with the orchestration-planning role context.\n\
@@ -243,21 +200,20 @@ phases:
       \ not per-planner. This provides\nthe objective and context for the entire planning\
       \ session.\n\nAdd a compile_bootstrap_context(role=\"orchestration-planning\"\
       ) method that\ncalls the bootstrap command and returns the context dict.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
-- id: P5
-  name: Session management and monitoring
+- name: Session management and monitoring
   description: 'Implement waiting for spawned sessions to complete, monitoring their
     status,
 
     and handling failures. The planner loop must track all spawned sessions.
 
     '
-  tasks:
+  tickets:
   - id: P5-T1
-    title: Implement session wait and monitoring
-    status: completed
-    agent: build-python
+    name: ''
     description: "In PlannerLoopWorkflow, implement session lifecycle management:\n\
       \n- wait_for_session(session_id, timeout=600): Poll session status via\n  'agentic\
       \ --json session status <id>' until completed/failed/stopped.\n  Use a polling\
@@ -271,20 +227,19 @@ phases:
       \ (approved: bool, iterations: int, feedback: str)\n\nHandle timeouts gracefully\
       \ - if a session doesn't complete within timeout,\nlog error and move to next\
       \ plan.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
-- id: P6
-  name: Unit tests
+- name: Unit tests
   description: 'Comprehensive unit tests for the planner loop workflow and CLI command.
 
     Tests should mock subprocess calls and filesystem operations.
 
     '
-  tasks:
+  tickets:
   - id: P6-T1
-    title: Test PlannerLoopWorkflow methods
-    status: completed
-    agent: build-python
+    name: ''
     description: "Create modules/AgenticCLI/tests/test_planner_loop.py with tests:\n\
       \n1. test_discover_plans_needing_orchestration:\n   - Set up tmp_path with docs/plans/live/\
       \ containing plans\n   - Some with orchestration_*.mmd, some without\n   - Assert\
@@ -301,12 +256,12 @@ phases:
       \ orchestration validate to succeed\n   - Assert returns True\n\n10. test_validate_mmd_failure_retry:\n\
       \    - Mock subprocess.run to fail twice then succeed\n    - Assert retries\
       \ correctly\n\nUse tmp_path, monkeypatch, and mock subprocess throughout.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/tests/test_planner_loop.py
   - id: P6-T2
-    title: Test PlannerLoopRunner orchestration
-    status: completed
-    agent: build-python
+    name: ''
     description: "In test_planner_loop.py, add integration-style tests:\n\n1. test_runner_completes_when_no_plans_need_work:\n\
       \   - Mock discover to return empty list\n   - Assert runner completes with\
       \ success message\n\n2. test_runner_processes_single_plan:\n   - Mock discover\
@@ -319,12 +274,12 @@ phases:
       \ Assert only 2 iterations run\n\n5. test_runner_handles_health_check_failure:\n\
       \   - Mock health check to fail\n   - Assert runner exits early with error\n\
       \nUse monkeypatch to mock PlannerLoopWorkflow methods.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/tests/test_planner_loop.py
   - id: P6-T3
-    title: Test CLI planner command registration
-    status: completed
-    agent: build-python
+    name: ''
     description: "In test_planner_loop.py, add CLI integration tests:\n\n1. test_planner_start_foreground:\n\
       \   - Mock PlannerLoopRunner.run()\n   - Invoke cmd_start with default args\n\
       \   - Assert runner was called with correct max_iterations\n\n2. test_planner_start_background:\n\
@@ -334,32 +289,31 @@ phases:
       \   - Assert signal sent\n\n4. test_planner_status:\n   - Create a mock state\
       \ file\n   - Invoke cmd_status\n   - Assert status output displayed\n\nFollow\
       \ patterns from test_cli.py and existing loop tests.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/tests/test_planner_loop.py
-- id: P7
-  name: Verification and integration testing
+- name: Verification and integration testing
   description: 'Run all tests, verify CLI registration works end-to-end, and ensure
 
     no regressions in existing functionality.
 
     '
-  tasks:
+  tickets:
   - id: P7-T1
-    title: Run full test suite
-    status: completed
-    agent: build-python
+    name: ''
     description: "Run the complete test suite to verify:\n1. New planner loop tests\
       \ pass:\n   cd /home/code/AgenticEngineering/modules/AgenticCLI && python3 -m\
       \ pytest tests/test_planner_loop.py -v\n2. No regressions in existing tests:\n\
       \   cd /home/code/AgenticEngineering/modules/AgenticCLI && python3 -m pytest\
       \ tests/ -x --timeout=30\n3. CLI help shows planner command:\n   AGENTIC_USE_TYPER=0\
       \ agentic planner --help\nFix any failures before marking complete.\n"
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticCLI/tests/test_planner_loop.py
   - id: P7-T2
-    title: 'Smoke test: agentic planner start --help'
-    status: completed
-    agent: build-python
+    name: ''
     description: 'Verify the command is registered and --help works:
 
       - agentic planner start --help
@@ -374,4 +328,5 @@ phases:
       Verify that ''agentic planner'' (no subcommand) shows available subcommands.
 
       '
-    target_files: []
+    status: completed
+    agent: build-python

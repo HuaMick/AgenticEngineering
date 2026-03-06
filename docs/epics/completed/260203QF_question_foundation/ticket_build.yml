@@ -3,57 +3,6 @@ worktree_path: /home/code/AgenticEngineering
 branch: main
 status: active
 priority: high
-worktree: /home/code/AgenticEngineering
-plan_file: docs/plans/live/260203QF_question_foundation/plan_build.yml
-context: 'This plan implements the foundational data models and queue service for
-  the Question/Answer workflow.
-
-  This is the FOUNDATION layer of the CLI-First HITL strategy.
-
-
-  ARCHITECTURE DECISION (CLI-First Strategy):
-
-  - Question/Answer data models with YAML serialization
-
-  - QuestionQueue service for CRUD operations
-
-  - Plan-scoped storage: docs/plans/live/{plan_id}/questions/
-
-  - No dependencies on CLI or voice (foundation layer)
-
-
-  This foundation will be consumed by:
-
-  - 260203QC (Question CLI) - Primary text-mode interface
-
-  - 260203VP (Voice PersonaPlex) - Optional voice interface
-
-  - 260203QG (Question Guidance) - Agent integration
-
-
-  UPDATE 2026-02-03: Initial plan created with 4 phases covering data models,
-
-  queue service, file system operations, and comprehensive unit tests.
-
-  '
-dependencies:
-  depends_on: []
-  required_by:
-  - plan_id: 260203QC
-    description: Question CLI uses QuestionQueue service
-  - plan_id: 260203QG
-    description: Agent guidance uses data model schema
-  - plan_id: 260203VP
-    description: Voice interface uses QuestionQueue service
-inputs:
-- location: modules/AgenticGuidance/src/agenticguidance/services/plan.py
-  description: Reference patterns for YAML serialization and file locking
-- location: modules/AgenticGuidance/src/agenticguidance/services/state.py
-  description: FileLock implementation pattern for atomic operations
-- location: modules/AgenticGuidance/tests/test_services_plan.py
-  description: Test patterns for service validation
-- location: modules/AgenticGuidance/docs/ARCHITECTURE.md
-  description: Architecture patterns and service design guidelines
 objective: 'Implement Question and Answer data models with YAML serialization, and
   QuestionQueue service
 
@@ -66,54 +15,12 @@ objective: 'Implement Question and Answer data models with YAML serialization, a
   Python APIs that will be consumed by higher-level interfaces.
 
   '
-loop_structures:
-- id: loop_implementation
-  type: test-fix-loop
-  applies_to_phase: 'Phase 4: Unit Tests'
-  trigger: After all implementation tasks complete
-  description: 'Iterative testing pattern where implementation is validated against
-
-    unit tests. Each iteration runs tests, identifies failures, and
-
-    fixes issues until all tests pass or max iterations reached.
-
-    '
-  exit_criteria:
-    success: All unit tests pass with >90% coverage
-    max_iterations: 5
-    escalation: Escalate to user with test results and coverage report
-  participants:
-  - agent: test-builder
-    role: Creates comprehensive unit tests
-  - agent: builder
-    role: Fixes failures identified by tests
-- id: loop_audit
-  type: audit-test-fix-loop
-  applies_to_phase: 'Phase 4: Unit Tests'
-  trigger: After test-fix-loop completes
-  description: 'MANDATORY validation loop to detect reward hacking and verify test
-    quality.
-
-    Auditor examines tests for shortcuts, mocking issues, and false positives.
-
-    '
-  exit_criteria:
-    success: Audit passes AND all tests still pass after audit corrections
-    max_iterations: 3
-    escalation: BLOCK completion - audit failures must be resolved
-  participants:
-  - agent: test-audit
-    role: Audits test quality and detects reward hacking
-  - agent: test-builder
-    role: Fixes audit-identified test issues
-  - agent: builder
-    role: Fixes implementation issues revealed by audit
-  mandatory: true
+created: ''
 phases:
 - name: 'Phase 1: Data Models'
   execution: sequential
   description: Implement Question and Answer dataclasses with YAML serialization
-  tasks:
+  tickets:
   - id: QF_001
     name: Create Question dataclass
     description: Implement Question model with id, text, context, severity, asked_by,
@@ -177,8 +84,6 @@ phases:
       answered_at, confidence fields
     status: completed
     agent: builder
-    depends_on:
-    - QF_001
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
     - modules/AgenticGuidance/src/agenticguidance/services/state.py
@@ -225,15 +130,12 @@ phases:
     - confidence field is Optional (can be None)
     - Type hints present for all fields
     - Models exported from models/__init__.py
-    completed_at: '2026-02-03T22:48:55.420123'
   - id: QF_003
     name: Implement YAML serialization helpers
     description: Add utility functions for converting Question/Answer to/from YAML
       format
     status: completed
     agent: builder
-    depends_on:
-    - QF_002
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan.py
@@ -259,18 +161,15 @@ phases:
     - yaml_to_answer() successfully parses Answer YAML
     - Round-trip serialization preserves all data (Question -> YAML -> Question)
     - Parse errors include helpful messages
-    completed_at: '2026-02-03T22:50:41.635918'
 - name: 'Phase 2: Queue Service'
   execution: sequential
   description: Implement QuestionQueue service with CRUD operations
-  tasks:
+  tickets:
   - id: QF_004
     name: Create QuestionQueue service class
     description: Implement QuestionQueue with initialization and path management
     status: completed
     agent: builder
-    depends_on:
-    - QF_003
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan.py
@@ -298,14 +197,11 @@ phases:
     - _get_question_path() returns correct paths for pending/answered
     - Module docstring explains service purpose
     - No dependencies on CLI or voice modules
-    completed_at: '2026-02-03T22:52:27.670902'
   - id: QF_005
     name: Implement create_question method
     description: Add method to create and persist new questions to pending queue
     status: completed
     agent: builder
-    depends_on:
-    - QF_004
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
@@ -330,14 +226,11 @@ phases:
     - Invalid severity raises ValueError
     - File write is atomic (temp file + rename)
     - Returns created Question object
-    completed_at: '2026-02-03T22:54:31.071406'
   - id: QF_006
     name: Implement list_pending_questions method
     description: Add method to retrieve all pending questions
     status: completed
     agent: builder
-    depends_on:
-    - QF_005
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
@@ -360,14 +253,11 @@ phases:
     - Corrupted files are skipped (not raised as errors)
     - Returns empty list when no pending questions
     - Type hints match return type
-    completed_at: '2026-02-03T22:56:13.888280'
   - id: QF_007
     name: Implement get_question method
     description: Add method to retrieve a specific question by ID
     status: completed
     agent: builder
-    depends_on:
-    - QF_006
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
@@ -386,14 +276,11 @@ phases:
     - get_question() returns None when not found
     - Corrupted files return None (not raised as errors)
     - Type hints match return type (Optional[Question])
-    completed_at: '2026-02-03T22:57:46.670191'
   - id: QF_008
     name: Implement answer_question method
     description: Add method to answer a question and move it to answered/
     status: completed
     agent: builder
-    depends_on:
-    - QF_007
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
@@ -424,18 +311,15 @@ phases:
     - FileNotFoundError raised when question not in pending/
     - ValueError raised for invalid confidence
     - Returns (Question, Answer) tuple
-    completed_at: '2026-02-03T22:59:29.283991'
 - name: 'Phase 3: File System Layer'
   execution: sequential
   description: Atomic YAML read/write with file locking
-  tasks:
+  tickets:
   - id: QF_009
     name: Add atomic file write operation
     description: Implement helper for atomic file writes with temp file + rename pattern
     status: completed
     agent: builder
-    depends_on:
-    - QF_008
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticGuidance/src/agenticguidance/services/plan.py
@@ -455,14 +339,11 @@ phases:
     - Temp file cleaned up on errors
     - Operation is truly atomic (no partial writes visible)
     - Docstring explains atomicity guarantee
-    completed_at: '2026-02-03T23:01:22.783011'
   - id: QF_010
     name: Add file locking for concurrent access
     description: Integrate FileLock for thread-safe queue operations
     status: completed
     agent: builder
-    depends_on:
-    - QF_009
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticGuidance/src/agenticguidance/services/state.py
@@ -485,14 +366,11 @@ phases:
     - TimeoutError raised if lock acquisition fails
     - No deadlocks possible (lock ordering consistent)
     - Concurrent operations are thread-safe
-    completed_at: '2026-02-03T23:04:18.422289'
   - id: QF_011
     name: Add error handling and logging
     description: Add comprehensive error handling and logging throughout service
     status: completed
     agent: builder
-    depends_on:
-    - QF_010
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     target_files:
@@ -516,18 +394,15 @@ phases:
     - ValueError messages include valid enum values
     - FileNotFoundError messages include helpful context
     - All errors have actionable messages
-    completed_at: '2026-02-03T23:08:13.176983'
 - name: 'Phase 4: Unit Tests'
   execution: sequential
   description: Comprehensive test coverage for all operations
-  tasks:
+  tickets:
   - id: QF_012
     name: Create data model tests
     description: Unit tests for Question and Answer dataclasses
     status: completed
     agent: test-builder
-    depends_on:
-    - QF_011
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
     - modules/AgenticGuidance/tests/test_services_plan.py
@@ -565,8 +440,6 @@ phases:
     description: Unit tests for QuestionQueue CRUD operations
     status: completed
     agent: test-builder
-    depends_on:
-    - QF_012
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticGuidance/tests/test_services_plan.py
@@ -610,8 +483,6 @@ phases:
     description: End-to-end tests for complete question/answer workflow
     status: completed
     agent: test-builder
-    depends_on:
-    - QF_013
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
@@ -645,8 +516,6 @@ phases:
     description: Execute all tests and verify >90% coverage
     status: completed
     agent: test-runner
-    depends_on:
-    - QF_014
     inputs:
     - modules/AgenticGuidance/tests/test_models_question.py
     - modules/AgenticGuidance/tests/test_services_question.py
@@ -697,24 +566,34 @@ phases:
     - Coverage >90% for services/question.py
     - No critical code paths uncovered
     - Coverage report generated and reviewed
-success_criteria:
-- Question and Answer dataclasses defined with full type hints
-- YAML serialization/deserialization working correctly
-- QuestionQueue service can create, list, and answer questions
-- File operations are atomic and thread-safe
-- Unit tests achieve >90% coverage for models and services
-- Integration tests verify complete question/answer workflow
-- No dependencies on CLI or voice modules
-- All tests pass in test suite
-- Error handling is comprehensive with actionable messages
-- Logging provides visibility into operations
-affected_stories:
-- 'US-HITL-001: Agent asks blocking question and waits for answer'
-- 'US-HITL-002: Human lists pending questions and provides answers'
-- 'US-HITL-003: Question/answer history persisted for audit trail'
-next_steps:
-- Spawn builder agent for Phase 1 (Data Models)
-- After Phase 1 complete, spawn builder for Phase 2 (Queue Service)
-- After Phase 2 complete, spawn builder for Phase 3 (File System)
-- After Phase 3 complete, spawn test-builder for Phase 4 (Unit Tests)
-- Hand off to 260203QC for CLI integration
+context: 'This plan implements the foundational data models and queue service for
+  the Question/Answer workflow.
+
+  This is the FOUNDATION layer of the CLI-First HITL strategy.
+
+
+  ARCHITECTURE DECISION (CLI-First Strategy):
+
+  - Question/Answer data models with YAML serialization
+
+  - QuestionQueue service for CRUD operations
+
+  - Plan-scoped storage: docs/plans/live/{plan_id}/questions/
+
+  - No dependencies on CLI or voice (foundation layer)
+
+
+  This foundation will be consumed by:
+
+  - 260203QC (Question CLI) - Primary text-mode interface
+
+  - 260203VP (Voice PersonaPlex) - Optional voice interface
+
+  - 260203QG (Question Guidance) - Agent integration
+
+
+  UPDATE 2026-02-03: Initial plan created with 4 phases covering data models,
+
+  queue service, file system operations, and comprehensive unit tests.
+
+  '

@@ -1,12 +1,9 @@
 name: improve-planning-orchestration
+worktree_path: ''
+branch: ''
 status: active
 priority: high
-worktree: null
-affected_stories:
-- US-ORCH-003
-- US-ORCH-004
-- US-ORCH-005
-context: "The orchestration planning system needs two improvements:\n\n1. A dedicated\
+objective: "The orchestration planning system needs two improvements:\n\n1. A dedicated\
   \ planner-sdk agent that has Claude Agent SDK documentation\n   pre-loaded into\
   \ its context. When planning work involves SDK integration,\n   the orchestrator\
   \ routes to this planner instead of the generic planner-build.\n   This ensures\
@@ -21,52 +18,7 @@ context: "The orchestration planning system needs two improvements:\n\n1. A dedi
   - process.yml: Steps including SDK API reference, migration patterns, research\n\
   - inputs.yml: Shared planner layers + SDK-specific file inputs\n\nThis plan completes\
   \ the integration and adds intelligent routing.\n"
-impacted_artifacts:
-- artifact_type: agent
-  artifact_identifier: planner-sdk
-  impact_type: new
-  description: New planner agent with Claude SDK knowledge
-  breaking_change: false
-- artifact_type: service
-  artifact_identifier: agenticcli.workflows.planner_loop.PlannerLoopRunner
-  impact_type: behavior_change
-  description: Add SDK plan type detection and intelligent plan routing
-  breaking_change: false
-- artifact_type: agent
-  artifact_identifier: orchestration-planning
-  impact_type: minor_modification
-  description: Add planner-sdk to spawns list and routing logic
-  breaking_change: false
-loop_structure:
-- name: build-loop-phase1-phase2
-  type: build-loop
-  applies_to:
-  - Phase 1 - Intelligent plan routing
-  - Phase 2 - Planner-SDK agent refinement
-  description: Build-test-fix iteration for implementation tasks
-  exit_criteria:
-  - All tasks in phase marked completed
-  - Success criteria verified for each task
-  max_iterations: 5
-  on_max_exceeded: escalate_to_user
-- name: test-loop-phase3
-  type: test-loop
-  applies_to:
-  - Phase 3 - End-to-end validation
-  description: Test-fix iteration for validation tasks
-  exit_criteria:
-  - PO_005 validation passes all success criteria
-  max_iterations: 5
-  on_max_exceeded: escalate_to_user
-- name: uat-loop
-  type: uat-loop
-  applies_to:
-  - Phase 4 - UAT
-  description: UAT iteration against user stories
-  exit_criteria:
-  - All referenced stories pass validation
-  max_iterations: 3
-  on_max_exceeded: escalate_to_user
+created: ''
 phases:
 - name: Phase 1 - Intelligent plan routing
   execution: sequential
@@ -75,11 +27,9 @@ phases:
     SDK-specific planning and route them to planner-sdk automatically.
 
     '
-  tasks:
+  tickets:
   - id: PO_001
     name: Add SDK context detection to plan type routing
-    status: completed
-    agent: build-python
     description: "Enhance planner_loop.py to detect SDK-related plans beyond just\n\
       checking for plan_sdk.yml files:\n\n1. In determine_plan_type(), add fallback\
       \ detection:\n   - If plan_build.yml exists, check its context field for SDK\
@@ -90,9 +40,11 @@ phases:
       \ keywords\n   - Return True if the plan should use planner-sdk\n\nThis allows\
       \ existing plan_build.yml plans to be automatically\nrouted to planner-sdk when\
       \ their context is SDK-related, without\nrequiring a separate plan_sdk.yml file.\n"
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    status: completed
+    agent: build-python
     inputs:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    target_files:
     - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
     success_criteria:
     - Plans with SDK context route to planner-sdk
@@ -100,18 +52,18 @@ phases:
     - plan_sdk.yml files also route to planner-sdk
   - id: PO_002
     name: Update orchestration-planning process with SDK routing guidance
-    status: completed
-    agent: build-python
     description: "Update the orchestration-planning process.mmd to include routing\n\
       rules for the new planner-sdk agent:\n\n1. Add a decision node after plan type\
-      \ detection:\n   \"Is this an SDK-related objective?\" \u2192 route to planner-sdk\n\
+      \ detection:\n   \"Is this an SDK-related objective?\" → route to planner-sdk\n\
       2. Add planner-sdk to the agent routing metadata\n3. Document the SDK keyword\
       \ detection criteria\n"
-    target_files:
-    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+    status: completed
+    agent: build-python
     inputs:
     - modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml
     - modules/AgenticGuidance/agents/planner/planner-sdk/manifest.yml
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
     success_criteria:
     - process.mmd includes SDK routing decision node
     - AGENT_ROUTING metadata includes planner-sdk
@@ -122,11 +74,9 @@ phases:
     ensure its process steps produce high-quality plans.
 
     '
-  tasks:
+  tickets:
   - id: PO_003
     name: Fetch and embed latest SDK documentation snippets
-    status: completed
-    agent: build-python
     description: 'Research the latest Claude Agent SDK documentation and update
 
       the planner-sdk process.yml with:
@@ -150,6 +100,8 @@ phases:
       3. Update process.yml SDK reference section with verified API
 
       '
+    status: completed
+    agent: build-python
     target_files:
     - modules/AgenticGuidance/agents/planner/planner-sdk/process.yml
     success_criteria:
@@ -158,8 +110,6 @@ phases:
     - Import paths verified
   - id: PO_004
     name: Add SDK planner to agent discovery
-    status: completed
-    agent: build-python
     description: 'Ensure planner-sdk is discoverable through the agent context
 
       bootstrap system and appears in agent listings:
@@ -176,10 +126,12 @@ phases:
       relies on agent-categories.yml alone.
 
       '
-    target_files:
-    - modules/AgenticGuidance/assets/definitions/agent-categories.yml
+    status: completed
+    agent: build-python
     inputs:
     - modules/AgenticGuidance/agents/planner/planner-sdk/manifest.yml
+    - modules/AgenticGuidance/assets/definitions/agent-categories.yml
+    target_files:
     - modules/AgenticGuidance/assets/definitions/agent-categories.yml
     success_criteria:
     - planner-sdk appears in agent-categories.yml planner sub_agents list
@@ -192,11 +144,9 @@ phases:
     verify planner-sdk is selected, and verify the output plan quality.
 
     '
-  tasks:
+  tickets:
   - id: PO_005
     name: Create test plan and run through planner-sdk routing
-    status: completed
-    agent: test-runner
     description: '1. Create a temporary test plan folder with SDK-related context
 
       2. Run: agentic session orchestrate planning --plan <test_plan>
@@ -208,12 +158,14 @@ phases:
       5. Verify plan tasks include SDK migration patterns
 
       '
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
     target_files:
     - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
     - modules/AgenticGuidance/agents/planner/planner-sdk/process.yml
     - modules/AgenticGuidance/assets/definitions/agent-categories.yml
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
     success_criteria:
     - planner-sdk is chosen for SDK-related plans
     - Output plan contains accurate SDK references
@@ -225,16 +177,9 @@ phases:
     using the planning workflow.
 
     '
-  strategy: test-user-simulator
-  strategy_rationale: The planning workflow is invoked by agents (orchestration-planning)
-    and developers triggering planning. test-user-simulator can walk through the planning
-    journey and verify that SDK-related plans are correctly routed to planner-sdk
-    and produce quality output.
-  tasks:
+  tickets:
   - id: PO_006
     name: UAT - Validate SDK routing in planning workflow
-    status: completed
-    agent: test-user-simulator
     description: 'Simulate the orchestration-planning agent journey for an SDK-related
 
       objective:
@@ -251,20 +196,13 @@ phases:
       5. Verify plan output quality matches SDK architecture checklist in planner-sdk/manifest.yml
 
       '
+    status: completed
+    agent: test-user-simulator
     target_files:
     - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
     - modules/AgenticGuidance/agents/planner/planner-sdk/manifest.yml
-    user_stories:
-    - US-ORCH-003
-    acceptance_criteria:
-    - planner-sdk is invoked when plan context contains SDK keywords
-    - Planning workflow completes end-to-end without errors
-    - Output plan contains SDK API references matching architecture checklist
-    - Agent categories listing includes planner-sdk in planner sub_agents
   - id: PO_007
     name: UAT - Validate non-SDK plans are unaffected
-    status: completed
-    agent: test-user-simulator
     description: 'Simulate planning for a non-SDK objective to verify no regression:
 
 
@@ -278,11 +216,22 @@ phases:
       and Approval)
 
       '
+    status: completed
+    agent: test-user-simulator
     target_files:
     - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
-    user_stories:
-    - US-ORCH-004
-    acceptance_criteria:
-    - planner-build is selected for non-SDK plans (no regression)
-    - Review and approval flow works as before
-    - No unintended routing changes for standard build plans
+context: "The orchestration planning system needs two improvements:\n\n1. A dedicated\
+  \ planner-sdk agent that has Claude Agent SDK documentation\n   pre-loaded into\
+  \ its context. When planning work involves SDK integration,\n   the orchestrator\
+  \ routes to this planner instead of the generic planner-build.\n   This ensures\
+  \ plans contain accurate SDK API references, correct import\n   paths, and idiomatic\
+  \ async patterns from the start.\n\n2. The planning orchestration flow (planner_loop.py\
+  \ / PlannerLoopRunner)\n   should detect when plans involve SDK work and automatically\
+  \ route to\n   planner-sdk. This requires:\n   - Plan type detection for \"sdk\"\
+  \ type plans\n   - Context-based routing (plan context mentions \"SDK\", \"subprocess\"\
+  ,\n     \"session spawn\", \"claude-agent-sdk\")\n   - Planner-sdk process includes\
+  \ research steps to fetch latest SDK docs\n\nThe planner-sdk agent has already been\
+  \ created with:\n- manifest.yml: Architecture checklist + SDK knowledge sources\n\
+  - process.yml: Steps including SDK API reference, migration patterns, research\n\
+  - inputs.yml: Shared planner layers + SDK-specific file inputs\n\nThis plan completes\
+  \ the integration and adds intelligent routing.\n"

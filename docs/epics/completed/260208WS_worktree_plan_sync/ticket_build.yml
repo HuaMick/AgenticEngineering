@@ -1,0 +1,264 @@
+name: worktree-plan-sync-validation
+worktree_path: ''
+branch: ''
+status: active
+priority: medium
+objective: 'There is no validation to ensure worktrees and plans are in sync.
+
+  Plans can exist without corresponding worktrees (orphaned plans),
+
+  worktrees can exist without corresponding plans (stale worktrees),
+
+  and the worktree registry (docs/worktrees.yml) can drift from
+
+  actual `git worktree list` output.
+
+
+  The `agentic worktree validate` command will cross-reference all
+
+  three data sources and output a validation report with actionable
+
+  warnings. Non-zero exit code when validation fails enables CI use.
+
+  '
+created: ''
+phases:
+- name: Core Validation Functions
+  execution: sequential
+  tickets:
+  - id: WS-001
+    name: Add get_actual_worktrees() helper to worktree.py
+    description: 'Create a helper function that parses `git worktree list --porcelain`
+
+      output and returns a list of dicts with path and branch keys.
+
+      This refactors the parsing logic already duplicated in cmd_list()
+
+      and cmd_remove() into a reusable function.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: '1. Extract the porcelain parsing loop from cmd_list() lines 659-671
+
+      2. Create get_actual_worktrees(repo_root: Path) -> list[dict]
+
+      3. Each dict has: {"path": str, "branch": str}
+
+      4. Runs `git worktree list --porcelain` with cwd=repo_root
+
+      5. Return empty list on CalledProcessError
+
+      6. Refactor cmd_list() and cmd_remove() to use this helper
+
+      '
+  - id: WS-002
+    name: Add get_live_plan_folders() helper to worktree.py
+    description: 'Create a helper that scans docs/plans/live/ in the main worktree
+
+      and returns a list of plan folder names. Reuses pattern from
+
+      cmd_list() lines 678-682.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: '1. Create get_live_plan_folders(main_wt_path: Path) -> list[str]
+
+      2. Scans main_wt_path / "docs" / "plans" / "live"
+
+      3. Returns sorted list of directory names
+
+      4. Returns empty list if path doesn''t exist
+
+      '
+  - id: WS-003
+    name: Implement cmd_validate() core logic
+    description: 'Implement the main validation function that performs three checks:
+
+      1. Orphaned plans: plans without matching worktrees
+
+      2. Stale worktrees: non-main worktrees without matching plans
+
+      3. Registry drift: registry entries not matching actual worktrees
+
+
+      Uses get_actual_worktrees(), get_live_plan_folders(),
+
+      load_worktree_registry(), and _match_plans_to_branch().
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: "1. cmd_validate(args) function signature matches existing pattern\n\
+      2. Get data: actual worktrees, registry, live plan folders\n3. Orphaned plans\
+      \ check:\n   - For each plan folder, try to match to a worktree branch\n   \
+      \  using _match_plans_to_branch() in reverse (match plan to any branch)\n  \
+      \ - Plan folders with YYMMDDXX_desc format: extract abbreviation (pos 6-8)\n\
+      \   - Check if abbreviation matches any registry entry's branch\n   - Plans\
+      \ with no matching worktree = orphaned\n4. Stale worktrees check:\n   - For\
+      \ each non-main worktree, check if any plan matches its branch\n   - Use _match_plans_to_branch(plan_folders,\
+      \ branch, registry)\n   - Worktrees with no matching plans = stale\n5. Registry\
+      \ drift check:\n   - For each registry entry, check if its branch appears in\
+      \ actual worktrees\n   - Registry entries with no matching actual worktree =\
+      \ drifted\n   - Also check: actual worktrees not in registry = unregistered\n\
+      6. Build validation result dict with:\n   - orphaned_plans: list of plan folder\
+      \ names\n   - stale_worktrees: list of {path, branch} dicts\n   - registry_drift:\
+      \ {missing_worktrees: [...], unregistered: [...]}\n   - valid: bool (true if\
+      \ all lists empty)\n7. Return sys.exit(0) if valid, sys.exit(1) if not\n"
+- name: CLI Registration and Output Formatting
+  execution: sequential
+  tickets:
+  - id: WS-004
+    name: Add validate route to handle() in worktree.py
+    description: 'Add "validate" case to the handle() router and update the
+
+      usage message to include validate.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: '1. Add elif args.worktree_command == "validate": cmd_validate(args)
+
+      2. Update usage message: <create|list|remove|status|validate>
+
+      '
+  - id: WS-005
+    name: Register worktree validate command in cli.py
+    description: 'Add the Typer command registration for `agentic worktree validate`.
+
+      No arguments needed - it auto-discovers everything from repo root.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "1. Add after worktree_status (line 631):\n   @worktree_app.command(\"\
+      validate\")\n   def worktree_validate():\n       \"\"\"Validate worktree-plan\
+      \ synchronization.\"\"\"\n       _worktree_handle(_ns(\n           command=\"\
+      worktree\", worktree_command=\"validate\",\n           json=_global[\"json\"\
+      ], debug=_global[\"debug\"],\n       ))\n2. Follow existing pattern from worktree_list\
+      \ and worktree_status\n"
+  - id: WS-006
+    name: Add human-readable output formatting to cmd_validate()
+    description: 'Add rich console output for validation results when not in JSON
+      mode.
+
+      Shows warnings for each category with colored output.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    guidance: "1. Import print_header, print_warning, print_success, print_json,\n\
+      \   is_json_output, console from agenticcli.console\n2. Human output:\n   -\
+      \ print_header(\"Worktree Validation\")\n   - Section: \"Orphaned Plans\" with\
+      \ yellow warnings per plan\n   - Section: \"Stale Worktrees\" with yellow warnings\
+      \ per worktree\n   - Section: \"Registry Drift\" with yellow warnings per drift\
+      \ item\n   - Final: green \"All checks passed\" or red \"N issues found\"\n\
+      3. JSON output: print_json(validation_result_dict)\n4. Exit code: 0 if valid,\
+      \ 1 if any issues\n"
+- name: Unit Tests
+  execution: sequential
+  tickets:
+  - id: WS-007
+    name: Add TestWorktreeValidate class to test_worktree.py
+    description: 'Add comprehensive unit tests for the validation logic.
+
+      Tests use tmp_path fixtures and mock subprocess for git calls.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/test_worktree.py
+    - modules/AgenticCLI/tests/conftest.py
+    target_files:
+    - modules/AgenticCLI/tests/test_worktree.py
+    guidance: "Test cases for helper functions:\n1. test_get_actual_worktrees_parses_porcelain\
+      \ - mock subprocess,\n   verify parsed output matches expected dicts\n2. test_get_actual_worktrees_empty_on_error\
+      \ - subprocess failure\n   returns empty list\n3. test_get_live_plan_folders_finds_dirs\
+      \ - create dirs in tmp_path,\n   verify list matches\n4. test_get_live_plan_folders_empty_if_no_dir\
+      \ - missing path\n   returns empty list\n\nTest cases for validation logic (mock\
+      \ all helpers):\n5. test_validate_all_clean - no orphans, stale, or drift ->\
+      \ exit 0\n6. test_validate_orphaned_plans - plan folder with no matching worktree\n\
+      7. test_validate_stale_worktrees - worktree with no matching plan\n8. test_validate_registry_drift_missing\
+      \ - registry entry for\n   non-existent worktree\n9. test_validate_registry_drift_unregistered\
+      \ - actual worktree\n   not in registry\n10. test_validate_json_output - verify\
+      \ JSON structure with --json flag\n\nPattern: Use @patch(\"subprocess.run\"\
+      ) for git worktree list,\ncreate temp dirs for plans and registry, use tmp_path\
+      \ fixture.\n"
+  - id: WS-008
+    name: Add CLI integration test for worktree validate
+    description: 'Add integration test using cli_runner fixture to verify
+
+      the command is registered and runs end-to-end.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/conftest.py
+    target_files:
+    - modules/AgenticCLI/tests/test_worktree.py
+    guidance: "1. test_validate_help - cli_runner([\"worktree\", \"validate\", \"\
+      --help\"])\n   checks exit 0 and \"validate\" in output\n2. test_validate_in_git_repo\
+      \ - cli_runner([\"worktree\", \"validate\"])\n   runs in temp git repo, should\
+      \ succeed (no orphans in empty repo)\n3. test_validate_json_output - cli_runner([\"\
+      --json\", \"worktree\", \"validate\"])\n   returns valid JSON with expected\
+      \ keys\n"
+- name: Validation Gate
+  execution: sequential
+  tickets:
+  - id: WS-009
+    name: Run full test suite and verify no regressions
+    description: 'Run pytest on modules/AgenticCLI/tests/ to verify all
+
+      existing tests still pass alongside new validation tests.
+
+      '
+    status: completed
+    agent: null
+    guidance: '1. Run: python3 -m pytest modules/AgenticCLI/tests/ -v
+
+      2. All tests must pass
+
+      3. No import errors or fixture failures
+
+      '
+context: 'There is no validation to ensure worktrees and plans are in sync.
+
+  Plans can exist without corresponding worktrees (orphaned plans),
+
+  worktrees can exist without corresponding plans (stale worktrees),
+
+  and the worktree registry (docs/worktrees.yml) can drift from
+
+  actual `git worktree list` output.
+
+
+  The `agentic worktree validate` command will cross-reference all
+
+  three data sources and output a validation report with actionable
+
+  warnings. Non-zero exit code when validation fails enables CI use.
+
+  '

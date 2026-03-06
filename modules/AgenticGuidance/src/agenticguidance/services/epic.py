@@ -336,12 +336,11 @@ class EpicMovementWorkflow:
         if not task_removed:
             phases = plan.get("phases", [])
             for phase in phases:
-                ticket_key = "tickets" if "tickets" in phase else "tasks"
-                phase_tasks = phase.get(ticket_key, [])
+                phase_tasks = phase.get("tickets", [])
                 if phase_tasks:
                     original_len = len(phase_tasks)
-                    phase[ticket_key] = [t for t in phase_tasks if t.get("id") != task_id]
-                    if len(phase[ticket_key]) < original_len:
+                    phase["tickets"] = [t for t in phase_tasks if t.get("id") != task_id]
+                    if len(phase["tickets"]) < original_len:
                         task_removed = True
                         break
 
@@ -1028,7 +1027,7 @@ pending
         all_tasks = []
 
         for phase in phases_data:
-            phase_tasks = phase.get("tickets", phase.get("tasks", []))
+            phase_tasks = phase.get("tickets", [])
             task_data_list = []
 
             for task in phase_tasks:
@@ -1449,10 +1448,10 @@ pending
 
                 # Warn about phases with no tickets
                 phase_name = phase.get("name", phase_id or "unnamed")
-                if "tickets" not in phase and "tasks" not in phase or not phase.get("tickets", phase.get("tasks")):
+                if not phase.get("tickets"):
                     warnings.append(f"Phase '{phase_name}' has no tickets")
 
-                for task in phase.get("tickets", phase.get("tasks", [])):
+                for task in phase.get("tickets", []):
                     task_id = task.get("id", "")
                     if task_id:
                         if task_id in all_task_ids:

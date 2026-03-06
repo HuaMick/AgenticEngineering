@@ -1,602 +1,465 @@
-# Epic: Adopt Tickets Terminology
-# Epic ID: 260305AG
-# Created: 2026-03-05
-# Status: active
-# Planner: planner-build
+name: adopt_tickets_terminology
+worktree_path: ''
+branch: main
+status: active
+priority: high
+objective: 'Migrate the codebase from using the ''tasks'' key to ''tickets'' key as
+  the
 
-name: "adopt_tickets_terminology"
-branch: "main"
-status: "active"
-priority: "high"
-plan_type: "build"
-
-objective: |
-  Migrate the codebase from using the 'tasks' key to 'tickets' key as the
   canonical terminology for work items within epic phases. The YAML schema
-  already uses 'tickets' but several code paths look for 'tasks' only,
+
+  already uses ''tickets'' but several code paths look for ''tasks'' only,
+
   causing tickets to be invisible. After fixing with fallback, do a clean
-  break: remove all fallback patterns so the codebase uses ONLY 'tickets'.
 
-context: |
-  Diagnosed 2026-03-05. The plan_build.yml for epic
-  260303AG_reduce_orchestration_context_overflow has 8 pending tickets
-  under phases[].tickets[], but `agentic epic list` shows 0 pending
-  because some code paths use phase.get("tasks", []) without fallback
-  to "tickets".
+  break: remove all fallback patterns so the codebase uses ONLY ''tickets''.
 
-  CODE ANALYSIS RESULTS:
-  - ALREADY FIXED: modules/AgenticCLI/src/agenticcli/commands/epic.py
-    Already uses phase.get("tickets", phase.get("tasks", [])) at 14+ locations.
-  - ALREADY FIXED: modules/AgenticGuidance/src/agenticguidance/services/epic.py
-    Uses fallback pattern and smart key detection.
-  - ALREADY FIXED: modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
-    import_from_yaml uses fallback; export_to_yaml writes "tickets".
-  - BROKEN: modules/AgenticGuidance/src/agenticguidance/services/ticket.py
-    Lines 199, 247, 296, 365: uses ONLY phase.get("tasks", []) — NO fallback.
-  - BROKEN: modules/AgenticGuidance/src/agenticguidance/services/context.py
-    Line 258: uses ONLY phase.get("tasks", []) — NO fallback.
-  - BROKEN: modules/AgenticGuidance/src/agenticguidance/services/ralph.py
-    Line 299: uses ONLY phase.get("tasks", []) — NO fallback.
-  - BROKEN: modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
-    Line 741: uses ONLY phase.get("tasks", []) — NO fallback.
-  - TESTS: Several test files construct phase data using "tasks" key only.
-  - ALL OPEN EPICS: Already use 'tickets:' key in YAML — no YAML migration needed.
-
-  CLEAN BREAK SCOPE (after fallback is applied everywhere):
-  Remove all phase.get("tickets", phase.get("tasks", [])) fallback patterns
-  and replace with just phase.get("tickets", []). Total 24 locations:
-  - epic.py CLI: 13 locations
-  - epic.py service: 3 locations
-  - epic_repository.py: 1 location
-  - ticket.py: 4 locations (after build_001 fix)
-  - context.py: 1 location (after build_002 fix)
-  - ralph.py: 1 location (after build_003 fix)
-  - planner_loop.py: 1 location (after build_003b fix)
-
-  SECONDARY CHANGE (already complete):
-  The `agentic epic list` display already treats in_progress as pending
-  (lines 1305-1306, 2897-2898) and has no separate "In Prog" column.
-  The table columns are: Epic, Status, Orch, Action, Pending, Done, Progress.
-  No further changes needed for In Prog column removal.
-
-affected_stories:
-  - "US-CLI-012"  # View Epic Status — ticket counts must be correct
-  - "US-CLI-013"  # List All Epics — pending/done counts must reflect actual YAML data
-
-impacted_artifacts:
-  - artifact_type: service
-    artifact_identifier: "TicketService (ticket.py)"
-    impact_type: behavior_change
-    description: "Fix phase ticket extraction to read 'tickets' key with 'tasks' fallback"
-    breaking_change: false
-
-  - artifact_type: service
-    artifact_identifier: "MainFirstEpicResolver (context.py)"
-    impact_type: behavior_change
-    description: "Fix phase ticket extraction to read 'tickets' key with 'tasks' fallback"
-    breaking_change: false
-
-  - artifact_type: service
-    artifact_identifier: "RalphService (ralph.py)"
-    impact_type: behavior_change
-    description: "Fix phase ticket extraction to read 'tickets' key with 'tasks' fallback"
-    breaking_change: false
-
-  - artifact_type: cli_command
-    artifact_identifier: "agentic epic list"
-    impact_type: behavior_change
-    description: "Ticket counts now correctly reflect YAML 'tickets' key data"
-    breaking_change: false
-
-# ========================================
-# LOOP STRUCTURES
-# ========================================
-loop_structures:
-  - id: "loop_build_validation"
-    type: "test-fix-loop"
-    applies_to_phase: "Validation Phase"
-    trigger: "After implementation tickets complete"
-    description: |
-      Run existing test suites to verify the key migration didn't break
-      anything, fix any failures found.
-    exit_criteria:
-      success: "All existing tests pass + new tests for 'tickets' key pass"
-      max_iterations: 3
-      escalation: "Escalate to user with test results"
-
-# ========================================
-# PHASES AND TICKETS
-# ========================================
+  '
+created: ''
 phases:
-  # ----------------------------------------
-  # PHASE 1: Implementation — Fix broken code paths
-  # ----------------------------------------
-  - name: "Implementation Phase"
-    execution: sequential
-    description: |
-      Update the four files that use ONLY phase.get("tasks", [])
-      to use the canonical fallback pattern: phase.get("tickets", phase.get("tasks", [])).
-      This ensures both old YAML files (with "tasks" key) and new YAML files
-      (with "tickets" key) are handled correctly.
-    tickets:
-      - id: "build_001"
-        name: "Fix ticket.py — adopt tickets key with tasks fallback"
-        description: |
-          Update TicketService in ticket.py to read 'tickets' key first,
-          falling back to 'tasks' for backward compatibility.
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticGuidance/src/agenticguidance/services/ticket.py"
-        inputs:
-          - "modules/AgenticGuidance/src/agenticguidance/services/ticket.py"
-          - "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
-        guidance: |
-          WHAT TO CHANGE:
-          There are 4 locations in ticket.py that use phase.get("tasks", []).
-          Each must be updated to phase.get("tickets", phase.get("tasks", [])).
+- name: Implementation Phase
+  execution: sequential
+  description: 'Update the four files that use ONLY phase.get("tasks", [])
 
-          SPECIFIC LINES (verify before editing — line numbers may shift):
-          - Line 199: tasks = phase.get("tasks", [])
-          - Line 247: tasks = phase.get("tasks", [])
-          - Line 296: tasks = phase.get("tasks", [])
-          - Line 365: tasks = phase.get("tasks", [])
+    to use the canonical fallback pattern: phase.get("tickets", phase.get("tasks",
+    [])).
 
-          PATTERN TO APPLY:
-            # Before:
-            tasks = phase.get("tasks", [])
-            # After:
-            tasks = phase.get("tickets", phase.get("tasks", []))
+    This ensures both old YAML files (with "tasks" key) and new YAML files
 
-          REFERENCE: epic.py already uses this pattern correctly.
-          Do NOT rename the local variable `tasks` — it refers to the list items,
-          and renaming it would cascade through many lines unnecessarily.
+    (with "tickets" key) are handled correctly.
 
-          BACKWARD COMPATIBILITY: The fallback to "tasks" ensures old YAML files
-          that still use the "tasks" key continue to work.
-        success_criteria:
-          - "All 4 occurrences of phase.get('tasks', []) in ticket.py replaced with fallback pattern"
-          - "No other changes to ticket.py logic"
-          - "Existing tests still pass"
+    '
+  tickets:
+  - id: build_001
+    name: Fix ticket.py — adopt tickets key with tasks fallback
+    description: 'Update TicketService in ticket.py to read ''tickets'' key first,
 
-      - id: "build_002"
-        name: "Fix context.py — adopt tickets key with tasks fallback"
-        description: |
-          Update MainFirstEpicResolver in context.py to read 'tickets' key first.
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticGuidance/src/agenticguidance/services/context.py"
-        inputs:
-          - "modules/AgenticGuidance/src/agenticguidance/services/context.py"
-          - "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
-        guidance: |
-          WHAT TO CHANGE:
-          There is 1 location in context.py that uses phase.get("tasks", []).
+      falling back to ''tasks'' for backward compatibility.
 
-          SPECIFIC LINE (verify before editing):
-          - Line 258: for task in phase.get("tasks", []):
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+    - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+    guidance: "WHAT TO CHANGE:\nThere are 4 locations in ticket.py that use phase.get(\"\
+      tasks\", []).\nEach must be updated to phase.get(\"tickets\", phase.get(\"tasks\"\
+      , [])).\n\nSPECIFIC LINES (verify before editing — line numbers may shift):\n\
+      - Line 199: tasks = phase.get(\"tasks\", [])\n- Line 247: tasks = phase.get(\"\
+      tasks\", [])\n- Line 296: tasks = phase.get(\"tasks\", [])\n- Line 365: tasks\
+      \ = phase.get(\"tasks\", [])\n\nPATTERN TO APPLY:\n  # Before:\n  tasks = phase.get(\"\
+      tasks\", [])\n  # After:\n  tasks = phase.get(\"tickets\", phase.get(\"tasks\"\
+      , []))\n\nREFERENCE: epic.py already uses this pattern correctly.\nDo NOT rename\
+      \ the local variable `tasks` — it refers to the list items,\nand renaming it\
+      \ would cascade through many lines unnecessarily.\n\nBACKWARD COMPATIBILITY:\
+      \ The fallback to \"tasks\" ensures old YAML files\nthat still use the \"tasks\"\
+      \ key continue to work.\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - All 4 occurrences of phase.get('tasks', []) in ticket.py replaced with fallback
+      pattern
+    - No other changes to ticket.py logic
+    - Existing tests still pass
+  - id: build_002
+    name: Fix context.py — adopt tickets key with tasks fallback
+    description: 'Update MainFirstEpicResolver in context.py to read ''tickets'' key
+      first.
 
-          PATTERN TO APPLY:
-            # Before:
-            for task in phase.get("tasks", []):
-            # After:
-            for task in phase.get("tickets", phase.get("tasks", [])):
-        success_criteria:
-          - "The single occurrence of phase.get('tasks', []) in context.py replaced with fallback pattern"
-          - "No other changes to context.py logic"
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    guidance: "WHAT TO CHANGE:\nThere is 1 location in context.py that uses phase.get(\"\
+      tasks\", []).\n\nSPECIFIC LINE (verify before editing):\n- Line 258: for task\
+      \ in phase.get(\"tasks\", []):\n\nPATTERN TO APPLY:\n  # Before:\n  for task\
+      \ in phase.get(\"tasks\", []):\n  # After:\n  for task in phase.get(\"tickets\"\
+      , phase.get(\"tasks\", [])):\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - The single occurrence of phase.get('tasks', []) in context.py replaced with
+      fallback pattern
+    - No other changes to context.py logic
+  - id: build_003
+    name: Fix ralph.py — adopt tickets key with tasks fallback
+    description: 'Update RalphService._parse_plan_stats() in ralph.py to read ''tickets''
+      key first.
 
-      - id: "build_003"
-        name: "Fix ralph.py — adopt tickets key with tasks fallback"
-        description: |
-          Update RalphService._parse_plan_stats() in ralph.py to read 'tickets' key first.
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticGuidance/src/agenticguidance/services/ralph.py"
-        inputs:
-          - "modules/AgenticGuidance/src/agenticguidance/services/ralph.py"
-          - "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
-        guidance: |
-          WHAT TO CHANGE:
-          There is 1 location in ralph.py that uses phase.get("tasks", []).
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    guidance: "WHAT TO CHANGE:\nThere is 1 location in ralph.py that uses phase.get(\"\
+      tasks\", []).\n\nSPECIFIC LINE (verify before editing):\n- Line 299: tasks =\
+      \ phase.get(\"tasks\", [])\n\nPATTERN TO APPLY:\n  # Before:\n  tasks = phase.get(\"\
+      tasks\", [])\n  # After:\n  tasks = phase.get(\"tickets\", phase.get(\"tasks\"\
+      , []))\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - The single occurrence of phase.get('tasks', []) in _parse_plan_stats replaced
+      with fallback pattern
+    - No other changes to ralph.py logic
+  - id: build_003b
+    name: Fix planner_loop.py — adopt tickets key with tasks fallback
+    description: 'Update planner_loop.py to read ''tickets'' key first with ''tasks''
+      fallback.
 
-          SPECIFIC LINE (verify before editing):
-          - Line 299: tasks = phase.get("tasks", [])
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    guidance: "WHAT TO CHANGE:\nThere is 1 location in planner_loop.py that uses phase.get(\"\
+      tasks\", []).\n\nSPECIFIC LINE (verify before editing):\n- Line 741: for task\
+      \ in phase.get(\"tasks\", []):\n\nPATTERN TO APPLY:\n  # Before:\n  for task\
+      \ in phase.get(\"tasks\", []):\n  # After:\n  for task in phase.get(\"tickets\"\
+      , phase.get(\"tasks\", [])):\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - The single occurrence of phase.get('tasks', []) in planner_loop.py replaced
+      with fallback pattern
+    - No other changes to planner_loop.py logic
+- name: Test Updates Phase
+  execution: sequential
+  description: 'Update test files that construct phase data using the "tasks" key
 
-          PATTERN TO APPLY:
-            # Before:
-            tasks = phase.get("tasks", [])
-            # After:
-            tasks = phase.get("tickets", phase.get("tasks", []))
-        success_criteria:
-          - "The single occurrence of phase.get('tasks', []) in _parse_plan_stats replaced with fallback pattern"
-          - "No other changes to ralph.py logic"
+    to use the "tickets" key instead, ensuring tests validate the
 
-      - id: "build_003b"
-        name: "Fix planner_loop.py — adopt tickets key with tasks fallback"
-        description: |
-          Update planner_loop.py to read 'tickets' key first with 'tasks' fallback.
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
-        inputs:
-          - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
-        guidance: |
-          WHAT TO CHANGE:
-          There is 1 location in planner_loop.py that uses phase.get("tasks", []).
+    canonical schema. Keep a few tests that verify backward compat
 
-          SPECIFIC LINE (verify before editing):
-          - Line 741: for task in phase.get("tasks", []):
+    with the "tasks" key.
 
-          PATTERN TO APPLY:
-            # Before:
-            for task in phase.get("tasks", []):
-            # After:
-            for task in phase.get("tickets", phase.get("tasks", [])):
-        success_criteria:
-          - "The single occurrence of phase.get('tasks', []) in planner_loop.py replaced with fallback pattern"
-          - "No other changes to planner_loop.py logic"
+    '
+  tickets:
+  - id: build_004
+    name: Update AgenticGuidance test files to use tickets key
+    description: 'Update test data fixtures and assertions in AgenticGuidance tests
 
-  # ----------------------------------------
-  # PHASE 2: Test Updates — Fix test data structures
-  # ----------------------------------------
-  - name: "Test Updates Phase"
-    execution: sequential
-    description: |
-      Update test files that construct phase data using the "tasks" key
-      to use the "tickets" key instead, ensuring tests validate the
-      canonical schema. Keep a few tests that verify backward compat
-      with the "tasks" key.
-    tickets:
-      - id: "build_004"
-        name: "Update AgenticGuidance test files to use tickets key"
-        description: |
-          Update test data fixtures and assertions in AgenticGuidance tests
-          to use "tickets" as the phase key.
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticGuidance/tests/test_services_task.py"
-          - "modules/AgenticGuidance/tests/test_integration_ralph_loop.py"
-        inputs:
-          - "modules/AgenticGuidance/tests/test_services_task.py"
-          - "modules/AgenticGuidance/tests/test_integration_ralph_loop.py"
-          - "modules/AgenticGuidance/tests/test_uat_tinydb_yaml_compat.py"
-        guidance: |
-          WHAT TO CHANGE:
-          1. test_services_task.py line 688:
-             Change: for ticket_data in phase.get("tasks", []):
-             To:     for ticket_data in phase.get("tickets", phase.get("tasks", [])):
+      to use "tickets" as the phase key.
 
-          2. test_integration_ralph_loop.py line 80:
-             Change: for task in phase.get("tasks", []):
-             To:     for task in phase.get("tickets", phase.get("tasks", [])):
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+    - modules/AgenticGuidance/tests/test_uat_tinydb_yaml_compat.py
+    target_files:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+    guidance: "WHAT TO CHANGE:\n1. test_services_task.py line 688:\n   Change: for\
+      \ ticket_data in phase.get(\"tasks\", []):\n   To:     for ticket_data in phase.get(\"\
+      tickets\", phase.get(\"tasks\", [])):\n\n2. test_integration_ralph_loop.py line\
+      \ 80:\n   Change: for task in phase.get(\"tasks\", []):\n   To:     for task\
+      \ in phase.get(\"tickets\", phase.get(\"tasks\", [])):\n\n3. Also update any\
+      \ test YAML fixtures/data that construct phase dicts\n   with \"tasks\" key\
+      \ — change to \"tickets\" key.\n\nNOTE: test_uat_tinydb_yaml_compat.py line\
+      \ 348 already uses the fallback\npattern — no changes needed there. Read it\
+      \ for reference.\n\nIMPORTANT: If any tests construct inline YAML with \"tasks\"\
+      \ as the\nphase sub-key, update those to \"tickets\". The test assertions should\n\
+      validate the canonical schema, not the legacy one.\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - All phase.get('tasks', []) in test files updated to fallback pattern
+    - Test fixture data uses 'tickets' key where constructing phase data
+    - All existing tests still pass
+  - id: build_005
+    name: Update AgenticCLI test files to use tickets key
+    description: 'Update test data fixtures and assertions in AgenticCLI tests
 
-          3. Also update any test YAML fixtures/data that construct phase dicts
-             with "tasks" key — change to "tickets" key.
+      to use "tickets" as the phase key.
 
-          NOTE: test_uat_tinydb_yaml_compat.py line 348 already uses the fallback
-          pattern — no changes needed there. Read it for reference.
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticCLI/tests/test_plan_bootstrap.py
+    - modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py
+    - modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_bootstrap.py
+    - modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py
+    - modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+    guidance: "WHAT TO CHANGE:\n1. test_plan_bootstrap.py line 355:\n   Change: assert\
+      \ \"tasks\" in data[\"phases\"][0]\n   To:     assert \"tickets\" in data[\"\
+      phases\"][0]\n   Also update the fixture data that constructs phases with \"\
+      tasks\" key\n   to use \"tickets\" instead.\n\n2. test_bootstrap_planner_workflow.py\
+      \ line 148:\n   Change: assert \"tasks\" in plan_data[\"phases\"][0]\n   To:\
+      \     assert \"tickets\" in plan_data[\"phases\"][0]\n   Also update fixture\
+      \ data.\n\n3. test_plan_creation_flow.py line 209:\n   Change: total_tasks =\
+      \ sum(len(p.get(\"tasks\", [])) for p in phases)\n   To:     total_tasks = sum(len(p.get(\"\
+      tickets\", p.get(\"tasks\", []))) for p in phases)\n\nIMPORTANT: For each assertion\
+      \ change, also find the test fixture/data\nthat populates the phases and update\
+      \ the key from \"tasks\" to \"tickets\".\nThe test should validate the canonical\
+      \ schema.\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - All test assertions check for 'tickets' key (not 'tasks')
+    - Test fixture data constructs phases with 'tickets' key
+    - All existing tests still pass
+- name: Validation Phase
+  execution: sequential
+  description: 'Run the full test suites for both modules to verify no regressions.
 
-          IMPORTANT: If any tests construct inline YAML with "tasks" as the
-          phase sub-key, update those to "tickets". The test assertions should
-          validate the canonical schema, not the legacy one.
-        success_criteria:
-          - "All phase.get('tasks', []) in test files updated to fallback pattern"
-          - "Test fixture data uses 'tickets' key where constructing phase data"
-          - "All existing tests still pass"
+    Also verify the fix works end-to-end by checking that the
 
-      - id: "build_005"
-        name: "Update AgenticCLI test files to use tickets key"
-        description: |
-          Update test data fixtures and assertions in AgenticCLI tests
-          to use "tickets" as the phase key.
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
-          - "modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py"
-          - "modules/AgenticCLI/tests/integration/test_plan_creation_flow.py"
-        inputs:
-          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
-          - "modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py"
-          - "modules/AgenticCLI/tests/integration/test_plan_creation_flow.py"
-        guidance: |
-          WHAT TO CHANGE:
-          1. test_plan_bootstrap.py line 355:
-             Change: assert "tasks" in data["phases"][0]
-             To:     assert "tickets" in data["phases"][0]
-             Also update the fixture data that constructs phases with "tasks" key
-             to use "tickets" instead.
+    260303AG epic correctly shows its pending ticket counts.
 
-          2. test_bootstrap_planner_workflow.py line 148:
-             Change: assert "tasks" in plan_data["phases"][0]
-             To:     assert "tickets" in plan_data["phases"][0]
-             Also update fixture data.
+    '
+  tickets:
+  - id: val_001
+    name: Run AgenticGuidance test suite
+    description: Run full pytest suite for AgenticGuidance module
+    status: completed
+    agent: test-runner
+    target_files:
+    - modules/AgenticGuidance/tests/
+    guidance: 'Run: cd modules/AgenticGuidance && python3 -m pytest tests/ -x -q
 
-          3. test_plan_creation_flow.py line 209:
-             Change: total_tasks = sum(len(p.get("tasks", [])) for p in phases)
-             To:     total_tasks = sum(len(p.get("tickets", p.get("tasks", []))) for p in phases)
+      All tests must pass. If any fail due to the "tasks" → "tickets"
 
-          IMPORTANT: For each assertion change, also find the test fixture/data
-          that populates the phases and update the key from "tasks" to "tickets".
-          The test should validate the canonical schema.
-        success_criteria:
-          - "All test assertions check for 'tickets' key (not 'tasks')"
-          - "Test fixture data constructs phases with 'tickets' key"
-          - "All existing tests still pass"
+      migration, fix the root cause (not the test).
 
-  # ----------------------------------------
-  # PHASE 3: Validation
-  # ----------------------------------------
-  - name: "Validation Phase"
-    execution: sequential
-    description: |
-      Run the full test suites for both modules to verify no regressions.
-      Also verify the fix works end-to-end by checking that the
-      260303AG epic correctly shows its pending ticket counts.
-    tickets:
-      - id: "val_001"
-        name: "Run AgenticGuidance test suite"
-        description: "Run full pytest suite for AgenticGuidance module"
-        status: "pending"
-        agent: "test-runner"
-        loop: "test-fix-loop"
-        target_files:
-          - "modules/AgenticGuidance/tests/"
-        guidance: |
-          Run: cd modules/AgenticGuidance && python3 -m pytest tests/ -x -q
-          All tests must pass. If any fail due to the "tasks" → "tickets"
-          migration, fix the root cause (not the test).
-        success_criteria:
-          - "All AgenticGuidance tests pass"
-          - "No new test failures introduced"
+      '
+    completed_date: '2026-03-06'
+    success_criteria:
+    - All AgenticGuidance tests pass
+    - No new test failures introduced
+  - id: val_002
+    name: Run AgenticCLI test suite
+    description: Run full pytest suite for AgenticCLI module
+    status: completed
+    agent: test-runner
+    target_files:
+    - modules/AgenticCLI/tests/
+    guidance: 'Run: cd modules/AgenticCLI && python3 -m pytest tests/ -x -q
 
-      - id: "val_002"
-        name: "Run AgenticCLI test suite"
-        description: "Run full pytest suite for AgenticCLI module"
-        status: "pending"
-        agent: "test-runner"
-        loop: "test-fix-loop"
-        target_files:
-          - "modules/AgenticCLI/tests/"
-        guidance: |
-          Run: cd modules/AgenticCLI && python3 -m pytest tests/ -x -q
-          All tests must pass. If any fail due to the "tasks" → "tickets"
-          migration, fix the root cause (not the test).
-        success_criteria:
-          - "All AgenticCLI tests pass"
-          - "No new test failures introduced"
+      All tests must pass. If any fail due to the "tasks" → "tickets"
 
-  # ----------------------------------------
-  # PHASE 4: UAT — Story-anchored acceptance tests
-  # ----------------------------------------
-  - name: "UAT Phase"
-    execution: sequential
-    description: |
-      User acceptance tests that validate the fix from the user's perspective,
-      anchored to the affected stories. Run real CLI binary commands (no mocking)
-      to confirm that ticket counts displayed in the CLI are correct.
-    tickets:
-      - id: "uat_001"
-        name: "UAT — agentic epic list and show display correct ticket counts"
-        description: |
-          Verify end-to-end that `agentic epic list` and `agentic epic show`
-          correctly display pending and done ticket counts after the tasks->tickets
-          key migration. This validates US-CLI-012 (View Epic Status) and
-          US-CLI-013 (List All Epics).
-        status: "pending"
-        agent: "test-runner"
-        affected_stories:
-          - "US-CLI-012"  # View Epic Status — ticket counts must be correct
-          - "US-CLI-013"  # List All Epics — pending/done counts must reflect actual YAML data
-        story_traceability:
-          US-CLI-012: "agentic epic show displays correct pending/done counts for a real epic"
-          US-CLI-013: "agentic epic list shows non-zero pending counts for epics with tickets key"
-        target_files: []
-        inputs:
-          - "docs/epics/live/260305AG_adopt_tickets_terminology/ticket_build.yml"
-        guidance: |
-          Run real CLI binary commands only — do NOT mock or simulate.
+      migration, fix the root cause (not the test).
 
-          STEP 1 — List all epics and capture counts:
-            Run: agentic epic list
-            Verify: 260303AG_reduce_orchestration_context_overflow shows pending > 0 (expected: 8)
-            Verify: No epics that have tickets in their YAML show 0 pending when they should not
+      '
+    completed_date: '2026-03-06'
+    success_criteria:
+    - All AgenticCLI tests pass
+    - No new test failures introduced
+- name: UAT Phase
+  execution: sequential
+  description: 'User acceptance tests that validate the fix from the user''s perspective,
 
-          STEP 2 — Show a specific epic:
-            Run: agentic epic show 260303AG_reduce_orchestration_context_overflow
-            Verify: Pending ticket count matches actual tickets in its phase YAML (expected: 8)
-            Verify: Done count is accurate
+    anchored to the affected stories. Run real CLI binary commands (no mocking)
 
-          STEP 3 — Confirm current epic counts are self-consistent:
-            Run: agentic epic list
-            Verify: This epic (260305AG) shows its own ticket counts correctly
+    to confirm that ticket counts displayed in the CLI are correct.
 
-          ACCEPTANCE GATE:
-          - `agentic epic list` shows correct pending counts (not 0) for epics using the tickets key
-          - `agentic epic show` displays correct breakdown for at least one verified epic
-          - No regression: epics that previously showed correct counts still do
-        success_criteria:
-          - "US-CLI-012: agentic epic show displays correct pending and done counts for 260303AG epic"
-          - "US-CLI-013: agentic epic list shows pending count of 8 (not 0) for 260303AG epic"
-          - "No epics show incorrect counts after the migration"
-          - "Real CLI binary executed — no mocking or simulation used"
+    '
+  tickets:
+  - id: uat_001
+    name: UAT — agentic epic list and show display correct ticket counts
+    description: 'Verify end-to-end that `agentic epic list` and `agentic epic show`
 
-  # ----------------------------------------
-  # PHASE 5: Clean Break — Remove all fallback patterns
-  # ----------------------------------------
-  - name: "Clean Break Phase"
-    execution: sequential
-    description: |
-      Remove all phase.get("tickets", phase.get("tasks", [])) fallback patterns
-      and replace with just phase.get("tickets", []). All open epics already use
-      the 'tickets' key in YAML, so the 'tasks' fallback is no longer needed.
-      This completes the migration to a single canonical key.
-    tickets:
-      - id: "clean_001"
-        name: "Clean break — epic.py CLI (13 locations)"
-        description: |
-          Remove tasks fallback from all 13 locations in the CLI epic.py command file.
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
-        inputs:
-          - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
-        guidance: |
-          WHAT TO CHANGE:
-          Replace ALL occurrences of:
-            phase.get("tickets", phase.get("tasks", []))
-          With:
-            phase.get("tickets", [])
+      correctly display pending and done ticket counts after the tasks->tickets
 
-          There are 13 locations at approximately these lines:
-          248, 929, 1052, 1753, 2144, 2269, 2457, 3175, 3316, 3607, 3856, 4098, 4274
+      key migration. This validates US-CLI-012 (View Epic Status) and
 
-          Use replace-all or search-and-replace. Verify no phase.get("tasks" remains.
+      US-CLI-013 (List All Epics).
 
-          ALSO: Check for any remaining "tasks" key references in write paths
-          (e.g., code that creates phase dicts with "tasks" key). These should
-          use "tickets" only.
-        success_criteria:
-          - "Zero occurrences of phase.get('tasks' in epic.py CLI"
-          - "All 13 locations use phase.get('tickets', [])"
-          - "No write paths create 'tasks' key in phase dicts"
+      '
+    status: completed
+    agent: test-runner
+    inputs:
+    - docs/epics/live/260305AG_adopt_tickets_terminology/ticket_build.yml
+    guidance: "Run real CLI binary commands only — do NOT mock or simulate.\n\nSTEP\
+      \ 1 — List all epics and capture counts:\n  Run: agentic epic list\n  Verify:\
+      \ 260303AG_reduce_orchestration_context_overflow shows pending > 0 (expected:\
+      \ 8)\n  Verify: No epics that have tickets in their YAML show 0 pending when\
+      \ they should not\n\nSTEP 2 — Show a specific epic:\n  Run: agentic epic show\
+      \ 260303AG_reduce_orchestration_context_overflow\n  Verify: Pending ticket count\
+      \ matches actual tickets in its phase YAML (expected: 8)\n  Verify: Done count\
+      \ is accurate\n\nSTEP 3 — Confirm current epic counts are self-consistent:\n\
+      \  Run: agentic epic list\n  Verify: This epic (260305AG) shows its own ticket\
+      \ counts correctly\n\nACCEPTANCE GATE:\n- `agentic epic list` shows correct\
+      \ pending counts (not 0) for epics using the tickets key\n- `agentic epic show`\
+      \ displays correct breakdown for at least one verified epic\n- No regression:\
+      \ epics that previously showed correct counts still do\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - 'US-CLI-012: agentic epic show displays correct pending and done counts for
+      260303AG epic'
+    - 'US-CLI-013: agentic epic list shows pending count of 8 (not 0) for 260303AG
+      epic'
+    - No epics show incorrect counts after the migration
+    - Real CLI binary executed — no mocking or simulation used
+- name: Clean Break Phase
+  execution: sequential
+  description: 'Remove all phase.get("tickets", phase.get("tasks", [])) fallback patterns
 
-      - id: "clean_002"
-        name: "Clean break — epic.py service (3 locations)"
-        description: |
-          Remove tasks fallback from epic.py service file in AgenticGuidance.
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
-        inputs:
-          - "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
-        guidance: |
-          WHAT TO CHANGE:
-          Replace ALL occurrences of:
-            phase.get("tickets", phase.get("tasks", []))
-          With:
-            phase.get("tickets", [])
+    and replace with just phase.get("tickets", []). All open epics already use
 
-          There are 3 locations at approximately lines: 1031, 1452, 1455
+    the ''tickets'' key in YAML, so the ''tasks'' fallback is no longer needed.
 
-          ALSO: Check _remove_task_from_source() which may use:
-            ticket_key = "tickets" if "tickets" in phase else "tasks"
-          Simplify to always use "tickets".
-        success_criteria:
-          - "Zero occurrences of phase.get('tasks' in epic.py service"
-          - "No conditional key detection for 'tasks' vs 'tickets'"
+    This completes the migration to a single canonical key.
 
-      - id: "clean_003"
-        name: "Clean break — epic_repository.py, ticket.py, context.py, ralph.py, planner_loop.py"
-        description: |
-          Remove tasks fallback from the remaining service and workflow files.
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py"
-          - "modules/AgenticGuidance/src/agenticguidance/services/ticket.py"
-          - "modules/AgenticGuidance/src/agenticguidance/services/context.py"
-          - "modules/AgenticGuidance/src/agenticguidance/services/ralph.py"
-          - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
-        inputs:
-          - "modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py"
-          - "modules/AgenticGuidance/src/agenticguidance/services/ticket.py"
-          - "modules/AgenticGuidance/src/agenticguidance/services/context.py"
-          - "modules/AgenticGuidance/src/agenticguidance/services/ralph.py"
-          - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
-        guidance: |
-          WHAT TO CHANGE:
-          In each file, replace:
-            phase.get("tickets", phase.get("tasks", []))
-          With:
-            phase.get("tickets", [])
+    '
+  tickets:
+  - id: clean_001
+    name: Clean break — epic.py CLI (13 locations)
+    description: 'Remove tasks fallback from all 13 locations in the CLI epic.py command
+      file.
 
-          Locations (after Phase 1 fixes):
-          - epic_repository.py line ~1015: 1 location
-          - ticket.py lines ~199, 247, 296, 365: 4 locations
-          - context.py line ~258: 1 location
-          - ralph.py line ~299: 1 location
-          - planner_loop.py line ~741: 1 location
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/epic.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/epic.py
+    guidance: "WHAT TO CHANGE:\nReplace ALL occurrences of:\n  phase.get(\"tickets\"\
+      , phase.get(\"tasks\", []))\nWith:\n  phase.get(\"tickets\", [])\n\nThere are\
+      \ 13 locations at approximately these lines:\n248, 929, 1052, 1753, 2144, 2269,\
+      \ 2457, 3175, 3316, 3607, 3856, 4098, 4274\n\nUse replace-all or search-and-replace.\
+      \ Verify no phase.get(\"tasks\" remains.\n\nALSO: Check for any remaining \"\
+      tasks\" key references in write paths\n(e.g., code that creates phase dicts\
+      \ with \"tasks\" key). These should\nuse \"tickets\" only.\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - Zero occurrences of phase.get('tasks' in epic.py CLI
+    - All 13 locations use phase.get('tickets', [])
+    - No write paths create 'tasks' key in phase dicts
+  - id: clean_002
+    name: Clean break — epic.py service (3 locations)
+    description: 'Remove tasks fallback from epic.py service file in AgenticGuidance.
 
-          Total: 8 locations across 5 files.
-        success_criteria:
-          - "Zero occurrences of phase.get('tasks' across all 5 files"
-          - "All locations use phase.get('tickets', [])"
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+    guidance: "WHAT TO CHANGE:\nReplace ALL occurrences of:\n  phase.get(\"tickets\"\
+      , phase.get(\"tasks\", []))\nWith:\n  phase.get(\"tickets\", [])\n\nThere are\
+      \ 3 locations at approximately lines: 1031, 1452, 1455\n\nALSO: Check _remove_task_from_source()\
+      \ which may use:\n  ticket_key = \"tickets\" if \"tickets\" in phase else \"\
+      tasks\"\nSimplify to always use \"tickets\".\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - Zero occurrences of phase.get('tasks' in epic.py service
+    - No conditional key detection for 'tasks' vs 'tickets'
+  - id: clean_003
+    name: Clean break — epic_repository.py, ticket.py, context.py, ralph.py, planner_loop.py
+    description: 'Remove tasks fallback from the remaining service and workflow files.
 
-      - id: "clean_004"
-        name: "Clean break — update all test fixtures to tickets-only"
-        description: |
-          Remove any remaining "tasks" key references in test fixtures and
-          assertions. After clean break, tests should only use "tickets".
-        status: "pending"
-        agent: "builder"
-        target_files:
-          - "modules/AgenticGuidance/tests/"
-          - "modules/AgenticCLI/tests/"
-        inputs:
-          - "modules/AgenticGuidance/tests/test_services_task.py"
-          - "modules/AgenticGuidance/tests/test_integration_ralph_loop.py"
-          - "modules/AgenticGuidance/tests/test_uat_tinydb_yaml_compat.py"
-          - "modules/AgenticCLI/tests/test_plan_bootstrap.py"
-          - "modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py"
-          - "modules/AgenticCLI/tests/integration/test_plan_creation_flow.py"
-        guidance: |
-          WHAT TO CHANGE:
-          1. Remove any phase.get("tickets", phase.get("tasks", [])) fallback
-             patterns in test code — use phase.get("tickets", []) only
-          2. Update any test fixtures that still construct phase dicts with
-             "tasks" key to use "tickets" key
-          3. Remove any backward-compat test cases that specifically test
-             the "tasks" fallback (no longer needed after clean break)
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    target_files:
+    - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    - modules/AgenticGuidance/src/agenticguidance/services/ralph.py
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    guidance: "WHAT TO CHANGE:\nIn each file, replace:\n  phase.get(\"tickets\", phase.get(\"\
+      tasks\", []))\nWith:\n  phase.get(\"tickets\", [])\n\nLocations (after Phase\
+      \ 1 fixes):\n- epic_repository.py line ~1015: 1 location\n- ticket.py lines\
+      \ ~199, 247, 296, 365: 4 locations\n- context.py line ~258: 1 location\n- ralph.py\
+      \ line ~299: 1 location\n- planner_loop.py line ~741: 1 location\n\nTotal: 8\
+      \ locations across 5 files.\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - Zero occurrences of phase.get('tasks' across all 5 files
+    - All locations use phase.get('tickets', [])
+  - id: clean_004
+    name: Clean break — update all test fixtures to tickets-only
+    description: 'Remove any remaining "tasks" key references in test fixtures and
 
-          IMPORTANT: Grep broadly for "tasks" in test files to catch any
-          remaining references to the old key in phase context.
-        success_criteria:
-          - "Zero test fixtures construct phases with 'tasks' key"
-          - "Zero fallback patterns in test code"
-          - "All tests pass with tickets-only schema"
+      assertions. After clean break, tests should only use "tickets".
 
-  # ----------------------------------------
-  # PHASE 6: Final Validation
-  # ----------------------------------------
-  - name: "Final Validation Phase"
-    execution: sequential
-    description: |
-      Run full test suites after the clean break to verify nothing is broken.
-    tickets:
-      - id: "final_val_001"
-        name: "Run full test suites after clean break"
-        description: "Run both module test suites to verify clean break didn't break anything"
-        status: "pending"
-        agent: "test-runner"
-        loop: "test-fix-loop"
-        target_files:
-          - "modules/AgenticGuidance/tests/"
-          - "modules/AgenticCLI/tests/"
-        guidance: |
-          Run both test suites:
-            cd modules/AgenticGuidance && python3 -m pytest tests/ -x -q
-            cd modules/AgenticCLI && python3 -m pytest tests/ -x -q
-          All tests must pass. If any fail, the clean break missed a location.
-        success_criteria:
-          - "All AgenticGuidance tests pass"
-          - "All AgenticCLI tests pass"
-          - "Zero occurrences of phase.get('tasks' in entire codebase (excluding docs/epics)"
+      '
+    status: completed
+    agent: builder
+    inputs:
+    - modules/AgenticGuidance/tests/test_services_task.py
+    - modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+    - modules/AgenticGuidance/tests/test_uat_tinydb_yaml_compat.py
+    - modules/AgenticCLI/tests/test_plan_bootstrap.py
+    - modules/AgenticCLI/tests/integration/test_bootstrap_planner_workflow.py
+    - modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+    target_files:
+    - modules/AgenticGuidance/tests/
+    - modules/AgenticCLI/tests/
+    guidance: "WHAT TO CHANGE:\n1. Remove any phase.get(\"tickets\", phase.get(\"\
+      tasks\", [])) fallback\n   patterns in test code — use phase.get(\"tickets\"\
+      , []) only\n2. Update any test fixtures that still construct phase dicts with\n\
+      \   \"tasks\" key to use \"tickets\" key\n3. Remove any backward-compat test\
+      \ cases that specifically test\n   the \"tasks\" fallback (no longer needed\
+      \ after clean break)\n\nIMPORTANT: Grep broadly for \"tasks\" in test files\
+      \ to catch any\nremaining references to the old key in phase context.\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - Zero test fixtures construct phases with 'tasks' key
+    - Zero fallback patterns in test code
+    - All tests pass with tickets-only schema
+- name: Final Validation Phase
+  execution: sequential
+  description: 'Run full test suites after the clean break to verify nothing is broken.
 
-# ========================================
-# SUCCESS CRITERIA
-# ========================================
-success_criteria:
-  - "All phase.get('tasks', []) calls in ticket.py, context.py, ralph.py, planner_loop.py updated"
-  - "Test fixtures use 'tickets' as canonical key"
-  - "All AgenticGuidance tests pass"
-  - "All AgenticCLI tests pass"
-  - "agentic epic list shows correct pending counts for all epics"
-  - "Clean break complete — zero phase.get('tasks' fallback patterns remain in codebase"
-  - "All open epic YAMLs use 'tickets' key (already confirmed)"
+    '
+  tickets:
+  - id: final_val_001
+    name: Run full test suites after clean break
+    description: Run both module test suites to verify clean break didn't break anything
+    status: completed
+    agent: test-runner
+    target_files:
+    - modules/AgenticGuidance/tests/
+    - modules/AgenticCLI/tests/
+    guidance: "Run both test suites:\n  cd modules/AgenticGuidance && python3 -m pytest\
+      \ tests/ -x -q\n  cd modules/AgenticCLI && python3 -m pytest tests/ -x -q\n\
+      All tests must pass. If any fail, the clean break missed a location.\n"
+    completed_date: '2026-03-06'
+    success_criteria:
+    - All AgenticGuidance tests pass
+    - All AgenticCLI tests pass
+    - Zero occurrences of phase.get('tasks' in entire codebase (excluding docs/epics)
+context: "Diagnosed 2026-03-05. The plan_build.yml for epic\n260303AG_reduce_orchestration_context_overflow\
+  \ has 8 pending tickets\nunder phases[].tickets[], but `agentic epic list` shows\
+  \ 0 pending\nbecause some code paths use phase.get(\"tasks\", []) without fallback\n\
+  to \"tickets\".\n\nCODE ANALYSIS RESULTS:\n- ALREADY FIXED: modules/AgenticCLI/src/agenticcli/commands/epic.py\n\
+  \  Already uses phase.get(\"tickets\", phase.get(\"tasks\", [])) at 14+ locations.\n\
+  - ALREADY FIXED: modules/AgenticGuidance/src/agenticguidance/services/epic.py\n\
+  \  Uses fallback pattern and smart key detection.\n- ALREADY FIXED: modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py\n\
+  \  import_from_yaml uses fallback; export_to_yaml writes \"tickets\".\n- BROKEN:\
+  \ modules/AgenticGuidance/src/agenticguidance/services/ticket.py\n  Lines 199, 247,\
+  \ 296, 365: uses ONLY phase.get(\"tasks\", []) — NO fallback.\n- BROKEN: modules/AgenticGuidance/src/agenticguidance/services/context.py\n\
+  \  Line 258: uses ONLY phase.get(\"tasks\", []) — NO fallback.\n- BROKEN: modules/AgenticGuidance/src/agenticguidance/services/ralph.py\n\
+  \  Line 299: uses ONLY phase.get(\"tasks\", []) — NO fallback.\n- BROKEN: modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py\n\
+  \  Line 741: uses ONLY phase.get(\"tasks\", []) — NO fallback.\n- TESTS: Several\
+  \ test files construct phase data using \"tasks\" key only.\n- ALL OPEN EPICS: Already\
+  \ use 'tickets:' key in YAML — no YAML migration needed.\n\nCLEAN BREAK SCOPE (after\
+  \ fallback is applied everywhere):\nRemove all phase.get(\"tickets\", phase.get(\"\
+  tasks\", [])) fallback patterns\nand replace with just phase.get(\"tickets\", []).\
+  \ Total 24 locations:\n- epic.py CLI: 13 locations\n- epic.py service: 3 locations\n\
+  - epic_repository.py: 1 location\n- ticket.py: 4 locations (after build_001 fix)\n\
+  - context.py: 1 location (after build_002 fix)\n- ralph.py: 1 location (after build_003\
+  \ fix)\n- planner_loop.py: 1 location (after build_003b fix)\n\nSECONDARY CHANGE\
+  \ (already complete):\nThe `agentic epic list` display already treats in_progress\
+  \ as pending\n(lines 1305-1306, 2897-2898) and has no separate \"In Prog\" column.\n\
+  The table columns are: Epic, Status, Orch, Action, Pending, Done, Progress.\nNo\
+  \ further changes needed for In Prog column removal.\n"

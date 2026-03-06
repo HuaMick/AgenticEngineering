@@ -1,63 +1,59 @@
-name: Remove auto-archive from CLI task completion
+name: Test Plan - Remove Auto-Archive from CLI Task Completion
+worktree_path: /home/code/AgenticEngineering
+branch: main
 status: completed
 priority: high
-context: 'When a build agent marks the last task in a plan as completed, the CLI was
+objective: 'Test plan for validating the removal of auto-archive behavior from CLI
+  task
 
-  automatically archiving the plan folder from live/ to completed/. This
+  completion commands. The build removed auto-archive triggers from cmd_task_complete,
 
-  short-circuited the orchestration-loop, which has its own dedicated archive
+  cmd_update_task, and cmd_new, removed --no-archive flags from 6 CLI registrations,
 
-  pass that runs after discovery. Planners often identify that a plan tagged
-
-  as "complete" isn''t actually properly completed. Auto-archive removed the
-
-  opportunity for the planning loop to validate completion before archiving.
-
-  Two plans were found stuck in live/ because auto-archive failed silently,
-
-  and the loop assumed the CLI had already handled it.
+  and updated tests to verify plans stay in live/ after all tasks complete.
 
 
-  Goal: Remove all auto-archive triggers from CLI task completion commands.
+  Key changes under test:
 
-  Only the orchestration-loop (via explicit `agentic plan move folder --force`)
+  - Auto-archive code removed from cmd_task_complete, cmd_update_task, cmd_new
 
-  should archive plans. The `action_required: "archive"` signal in
+  - --no-archive flag removed from 6 CLI command registrations
 
-  `plan status`/`plan list` output remains as the detection mechanism.
+  - is_plan_fully_completed() preserved (used by plan status)
+
+  - cmd_archive() and cmd_move() explicit archive commands preserved
+
+  - action_required "archive" signal in plan status/list JSON preserved
+
+  - 5 new tests verify no auto-archive behavior
+
+  - 244 pre-existing test failures fixed (deprecated command routing)
 
   '
-success_criteria:
-- Auto-archive code removed from cmd_task_complete, cmd_update_task, cmd_new
-- --no-archive flag removed from all 6 CLI command registrations
-- is_plan_fully_completed() function preserved (used by plan status)
-- cmd_archive() and cmd_move() explicit archive commands preserved
-- action_required "archive" signal in plan status/list JSON preserved
-- All directly-related tests pass (auto-archive tests updated)
-- Pre-existing test failures documented for separate fix
+created: ''
 phases:
-- id: P1
-  name: Remove auto-archive code
-  status: completed
-  tasks:
+- name: Remove auto-archive code
+  tickets:
   - id: P1-T1
+    name: ''
     description: Remove auto-archive block and no_archive from cmd_task_complete
     status: completed
-    completed_at: '2026-02-22'
+    agent: null
   - id: P1-T2
+    name: ''
     description: Remove auto-archive block and no_archive from cmd_update_task
     status: completed
-    completed_at: '2026-02-22'
+    agent: null
   - id: P1-T3
+    name: ''
     description: Remove Step 5 auto-archive block from cmd_new, replace with status
       message
     status: completed
-    completed_at: '2026-02-22'
-- id: P2
-  name: Remove --no-archive CLI flags
-  status: completed
-  tasks:
+    agent: null
+- name: Remove --no-archive CLI flags
+  tickets:
   - id: P2-T1
+    name: ''
     description: 'Remove no_archive parameter from 6 command registrations in cli.py:
 
       plan_task_start, plan_task_complete, plan_task_update,
@@ -66,12 +62,11 @@ phases:
 
       '
     status: completed
-    completed_at: '2026-02-22'
-- id: P3
-  name: Update tests
-  status: completed
-  tasks:
+    agent: null
+- name: Update tests
+  tickets:
   - id: P3-T1
+    name: ''
     description: 'Update test_auto_archive_trigger.py:
 
       - Remove 5 tests verifying auto-archive behavior
@@ -86,8 +81,9 @@ phases:
 
       '
     status: completed
-    completed_at: '2026-02-22'
+    agent: null
   - id: P3-T2
+    name: ''
     description: 'Update test_plan_question_gate.py:
 
       - Remove TestAutoArchiveQuestionGate class (3 tests)
@@ -96,12 +92,11 @@ phases:
 
       '
     status: completed
-    completed_at: '2026-02-22'
-- id: P4
-  name: Fix pre-existing test failures
-  status: completed
-  tasks:
+    agent: null
+- name: Fix pre-existing test failures
+  tickets:
   - id: P4-T1
+    name: ''
     description: "Fix 244 pre-existing test failures across 20 test files.\nRoot cause:\
       \ tests use deprecated command routes (e.g. \"plan task\",\n\"plan scaffold\"\
       , \"plan orchestration\") which now redirect to\n\"agent plan task\", \"agent\
@@ -130,4 +125,452 @@ phases:
       \ to use \"agent plan task\" instead of\n\"plan task\", etc. This is a mechanical\
       \ find-and-replace across test files.\n"
     status: completed
-    completed_at: '2026-02-22T22:44:02.949002'
+    agent: null
+- name: Environment Setup
+  execution: sequential
+  description: Install latest code and verify CLI accessibility
+  tickets:
+  - id: env_001
+    name: Install latest AgenticCLI code
+    description: "Install the latest AgenticCLI code in editable mode:\n  uv pip install\
+      \ -e modules/AgenticCLI\nVerify:\n  uv pip show agenticcli\n  agentic --version\n"
+    status: completed
+    agent: null
+  - id: env_002
+    name: Verify no --no-archive in CLI help
+    description: "Quick smoke test to verify the --no-archive flag is truly removed:\n\
+      \  agentic agent plan task complete --help\n  agentic agent plan task update\
+      \ --help\nVerify neither help output mentions --no-archive or no_archive.\n"
+    status: completed
+    agent: null
+- name: Component Testing
+  execution: sequential
+  description: Run existing tests to validate auto-archive removal and command routing
+    fixes
+  tickets:
+  - id: test_001
+    name: Run auto-archive trigger tests
+    description: "Run the primary test file validating auto-archive removal:\n  pytest\
+      \ modules/AgenticCLI/tests/integration/test_auto_archive_trigger.py -v\nExpected:\n\
+      - TestNoAutoArchiveOnCompletion (5 tests) - all pass\n- TestIsPlanFullyCompleted\
+      \ (11 tests) - all pass\nNo auto-archive behavior tests should exist.\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_auto_archive_trigger.py
+  - id: test_002
+    name: Run question gate tests
+    description: "Run the question gate test file:\n  pytest modules/AgenticCLI/tests/test_plan_question_gate.py\
+      \ -v\nExpected:\n- TestHasPendingQuestions (5 tests) - all pass\n- TestSpawnWarningOnPendingQuestions\
+      \ (1 test) - passes\nNo TestAutoArchiveQuestionGate class should exist.\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_question_gate.py
+  - id: test_003
+    name: Run plan command tests (command routing)
+    description: "Run plan-related tests that were updated in P4-T1 for command routing:\n\
+      \  pytest modules/AgenticCLI/tests/test_plan.py -v\n  pytest modules/AgenticCLI/tests/test_plan_init.py\
+      \ -v\n  pytest modules/AgenticCLI/tests/test_plan_nested_tasks.py -v\n  pytest\
+      \ modules/AgenticCLI/tests/test_plan_movement.py -v\nThese tests were updated\
+      \ from deprecated \"plan task\" to \"agent plan task\" routing.\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_plan.py
+    - modules/AgenticCLI/tests/test_plan_init.py
+    - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+    - modules/AgenticCLI/tests/test_plan_movement.py
+  - id: test_004
+    name: Run task and CLI tests (command routing)
+    description: "Run task and CLI tests updated for command routing:\n  pytest modules/AgenticCLI/tests/test_cli_task.py\
+      \ -v\n  pytest modules/AgenticCLI/tests/test_task_list_commands.py -v\n  pytest\
+      \ modules/AgenticCLI/tests/test_context_commands.py -v\n  pytest modules/AgenticCLI/tests/test_stories.py\
+      \ -v\n  pytest modules/AgenticCLI/tests/test_manifest.py -v\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_cli_task.py
+    - modules/AgenticCLI/tests/test_task_list_commands.py
+    - modules/AgenticCLI/tests/test_context_commands.py
+    - modules/AgenticCLI/tests/test_stories.py
+    - modules/AgenticCLI/tests/test_manifest.py
+  - id: test_005
+    name: Run integration tests (command routing)
+    description: "Run integration tests updated for command routing:\n  pytest modules/AgenticCLI/tests/integration/test_task_commands.py\
+      \ -v\n  pytest modules/AgenticCLI/tests/integration/test_plan_creation_flow.py\
+      \ -v\n  pytest modules/AgenticCLI/tests/integration/test_plan_path_arguments.py\
+      \ -v\n  pytest modules/AgenticCLI/tests/integration/test_user_stories.py -v\n\
+      \  pytest modules/AgenticCLI/tests/integration/test_orchestration_sync.py -v\n\
+      \  pytest modules/AgenticCLI/tests/integration/test_workflow_sequences.py -v\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_task_commands.py
+    - modules/AgenticCLI/tests/integration/test_plan_creation_flow.py
+    - modules/AgenticCLI/tests/integration/test_plan_path_arguments.py
+    - modules/AgenticCLI/tests/integration/test_user_stories.py
+    - modules/AgenticCLI/tests/integration/test_orchestration_sync.py
+    - modules/AgenticCLI/tests/integration/test_workflow_sequences.py
+  - id: test_006
+    name: Run remaining updated tests
+    description: "Run remaining test files updated for command routing:\n  pytest\
+      \ modules/AgenticCLI/tests/test_plan_orchestration.py -v\n  pytest modules/AgenticCLI/tests/test_plan_phase.py\
+      \ -v\n  pytest modules/AgenticCLI/tests/test_worktree_registry.py -v\n  pytest\
+      \ modules/AgenticCLI/tests/test_session_commands.py -v\n  pytest modules/AgenticCLI/tests/integration/test_context_bootstrap_planner.py\
+      \ -v\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_orchestration.py
+    - modules/AgenticCLI/tests/test_plan_phase.py
+    - modules/AgenticCLI/tests/test_worktree_registry.py
+    - modules/AgenticCLI/tests/test_session_commands.py
+    - modules/AgenticCLI/tests/integration/test_context_bootstrap_planner.py
+- name: Cleanup
+  execution: sequential
+  description: Remove test artifacts and verify no stale state
+  tickets:
+  - id: clean_001
+    name: Clean test artifacts
+    description: 'Remove any test-generated state or temp files from test runs.
+
+      Verify no stale plan folders were accidentally created in
+
+      docs/plans/live/ or docs/plans/completed/ by test execution.
+
+      '
+    status: completed
+    agent: null
+- name: Test Audit
+  execution: sequential
+  description: Mandatory audit to validate test quality and catch reward hacking
+  tickets:
+  - id: audit_001
+    name: Audit auto-archive removal tests
+    description: "Review test_auto_archive_trigger.py for reward hacking patterns:\n\
+      - Verify TestNoAutoArchiveOnCompletion tests actually create plans in tmp_path\n\
+      \  and run cmd_task_complete, then assert folder stays in live/\n- Verify tests\
+      \ don't mock plan.py functions (must test real code paths)\n- Verify TestIsPlanFullyCompleted\
+      \ tests exercise real YAML parsing\n- Verify no tests still reference or test\
+      \ auto-archive behavior\n- Verify command routing uses \"agent plan task\" not\
+      \ deprecated \"plan task\"\n\nFiles to audit:\n- modules/AgenticCLI/tests/integration/test_auto_archive_trigger.py\n"
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_auto_archive_trigger.py
+  - id: audit_002
+    name: Audit question gate tests
+    description: 'Review test_plan_question_gate.py for completeness:
+
+      - Verify TestAutoArchiveQuestionGate class was fully removed
+
+      - Verify TestHasPendingQuestions tests exercise real has_pending_questions()
+
+      - Verify TestSpawnWarningOnPendingQuestions tests actual spawn warning path
+
+      - Check for any lingering references to auto-archive or no_archive
+
+
+      Files to audit:
+
+      - modules/AgenticCLI/tests/test_plan_question_gate.py
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/tests/test_plan_question_gate.py
+  - id: audit_003
+    name: Audit source code for auto-archive remnants
+    description: 'Verify auto-archive code is completely removed from source:
+
+      - grep for "auto_archive", "auto-archive", "no_archive" in plan.py
+
+      - grep for "no_archive" in cli.py
+
+      - Verify is_plan_fully_completed() does NOT trigger any side effects
+
+      - Verify cmd_task_complete() only updates status, no archive logic
+
+      - Verify cmd_update_task() only updates status, no archive logic
+
+      - Verify cmd_new() only reports status, no archive logic
+
+
+      Files to audit:
+
+      - modules/AgenticCLI/src/agenticcli/commands/plan.py
+
+      - modules/AgenticCLI/src/agenticcli/cli.py
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/cli.py
+- name: UAT Validation
+  execution: sequential
+  description: 'Validate complete user journeys using the real CLI binary.
+
+    FENCE: All UAT tasks MUST execute the actual installed CLI,
+
+    not mocked subprocess calls. This plan modifies CLI command files
+
+    so real CLI execution is required.
+
+    '
+  tickets:
+  - id: uat_US-CLI-017
+    name: Validate Archive Completed Plans (auto-archive removed)
+    description: 'User Story: US-CLI-017
+
+
+      Journey:
+
+      1. Create a test plan folder in docs/plans/live/ with a single pending task
+
+      2. Run ''agentic agent plan task start <id> --plan <folder>''
+
+      3. Run ''agentic agent plan task complete <id> --plan <folder>''
+
+      4. Verify the plan folder is STILL in docs/plans/live/ (NOT moved to completed/)
+
+      5. Run ''agentic -j plan status --plan <folder>'' and verify action_required:
+      "archive"
+
+      6. Run ''agentic plan move folder --plan <folder> --force'' to explicitly archive
+
+      7. Verify the plan folder is now in docs/plans/completed/
+
+      8. Clean up: move the plan back or delete it
+
+
+      Acceptance Criteria:
+
+      - Task completion does NOT trigger auto-archive (folder stays in live/)
+
+      - action_required: "archive" signal appears in plan status JSON when all tasks
+      complete
+
+      - Explicit archive via ''agentic plan move folder --force'' still works
+
+      - Plan folder is correctly moved to completed/ only on explicit command
+
+
+      Verification Steps:
+
+      1. Execute real CLI commands (no mocking)
+
+      2. Check filesystem for plan folder location after each step
+
+      3. Parse JSON output from plan status for action_required field
+
+      4. Verify move command actually relocates the folder
+
+
+      Evidence Required:
+
+      - Command output from task complete showing no archive behavior
+
+      - JSON output from plan status showing action_required: "archive"
+
+      - Filesystem verification showing folder in live/ after task complete
+
+      - Filesystem verification showing folder in completed/ after explicit move
+
+      '
+    status: completed
+    agent: null
+  - id: uat_US-CLI-022
+    name: Validate Start and Complete Tasks (no side effects)
+    description: 'User Story: US-CLI-022
+
+
+      Journey:
+
+      1. Create a test plan with multiple tasks in docs/plans/live/
+
+      2. Run ''agentic agent plan task start <id> --plan <folder>''
+
+      3. Verify task status is in_progress in plan YAML
+
+      4. Run ''agentic agent plan task complete <id> --plan <folder>''
+
+      5. Verify task status is completed with timestamp
+
+      6. Complete remaining tasks
+
+      7. Verify plan folder STILL in live/ (no auto-archive)
+
+      8. Run ''agentic -j plan status --plan <folder>'' to verify completion detection
+
+      9. Clean up test plan
+
+
+      Acceptance Criteria:
+
+      - agentic plan task start <id> sets status to in_progress
+
+      - agentic plan task complete <id> sets status to completed with timestamp
+
+      - Completing all tasks does NOT move the plan folder
+
+      - Plan status correctly reports all tasks completed
+
+
+      Verification Steps:
+
+      1. Execute real CLI task start/complete commands
+
+      2. Read plan YAML to verify status changes
+
+      3. Check filesystem after all tasks completed
+
+
+      Evidence Required:
+
+      - Command output from task start and complete
+
+      - Plan YAML showing status transitions
+
+      - Folder still in live/ after all tasks completed
+
+      '
+    status: completed
+    agent: null
+  - id: uat_US-CLI-024
+    name: Validate Update Task Status (no archive side effects)
+    description: 'User Story: US-CLI-024
+
+
+      Journey:
+
+      1. Create a test plan with a single task in docs/plans/live/
+
+      2. Run ''agentic agent plan task update <id> --status in_progress --plan <folder>''
+
+      3. Verify status changed to in_progress
+
+      4. Run ''agentic agent plan task update <id> --status completed --plan <folder>''
+
+      5. Verify status changed to completed with timestamp
+
+      6. Verify plan folder STILL in live/ (no auto-archive triggered)
+
+      7. Clean up test plan
+
+
+      Acceptance Criteria:
+
+      - agentic plan task update <id> --status <status> changes task status
+
+      - When marking completed, a timestamp is automatically recorded
+
+      - Status update to completed does NOT trigger auto-archive
+
+
+      Verification Steps:
+
+      1. Execute real CLI task update commands
+
+      2. Read plan YAML to verify status and timestamp
+
+      3. Check filesystem after completion via update
+
+
+      Evidence Required:
+
+      - Command output from task update
+
+      - Plan YAML showing completed_at timestamp
+
+      - Folder still in live/ after update to completed
+
+      '
+    status: completed
+    agent: null
+  - id: uat_no_archive_flag
+    name: Validate --no-archive flag removed from CLI
+    description: 'Verify that the --no-archive flag is completely removed from all
+      CLI commands.
+
+
+      Journey:
+
+      1. Run ''agentic agent plan task start --help'' and verify no --no-archive
+
+      2. Run ''agentic agent plan task complete --help'' and verify no --no-archive
+
+      3. Run ''agentic agent plan task update --help'' and verify no --no-archive
+
+      4. Attempt: ''agentic agent plan task complete <id> --no-archive --plan <folder>''
+
+      5. Verify the --no-archive flag causes an unrecognized argument error
+
+
+      Acceptance Criteria:
+
+      - --no-archive not listed in any help output
+
+      - Using --no-archive causes an error (unrecognized argument)
+
+
+      Verification Steps:
+
+      1. Parse help output for each command
+
+      2. Attempt to use removed flag and verify error
+
+
+      Evidence Required:
+
+      - Help output showing no --no-archive option
+
+      - Error output when --no-archive is used
+
+      '
+    status: completed
+    agent: null
+- name: Documentation Review
+  execution: sequential
+  description: Verify documentation does not reference removed auto-archive behavior
+  tickets:
+  - id: doc_001
+    name: Check CLI README for auto-archive references
+    description: 'Review modules/AgenticCLI/README.md for any references to auto-archive
+
+      behavior that should be updated to reflect the new explicit-only archive model.
+
+      '
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/README.md
+context: 'Test plan for validating the removal of auto-archive behavior from CLI task
+
+  completion commands. The build removed auto-archive triggers from cmd_task_complete,
+
+  cmd_update_task, and cmd_new, removed --no-archive flags from 6 CLI registrations,
+
+  and updated tests to verify plans stay in live/ after all tasks complete.
+
+
+  Key changes under test:
+
+  - Auto-archive code removed from cmd_task_complete, cmd_update_task, cmd_new
+
+  - --no-archive flag removed from 6 CLI command registrations
+
+  - is_plan_fully_completed() preserved (used by plan status)
+
+  - cmd_archive() and cmd_move() explicit archive commands preserved
+
+  - action_required "archive" signal in plan status/list JSON preserved
+
+  - 5 new tests verify no auto-archive behavior
+
+  - 244 pre-existing test failures fixed (deprecated command routing)
+
+  '

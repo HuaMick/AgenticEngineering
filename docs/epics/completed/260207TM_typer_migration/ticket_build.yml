@@ -1,47 +1,51 @@
 name: typer-migration
+worktree_path: ''
+branch: ''
 status: active
 priority: medium
-context: "The previous Typer migration (260205TY) created a typer_app.py wrapper that\
-  \ delegates\nto the argparse-based cli.py. This is not a real migration \u2014 argparse\
-  \ still owns all\ncommand registration, parsing, and routing. The wrapper adds complexity\
-  \ without benefit.\n\nThis plan performs a FULL migration:\n- Replace argparse command\
-  \ registration entirely with Typer/Click\n- Native shell completion (not a separate\
-  \ completion.py entry point)\n- Maintain all existing command behavior and flags\n\
-  - Remove the typer_app.py wrapper and argparse create_parser()\n\nNOTE: This is\
-  \ a large refactor. Phase carefully to avoid breaking existing commands.\n"
-impacted_artifacts:
-- artifact_type: cli_entrypoint
-  artifact_identifier: agenticcli.entry:main
-  impact_type: behavior_change
-  description: Entry point switches from argparse to Typer
-  breaking_change: false
-- artifact_type: cli_module
-  artifact_identifier: agenticcli.cli
-  impact_type: rewrite
-  description: Replace argparse parser with Typer app
-  breaking_change: false
-- artifact_type: cli_feature
-  artifact_identifier: shell-completion
-  impact_type: behavior_change
-  description: Native Typer completion replaces custom completion.py
-  breaking_change: false
+objective: 'The previous Typer migration (260205TY) created a typer_app.py wrapper
+  that delegates
+
+  to the argparse-based cli.py. This is not a real migration — argparse still owns
+  all
+
+  command registration, parsing, and routing. The wrapper adds complexity without
+  benefit.
+
+
+  This plan performs a FULL migration:
+
+  - Replace argparse command registration entirely with Typer/Click
+
+  - Native shell completion (not a separate completion.py entry point)
+
+  - Maintain all existing command behavior and flags
+
+  - Remove the typer_app.py wrapper and argparse create_parser()
+
+
+  NOTE: This is a large refactor. Phase carefully to avoid breaking existing commands.
+
+  '
+created: ''
 phases:
 - name: Foundation Phase
   execution: sequential
-  tasks:
+  tickets:
   - id: TM_001
     name: Audit all CLI commands and flags for migration mapping
-    status: completed
     description: 'Catalog every argparse subparser, argument, flag, and routing function.
 
       Create a migration mapping document: argparse construct -> Typer equivalent.
 
       '
-    target_files:
-    - docs/plans/live/260207TM_typer_migration/migration_mapping.yml
+    status: completed
+    agent: null
     inputs:
     - modules/AgenticCLI/src/agenticcli/cli.py
     - modules/AgenticCLI/src/agenticcli/entry.py
+    target_files:
+    - docs/plans/live/260207TM_typer_migration/migration_mapping.yml
     guidance: "1. Parse cli.py's create_parser() to extract every:\n   - Top-level\
       \ command group (plan, worktree, session, etc.)\n   - Subcommand (plan list,\
       \ plan init, plan task start, etc.)\n   - Arguments and flags with types, defaults,\
@@ -52,38 +56,47 @@ phases:
       \ features without direct Typer equivalents\n"
   - id: TM_002
     name: Create Typer app skeleton with global flags
-    status: completed
     description: 'Create the core Typer app with global callback for --json, --verbose
       flags.
 
       This replaces cli.py''s create_parser().
 
       '
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/cli.py
+    status: completed
+    agent: null
     inputs:
     - modules/AgenticCLI/src/agenticcli/cli.py
     - modules/AgenticCLI/src/agenticcli/typer_app.py
-    guidance: "1. Create top-level typer.Typer() with callback for global flags\n\
-      2. Global callback handles --json/-j and --verbose/-v\n3. Register command groups\
-      \ as sub-Typer apps\n4. Keep handle() routing pattern in command modules (Typer\
-      \ calls them)\n5. DO NOT migrate individual commands yet \u2014 just the skeleton\n"
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: '1. Create top-level typer.Typer() with callback for global flags
+
+      2. Global callback handles --json/-j and --verbose/-v
+
+      3. Register command groups as sub-Typer apps
+
+      4. Keep handle() routing pattern in command modules (Typer calls them)
+
+      5. DO NOT migrate individual commands yet — just the skeleton
+
+      '
 - name: Command Migration Phase
   execution: sequential
-  tasks:
+  tickets:
   - id: TM_003
     name: Migrate simple command groups (config, health, state, env)
-    status: completed
     description: 'Migrate simpler command groups first to establish the pattern.
 
       These have fewer subcommands and simpler argument structures.
 
       '
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/cli.py
+    status: completed
+    agent: null
     inputs:
     - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
     - docs/plans/live/260207TM_typer_migration/migration_mapping.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
     guidance: '1. Convert each command group to @app.command() or sub-Typer
 
       2. Convert argparse arguments to Typer Argument/Option
@@ -95,19 +108,20 @@ phases:
       '
   - id: TM_004
     name: Migrate complex command groups (plan, worktree, session, loop)
-    status: completed
     description: 'Migrate complex command groups with nested subcommands.
 
       plan has 3 levels: plan -> task -> start/complete/list.
 
       '
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/cli.py
+    status: completed
+    agent: null
     inputs:
     - modules/AgenticCLI/src/agenticcli/commands/plan.py
     - modules/AgenticCLI/src/agenticcli/commands/worktree.py
     - modules/AgenticCLI/src/agenticcli/commands/session.py
     - modules/AgenticCLI/src/agenticcli/commands/loop.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
     guidance: '1. Handle 3-level nesting (plan task start) with nested Typer apps
 
       2. Maintain all aliases (wt for worktree, ls for langsmith, etc.)
@@ -119,15 +133,16 @@ phases:
       '
   - id: TM_005
     name: Migrate context (CCI) commands
-    status: completed
     description: 'Migrate the context/CCI command group which has its own subcommands
 
       (bootstrap, role, task, inputs, generate-agent).
 
       '
-    target_files:
-    - modules/AgenticCLI/src/agenticcli/cli.py
+    status: completed
+    agent: null
     inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
     - modules/AgenticCLI/src/agenticcli/cli.py
     guidance: '1. Create context_app Typer sub-app
 
@@ -140,22 +155,23 @@ phases:
       '
 - name: Cleanup Phase
   execution: sequential
-  tasks:
+  tickets:
   - id: TM_006
     name: Remove argparse and wrapper artifacts
-    status: completed
     description: 'Remove create_parser(), typer_app.py wrapper, and completion.py.
 
       Update entry.py to use Typer directly.
 
       '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/entry.py
+    - modules/AgenticCLI/pyproject.toml
     target_files:
     - modules/AgenticCLI/src/agenticcli/entry.py
     - modules/AgenticCLI/src/agenticcli/typer_app.py
     - modules/AgenticCLI/src/agenticcli/commands/completion.py
-    - modules/AgenticCLI/pyproject.toml
-    inputs:
-    - modules/AgenticCLI/src/agenticcli/entry.py
     - modules/AgenticCLI/pyproject.toml
     guidance: '1. Update entry.py to call Typer app directly
 
@@ -170,15 +186,16 @@ phases:
       '
   - id: TM_007
     name: Update and run full test suite
-    status: completed
     description: 'Update all tests that mock argparse or call create_parser().
 
       Run full test suite to verify no regressions.
 
       '
-    target_files:
-    - modules/AgenticCLI/tests/
+    status: completed
+    agent: null
     inputs:
+    - modules/AgenticCLI/tests/
+    target_files:
     - modules/AgenticCLI/tests/
     guidance: '1. Find all tests that reference create_parser() or argparse
 
@@ -189,11 +206,27 @@ phases:
       4. Fix any regressions
 
       '
-success_criteria:
-- "cli.py uses Typer, not argparse \u2014 no import argparse anywhere"
-- typer_app.py wrapper is deleted
-- "completion.py is deleted \u2014 Typer native --install-completion works"
-- All existing CLI commands work identically (no behavior regression)
-- All aliases work (wt, ls, ctx, cfg, etc.)
-- '`agentic --install-completion` installs shell completion natively'
-- All tests pass with Typer-based CLI
+context: 'The previous Typer migration (260205TY) created a typer_app.py wrapper that
+  delegates
+
+  to the argparse-based cli.py. This is not a real migration — argparse still owns
+  all
+
+  command registration, parsing, and routing. The wrapper adds complexity without
+  benefit.
+
+
+  This plan performs a FULL migration:
+
+  - Replace argparse command registration entirely with Typer/Click
+
+  - Native shell completion (not a separate completion.py entry point)
+
+  - Maintain all existing command behavior and flags
+
+  - Remove the typer_app.py wrapper and argparse create_parser()
+
+
+  NOTE: This is a large refactor. Phase carefully to avoid breaking existing commands.
+
+  '

@@ -1,1360 +1,3389 @@
-# CLI Task Lists - Build Plan
-# Generated: 2026-01-20
-# Agent: planner-build
+name: jit-context-entrypoints-implementation-test
+worktree_path: /home/code/AgenticEngineering
+branch: main
+status: completed
+priority: high
+objective: 'Comprehensive testing of CLI context commands to validate JIT (Just-In-Time)
 
-name: "cli-task-lists-build"
-worktree_path: "/home/code/AgenticEngineering"
-worktree: "261115CL_agenticcli"
-status: "completed"
-created: "2026-01-20"
-updated: "2026-01-20"
+  Pull-based context architecture. These commands are critical for agents to
 
-summary: |
-  Implement CLI-based preset task lists to help agents remember ancillary tasks
-  (MMD generation, README updates). Includes CLI commands for task management
-  and YAML preset templates for different agent roles.
+  self-initialize via CLI instead of loading large static markdown files.
 
+  '
+created: '2026-01-23'
 phases:
-  # ===========================================================================
-  # Phase 1: CLI Task Command Extensions
-  # ===========================================================================
-  - phase_id: "build_01"
-    name: "CLI Task Command Extensions"
-    description: "Extend existing task subparser with new commands: prefill, list, status, add"
-    status: "completed"
-    estimated_effort: "medium"
-
-    tasks:
-      # -----------------------------------------------------------------------
-      # Task 1.1: Add task prefill subcommand parser
-      # -----------------------------------------------------------------------
-      - task_id: "build_01_001"
-        description: "Add task prefill subcommand parser to cli.py"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
-            reason: "Contains _add_plan_parser function with existing task subparsers"
-            lines: "310-324"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/cli.py"
-
-        guidance: |
-          Location: _add_plan_parser function, within the task_subparsers section
-
-          Add new parser after the existing 'complete' parser (line 324):
-
-          ```python
-          # task prefill
-          prefill_parser = task_subparsers.add_parser(
-              "prefill",
-              help="Load preset task list from template",
-              description="Prefill tasks from a named preset template (e.g., planner-build, builder).",
-          )
-          prefill_parser.add_argument(
-              "--preset", "-t",
-              required=True,
-              help="Preset name (e.g., planner-build, planner-teach, builder)",
-          )
-          prefill_parser.add_argument(
-              "--plan", "-p",
-              help="Plan path (default: auto-detect)",
-          )
-          prefill_parser.add_argument(
-              "--dry-run", "-n",
-              action="store_true",
-              help="Show tasks that would be added without making changes",
-          )
-          ```
-
-          Pattern: Follow existing argparse patterns in cli.py for consistency.
-
-        success_criteria:
-          - "Parser accepts --preset/-t argument"
-          - "Parser accepts --plan/-p argument"
-          - "Parser accepts --dry-run/-n flag"
-          - "Help text displays correctly: agentic plan task prefill --help"
-          - "No argparse errors on startup"
-
-      # -----------------------------------------------------------------------
-      # Task 1.2: Add task list subcommand parser
-      # -----------------------------------------------------------------------
-      - task_id: "build_01_002"
-        description: "Add task list subcommand parser to cli.py"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
-            reason: "Contains _add_plan_parser function with task subparsers"
-            lines: "310-324"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/cli.py"
-
-        guidance: |
-          Location: _add_plan_parser function, after prefill parser
-
-          Add parser for 'task list':
-
-          ```python
-          # task list
-          list_parser = task_subparsers.add_parser(
-              "list",
-              help="Show all tasks in current plan folder",
-              description="Display all tasks with their current status from plan files.",
-          )
-          list_parser.add_argument(
-              "--plan", "-p",
-              help="Plan path (default: auto-detect)",
-          )
-          list_parser.add_argument(
-              "--status", "-s",
-              choices=["all", "pending", "in_progress", "completed"],
-              default="all",
-              help="Filter by task status (default: all)",
-          )
-          list_parser.add_argument(
-              "--verbose", "-v",
-              action="store_true",
-              help="Show full task details including guidance",
-          )
-          ```
-
-        success_criteria:
-          - "Parser accepts --plan/-p argument"
-          - "Parser accepts --status/-s filter argument"
-          - "Parser accepts --verbose/-v flag"
-          - "Help text displays correctly: agentic plan task list --help"
-
-      # -----------------------------------------------------------------------
-      # Task 1.3: Add task status subcommand parser
-      # -----------------------------------------------------------------------
-      - task_id: "build_01_003"
-        description: "Add task status subcommand parser to cli.py"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
-            reason: "Contains _add_plan_parser function with task subparsers"
-            lines: "310-324"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/cli.py"
-
-        guidance: |
-          Location: _add_plan_parser function, after list parser
-
-          Add parser for 'task status':
-
-          ```python
-          # task status
-          status_parser = task_subparsers.add_parser(
-              "status",
-              help="Show detailed status for a specific task",
-              description="Display detailed information about a task by ID.",
-          )
-          status_parser.add_argument(
-              "task_id",
-              help="Task ID (e.g., build_01_001, 01.1)",
-          )
-          status_parser.add_argument(
-              "--plan", "-p",
-              help="Plan path (default: auto-detect)",
-          )
-          ```
-
-        success_criteria:
-          - "Parser accepts task_id positional argument"
-          - "Parser accepts --plan/-p argument"
-          - "Help text displays correctly: agentic plan task status --help"
-
-      # -----------------------------------------------------------------------
-      # Task 1.4: Add task add subcommand parser
-      # -----------------------------------------------------------------------
-      - task_id: "build_01_004"
-        description: "Add task add subcommand parser to cli.py"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/cli.py"
-            reason: "Contains _add_plan_parser function with task subparsers"
-            lines: "310-324"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/cli.py"
-
-        guidance: |
-          Location: _add_plan_parser function, after status parser
-
-          Add parser for 'task add':
-
-          ```python
-          # task add
-          add_parser = task_subparsers.add_parser(
-              "add",
-              help="Add new task to plan",
-              description="Add a new task to the active plan file.",
-          )
-          add_parser.add_argument(
-              "description",
-              help="Task description",
-          )
-          add_parser.add_argument(
-              "--plan", "-p",
-              help="Plan path (default: auto-detect)",
-          )
-          add_parser.add_argument(
-              "--phase", "-ph",
-              help="Phase ID to add task to (e.g., build_01)",
-          )
-          add_parser.add_argument(
-              "--id",
-              help="Custom task ID (auto-generated if not specified)",
-          )
-          add_parser.add_argument(
-              "--priority",
-              choices=["low", "medium", "high"],
-              default="medium",
-              help="Task priority (default: medium)",
-          )
-          ```
-
-        success_criteria:
-          - "Parser accepts description positional argument"
-          - "Parser accepts --plan/-p, --phase/-ph, --id, --priority arguments"
-          - "Help text displays correctly: agentic plan task add --help"
-
-  # ===========================================================================
-  # Phase 2: Command Handler Implementation
-  # ===========================================================================
-  - phase_id: "build_02"
-    name: "Command Handler Implementation"
-    description: "Implement handler functions in plan.py for the new task commands"
-    status: "completed"
-    estimated_effort: "high"
-    depends_on: ["build_01"]
-
-    tasks:
-      # -----------------------------------------------------------------------
-      # Task 2.1: Extend task command router
-      # -----------------------------------------------------------------------
-      - task_id: "build_02_001"
-        description: "Extend task command router in plan.py handle function"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-            reason: "Contains handle() function with task action routing"
-            lines: "28-35"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-
-        guidance: |
-          Location: handle() function, within the args.plan_command == "task" block
-
-          Current code routes: start, complete
-          Add routing for: prefill, list, status, add
-
-          ```python
-          elif args.plan_command == "task":
-              if args.task_action == "start":
-                  cmd_task_start(args)
-              elif args.task_action == "complete":
-                  cmd_task_complete(args)
-              elif args.task_action == "prefill":
-                  cmd_task_prefill(args, ctx)
-              elif args.task_action == "list":
-                  cmd_task_list(args, ctx)
-              elif args.task_action == "status":
-                  cmd_task_status(args, ctx)
-              elif args.task_action == "add":
-                  cmd_task_add(args, ctx)
-              else:
-                  print("Usage: agentic plan task <start|complete|prefill|list|status|add> ...", file=sys.stderr)
-                  sys.exit(1)
-          ```
-
-        success_criteria:
-          - "All four new actions route to their handler functions"
-          - "Error message updated to show all available actions"
-
-      # -----------------------------------------------------------------------
-      # Task 2.2: Implement cmd_task_prefill handler
-      # -----------------------------------------------------------------------
-      - task_id: "build_02_002"
-        description: "Implement cmd_task_prefill handler function"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-            reason: "Contains existing cmd_task_* handler functions as patterns"
-            lines: "462-517"
-          - path: "modules/AgenticCLI/src/agenticcli/console.py"
-            reason: "Console output utilities for formatted output"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-
-        guidance: |
-          Create new function cmd_task_prefill(args, ctx):
-
-          ```python
-          def cmd_task_prefill(args, ctx=None):
-              """Load preset task list from template.
-
-              Loads tasks from a preset YAML template and adds them to the
-              current plan's task list for tracking.
-
-              Args:
-                  args: Parsed arguments with preset, plan, dry_run.
-                  ctx: Optional CLIContext.
-              """
-              from agenticcli.console import (
-                  console,
-                  is_json_output,
-                  print_error,
-                  print_info,
-                  print_json,
-                  print_success,
-                  print_table,
-              )
-              from agenticcli.workflows.task_workflow import TaskPresetWorkflow
-
-              preset_name = args.preset
-              plan_path = find_plan_folder(getattr(args, "plan", None))
-              dry_run = getattr(args, "dry_run", False)
-
-              workflow = TaskPresetWorkflow(plan_path)
-
-              try:
-                  result = workflow.load_preset(preset_name, dry_run=dry_run)
-              except FileNotFoundError:
-                  print_error(f"Preset '{preset_name}' not found")
-                  print_info("Available presets: " + ", ".join(workflow.list_presets()))
-                  sys.exit(1)
-
-              if is_json_output():
-                  print_json({
-                      "preset": preset_name,
-                      "tasks_added": result.tasks_added,
-                      "tasks": result.tasks,
-                      "dry_run": dry_run,
-                  })
-              else:
-                  if dry_run:
-                      console.print(f"[dim][dry-run] Would add {len(result.tasks)} tasks from preset '{preset_name}'[/dim]")
-                  else:
-                      print_success(f"Added {result.tasks_added} tasks from preset '{preset_name}'")
-
-                  # Show tasks
-                  rows = [[t["id"], t["description"], t.get("priority", "medium")] for t in result.tasks]
-                  print_table("Tasks", ["ID", "Description", "Priority"], rows)
-          ```
-
-          Key behaviors:
-          - Load preset template from templates/presets/
-          - Add tasks to plan_live_*.yml in live/ directory
-          - Support dry-run mode
-          - Show summary table of added tasks
-
-        success_criteria:
-          - "Loads preset from templates/presets/<name>.yml"
-          - "Adds tasks to plan file in live/ directory"
-          - "Handles missing preset with helpful error"
-          - "Supports --dry-run flag"
-          - "JSON output includes tasks_added and tasks list"
-          - "Human-readable output shows task table"
-
-      # -----------------------------------------------------------------------
-      # Task 2.3: Implement cmd_task_list handler
-      # -----------------------------------------------------------------------
-      - task_id: "build_02_003"
-        description: "Implement cmd_task_list handler function"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-            reason: "Contains cmd_status function with similar iteration pattern"
-            lines: "291-399"
-          - path: "modules/AgenticCLI/src/agenticcli/console.py"
-            reason: "Console output utilities"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-
-        guidance: |
-          Create new function cmd_task_list(args, ctx):
-
-          ```python
-          def cmd_task_list(args, ctx=None):
-              """List all tasks in plan folder.
-
-              Iterates through all YAML files in live/ and extracts tasks,
-              supporting status filtering and verbose output.
-
-              Args:
-                  args: Parsed arguments with plan, status filter, verbose.
-                  ctx: Optional CLIContext.
-              """
-              from agenticcli.console import (
-                  console,
-                  format_status,
-                  is_json_output,
-                  print_error,
-                  print_header,
-                  print_json,
-                  print_table,
-              )
-
-              plan_path = find_plan_folder(getattr(args, "plan", None))
-              status_filter = getattr(args, "status", "all")
-              verbose = getattr(args, "verbose", False)
-              live_dir = plan_path / "live"
-
-              if not live_dir.exists():
-                  print_error(f"No live/ directory in {plan_path}")
-                  sys.exit(1)
-
-              all_tasks = []
-
-              for yaml_file in sorted(live_dir.glob("*.yml")):
-                  try:
-                      content = yaml.safe_load(yaml_file.read_text())
-                  except yaml.YAMLError:
-                      continue
-
-                  if not content:
-                      continue
-
-                  # Extract tasks from phases structure
-                  phases = content.get("phases", [])
-                  for phase in phases:
-                      phase_id = phase.get("phase_id", "")
-                      phase_name = phase.get("name", "")
-                      tasks = phase.get("tasks", [])
-
-                      for task in tasks:
-                          task_status = task.get("status", "pending")
-                          if status_filter != "all" and task_status != status_filter:
-                              continue
-
-                          task_info = {
-                              "id": task.get("task_id", ""),
-                              "description": task.get("description", ""),
-                              "status": task_status,
-                              "phase_id": phase_id,
-                              "phase_name": phase_name,
-                              "source_file": yaml_file.name,
-                          }
-
-                          if verbose:
-                              task_info["guidance"] = task.get("guidance", "")
-                              task_info["success_criteria"] = task.get("success_criteria", [])
-
-                          all_tasks.append(task_info)
-
-              if is_json_output():
-                  print_json({"tasks": all_tasks, "count": len(all_tasks)})
-              else:
-                  print_header(f"Tasks in {plan_path.name}")
-
-                  if not all_tasks:
-                      console.print("[dim]No tasks found.[/dim]")
-                      return
-
-                  if verbose:
-                      for task in all_tasks:
-                          console.print(f"\n[bold]{task['id']}[/bold]: {task['description']}")
-                          console.print(f"  Status: {format_status(task['status'])}")
-                          console.print(f"  Phase: {task['phase_name']}")
-                          if task.get("guidance"):
-                              console.print(f"  [dim]Guidance: {task['guidance'][:100]}...[/dim]")
-                  else:
-                      rows = [
-                          [task["id"], task["description"][:50], format_status(task["status"]), task["phase_id"]]
-                          for task in all_tasks
-                      ]
-                      print_table("", ["ID", "Description", "Status", "Phase"], rows)
-
-                  console.print(f"\n[dim]Total: {len(all_tasks)} tasks[/dim]")
-          ```
-
-        success_criteria:
-          - "Lists all tasks from all YAML files in live/"
-          - "Supports --status filter (all, pending, in_progress, completed)"
-          - "Supports --verbose flag for detailed output"
-          - "JSON output includes full task list with count"
-          - "Table format for non-verbose human output"
-
-      # -----------------------------------------------------------------------
-      # Task 2.4: Implement cmd_task_status handler
-      # -----------------------------------------------------------------------
-      - task_id: "build_02_004"
-        description: "Implement cmd_task_status handler function"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-            reason: "Contains _update_task_status with task lookup pattern"
-            lines: "480-517"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-
-        guidance: |
-          Create new function cmd_task_status(args, ctx):
-
-          ```python
-          def cmd_task_status(args, ctx=None):
-              """Show detailed status for a specific task.
-
-              Finds task by ID and displays all available information
-              including guidance, success criteria, inputs, and target files.
-
-              Args:
-                  args: Parsed arguments with task_id and plan.
-                  ctx: Optional CLIContext.
-              """
-              from agenticcli.console import (
-                  console,
-                  format_status,
-                  is_json_output,
-                  print_error,
-                  print_header,
-                  print_json,
-                  print_key_value,
-              )
-
-              task_id = args.task_id
-              plan_path = find_plan_folder(getattr(args, "plan", None))
-              live_dir = plan_path / "live"
-
-              task_data = None
-              source_file = None
-              phase_info = None
-
-              for yaml_file in live_dir.glob("*.yml"):
-                  try:
-                      content = yaml.safe_load(yaml_file.read_text())
-                  except yaml.YAMLError:
-                      continue
-
-                  if not content:
-                      continue
-
-                  phases = content.get("phases", [])
-                  for phase in phases:
-                      tasks = phase.get("tasks", [])
-                      for task in tasks:
-                          if task.get("task_id") == task_id:
-                              task_data = task
-                              source_file = yaml_file.name
-                              phase_info = {
-                                  "phase_id": phase.get("phase_id"),
-                                  "name": phase.get("name"),
-                                  "status": phase.get("status"),
-                              }
-                              break
-                      if task_data:
-                          break
-                  if task_data:
-                      break
-
-              if not task_data:
-                  print_error(f"Task '{task_id}' not found")
-                  sys.exit(1)
-
-              if is_json_output():
-                  print_json({
-                      "task": task_data,
-                      "phase": phase_info,
-                      "source_file": source_file,
-                  })
-              else:
-                  print_header(f"Task: {task_id}")
-
-                  print_key_value("Description", task_data.get("description", "N/A"))
-                  print_key_value("Status", format_status(task_data.get("status", "pending")))
-                  print_key_value("Phase", f"{phase_info['phase_id']} - {phase_info['name']}")
-                  print_key_value("Source File", source_file)
-
-                  if task_data.get("inputs"):
-                      console.print("\n[bold]Inputs:[/bold]")
-                      for inp in task_data["inputs"]:
-                          console.print(f"  - {inp.get('path', inp)}")
-
-                  if task_data.get("target_files"):
-                      console.print("\n[bold]Target Files:[/bold]")
-                      for tf in task_data["target_files"]:
-                          console.print(f"  - {tf}")
-
-                  if task_data.get("guidance"):
-                      console.print("\n[bold]Guidance:[/bold]")
-                      console.print(f"[dim]{task_data['guidance']}[/dim]")
-
-                  if task_data.get("success_criteria"):
-                      console.print("\n[bold]Success Criteria:[/bold]")
-                      for criterion in task_data["success_criteria"]:
-                          console.print(f"  - {criterion}")
-          ```
-
-        success_criteria:
-          - "Finds task by ID across all plan files"
-          - "Displays full task details including inputs, targets, guidance"
-          - "Shows phase context information"
-          - "Handles missing task with error message"
-          - "JSON output includes task, phase, and source_file"
-
-      # -----------------------------------------------------------------------
-      # Task 2.5: Implement cmd_task_add handler
-      # -----------------------------------------------------------------------
-      - task_id: "build_02_005"
-        description: "Implement cmd_task_add handler function"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-            reason: "Contains YAML read/write patterns"
-            lines: "480-517"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-
-        guidance: |
-          Create new function cmd_task_add(args, ctx):
-
-          ```python
-          def cmd_task_add(args, ctx=None):
-              """Add a new task to the plan.
-
-              Creates a new task entry in the specified phase or appends
-              to the default/first phase if not specified.
-
-              Args:
-                  args: Parsed arguments with description, plan, phase, id, priority.
-                  ctx: Optional CLIContext.
-              """
-              from agenticcli.console import (
-                  is_json_output,
-                  print_error,
-                  print_json,
-                  print_success,
-              )
-
-              description = args.description
-              plan_path = find_plan_folder(getattr(args, "plan", None))
-              phase_id = getattr(args, "phase", None)
-              custom_id = getattr(args, "id", None)
-              priority = getattr(args, "priority", "medium")
-              live_dir = plan_path / "live"
-
-              # Find the first plan_live_*.yml file or plan_build.yml
-              target_file = None
-              for pattern in ["plan_live_*.yml", "plan_build*.yml", "*.yml"]:
-                  files = list(live_dir.glob(pattern))
-                  if files:
-                      target_file = files[0]
-                      break
-
-              if not target_file:
-                  print_error("No plan file found in live/ directory")
-                  sys.exit(1)
-
-              try:
-                  content = yaml.safe_load(target_file.read_text())
-              except yaml.YAMLError as e:
-                  print_error(f"Failed to parse {target_file.name}: {e}")
-                  sys.exit(1)
-
-              if not content:
-                  content = {"phases": []}
-
-              phases = content.get("phases", [])
-
-              # Find target phase
-              target_phase = None
-              if phase_id:
-                  for phase in phases:
-                      if phase.get("phase_id") == phase_id:
-                          target_phase = phase
-                          break
-                  if not target_phase:
-                      print_error(f"Phase '{phase_id}' not found")
-                      sys.exit(1)
-              else:
-                  if phases:
-                      target_phase = phases[-1]  # Add to last phase
-                  else:
-                      # Create default phase
-                      target_phase = {
-                          "phase_id": "adhoc_01",
-                          "name": "Ad-hoc Tasks",
-                          "status": "pending",
-                          "tasks": [],
-                      }
-                      phases.append(target_phase)
-                      content["phases"] = phases
-
-              # Generate task ID
-              if custom_id:
-                  new_task_id = custom_id
-              else:
-                  existing_ids = [t.get("task_id", "") for t in target_phase.get("tasks", [])]
-                  phase_prefix = target_phase.get("phase_id", "task")
-                  task_num = len(existing_ids) + 1
-                  new_task_id = f"{phase_prefix}_{task_num:03d}"
-
-              # Create task entry
-              new_task = {
-                  "task_id": new_task_id,
-                  "description": description,
-                  "status": "pending",
-                  "priority": priority,
-              }
-
-              if "tasks" not in target_phase:
-                  target_phase["tasks"] = []
-              target_phase["tasks"].append(new_task)
-
-              # Write back
-              with open(target_file, "w") as f:
-                  yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-
-              if is_json_output():
-                  print_json({
-                      "task_id": new_task_id,
-                      "description": description,
-                      "phase_id": target_phase.get("phase_id"),
-                      "file": target_file.name,
-                  })
-              else:
-                  print_success(f"Added task '{new_task_id}' to {target_file.name}")
-          ```
-
-        success_criteria:
-          - "Creates new task in target plan file"
-          - "Auto-generates task ID if not provided"
-          - "Supports adding to specific phase via --phase"
-          - "Creates default phase if none exists"
-          - "Preserves existing YAML structure"
-          - "JSON output includes task_id, description, phase_id, file"
-
-  # ===========================================================================
-  # Phase 3: Task Workflow Module
-  # ===========================================================================
-  - phase_id: "build_03"
-    name: "Task Workflow Module"
-    description: "Create TaskPresetWorkflow class for preset loading and management"
-    status: "completed"
-    estimated_effort: "medium"
-    depends_on: ["build_01"]
-
-    tasks:
-      # -----------------------------------------------------------------------
-      # Task 3.1: Create task_workflow.py module
-      # -----------------------------------------------------------------------
-      - task_id: "build_03_001"
-        description: "Create task_workflow.py module with TaskPresetWorkflow class"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py"
-            reason: "Reference for workflow class patterns and structure"
-          - path: "modules/AgenticCLI/src/agenticcli/workflows/__init__.py"
-            reason: "Module exports"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py"
-          - "modules/AgenticCLI/src/agenticcli/workflows/__init__.py"
-
-        guidance: |
-          Create new file: modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py
-
-          ```python
-          """Task Preset Workflow - load and manage task presets.
-
-          Handles loading task presets from templates and adding them to plans.
-          """
-
-          from dataclasses import dataclass, field
-          from pathlib import Path
-          from typing import Optional
-
-          import yaml
-
-
-          @dataclass
-          class PresetLoadResult:
-              """Result of loading a preset."""
-
-              preset_name: str
-              tasks_added: int
-              tasks: list[dict] = field(default_factory=list)
-              target_file: Optional[str] = None
-              dry_run: bool = False
-
-
-          class TaskPresetWorkflow:
-              """Workflow for loading task presets into plan files.
-
-              Provides:
-              - Loading preset templates from templates/presets/
-              - Adding preset tasks to plan_live_*.yml files
-              - Listing available presets
-              """
-
-              PRESETS_DIR = Path(__file__).parent.parent / "templates" / "presets"
-
-              def __init__(self, plan_path: Path):
-                  """Initialize task preset workflow.
-
-                  Args:
-                      plan_path: Path to the plan folder.
-                  """
-                  self.plan_path = plan_path
-                  self.live_dir = plan_path / "live"
-
-              def list_presets(self) -> list[str]:
-                  """List available preset names.
-
-                  Returns:
-                      List of preset names (without .yml extension).
-                  """
-                  if not self.PRESETS_DIR.exists():
-                      return []
-                  return [f.stem for f in self.PRESETS_DIR.glob("*.yml")]
-
-              def get_preset_path(self, preset_name: str) -> Path:
-                  """Get path to a preset file.
-
-                  Args:
-                      preset_name: Name of the preset (with or without .yml).
-
-                  Returns:
-                      Path to preset file.
-
-                  Raises:
-                      FileNotFoundError: If preset doesn't exist.
-                  """
-                  # Support both "planner-build" and "planner-build-preset"
-                  candidates = [
-                      self.PRESETS_DIR / f"{preset_name}.yml",
-                      self.PRESETS_DIR / f"{preset_name}-preset.yml",
-                  ]
-
-                  for path in candidates:
-                      if path.exists():
-                          return path
-
-                  raise FileNotFoundError(f"Preset '{preset_name}' not found")
-
-              def load_preset(
-                  self,
-                  preset_name: str,
-                  dry_run: bool = False,
-              ) -> PresetLoadResult:
-                  """Load a preset and add tasks to plan.
-
-                  Args:
-                      preset_name: Name of the preset to load.
-                      dry_run: If True, don't make changes.
-
-                  Returns:
-                      PresetLoadResult with operation details.
-
-                  Raises:
-                      FileNotFoundError: If preset doesn't exist.
-                  """
-                  preset_path = self.get_preset_path(preset_name)
-                  preset_data = yaml.safe_load(preset_path.read_text())
-
-                  tasks = preset_data.get("tasks", [])
-
-                  if dry_run:
-                      return PresetLoadResult(
-                          preset_name=preset_name,
-                          tasks_added=len(tasks),
-                          tasks=tasks,
-                          dry_run=True,
-                      )
-
-                  # Find or create target file
-                  target_file = self._find_or_create_task_file()
-
-                  # Load existing content
-                  if target_file.exists():
-                      content = yaml.safe_load(target_file.read_text()) or {}
-                  else:
-                      content = {
-                          "name": f"tasks-{self.plan_path.name}",
-                          "preset_source": preset_name,
-                          "tasks": [],
-                      }
-
-                  # Add tasks
-                  existing_tasks = content.get("tasks", [])
-                  existing_ids = {t.get("id") for t in existing_tasks}
-
-                  added_count = 0
-                  for task in tasks:
-                      if task.get("id") not in existing_ids:
-                          existing_tasks.append(task)
-                          added_count += 1
-
-                  content["tasks"] = existing_tasks
-
-                  # Write back
-                  with open(target_file, "w") as f:
-                      yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-
-                  return PresetLoadResult(
-                      preset_name=preset_name,
-                      tasks_added=added_count,
-                      tasks=tasks,
-                      target_file=target_file.name,
-                  )
-
-              def _find_or_create_task_file(self) -> Path:
-                  """Find existing task file or create path for new one.
-
-                  Returns:
-                      Path to task file.
-                  """
-                  # Look for existing plan_live_tasks.yml
-                  task_file = self.live_dir / "plan_live_tasks.yml"
-                  if task_file.exists():
-                      return task_file
-
-                  # Look for any plan_live_*.yml
-                  for f in self.live_dir.glob("plan_live_*.yml"):
-                      return f
-
-                  # Create new task file
-                  self.live_dir.mkdir(parents=True, exist_ok=True)
-                  return task_file
-          ```
-
-          Also update __init__.py to export the new class.
-
-        success_criteria:
-          - "TaskPresetWorkflow class created with documented methods"
-          - "list_presets() returns available preset names"
-          - "load_preset() loads YAML and adds tasks"
-          - "Supports dry_run mode"
-          - "PresetLoadResult dataclass captures operation results"
-          - "Module exported from workflows/__init__.py"
-
-  # ===========================================================================
-  # Phase 4: Preset Templates
-  # ===========================================================================
-  - phase_id: "build_04"
-    name: "Preset Templates"
-    description: "Create YAML preset template files for different agent roles"
-    status: "completed"
-    estimated_effort: "medium"
-
-    tasks:
-      # -----------------------------------------------------------------------
-      # Task 4.1: Create presets directory
-      # -----------------------------------------------------------------------
-      - task_id: "build_04_001"
-        description: "Create templates/presets directory structure"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/templates/"
-            reason: "Existing templates directory location"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/templates/presets/.gitkeep"
-
-        guidance: |
-          Create directory: modules/AgenticCLI/src/agenticcli/templates/presets/
-
-          Add a .gitkeep file to ensure the directory is tracked.
-
-        success_criteria:
-          - "presets/ directory exists under templates/"
-          - "Directory is tracked in git"
-
-      # -----------------------------------------------------------------------
-      # Task 4.2: Create planner-build preset
-      # -----------------------------------------------------------------------
-      - task_id: "build_04_002"
-        description: "Create planner-build-preset.yml template"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticGuidance/agents/planner/planner-build/inputs.yml"
-            reason: "Reference for planner-build workflow and expected tasks"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/templates/presets/planner-build-preset.yml"
-
-        guidance: |
-          Create preset file with tasks for planner-build agent:
-
-          ```yaml
-          # Planner-Build Preset
-          # Ancillary tasks to remember during build planning
-
-          name: planner-build
-          description: "Tasks for planner-build agent during plan creation"
-          version: "1.0"
-
-          tasks:
-            - id: "pb_001"
-              description: "Generate process.mmd diagram if plan has multiple phases"
-              priority: "medium"
-              trigger: "phases.count > 2"
-
-            - id: "pb_002"
-              description: "Update README.md with plan summary"
-              priority: "low"
-              trigger: "plan_created"
-
-            - id: "pb_003"
-              description: "Validate all inputs.yml file references exist"
-              priority: "high"
-              trigger: "inputs_defined"
-
-            - id: "pb_004"
-              description: "Add success_criteria to each task"
-              priority: "high"
-              trigger: "always"
-
-            - id: "pb_005"
-              description: "Specify target_files for each task"
-              priority: "high"
-              trigger: "always"
-
-            - id: "pb_006"
-              description: "Include guidance snippets for complex tasks"
-              priority: "medium"
-              trigger: "task.complexity > medium"
-
-            - id: "pb_007"
-              description: "Review for dependency ordering between tasks"
-              priority: "medium"
-              trigger: "tasks.count > 5"
-          ```
-
-        success_criteria:
-          - "YAML file valid and parseable"
-          - "Contains tasks relevant to planner-build workflow"
-          - "Each task has id, description, priority"
-          - "Includes trigger hints for conditional tasks"
-
-      # -----------------------------------------------------------------------
-      # Task 4.3: Create planner-teach preset
-      # -----------------------------------------------------------------------
-      - task_id: "build_04_003"
-        description: "Create planner-teach-preset.yml template"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticGuidance/agents/planner/"
-            reason: "Reference for planner agent patterns"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/templates/presets/planner-teach-preset.yml"
-
-        guidance: |
-          Create preset file with tasks for planner-teach agent:
-
-          ```yaml
-          # Planner-Teach Preset
-          # Ancillary tasks for teaching/guidance creation
-
-          name: planner-teach
-          description: "Tasks for creating teaching materials and guidance"
-          version: "1.0"
-
-          tasks:
-            - id: "pt_001"
-              description: "Create inputs.yml with all source references"
-              priority: "high"
-              trigger: "always"
-
-            - id: "pt_002"
-              description: "Generate process.mmd workflow diagram"
-              priority: "medium"
-              trigger: "workflow_defined"
-
-            - id: "pt_003"
-              description: "Add worked examples to guidance"
-              priority: "medium"
-              trigger: "guidance_created"
-
-            - id: "pt_004"
-              description: "Include anti-patterns section"
-              priority: "low"
-              trigger: "complexity > medium"
-
-            - id: "pt_005"
-              description: "Cross-reference related guidance documents"
-              priority: "low"
-              trigger: "related_docs_exist"
-
-            - id: "pt_006"
-              description: "Add validation checklist for guidance quality"
-              priority: "high"
-              trigger: "always"
-          ```
-
-        success_criteria:
-          - "YAML file valid and parseable"
-          - "Contains tasks relevant to guidance creation"
-          - "Each task has id, description, priority"
-
-      # -----------------------------------------------------------------------
-      # Task 4.4: Create planner-test preset
-      # -----------------------------------------------------------------------
-      - task_id: "build_04_004"
-        description: "Create planner-test-preset.yml template"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticGuidance/agents/planner/planner-test/inputs.yml"
-            reason: "Reference for planner-test workflow"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/templates/presets/planner-test-preset.yml"
-
-        guidance: |
-          Create preset file with tasks for planner-test agent:
-
-          ```yaml
-          # Planner-Test Preset
-          # Ancillary tasks for test planning
-
-          name: planner-test
-          description: "Tasks for test plan creation"
-          version: "1.0"
-
-          tasks:
-            - id: "ptest_001"
-              description: "Define test categories (unit, integration, e2e)"
-              priority: "high"
-              trigger: "always"
-
-            - id: "ptest_002"
-              description: "Map tests to user stories"
-              priority: "medium"
-              trigger: "stories_exist"
-
-            - id: "ptest_003"
-              description: "Include edge case scenarios"
-              priority: "medium"
-              trigger: "always"
-
-            - id: "ptest_004"
-              description: "Define test data requirements"
-              priority: "medium"
-              trigger: "always"
-
-            - id: "ptest_005"
-              description: "Specify expected coverage targets"
-              priority: "high"
-              trigger: "always"
-
-            - id: "ptest_006"
-              description: "Add performance test criteria if applicable"
-              priority: "low"
-              trigger: "performance_sensitive"
-          ```
-
-        success_criteria:
-          - "YAML file valid and parseable"
-          - "Contains tasks relevant to test planning"
-          - "Each task has id, description, priority"
-
-      # -----------------------------------------------------------------------
-      # Task 4.5: Create builder preset
-      # -----------------------------------------------------------------------
-      - task_id: "build_04_005"
-        description: "Create builder-preset.yml template"
-        status: "completed"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/templates/presets/builder-preset.yml"
-
-        guidance: |
-          Create preset file with tasks for builder/implementation agents:
-
-          ```yaml
-          # Builder Preset
-          # Ancillary tasks during implementation
-
-          name: builder
-          description: "Tasks for implementation agents during build phase"
-          version: "1.0"
-
-          tasks:
-            - id: "build_001"
-              description: "Run linter before committing"
-              priority: "high"
-              trigger: "pre_commit"
-
-            - id: "build_002"
-              description: "Run existing tests to verify no regressions"
-              priority: "high"
-              trigger: "implementation_complete"
-
-            - id: "build_003"
-              description: "Update docstrings for new functions"
-              priority: "medium"
-              trigger: "functions_added"
-
-            - id: "build_004"
-              description: "Add type hints to function signatures"
-              priority: "medium"
-              trigger: "python_code"
-
-            - id: "build_005"
-              description: "Check for hardcoded values that should be config"
-              priority: "low"
-              trigger: "always"
-
-            - id: "build_006"
-              description: "Verify imports are organized and minimal"
-              priority: "low"
-              trigger: "always"
-
-            - id: "build_007"
-              description: "Update CHANGELOG if significant change"
-              priority: "low"
-              trigger: "feature_complete"
-
-            - id: "build_008"
-              description: "Mark task complete in plan file"
-              priority: "high"
-              trigger: "task_done"
-          ```
-
-        success_criteria:
-          - "YAML file valid and parseable"
-          - "Contains tasks relevant to implementation workflow"
-          - "Each task has id, description, priority"
-          - "Includes common developer reminders (lint, test, docs)"
-
-  # ===========================================================================
-  # Phase 5: Integration and Polish
-  # ===========================================================================
-  - phase_id: "build_05"
-    name: "Integration and Polish"
-    description: "Integrate components, add error handling, update documentation"
-    status: "completed"
-    estimated_effort: "low"
-    depends_on: ["build_02", "build_03", "build_04"]
-
-    tasks:
-      # -----------------------------------------------------------------------
-      # Task 5.1: Update usage message
-      # -----------------------------------------------------------------------
-      - task_id: "build_05_001"
-        description: "Update task subcommand usage message in error handler"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-            reason: "Contains usage message in handle function"
-            lines: "34"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/commands/plan.py"
-
-        guidance: |
-          Update the usage message to include all task actions:
-
-          ```python
-          print("Usage: agentic plan task <start|complete|prefill|list|status|add> ...", file=sys.stderr)
-          ```
-
-        success_criteria:
-          - "Usage message lists all available task actions"
-
-      # -----------------------------------------------------------------------
-      # Task 5.2: Add stability decorators
-      # -----------------------------------------------------------------------
-      - task_id: "build_05_002"
-        description: "Register new commands in stability decorator system"
-        status: "completed"
-
-        inputs:
-          - path: "modules/AgenticCLI/src/agenticcli/decorators.py"
-            reason: "Contains command stability registration"
-
-        target_files:
-          - "modules/AgenticCLI/src/agenticcli/decorators.py"
-
-        guidance: |
-          Add new task subcommands to stability registry if applicable.
-
-          Most commands start as EXPERIMENTAL until validated:
-
-          ```python
-          # In COMMAND_STABILITY dict
-          "plan.task.prefill": StabilityLevel.EXPERIMENTAL,
-          "plan.task.list": StabilityLevel.EXPERIMENTAL,
-          "plan.task.status": StabilityLevel.EXPERIMENTAL,
-          "plan.task.add": StabilityLevel.EXPERIMENTAL,
-          ```
-
-        success_criteria:
-          - "New commands registered with appropriate stability level"
-          - "Stability banner shows for experimental commands"
-
-      # -----------------------------------------------------------------------
-      # Task 5.3: Verify argparse integration
-      # -----------------------------------------------------------------------
-      - task_id: "build_05_003"
-        description: "Verify argparse integration and help text"
-        status: "completed"
-
-        target_files: []  # Verification task
-
-        guidance: |
-          Manual verification steps:
-
-          1. Run: `agentic plan task --help`
-             Expected: Shows all subcommands (start, complete, prefill, list, status, add)
-
-          2. Run: `agentic plan task prefill --help`
-             Expected: Shows --preset, --plan, --dry-run options
-
-          3. Run: `agentic plan task list --help`
-             Expected: Shows --plan, --status, --verbose options
-
-          4. Run: `agentic plan task status --help`
-             Expected: Shows task_id argument and --plan option
-
-          5. Run: `agentic plan task add --help`
-             Expected: Shows description argument and options
-
-          6. Run: `agentic --help`
-             Expected: No errors, plan command visible
-
-        success_criteria:
-          - "All help commands execute without error"
-          - "Help text is clear and accurate"
-          - "No argparse conflicts or errors"
-
-success_criteria:
-  - "All four new CLI commands functional: prefill, list, status, add"
-  - "Preset templates created for planner-build, planner-teach, planner-test, builder"
-  - "TaskPresetWorkflow class implemented with dry-run support"
-  - "JSON output mode supported for all new commands"
-  - "Human-readable output with tables and colors"
-  - "Error messages helpful and actionable"
-  - "Help text accurate for all subcommands"
-
-notes:
-  - "Tests will be handled by planner-test in separate plan"
-  - "Follow existing patterns in plan.py and plan_workflow.py"
-  - "Use rich console utilities from console.py for formatted output"
-  - "Preset structure designed to be extensible for future agent types"
-  - "MANDATORY: Every agent process MUST start with a CLI call (e.g., agentic plan task list)"
-  - "Focus moved from performance comparison to autonomous context gathering verification"
+- name: CLI Task Command Extensions
+  description: 'Extend existing task subparser with new commands: prefill, list, status,
+    add'
+  tickets:
+  - id: build_01_001
+    name: ''
+    description: Add task prefill subcommand parser to cli.py
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/cli.py
+      reason: Contains _add_plan_parser function with existing task subparsers
+      lines: 310-324
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "Location: _add_plan_parser function, within the task_subparsers section\n\
+      \nAdd new parser after the existing 'complete' parser (line 324):\n\n```python\n\
+      # task prefill\nprefill_parser = task_subparsers.add_parser(\n    \"prefill\"\
+      ,\n    help=\"Load preset task list from template\",\n    description=\"Prefill\
+      \ tasks from a named preset template (e.g., planner-build, builder).\",\n)\n\
+      prefill_parser.add_argument(\n    \"--preset\", \"-t\",\n    required=True,\n\
+      \    help=\"Preset name (e.g., planner-build, planner-teach, builder)\",\n)\n\
+      prefill_parser.add_argument(\n    \"--plan\", \"-p\",\n    help=\"Plan path\
+      \ (default: auto-detect)\",\n)\nprefill_parser.add_argument(\n    \"--dry-run\"\
+      , \"-n\",\n    action=\"store_true\",\n    help=\"Show tasks that would be added\
+      \ without making changes\",\n)\n```\n\nPattern: Follow existing argparse patterns\
+      \ in cli.py for consistency.\n"
+    success_criteria:
+    - Parser accepts --preset/-t argument
+    - Parser accepts --plan/-p argument
+    - Parser accepts --dry-run/-n flag
+    - 'Help text displays correctly: agentic plan task prefill --help'
+    - No argparse errors on startup
+  - id: build_01_002
+    name: ''
+    description: Add task list subcommand parser to cli.py
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/cli.py
+      reason: Contains _add_plan_parser function with task subparsers
+      lines: 310-324
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "Location: _add_plan_parser function, after prefill parser\n\nAdd parser\
+      \ for 'task list':\n\n```python\n# task list\nlist_parser = task_subparsers.add_parser(\n\
+      \    \"list\",\n    help=\"Show all tasks in current plan folder\",\n    description=\"\
+      Display all tasks with their current status from plan files.\",\n)\nlist_parser.add_argument(\n\
+      \    \"--plan\", \"-p\",\n    help=\"Plan path (default: auto-detect)\",\n)\n\
+      list_parser.add_argument(\n    \"--status\", \"-s\",\n    choices=[\"all\",\
+      \ \"pending\", \"in_progress\", \"completed\"],\n    default=\"all\",\n    help=\"\
+      Filter by task status (default: all)\",\n)\nlist_parser.add_argument(\n    \"\
+      --verbose\", \"-v\",\n    action=\"store_true\",\n    help=\"Show full task\
+      \ details including guidance\",\n)\n```\n"
+    success_criteria:
+    - Parser accepts --plan/-p argument
+    - Parser accepts --status/-s filter argument
+    - Parser accepts --verbose/-v flag
+    - 'Help text displays correctly: agentic plan task list --help'
+  - id: build_01_003
+    name: ''
+    description: Add task status subcommand parser to cli.py
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/cli.py
+      reason: Contains _add_plan_parser function with task subparsers
+      lines: 310-324
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "Location: _add_plan_parser function, after list parser\n\nAdd parser\
+      \ for 'task status':\n\n```python\n# task status\nstatus_parser = task_subparsers.add_parser(\n\
+      \    \"status\",\n    help=\"Show detailed status for a specific task\",\n \
+      \   description=\"Display detailed information about a task by ID.\",\n)\nstatus_parser.add_argument(\n\
+      \    \"task_id\",\n    help=\"Task ID (e.g., build_01_001, 01.1)\",\n)\nstatus_parser.add_argument(\n\
+      \    \"--plan\", \"-p\",\n    help=\"Plan path (default: auto-detect)\",\n)\n\
+      ```\n"
+    success_criteria:
+    - Parser accepts task_id positional argument
+    - Parser accepts --plan/-p argument
+    - 'Help text displays correctly: agentic plan task status --help'
+  - id: build_01_004
+    name: ''
+    description: Add task add subcommand parser to cli.py
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/cli.py
+      reason: Contains _add_plan_parser function with task subparsers
+      lines: 310-324
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "Location: _add_plan_parser function, after status parser\n\nAdd parser\
+      \ for 'task add':\n\n```python\n# task add\nadd_parser = task_subparsers.add_parser(\n\
+      \    \"add\",\n    help=\"Add new task to plan\",\n    description=\"Add a new\
+      \ task to the active plan file.\",\n)\nadd_parser.add_argument(\n    \"description\"\
+      ,\n    help=\"Task description\",\n)\nadd_parser.add_argument(\n    \"--plan\"\
+      , \"-p\",\n    help=\"Plan path (default: auto-detect)\",\n)\nadd_parser.add_argument(\n\
+      \    \"--phase\", \"-ph\",\n    help=\"Phase ID to add task to (e.g., build_01)\"\
+      ,\n)\nadd_parser.add_argument(\n    \"--id\",\n    help=\"Custom task ID (auto-generated\
+      \ if not specified)\",\n)\nadd_parser.add_argument(\n    \"--priority\",\n \
+      \   choices=[\"low\", \"medium\", \"high\"],\n    default=\"medium\",\n    help=\"\
+      Task priority (default: medium)\",\n)\n```\n"
+    success_criteria:
+    - Parser accepts description positional argument
+    - Parser accepts --plan/-p, --phase/-ph, --id, --priority arguments
+    - 'Help text displays correctly: agentic plan task add --help'
+- name: Command Handler Implementation
+  description: Implement handler functions in plan.py for the new task commands
+  tickets:
+  - id: build_02_001
+    name: ''
+    description: Extend task command router in plan.py handle function
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/commands/plan.py
+      reason: Contains handle() function with task action routing
+      lines: 28-35
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Location: handle() function, within the args.plan_command == \"task\"\
+      \ block\n\nCurrent code routes: start, complete\nAdd routing for: prefill, list,\
+      \ status, add\n\n```python\nelif args.plan_command == \"task\":\n    if args.task_action\
+      \ == \"start\":\n        cmd_task_start(args)\n    elif args.task_action ==\
+      \ \"complete\":\n        cmd_task_complete(args)\n    elif args.task_action\
+      \ == \"prefill\":\n        cmd_task_prefill(args, ctx)\n    elif args.task_action\
+      \ == \"list\":\n        cmd_task_list(args, ctx)\n    elif args.task_action\
+      \ == \"status\":\n        cmd_task_status(args, ctx)\n    elif args.task_action\
+      \ == \"add\":\n        cmd_task_add(args, ctx)\n    else:\n        print(\"\
+      Usage: agentic plan task <start|complete|prefill|list|status|add> ...\", file=sys.stderr)\n\
+      \        sys.exit(1)\n```\n"
+    success_criteria:
+    - All four new actions route to their handler functions
+    - Error message updated to show all available actions
+  - id: build_02_002
+    name: ''
+    description: Implement cmd_task_prefill handler function
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/commands/plan.py
+      reason: Contains existing cmd_task_* handler functions as patterns
+      lines: 462-517
+    - path: modules/AgenticCLI/src/agenticcli/console.py
+      reason: Console output utilities for formatted output
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Create new function cmd_task_prefill(args, ctx):\n\n```python\ndef\
+      \ cmd_task_prefill(args, ctx=None):\n    \"\"\"Load preset task list from template.\n\
+      \n    Loads tasks from a preset YAML template and adds them to the\n    current\
+      \ plan's task list for tracking.\n\n    Args:\n        args: Parsed arguments\
+      \ with preset, plan, dry_run.\n        ctx: Optional CLIContext.\n    \"\"\"\
+      \n    from agenticcli.console import (\n        console,\n        is_json_output,\n\
+      \        print_error,\n        print_info,\n        print_json,\n        print_success,\n\
+      \        print_table,\n    )\n    from agenticcli.workflows.task_workflow import\
+      \ TaskPresetWorkflow\n\n    preset_name = args.preset\n    plan_path = find_plan_folder(getattr(args,\
+      \ \"plan\", None))\n    dry_run = getattr(args, \"dry_run\", False)\n\n    workflow\
+      \ = TaskPresetWorkflow(plan_path)\n\n    try:\n        result = workflow.load_preset(preset_name,\
+      \ dry_run=dry_run)\n    except FileNotFoundError:\n        print_error(f\"Preset\
+      \ '{preset_name}' not found\")\n        print_info(\"Available presets: \" +\
+      \ \", \".join(workflow.list_presets()))\n        sys.exit(1)\n\n    if is_json_output():\n\
+      \        print_json({\n            \"preset\": preset_name,\n            \"\
+      tasks_added\": result.tasks_added,\n            \"tasks\": result.tasks,\n \
+      \           \"dry_run\": dry_run,\n        })\n    else:\n        if dry_run:\n\
+      \            console.print(f\"[dim][dry-run] Would add {len(result.tasks)} tasks\
+      \ from preset '{preset_name}'[/dim]\")\n        else:\n            print_success(f\"\
+      Added {result.tasks_added} tasks from preset '{preset_name}'\")\n\n        #\
+      \ Show tasks\n        rows = [[t[\"id\"], t[\"description\"], t.get(\"priority\"\
+      , \"medium\")] for t in result.tasks]\n        print_table(\"Tasks\", [\"ID\"\
+      , \"Description\", \"Priority\"], rows)\n```\n\nKey behaviors:\n- Load preset\
+      \ template from templates/presets/\n- Add tasks to plan_live_*.yml in live/\
+      \ directory\n- Support dry-run mode\n- Show summary table of added tasks\n"
+    success_criteria:
+    - Loads preset from templates/presets/<name>.yml
+    - Adds tasks to plan file in live/ directory
+    - Handles missing preset with helpful error
+    - Supports --dry-run flag
+    - JSON output includes tasks_added and tasks list
+    - Human-readable output shows task table
+  - id: build_02_003
+    name: ''
+    description: Implement cmd_task_list handler function
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/commands/plan.py
+      reason: Contains cmd_status function with similar iteration pattern
+      lines: 291-399
+    - path: modules/AgenticCLI/src/agenticcli/console.py
+      reason: Console output utilities
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Create new function cmd_task_list(args, ctx):\n\n```python\ndef cmd_task_list(args,\
+      \ ctx=None):\n    \"\"\"List all tasks in plan folder.\n\n    Iterates through\
+      \ all YAML files in live/ and extracts tasks,\n    supporting status filtering\
+      \ and verbose output.\n\n    Args:\n        args: Parsed arguments with plan,\
+      \ status filter, verbose.\n        ctx: Optional CLIContext.\n    \"\"\"\n \
+      \   from agenticcli.console import (\n        console,\n        format_status,\n\
+      \        is_json_output,\n        print_error,\n        print_header,\n    \
+      \    print_json,\n        print_table,\n    )\n\n    plan_path = find_plan_folder(getattr(args,\
+      \ \"plan\", None))\n    status_filter = getattr(args, \"status\", \"all\")\n\
+      \    verbose = getattr(args, \"verbose\", False)\n    live_dir = plan_path /\
+      \ \"live\"\n\n    if not live_dir.exists():\n        print_error(f\"No live/\
+      \ directory in {plan_path}\")\n        sys.exit(1)\n\n    all_tasks = []\n\n\
+      \    for yaml_file in sorted(live_dir.glob(\"*.yml\")):\n        try:\n    \
+      \        content = yaml.safe_load(yaml_file.read_text())\n        except yaml.YAMLError:\n\
+      \            continue\n\n        if not content:\n            continue\n\n \
+      \       # Extract tasks from phases structure\n        phases = content.get(\"\
+      phases\", [])\n        for phase in phases:\n            phase_id = phase.get(\"\
+      phase_id\", \"\")\n            phase_name = phase.get(\"name\", \"\")\n    \
+      \        tasks = phase.get(\"tasks\", [])\n\n            for task in tasks:\n\
+      \                task_status = task.get(\"status\", \"pending\")\n         \
+      \       if status_filter != \"all\" and task_status != status_filter:\n    \
+      \                continue\n\n                task_info = {\n               \
+      \     \"id\": task.get(\"task_id\", \"\"),\n                    \"description\"\
+      : task.get(\"description\", \"\"),\n                    \"status\": task_status,\n\
+      \                    \"phase_id\": phase_id,\n                    \"phase_name\"\
+      : phase_name,\n                    \"source_file\": yaml_file.name,\n      \
+      \          }\n\n                if verbose:\n                    task_info[\"\
+      guidance\"] = task.get(\"guidance\", \"\")\n                    task_info[\"\
+      success_criteria\"] = task.get(\"success_criteria\", [])\n\n               \
+      \ all_tasks.append(task_info)\n\n    if is_json_output():\n        print_json({\"\
+      tasks\": all_tasks, \"count\": len(all_tasks)})\n    else:\n        print_header(f\"\
+      Tasks in {plan_path.name}\")\n\n        if not all_tasks:\n            console.print(\"\
+      [dim]No tasks found.[/dim]\")\n            return\n\n        if verbose:\n \
+      \           for task in all_tasks:\n                console.print(f\"\\n[bold]{task['id']}[/bold]:\
+      \ {task['description']}\")\n                console.print(f\"  Status: {format_status(task['status'])}\"\
+      )\n                console.print(f\"  Phase: {task['phase_name']}\")\n     \
+      \           if task.get(\"guidance\"):\n                    console.print(f\"\
+      \  [dim]Guidance: {task['guidance'][:100]}...[/dim]\")\n        else:\n    \
+      \        rows = [\n                [task[\"id\"], task[\"description\"][:50],\
+      \ format_status(task[\"status\"]), task[\"phase_id\"]]\n                for\
+      \ task in all_tasks\n            ]\n            print_table(\"\", [\"ID\", \"\
+      Description\", \"Status\", \"Phase\"], rows)\n\n        console.print(f\"\\\
+      n[dim]Total: {len(all_tasks)} tasks[/dim]\")\n```\n"
+    success_criteria:
+    - Lists all tasks from all YAML files in live/
+    - Supports --status filter (all, pending, in_progress, completed)
+    - Supports --verbose flag for detailed output
+    - JSON output includes full task list with count
+    - Table format for non-verbose human output
+  - id: build_02_004
+    name: ''
+    description: Implement cmd_task_status handler function
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/commands/plan.py
+      reason: Contains _update_task_status with task lookup pattern
+      lines: 480-517
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Create new function cmd_task_status(args, ctx):\n\n```python\ndef cmd_task_status(args,\
+      \ ctx=None):\n    \"\"\"Show detailed status for a specific task.\n\n    Finds\
+      \ task by ID and displays all available information\n    including guidance,\
+      \ success criteria, inputs, and target files.\n\n    Args:\n        args: Parsed\
+      \ arguments with task_id and plan.\n        ctx: Optional CLIContext.\n    \"\
+      \"\"\n    from agenticcli.console import (\n        console,\n        format_status,\n\
+      \        is_json_output,\n        print_error,\n        print_header,\n    \
+      \    print_json,\n        print_key_value,\n    )\n\n    task_id = args.task_id\n\
+      \    plan_path = find_plan_folder(getattr(args, \"plan\", None))\n    live_dir\
+      \ = plan_path / \"live\"\n\n    task_data = None\n    source_file = None\n \
+      \   phase_info = None\n\n    for yaml_file in live_dir.glob(\"*.yml\"):\n  \
+      \      try:\n            content = yaml.safe_load(yaml_file.read_text())\n \
+      \       except yaml.YAMLError:\n            continue\n\n        if not content:\n\
+      \            continue\n\n        phases = content.get(\"phases\", [])\n    \
+      \    for phase in phases:\n            tasks = phase.get(\"tasks\", [])\n  \
+      \          for task in tasks:\n                if task.get(\"task_id\") == task_id:\n\
+      \                    task_data = task\n                    source_file = yaml_file.name\n\
+      \                    phase_info = {\n                        \"phase_id\": phase.get(\"\
+      phase_id\"),\n                        \"name\": phase.get(\"name\"),\n     \
+      \                   \"status\": phase.get(\"status\"),\n                   \
+      \ }\n                    break\n            if task_data:\n                break\n\
+      \        if task_data:\n            break\n\n    if not task_data:\n       \
+      \ print_error(f\"Task '{task_id}' not found\")\n        sys.exit(1)\n\n    if\
+      \ is_json_output():\n        print_json({\n            \"task\": task_data,\n\
+      \            \"phase\": phase_info,\n            \"source_file\": source_file,\n\
+      \        })\n    else:\n        print_header(f\"Task: {task_id}\")\n\n     \
+      \   print_key_value(\"Description\", task_data.get(\"description\", \"N/A\"\
+      ))\n        print_key_value(\"Status\", format_status(task_data.get(\"status\"\
+      , \"pending\")))\n        print_key_value(\"Phase\", f\"{phase_info['phase_id']}\
+      \ - {phase_info['name']}\")\n        print_key_value(\"Source File\", source_file)\n\
+      \n        if task_data.get(\"inputs\"):\n            console.print(\"\\n[bold]Inputs:[/bold]\"\
+      )\n            for inp in task_data[\"inputs\"]:\n                console.print(f\"\
+      \  - {inp.get('path', inp)}\")\n\n        if task_data.get(\"target_files\"\
+      ):\n            console.print(\"\\n[bold]Target Files:[/bold]\")\n         \
+      \   for tf in task_data[\"target_files\"]:\n                console.print(f\"\
+      \  - {tf}\")\n\n        if task_data.get(\"guidance\"):\n            console.print(\"\
+      \\n[bold]Guidance:[/bold]\")\n            console.print(f\"[dim]{task_data['guidance']}[/dim]\"\
+      )\n\n        if task_data.get(\"success_criteria\"):\n            console.print(\"\
+      \\n[bold]Success Criteria:[/bold]\")\n            for criterion in task_data[\"\
+      success_criteria\"]:\n                console.print(f\"  - {criterion}\")\n\
+      ```\n"
+    success_criteria:
+    - Finds task by ID across all plan files
+    - Displays full task details including inputs, targets, guidance
+    - Shows phase context information
+    - Handles missing task with error message
+    - JSON output includes task, phase, and source_file
+  - id: build_02_005
+    name: ''
+    description: Implement cmd_task_add handler function
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/commands/plan.py
+      reason: Contains YAML read/write patterns
+      lines: 480-517
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "Create new function cmd_task_add(args, ctx):\n\n```python\ndef cmd_task_add(args,\
+      \ ctx=None):\n    \"\"\"Add a new task to the plan.\n\n    Creates a new task\
+      \ entry in the specified phase or appends\n    to the default/first phase if\
+      \ not specified.\n\n    Args:\n        args: Parsed arguments with description,\
+      \ plan, phase, id, priority.\n        ctx: Optional CLIContext.\n    \"\"\"\n\
+      \    from agenticcli.console import (\n        is_json_output,\n        print_error,\n\
+      \        print_json,\n        print_success,\n    )\n\n    description = args.description\n\
+      \    plan_path = find_plan_folder(getattr(args, \"plan\", None))\n    phase_id\
+      \ = getattr(args, \"phase\", None)\n    custom_id = getattr(args, \"id\", None)\n\
+      \    priority = getattr(args, \"priority\", \"medium\")\n    live_dir = plan_path\
+      \ / \"live\"\n\n    # Find the first plan_live_*.yml file or plan_build.yml\n\
+      \    target_file = None\n    for pattern in [\"plan_live_*.yml\", \"plan_build*.yml\"\
+      , \"*.yml\"]:\n        files = list(live_dir.glob(pattern))\n        if files:\n\
+      \            target_file = files[0]\n            break\n\n    if not target_file:\n\
+      \        print_error(\"No plan file found in live/ directory\")\n        sys.exit(1)\n\
+      \n    try:\n        content = yaml.safe_load(target_file.read_text())\n    except\
+      \ yaml.YAMLError as e:\n        print_error(f\"Failed to parse {target_file.name}:\
+      \ {e}\")\n        sys.exit(1)\n\n    if not content:\n        content = {\"\
+      phases\": []}\n\n    phases = content.get(\"phases\", [])\n\n    # Find target\
+      \ phase\n    target_phase = None\n    if phase_id:\n        for phase in phases:\n\
+      \            if phase.get(\"phase_id\") == phase_id:\n                target_phase\
+      \ = phase\n                break\n        if not target_phase:\n           \
+      \ print_error(f\"Phase '{phase_id}' not found\")\n            sys.exit(1)\n\
+      \    else:\n        if phases:\n            target_phase = phases[-1]  # Add\
+      \ to last phase\n        else:\n            # Create default phase\n       \
+      \     target_phase = {\n                \"phase_id\": \"adhoc_01\",\n      \
+      \          \"name\": \"Ad-hoc Tasks\",\n                \"status\": \"pending\"\
+      ,\n                \"tasks\": [],\n            }\n            phases.append(target_phase)\n\
+      \            content[\"phases\"] = phases\n\n    # Generate task ID\n    if\
+      \ custom_id:\n        new_task_id = custom_id\n    else:\n        existing_ids\
+      \ = [t.get(\"task_id\", \"\") for t in target_phase.get(\"tasks\", [])]\n  \
+      \      phase_prefix = target_phase.get(\"phase_id\", \"task\")\n        task_num\
+      \ = len(existing_ids) + 1\n        new_task_id = f\"{phase_prefix}_{task_num:03d}\"\
+      \n\n    # Create task entry\n    new_task = {\n        \"task_id\": new_task_id,\n\
+      \        \"description\": description,\n        \"status\": \"pending\",\n \
+      \       \"priority\": priority,\n    }\n\n    if \"tasks\" not in target_phase:\n\
+      \        target_phase[\"tasks\"] = []\n    target_phase[\"tasks\"].append(new_task)\n\
+      \n    # Write back\n    with open(target_file, \"w\") as f:\n        yaml.dump(content,\
+      \ f, default_flow_style=False, sort_keys=False, allow_unicode=True)\n\n    if\
+      \ is_json_output():\n        print_json({\n            \"task_id\": new_task_id,\n\
+      \            \"description\": description,\n            \"phase_id\": target_phase.get(\"\
+      phase_id\"),\n            \"file\": target_file.name,\n        })\n    else:\n\
+      \        print_success(f\"Added task '{new_task_id}' to {target_file.name}\"\
+      )\n```\n"
+    success_criteria:
+    - Creates new task in target plan file
+    - Auto-generates task ID if not provided
+    - Supports adding to specific phase via --phase
+    - Creates default phase if none exists
+    - Preserves existing YAML structure
+    - JSON output includes task_id, description, phase_id, file
+- name: Task Workflow Module
+  description: Create TaskPresetWorkflow class for preset loading and management
+  tickets:
+  - id: build_03_001
+    name: ''
+    description: Create task_workflow.py module with TaskPresetWorkflow class
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/workflows/plan_workflow.py
+      reason: Reference for workflow class patterns and structure
+    - path: modules/AgenticCLI/src/agenticcli/workflows/__init__.py
+      reason: Module exports
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py
+    - modules/AgenticCLI/src/agenticcli/workflows/__init__.py
+    guidance: "Create new file: modules/AgenticCLI/src/agenticcli/workflows/task_workflow.py\n\
+      \n```python\n\"\"\"Task Preset Workflow - load and manage task presets.\n\n\
+      Handles loading task presets from templates and adding them to plans.\n\"\"\"\
+      \n\nfrom dataclasses import dataclass, field\nfrom pathlib import Path\nfrom\
+      \ typing import Optional\n\nimport yaml\n\n\n@dataclass\nclass PresetLoadResult:\n\
+      \    \"\"\"Result of loading a preset.\"\"\"\n\n    preset_name: str\n    tasks_added:\
+      \ int\n    tasks: list[dict] = field(default_factory=list)\n    target_file:\
+      \ Optional[str] = None\n    dry_run: bool = False\n\n\nclass TaskPresetWorkflow:\n\
+      \    \"\"\"Workflow for loading task presets into plan files.\n\n    Provides:\n\
+      \    - Loading preset templates from templates/presets/\n    - Adding preset\
+      \ tasks to plan_live_*.yml files\n    - Listing available presets\n    \"\"\"\
+      \n\n    PRESETS_DIR = Path(__file__).parent.parent / \"templates\" / \"presets\"\
+      \n\n    def __init__(self, plan_path: Path):\n        \"\"\"Initialize task\
+      \ preset workflow.\n\n        Args:\n            plan_path: Path to the plan\
+      \ folder.\n        \"\"\"\n        self.plan_path = plan_path\n        self.live_dir\
+      \ = plan_path / \"live\"\n\n    def list_presets(self) -> list[str]:\n     \
+      \   \"\"\"List available preset names.\n\n        Returns:\n            List\
+      \ of preset names (without .yml extension).\n        \"\"\"\n        if not\
+      \ self.PRESETS_DIR.exists():\n            return []\n        return [f.stem\
+      \ for f in self.PRESETS_DIR.glob(\"*.yml\")]\n\n    def get_preset_path(self,\
+      \ preset_name: str) -> Path:\n        \"\"\"Get path to a preset file.\n\n \
+      \       Args:\n            preset_name: Name of the preset (with or without\
+      \ .yml).\n\n        Returns:\n            Path to preset file.\n\n        Raises:\n\
+      \            FileNotFoundError: If preset doesn't exist.\n        \"\"\"\n \
+      \       # Support both \"planner-build\" and \"planner-build-preset\"\n    \
+      \    candidates = [\n            self.PRESETS_DIR / f\"{preset_name}.yml\",\n\
+      \            self.PRESETS_DIR / f\"{preset_name}-preset.yml\",\n        ]\n\n\
+      \        for path in candidates:\n            if path.exists():\n          \
+      \      return path\n\n        raise FileNotFoundError(f\"Preset '{preset_name}'\
+      \ not found\")\n\n    def load_preset(\n        self,\n        preset_name:\
+      \ str,\n        dry_run: bool = False,\n    ) -> PresetLoadResult:\n       \
+      \ \"\"\"Load a preset and add tasks to plan.\n\n        Args:\n            preset_name:\
+      \ Name of the preset to load.\n            dry_run: If True, don't make changes.\n\
+      \n        Returns:\n            PresetLoadResult with operation details.\n\n\
+      \        Raises:\n            FileNotFoundError: If preset doesn't exist.\n\
+      \        \"\"\"\n        preset_path = self.get_preset_path(preset_name)\n \
+      \       preset_data = yaml.safe_load(preset_path.read_text())\n\n        tasks\
+      \ = preset_data.get(\"tasks\", [])\n\n        if dry_run:\n            return\
+      \ PresetLoadResult(\n                preset_name=preset_name,\n            \
+      \    tasks_added=len(tasks),\n                tasks=tasks,\n               \
+      \ dry_run=True,\n            )\n\n        # Find or create target file\n   \
+      \     target_file = self._find_or_create_task_file()\n\n        # Load existing\
+      \ content\n        if target_file.exists():\n            content = yaml.safe_load(target_file.read_text())\
+      \ or {}\n        else:\n            content = {\n                \"name\": f\"\
+      tasks-{self.plan_path.name}\",\n                \"preset_source\": preset_name,\n\
+      \                \"tasks\": [],\n            }\n\n        # Add tasks\n    \
+      \    existing_tasks = content.get(\"tasks\", [])\n        existing_ids = {t.get(\"\
+      id\") for t in existing_tasks}\n\n        added_count = 0\n        for task\
+      \ in tasks:\n            if task.get(\"id\") not in existing_ids:\n        \
+      \        existing_tasks.append(task)\n                added_count += 1\n\n \
+      \       content[\"tasks\"] = existing_tasks\n\n        # Write back\n      \
+      \  with open(target_file, \"w\") as f:\n            yaml.dump(content, f, default_flow_style=False,\
+      \ sort_keys=False, allow_unicode=True)\n\n        return PresetLoadResult(\n\
+      \            preset_name=preset_name,\n            tasks_added=added_count,\n\
+      \            tasks=tasks,\n            target_file=target_file.name,\n     \
+      \   )\n\n    def _find_or_create_task_file(self) -> Path:\n        \"\"\"Find\
+      \ existing task file or create path for new one.\n\n        Returns:\n     \
+      \       Path to task file.\n        \"\"\"\n        # Look for existing plan_live_tasks.yml\n\
+      \        task_file = self.live_dir / \"plan_live_tasks.yml\"\n        if task_file.exists():\n\
+      \            return task_file\n\n        # Look for any plan_live_*.yml\n  \
+      \      for f in self.live_dir.glob(\"plan_live_*.yml\"):\n            return\
+      \ f\n\n        # Create new task file\n        self.live_dir.mkdir(parents=True,\
+      \ exist_ok=True)\n        return task_file\n```\n\nAlso update __init__.py to\
+      \ export the new class.\n"
+    success_criteria:
+    - TaskPresetWorkflow class created with documented methods
+    - list_presets() returns available preset names
+    - load_preset() loads YAML and adds tasks
+    - Supports dry_run mode
+    - PresetLoadResult dataclass captures operation results
+    - Module exported from workflows/__init__.py
+- name: Preset Templates
+  description: Create YAML preset template files for different agent roles
+  tickets:
+  - id: build_04_001
+    name: ''
+    description: Create templates/presets directory structure
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/templates/
+      reason: Existing templates directory location
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/templates/presets/.gitkeep
+    guidance: 'Create directory: modules/AgenticCLI/src/agenticcli/templates/presets/
+
+
+      Add a .gitkeep file to ensure the directory is tracked.
+
+      '
+    success_criteria:
+    - presets/ directory exists under templates/
+    - Directory is tracked in git
+  - id: build_04_002
+    name: ''
+    description: Create planner-build-preset.yml template
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+      reason: Reference for planner-build workflow and expected tasks
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/templates/presets/planner-build-preset.yml
+    guidance: "Create preset file with tasks for planner-build agent:\n\n```yaml\n\
+      # Planner-Build Preset\n# Ancillary tasks to remember during build planning\n\
+      \nname: planner-build\ndescription: \"Tasks for planner-build agent during plan\
+      \ creation\"\nversion: \"1.0\"\n\ntasks:\n  - id: \"pb_001\"\n    description:\
+      \ \"Generate process.mmd diagram if plan has multiple phases\"\n    priority:\
+      \ \"medium\"\n    trigger: \"phases.count > 2\"\n\n  - id: \"pb_002\"\n    description:\
+      \ \"Update README.md with plan summary\"\n    priority: \"low\"\n    trigger:\
+      \ \"plan_created\"\n\n  - id: \"pb_003\"\n    description: \"Validate all inputs.yml\
+      \ file references exist\"\n    priority: \"high\"\n    trigger: \"inputs_defined\"\
+      \n\n  - id: \"pb_004\"\n    description: \"Add success_criteria to each task\"\
+      \n    priority: \"high\"\n    trigger: \"always\"\n\n  - id: \"pb_005\"\n  \
+      \  description: \"Specify target_files for each task\"\n    priority: \"high\"\
+      \n    trigger: \"always\"\n\n  - id: \"pb_006\"\n    description: \"Include\
+      \ guidance snippets for complex tasks\"\n    priority: \"medium\"\n    trigger:\
+      \ \"task.complexity > medium\"\n\n  - id: \"pb_007\"\n    description: \"Review\
+      \ for dependency ordering between tasks\"\n    priority: \"medium\"\n    trigger:\
+      \ \"tasks.count > 5\"\n```\n"
+    success_criteria:
+    - YAML file valid and parseable
+    - Contains tasks relevant to planner-build workflow
+    - Each task has id, description, priority
+    - Includes trigger hints for conditional tasks
+  - id: build_04_003
+    name: ''
+    description: Create planner-teach-preset.yml template
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticGuidance/agents/planner/
+      reason: Reference for planner agent patterns
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/templates/presets/planner-teach-preset.yml
+    guidance: "Create preset file with tasks for planner-teach agent:\n\n```yaml\n\
+      # Planner-Teach Preset\n# Ancillary tasks for teaching/guidance creation\n\n\
+      name: planner-teach\ndescription: \"Tasks for creating teaching materials and\
+      \ guidance\"\nversion: \"1.0\"\n\ntasks:\n  - id: \"pt_001\"\n    description:\
+      \ \"Create inputs.yml with all source references\"\n    priority: \"high\"\n\
+      \    trigger: \"always\"\n\n  - id: \"pt_002\"\n    description: \"Generate\
+      \ process.mmd workflow diagram\"\n    priority: \"medium\"\n    trigger: \"\
+      workflow_defined\"\n\n  - id: \"pt_003\"\n    description: \"Add worked examples\
+      \ to guidance\"\n    priority: \"medium\"\n    trigger: \"guidance_created\"\
+      \n\n  - id: \"pt_004\"\n    description: \"Include anti-patterns section\"\n\
+      \    priority: \"low\"\n    trigger: \"complexity > medium\"\n\n  - id: \"pt_005\"\
+      \n    description: \"Cross-reference related guidance documents\"\n    priority:\
+      \ \"low\"\n    trigger: \"related_docs_exist\"\n\n  - id: \"pt_006\"\n    description:\
+      \ \"Add validation checklist for guidance quality\"\n    priority: \"high\"\n\
+      \    trigger: \"always\"\n```\n"
+    success_criteria:
+    - YAML file valid and parseable
+    - Contains tasks relevant to guidance creation
+    - Each task has id, description, priority
+  - id: build_04_004
+    name: ''
+    description: Create planner-test-preset.yml template
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticGuidance/agents/planner/planner-test/inputs.yml
+      reason: Reference for planner-test workflow
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/templates/presets/planner-test-preset.yml
+    guidance: "Create preset file with tasks for planner-test agent:\n\n```yaml\n\
+      # Planner-Test Preset\n# Ancillary tasks for test planning\n\nname: planner-test\n\
+      description: \"Tasks for test plan creation\"\nversion: \"1.0\"\n\ntasks:\n\
+      \  - id: \"ptest_001\"\n    description: \"Define test categories (unit, integration,\
+      \ e2e)\"\n    priority: \"high\"\n    trigger: \"always\"\n\n  - id: \"ptest_002\"\
+      \n    description: \"Map tests to user stories\"\n    priority: \"medium\"\n\
+      \    trigger: \"stories_exist\"\n\n  - id: \"ptest_003\"\n    description: \"\
+      Include edge case scenarios\"\n    priority: \"medium\"\n    trigger: \"always\"\
+      \n\n  - id: \"ptest_004\"\n    description: \"Define test data requirements\"\
+      \n    priority: \"medium\"\n    trigger: \"always\"\n\n  - id: \"ptest_005\"\
+      \n    description: \"Specify expected coverage targets\"\n    priority: \"high\"\
+      \n    trigger: \"always\"\n\n  - id: \"ptest_006\"\n    description: \"Add performance\
+      \ test criteria if applicable\"\n    priority: \"low\"\n    trigger: \"performance_sensitive\"\
+      \n```\n"
+    success_criteria:
+    - YAML file valid and parseable
+    - Contains tasks relevant to test planning
+    - Each task has id, description, priority
+  - id: build_04_005
+    name: ''
+    description: Create builder-preset.yml template
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/templates/presets/builder-preset.yml
+    guidance: "Create preset file with tasks for builder/implementation agents:\n\n\
+      ```yaml\n# Builder Preset\n# Ancillary tasks during implementation\n\nname:\
+      \ builder\ndescription: \"Tasks for implementation agents during build phase\"\
+      \nversion: \"1.0\"\n\ntasks:\n  - id: \"build_001\"\n    description: \"Run\
+      \ linter before committing\"\n    priority: \"high\"\n    trigger: \"pre_commit\"\
+      \n\n  - id: \"build_002\"\n    description: \"Run existing tests to verify no\
+      \ regressions\"\n    priority: \"high\"\n    trigger: \"implementation_complete\"\
+      \n\n  - id: \"build_003\"\n    description: \"Update docstrings for new functions\"\
+      \n    priority: \"medium\"\n    trigger: \"functions_added\"\n\n  - id: \"build_004\"\
+      \n    description: \"Add type hints to function signatures\"\n    priority:\
+      \ \"medium\"\n    trigger: \"python_code\"\n\n  - id: \"build_005\"\n    description:\
+      \ \"Check for hardcoded values that should be config\"\n    priority: \"low\"\
+      \n    trigger: \"always\"\n\n  - id: \"build_006\"\n    description: \"Verify\
+      \ imports are organized and minimal\"\n    priority: \"low\"\n    trigger: \"\
+      always\"\n\n  - id: \"build_007\"\n    description: \"Update CHANGELOG if significant\
+      \ change\"\n    priority: \"low\"\n    trigger: \"feature_complete\"\n\n  -\
+      \ id: \"build_008\"\n    description: \"Mark task complete in plan file\"\n\
+      \    priority: \"high\"\n    trigger: \"task_done\"\n```\n"
+    success_criteria:
+    - YAML file valid and parseable
+    - Contains tasks relevant to implementation workflow
+    - Each task has id, description, priority
+    - Includes common developer reminders (lint, test, docs)
+- name: Integration and Polish
+  description: Integrate components, add error handling, update documentation
+  tickets:
+  - id: build_05_001
+    name: ''
+    description: Update task subcommand usage message in error handler
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/commands/plan.py
+      reason: Contains usage message in handle function
+      lines: '34'
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: 'Update the usage message to include all task actions:
+
+
+      ```python
+
+      print("Usage: agentic plan task <start|complete|prefill|list|status|add> ...",
+      file=sys.stderr)
+
+      ```
+
+      '
+    success_criteria:
+    - Usage message lists all available task actions
+  - id: build_05_002
+    name: ''
+    description: Register new commands in stability decorator system
+    status: completed
+    agent: null
+    inputs:
+    - path: modules/AgenticCLI/src/agenticcli/decorators.py
+      reason: Contains command stability registration
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/decorators.py
+    guidance: 'Add new task subcommands to stability registry if applicable.
+
+
+      Most commands start as EXPERIMENTAL until validated:
+
+
+      ```python
+
+      # In COMMAND_STABILITY dict
+
+      "plan.task.prefill": StabilityLevel.EXPERIMENTAL,
+
+      "plan.task.list": StabilityLevel.EXPERIMENTAL,
+
+      "plan.task.status": StabilityLevel.EXPERIMENTAL,
+
+      "plan.task.add": StabilityLevel.EXPERIMENTAL,
+
+      ```
+
+      '
+    success_criteria:
+    - New commands registered with appropriate stability level
+    - Stability banner shows for experimental commands
+  - id: build_05_003
+    name: ''
+    description: Verify argparse integration and help text
+    status: completed
+    agent: null
+    guidance: "Manual verification steps:\n\n1. Run: `agentic plan task --help`\n\
+      \   Expected: Shows all subcommands (start, complete, prefill, list, status,\
+      \ add)\n\n2. Run: `agentic plan task prefill --help`\n   Expected: Shows --preset,\
+      \ --plan, --dry-run options\n\n3. Run: `agentic plan task list --help`\n   Expected:\
+      \ Shows --plan, --status, --verbose options\n\n4. Run: `agentic plan task status\
+      \ --help`\n   Expected: Shows task_id argument and --plan option\n\n5. Run:\
+      \ `agentic plan task add --help`\n   Expected: Shows description argument and\
+      \ options\n\n6. Run: `agentic --help`\n   Expected: No errors, plan command\
+      \ visible\n"
+    success_criteria:
+    - All help commands execute without error
+    - Help text is clear and accurate
+    - No argparse conflicts or errors
+- name: Build Phase
+  execution: sequential
+  description: Implement CLI command syntax change
+  tickets:
+  - id: build_001
+    name: Update entry.py for Positional Agent Names
+    description: 'Modify entry.py to detect positional agent names:
+
+      - Check if first argument matches KNOWN_AGENTS list
+
+      - Route to show_agent_help() if match found
+
+      - Remove -- prefix detection for agents
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/entry.py
+    - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    success_criteria:
+    - '`agentic planner-build` works'
+    - '`agentic --planner-build` no longer works (breaking change)'
+    - Other subcommands unaffected
+  - id: build_002
+    name: Add --bootstrap Flag Support
+    description: 'Add --bootstrap flag to agent commands:
+
+      - `agentic planner-build` - Initial instructions (current behavior)
+
+      - `agentic planner-build --bootstrap` - Full context with file paths
+
+
+      --bootstrap should output:
+
+      - Process steps from process.yml
+
+      - Input file paths from inputs.yml
+
+      - Current task (if any)
+
+      - Next CLI commands
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    success_criteria:
+    - '`agentic planner-build --bootstrap` outputs full context'
+    - Output includes file paths
+    - JSON output supported with -j flag
+  - id: build_003
+    name: Update CLI Help Text
+    description: 'Update help text to reflect new command pattern:
+
+      - Remove references to --agent-name syntax
+
+      - Document positional agent-name syntax
+
+      - Document --bootstrap flag
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    success_criteria:
+    - Help text shows `agentic <agent-name>` syntax
+    - Examples updated
+    - No references to old --agent-name syntax
+  - id: build_004
+    name: Ensure File Paths in All Outputs
+    description: 'All agent command outputs should include file paths:
+
+      - Path to agent directory
+
+      - Path to process.yml
+
+      - Path to inputs.yml
+
+      - Paths to referenced guidelines/definitions
+
+
+      This enables agents to read source files after CLI injection.
+
+      '
+    status: completed
+    agent: build-python
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    success_criteria:
+    - All outputs include file paths
+    - Paths are absolute and resolvable
+- name: Test Phase
+  execution: sequential
+  description: Verify CLI changes work correctly
+  tickets:
+  - id: test_001
+    name: Test Positional Agent Names
+    description: 'Test all 26 agents with new syntax:
+
+      - `agentic planner-build` works
+
+      - `agentic test-runner` works
+
+      - etc.
+
+      '
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - All 26 agents accessible via positional syntax
+    - No regressions in other commands
+  - id: test_002
+    name: Test --bootstrap Flag
+    description: 'Test --bootstrap flag for multiple agents:
+
+      - Verify full context output
+
+      - Verify file paths included
+
+      - Verify JSON output with -j
+
+      '
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - --bootstrap outputs more detail than base command
+    - File paths are valid
+    - JSON format is correct
+  - id: test_003
+    name: Test Breaking Change
+    description: 'Verify old syntax no longer works:
+
+      - `agentic --planner-build` should fail
+
+      - Error message should guide to new syntax
+
+      '
+    status: completed
+    agent: test-runner
+    success_criteria:
+    - Old syntax fails with helpful error
+    - Error suggests new syntax
+- name: Update Guidance Phase
+  execution: parallel
+  description: Update .claude/agents/*.md files with new syntax
+  tickets:
+  - id: guide_001
+    name: Update Agent Bootstrap Files
+    description: 'Update all 26 .claude/agents/*.md files:
+
+      - Change `agentic --agent-name` to `agentic agent-name`
+
+      - Add `agentic agent-name --bootstrap` as next step
+
+      '
+    status: completed
+    agent: teacher-update-guidance
+    inputs:
+    - .claude/agents/*.md
+    success_criteria:
+    - All agent files use new syntax
+    - No --agent-name references remain
+- name: Design
+  description: Define CLI interface and naming algorithm.
+  tickets:
+  - id: design_cli_interface
+    name: Design CLI Interface
+    description: "Command: agentic plan init <branch> [--description <desc>] [--base\
+      \ <base-branch>]\n\nBehavior:\n1. Check if worktree exists for <branch>\n  \
+      \ - If no: create worktree at ../<repo>-<branch> from <base-branch> (default:\
+      \ main)\n   - If yes: use existing worktree\n2. Generate plan folder name: YYMMDDXX_<description>\n\
+      \   - YYMMDD: Current date\n   - XX: Worktree identifier (2 chars from branch\
+      \ suffix or configured)\n   - description: Sanitized from --description or prompted\n\
+      3. Create folder structure in worktree's docs/plans/live/:\n   - YYMMDDXX_description/\n\
+      \     - live/\n     - analysis/\n     - audit/\n     - completed/\n     - README.md\
+      \ (templated)\n4. Output: Full path to created folder\n\nExit codes:\n- 0: Success,\
+      \ folder created\n- 1: Worktree creation failed\n- 2: Folder already exists\n\
+      - 3: Invalid branch name or description\n"
+    status: completed
+    agent: null
+  - id: design_naming_algorithm
+    name: Design Naming Algorithm
+    description: 'Worktree Identifier Derivation:
+
+      1. Parse worktree path: /home/code/AgenticEngineering-agenticguidance
+
+      2. Extract suffix after last hyphen: agenticguidance
+
+      3. Take first 2 characters, uppercase: AG
+
+      4. Result: 260115AG_naming_convention_audit
+
+
+      Special cases:
+
+      - No hyphen in path: Use first 2 chars of directory name
+
+      - Configurable override: .agentic.yml can specify worktree_id
+
+
+      Description sanitization:
+
+      - Lowercase
+
+      - Replace spaces with underscores
+
+      - Remove special characters except underscore
+
+      - Max 50 characters
+
+      '
+    status: completed
+    agent: null
+- name: Implementation
+  description: Build the CLI command.
+  tickets:
+  - id: implement_worktree_check
+    name: Implement Worktree Detection
+    description: Check if worktree exists for branch, return path or None.
+    status: completed
+    agent: null
+    target_files:
+    - src/agentic_cli/commands/plan.py
+  - id: implement_worktree_create
+    name: Implement Worktree Creation
+    description: Create worktree if not exists.
+    status: completed
+    agent: null
+    target_files:
+    - src/agentic_cli/commands/plan.py
+  - id: implement_name_generation
+    name: Implement Name Generation
+    description: Generate YYMMDDXX_description from inputs.
+    status: completed
+    agent: null
+    target_files:
+    - src/agentic_cli/utils/naming.py
+  - id: implement_folder_scaffold
+    name: Implement Folder Scaffolding
+    description: Create folder structure with README template.
+    status: completed
+    agent: null
+    target_files:
+    - src/agentic_cli/commands/plan.py
+    - src/agentic_cli/templates/plan_readme.md
+  - id: implement_plan_init_command
+    name: Implement plan init Command
+    description: Wire up the full command with Click.
+    status: completed
+    agent: null
+    target_files:
+    - src/agentic_cli/commands/plan.py
+    - src/agentic_cli/cli.py
+- name: Testing
+  description: Verify CLI behavior.
+  tickets:
+  - id: test_name_generation
+    name: Test Name Generation
+    description: Unit tests for naming algorithm.
+    status: completed
+    agent: null
+    target_files:
+    - tests/test_naming.py
+  - id: test_plan_init
+    name: Test plan init Command
+    description: Integration tests for full command.
+    status: completed
+    agent: null
+    target_files:
+    - tests/test_plan_init.py
+- name: Integration
+  description: Update agent guidance to use CLI.
+  tickets:
+  - id: update_cli_commands_yml
+    name: Update cli-commands.yml
+    description: Add plan init to CLI commands definition.
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticGuidance/assets/definitions/cli-commands.yml
+  - id: update_deploy_worktree_agent
+    name: Update deploy-worktree Agent
+    description: Agent uses CLI instead of manual folder creation.
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/process.yml
+  - id: update_orchestration_planning
+    name: Update orchestration-planning Process
+    description: Orchestration uses CLI for worktree/folder setup.
+    status: completed
+    agent: null
+    target_files:
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.mmd
+- name: User Stories
+  description: Define user stories for UAT validation.
+  tickets: []
+- name: UAT Testing
+  description: User Acceptance Testing with test-user-simulator agent.
+  tickets:
+  - id: uat_execute_stories
+    name: Execute User Story Validation
+    description: 'Spawn test-user-simulator agent to execute each user story.
+
+      Agent follows test_steps without access to implementation details.
+
+      Validates acceptance_criteria are met.
+
+      '
+    status: completed
+    agent: test-user-simulator
+  - id: uat_document_results
+    name: Document UAT Results
+    description: Record UAT results and any gaps identified.
+    status: completed
+    agent: null
+- name: CLI Context Command Infrastructure
+  execution: sequential
+  description: Build the core 'agentic context' command group and Main-First plan
+    resolution
+  tickets:
+  - id: '01.1'
+    name: Create cmd_context module and parser
+    description: 'Add a new command module for context retrieval with subcommands:
+
+      - bootstrap: Primary entrypoint for Seed Context
+
+      - role: Get role-specific process/guidelines
+
+      - task: Get active task from Main-First plan
+
+      - inputs: Get JIT manifest of relevant project files
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/context.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    guidance: '1. Create new command module: `modules/AgenticCLI/src/agenticcli/commands/context.py`
+
+      2. Add parser definition in cli.py using `_add_context_parser(subparsers)` pattern
+
+      3. Register as PROJECT_COMMAND (requires .git or .agenticcli.yml)
+
+      4. Implement handle() function routing to subcommand handlers
+
+      5. Support --json flag for machine-readable output (critical for agent consumption)
+
+      6. Follow existing command patterns from plan.py and worktree.py
+
+      '
+    success_criteria:
+    - '`agentic context --help` shows all subcommands'
+    - '`agentic context bootstrap` returns structured JSON when invoked with -j'
+    - Command registered in cli.py and imports correctly
+  - id: '01.2'
+    name: Implement Main-First Plan Hunter
+    description: 'CLI logic to find the active plan in the main worktree based on
+      current branch.
+
+      Extends existing find_main_worktree() from plan.py with plan resolution.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    - modules/AgenticCLI/src/agenticcli/context.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py
+    guidance: "1. Create `context_workflow.py` in workflows/ directory\n2. Implement\
+      \ `MainFirstPlanResolver` class with methods:\n   - find_main_worktree() - reuse/extend\
+      \ from plan.py\n   - resolve_active_plan(branch: str) -> Path|None\n   - extract_plan_objective(plan_path:\
+      \ Path) -> dict\n3. Resolution algorithm:\n   a. Detect if current directory\
+      \ is in a worktree\n   b. Find the main worktree path (git worktree list --porcelain)\n\
+      \   c. Scan main_worktree/docs/plans/live/ for folders matching branch pattern\n\
+      \   d. Parse plan.yml to extract objective, status, active tasks\n4. Handle\
+      \ edge cases: no match, multiple matches, plan.yml missing\n5. Return structured\
+      \ dict: {plan_folder, objective, status, active_tasks, main_worktree}\n"
+    success_criteria:
+    - Plan resolver finds correct plan when invoked from feature worktree
+    - Returns None gracefully when no matching plan exists
+    - Handles both YYMMDDXX_description naming and branch-based matching
+  - id: '01.3'
+    name: Implement context bootstrap command
+    description: 'Create the primary entrypoint for agents to get their ''Seed Context''.
+
+      Aggregates: Active Task + Primary Role Guidance + Essential Inputs.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    - modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    guidance: "1. Implement cmd_bootstrap(args, ctx) handler\n2. Accept optional --role\
+      \ <role-id> flag to specify agent role\n3. Aggregate context from multiple sources:\n\
+      \   a. Active task from Main-First plan (via context_workflow.py)\n   b. Role\
+      \ process/guidelines from AgenticGuidance agents\n   c. Essential inputs from\
+      \ inputs.yml (filtered by role)\n4. Output format (JSON):\n   {\n     \"role\"\
+      : \"planner-build\",\n     \"objective\": \"...\",\n     \"plan_folder\": \"\
+      260114CL_context_entrypoints\",\n     \"process\": { ... },  # From process.yml\n\
+      \     \"essential_inputs\": [ ... ],  # High-priority files\n     \"cli_commands\"\
+      : {  # Available CLI commands for this role\n       \"task_prefill\": \"agentic\
+      \ plan task prefill --preset planner-build\",\n       \"task_status\": \"agentic\
+      \ plan task list\"\n     }\n   }\n5. Default role detection based on plan.yml\
+      \ agent_type if --role not specified\n"
+    success_criteria:
+    - '`agentic context bootstrap --role planner-build -j` returns valid JSON'
+    - Output includes objective from active plan
+    - Output includes role-specific process guidance
+    - Output includes CLI command hints for task list integration
+  - id: '01.4'
+    name: Implement context role command
+    description: 'Returns standardized process and ''Ways of Working'' for a specific
+      role.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/manifest.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    guidance: "1. Implement cmd_role(args, ctx) handler\n2. Accept required role-id\
+      \ argument (e.g., planner-build, build-python)\n3. Locate agent definition at:\n\
+      \   modules/AgenticGuidance/agents/{category}/{role}/\n4. Return process.yml\
+      \ content + key manifest.yml fields\n5. Support --format flag: yaml (default)\
+      \ or json\n6. Include invocation_context from process.yml for caller chain awareness\n"
+    success_criteria:
+    - '`agentic context role planner-build` returns process content'
+    - Role not found returns clear error message
+    - Both YAML and JSON output formats work
+  - id: '01.5'
+    name: Implement context task command
+    description: 'Specifically crawls the Main Worktree''s docs/plans/live/ directory
+
+      to identify and extract the active task for the current worktree/branch.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    - modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    guidance: "1. Implement cmd_task(args, ctx) handler\n2. Use MainFirstPlanResolver\
+      \ to find active plan\n3. Parse plan YAML to find current task (status: in_progress)\n\
+      4. Return structured task info:\n   {\n     \"task_id\": \"01.3\",\n     \"\
+      name\": \"Implement context bootstrap command\",\n     \"description\": \"...\"\
+      ,\n     \"status\": \"in_progress\",\n     \"inputs\": [...],\n     \"guidance\"\
+      : \"...\"\n   }\n5. If no in_progress task, return first pending task\n6. Support\
+      \ --all flag to return all tasks\n"
+    success_criteria:
+    - '`agentic context task` returns current task from active plan'
+    - Works from both main worktree and feature worktrees
+    - Returns clear message when no tasks available
+  - id: '01.6'
+    name: Implement context inputs command
+    description: 'Provides JIT manifest of relevant project files, replacing static
+
+      inputs.yml references with dynamic discovery.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    - modules/AgenticCLI/src/agenticcli/commands/inputs.py
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    guidance: "1. Implement cmd_inputs(args, ctx) handler\n2. Accept optional --role\
+      \ <role-id> to filter inputs\n3. Accept optional --resolve flag to expand layer\
+      \ references\n4. Load inputs.yml for the specified role\n5. Resolve relative\
+      \ paths to absolute paths\n6. Validate file existence and report missing files\n\
+      7. Return structured manifest:\n   {\n     \"role\": \"planner-build\",\n  \
+      \   \"inputs\": [\n       {\"path\": \"/absolute/path\", \"description\": \"\
+      ...\", \"exists\": true}\n     ],\n     \"layers\": [...],\n     \"missing\"\
+      : [...]\n   }\n"
+    success_criteria:
+    - '`agentic context inputs --role planner-build` returns input manifest'
+    - Paths are resolved to absolute paths
+    - Missing files are clearly identified
+- name: CLI Plan Status Tools
+  execution: sequential
+  description: 'Implement CLI tools for agents to READ and UPDATE plan status without
+    holding
+
+    the plan in context. NOTE: Planner agents own plan creation/management.
+
+    CLI provides persistence tools only.
+
+    '
+  tickets:
+  - id: '02.1'
+    name: Implement plan task status command
+    description: 'CLI command to READ task status from existing plan files:
+
+      - Shows all tasks with their current status
+
+      - Filters by phase or status
+
+      - Works from any worktree (resolves to Main-First plan)
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. Extend _add_plan_parser() in cli.py to add task subcommand:\n  \
+      \ - plan task status [--phase <phase-id>] [--status pending|in_progress|completed]\n\
+      2. Implement cmd_task_status() handler in plan.py:\n   a. Use Main-First resolution\
+      \ to find active plan\n   b. Parse plan YAML to extract tasks from all phases\n\
+      \   c. Display using Rich table (ID, Name, Status, Phase)\n3. Support --json\
+      \ flag for machine-readable output\n4. This is a READ operation - does NOT modify\
+      \ plan files\n"
+    success_criteria:
+    - '`agentic plan task status` shows all tasks from active plan'
+    - '`agentic plan task status --status pending` filters correctly'
+    - Works from feature worktree (resolves Main-First)
+  - id: '02.2'
+    name: Implement plan task update command
+    description: 'CLI command to UPDATE task status in existing plan files:
+
+      - Mark tasks as in_progress, completed, or blocked
+
+      - Writes directly to plan YAML file
+
+      - Enables agents to persist progress without holding plan in context
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. Add subcommand: plan task update <task-id> --status <status>\n2.\
+      \ Implement cmd_task_update() handler:\n   a. Use Main-First resolution to find\
+      \ plan file\n   b. Parse YAML, locate task by ID\n   c. Update status field\n\
+      \   d. Write back to file (preserve formatting where possible)\n3. Validate\
+      \ status transitions (pending->in_progress->completed)\n4. Support --note flag\
+      \ to add completion notes\n5. This modifies the EXISTING plan created by planner\
+      \ agents\n"
+    success_criteria:
+    - '`agentic plan task update 01.1 --status completed` updates plan file'
+    - Plan YAML is valid after update
+    - Status transitions are validated
+  - id: '02.3'
+    name: Implement plan task current command
+    description: 'CLI command to get the CURRENT task (first in_progress or next pending).
+
+      Convenience wrapper for agents to know what to work on next.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    - modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    guidance: "1. Add subcommand: plan task current\n2. Implement cmd_task_current()\
+      \ handler:\n   a. Find active plan via Main-First resolution\n   b. Return first\
+      \ task with status 'in_progress'\n   c. If none in_progress, return first 'pending'\
+      \ task\n   d. If all completed, return completion message\n3. Output includes\
+      \ task details: id, name, inputs, guidance, target_files\n4. Support --json\
+      \ for structured output\n5. This is the primary \"what should I do next?\" query\
+      \ for agents\n"
+    success_criteria:
+    - '`agentic plan task current` returns actionable task'
+    - Includes all task context (inputs, guidance, etc.)
+    - Returns appropriate message when all tasks done
+- name: Thin-Client Agent Migration
+  execution: sequential
+  description: Migrate ALL agents to Pull model with minimal bootstrap instructions
+  tickets:
+  - id: '03.1'
+    name: Draft Bootstrap Context template
+    description: 'Define the minimal instructions for an agent to perform self-initialization
+
+      via CLI commands. This becomes the new .claude/agents/ file format.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - docs/plans/live/260114CL_context_entrypoints/specification.md
+    - modules/AgenticGuidance/agents/planner/planner-build/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner-build/process.yml
+    target_files:
+    - modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
+    guidance: "1. Create bootstrap template with minimal context:\n   ```markdown\n\
+      \   # {{ROLE_NAME}} Agent\n\n   You are the {{ROLE_ID}} agent.\n\n   ## Bootstrap\
+      \ Protocol\n   Before taking action, you MUST run these commands:\n\n   1. Get\
+      \ your context: `agentic context bootstrap --role {{ROLE_ID}}`\n   2. Get current\
+      \ task: `agentic plan task current`\n\n   ## Execution Loop\n   - Work on current\
+      \ task from the plan\n   - When done: `agentic plan task update <task-id> --status\
+      \ completed`\n   - Get next task: `agentic plan task current`\n   - Repeat until\
+      \ all tasks done\n\n   NOTE: Plan management is owned by planner agents. You\
+      \ READ your\n   tasks and UPDATE your progress via CLI, but planners create\
+      \ plans.\n   ```\n2. Template supports variable substitution: {{ROLE_ID}}, {{ROLE_NAME}}\n\
+      3. Include error handling guidance (what to do if commands fail)\n4. Keep total\
+      \ token count under 500 tokens\n"
+    success_criteria:
+    - Template is under 500 tokens
+    - All CLI commands are correct and tested
+    - Agent can self-initialize from template alone
+  - id: '03.2'
+    name: Create agent bootstrap generator
+    description: 'CLI command to generate thin-client agent files from the template.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
+    - modules/AgenticGuidance/agents/planner/planner-build/manifest.yml
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    guidance: '1. Add subcommand: `agentic context generate-agent <role-id>`
+
+      2. Load bootstrap template from assets
+
+      3. Load role manifest for name/description
+
+      4. Substitute variables: {{ROLE_ID}}, {{ROLE_NAME}}, etc.
+
+      5. Output to stdout (user redirects to .claude/agents/)
+
+      6. Support --output <path> for direct file creation
+
+      7. Validate role exists before generating
+
+      '
+    success_criteria:
+    - '`agentic context generate-agent planner-build` outputs valid markdown'
+    - Generated file references correct CLI commands
+    - Output can be directly used as .claude/agents/ file
+  - id: '03.3'
+    name: Migrate planner agents to Pull model
+    description: 'Update all planner category agents to use thin-client bootstrap.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
+    - modules/AgenticGuidance/agents/planner/planner-build/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner-test/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner-guidance/manifest.yml
+    - modules/AgenticGuidance/agents/planner/planner-reviewer/manifest.yml
+    target_files:
+    - .claude/agents/planner-build.md
+    - .claude/agents/planner-test.md
+    - .claude/agents/planner-guidance.md
+    - .claude/agents/planner-reviewer.md
+    - .claude/agents/planner-audit.md
+    - .claude/agents/planner-cleaning.md
+    guidance: '1. Generate thin-client files for each planner agent
+
+      2. Use `agentic context generate-agent <role>` to create
+
+      3. Place in .claude/agents/ directory
+
+      4. Verify each file is under 500 tokens
+
+      5. Test by manually invoking bootstrap commands
+
+      6. Archive old large .md files if they exist
+
+      '
+    success_criteria:
+    - All planner agents have thin-client .md files
+    - Each file is under 500 tokens
+    - Bootstrap commands work correctly
+  - id: '03.4'
+    name: Migrate build agents to Pull model
+    description: 'Update all build category agents to use thin-client bootstrap.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
+    - modules/AgenticGuidance/agents/build/build-python/manifest.yml
+    - modules/AgenticGuidance/agents/build/build-flutter/manifest.yml
+    target_files:
+    - .claude/agents/build-python.md
+    - .claude/agents/build-flutter.md
+    guidance: '1. Generate thin-client files for each build agent
+
+      2. Follow same process as planner migration
+
+      3. Create builder-preset.yml if not already done
+
+      '
+    success_criteria:
+    - All build agents have thin-client .md files
+    - Bootstrap commands work correctly
+  - id: '03.5'
+    name: Migrate test agents to Pull model
+    description: 'Update all test category agents to use thin-client bootstrap.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
+    - modules/AgenticGuidance/agents/test/test-runner/manifest.yml
+    - modules/AgenticGuidance/agents/test/test-builder/manifest.yml
+    - modules/AgenticGuidance/agents/test/test-audit/manifest.yml
+    target_files:
+    - .claude/agents/test-runner.md
+    - .claude/agents/test-builder.md
+    - .claude/agents/test-audit.md
+    - .claude/agents/test-guidance-simulator.md
+    - .claude/agents/test-user-simulator.md
+    guidance: '1. Generate thin-client files for each test agent
+
+      2. Follow same process as planner migration
+
+      3. Create test-preset.yml for test-specific tasks
+
+      '
+    success_criteria:
+    - All test agents have thin-client .md files
+    - Bootstrap commands work correctly
+  - id: '03.6'
+    name: Migrate orchestration and other agents
+    description: 'Update remaining agents (orchestration, teacher, deploy) to Pull
+      model.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticGuidance/assets/templates/bootstrap-agent-template.md
+    - modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml
+    - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/manifest.yml
+    - modules/AgenticGuidance/agents/deploy/deploy-worktree/manifest.yml
+    target_files:
+    - .claude/agents/orchestration-planning.md
+    - .claude/agents/orchestration-build.md
+    - .claude/agents/orchestration-executor.md
+    - .claude/agents/teacher-update-guidance.md
+    - .claude/agents/teacher-update-assets.md
+    - .claude/agents/deploy-worktree.md
+    - .claude/agents/deploy-cicd.md
+    guidance: '1. Generate thin-client files for remaining agents
+
+      2. Create category-specific presets as needed
+
+      3. Document any special bootstrap requirements
+
+      '
+    success_criteria:
+    - All agents migrated to thin-client model
+    - No large static .md files remain in .claude/agents/
+- name: Integration and Testing
+  execution: sequential
+  description: Validate the integrated system works correctly
+  tickets:
+  - id: '04.1'
+    name: Create integration test suite
+    description: 'Build tests validating the full JIT context + task list flow.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/test_cli.py
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    - modules/AgenticCLI/tests/test_task_list_commands.py
+    guidance: "1. Create test_context_commands.py with tests:\n   - test_context_bootstrap_returns_json\n\
+      \   - test_context_role_finds_agent\n   - test_context_task_resolves_from_worktree\n\
+      \   - test_context_inputs_resolves_paths\n2. Create test_task_list_commands.py\
+      \ with tests:\n   - test_task_prefill_loads_preset\n   - test_task_list_shows_status\n\
+      \   - test_task_add_creates_task\n   - test_task_complete_updates_status\n3.\
+      \ Use fixtures for temporary plan folders\n4. Mock git worktree commands where\
+      \ needed\n"
+    success_criteria:
+    - All context command tests pass
+    - All task list command tests pass
+    - Tests run in CI/CD pipeline
+  - id: '04.2'
+    name: End-to-end agent bootstrap test
+    description: 'Verify an agent can successfully bootstrap and complete a simple
+      task
+
+      using only the thin-client instructions.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - .claude/agents/planner-build.md
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    target_files:
+    - docs/plans/live/260114CL_context_entrypoints/audit/e2e_bootstrap_test.yml
+    guidance: "1. Create a test plan with simple objective\n2. Invoke planner-build\
+      \ agent using thin-client .md file\n3. Observe agent behavior:\n   - Does it\
+      \ run bootstrap commands?\n   - Does it prefill task list?\n   - Does it complete\
+      \ tasks in order?\n   - Does it mark tasks complete?\n4. Document findings in\
+      \ e2e_bootstrap_test.yml\n5. Compare token usage: old Push model vs new Pull\
+      \ model\n"
+    success_criteria:
+    - Agent successfully bootstraps from thin-client file
+    - Agent completes all prefilled tasks
+    - Agent uses CLI commands as instructed
+  - id: '04.3'
+    name: Main-First resolution from feature worktree
+    description: 'Verify plan resolution works when agent runs in feature worktree.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/workflows/context_workflow.py
+    - modules/AgenticCLI/src/agenticcli/commands/worktree.py
+    target_files:
+    - docs/plans/live/260114CL_context_entrypoints/audit/main_first_test.yml
+    guidance: '1. Create a feature worktree
+
+      2. From feature worktree, run: `agentic context bootstrap`
+
+      3. Verify it finds plan in main worktree
+
+      4. Verify objective is correctly extracted
+
+      5. Document resolution path for debugging
+
+      '
+    success_criteria:
+    - Context commands work from feature worktree
+    - Plan resolved from main worktree correctly
+    - No errors when plan folder matches branch
+- name: Cleanup and Documentation
+  execution: sequential
+  description: Remove legacy artifacts and document the new architecture
+  tickets:
+  - id: '05.1'
+    name: Archive legacy static agent files
+    description: 'Move large flattened .md files from .claude/agents/ to archive.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - .claude/agents/
+    target_files:
+    - .claude/agents/archive/
+    guidance: '1. Create .claude/agents/archive/ directory
+
+      2. Move any large (>1000 tokens) .md files to archive
+
+      3. Keep thin-client files in place
+
+      4. Update .gitignore if needed to exclude archive
+
+      5. Do NOT delete - archive for reference
+
+      '
+    success_criteria:
+    - Only thin-client files remain in .claude/agents/
+    - Legacy files archived for reference
+  - id: '05.2'
+    name: Update CLI documentation
+    description: 'Document new context and task list commands in CLI help.
+
+      '
+    status: completed
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    - modules/AgenticCLI/README.md
+    target_files:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: "1. Update epilog in create_parser() to document new commands\n2. Add\
+      \ context commands to help text:\n   - context bootstrap: Get agent seed context\n\
+      \   - context role: Get role-specific guidance\n   - context task: Get current\
+      \ task from plan\n   - context inputs: Get input file manifest\n3. Add task\
+      \ list commands to help text:\n   - plan task prefill: Load preset task list\n\
+      \   - plan task list: Show all tasks\n   - plan task add: Add new task\n4. Ensure\
+      \ --help on each command is comprehensive\n"
+    success_criteria:
+    - '`agentic --help` shows context commands'
+    - '`agentic context --help` shows all subcommands'
+    - '`agentic plan task --help` shows all operations'
+  - id: '05.3'
+    name: Document JIT Context architecture
+    description: 'Create architecture documentation explaining the Pull model.
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - docs/plans/live/260114CL_context_entrypoints/specification.md
+    - docs/ARCHITECTURE.md
+    target_files:
+    - docs/JIT_CONTEXT_ARCHITECTURE.md
+    guidance: "1. Create JIT_CONTEXT_ARCHITECTURE.md documenting:\n   - Overview of\
+      \ Push vs Pull model\n   - CLI command reference\n   - Bootstrap protocol for\
+      \ agents\n   - Main-First plan resolution\n   - Task list integration\n2. Include\
+      \ diagrams (mermaid) showing:\n   - Agent initialization flow\n   - Context\
+      \ retrieval sequence\n   - Task list lifecycle\n3. Link from main ARCHITECTURE.md\n"
+    success_criteria:
+    - Architecture document exists and is comprehensive
+    - Includes mermaid diagrams
+    - Linked from main architecture docs
+- name: CLI Context Commands
+  description: Implement the 'agentic context' command group in the CLI
+  tickets: []
+- name: Validation & Cleanup
+  description: Verify functional correctness and decommission legacy files
+  tickets: []
+- name: Environment Setup
+  execution: sequential
+  description: Prepare test environment with latest code installed
+  tickets: []
+- name: Unit Tests - Context Commands
+  execution: sequential
+  description: Unit tests for agentic context command group
+  tickets:
+  - id: '02.4'
+    name: Test context inputs command
+    description: 'Unit tests for `agentic context inputs` command that provides
+
+      JIT manifest of relevant project files.
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    - modules/AgenticGuidance/agents/planner/planner-build/inputs.yml
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    guidance: "1. Add inputs command test cases:\n   - test_context_inputs_returns_manifest:\
+      \ Verify manifest structure\n   - test_context_inputs_role_filter: Verify --role\
+      \ filters inputs\n   - test_context_inputs_resolves_paths: Verify paths are\
+      \ absolute\n   - test_context_inputs_validates_existence: Verify missing files\
+      \ flagged\n   - test_context_inputs_resolve_layers: Verify --resolve expands\
+      \ layers\n2. Use actual inputs.yml files for realistic testing\n3. Test with\
+      \ both existing and non-existing files\n"
+    success_criteria:
+    - All inputs command tests pass
+    - Paths resolved to absolute
+    - Missing files clearly identified in output
+- name: Unit Tests - Plan Task Commands
+  execution: sequential
+  description: Unit tests for agentic plan task command group
+  tickets: []
+- name: Integration Tests
+  execution: sequential
+  description: Integration tests for cross-component flows
+  tickets:
+  - id: '08.1'
+    name: Test bootstrap then task consistency
+    description: 'Verify bootstrap and task commands return consistent data.
+
+      '
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    guidance: 'Add/verify test case: test_bootstrap_then_task_consistent
+
+
+      1. Run: agentic context bootstrap -j
+
+      2. Run: agentic context task -j
+
+      3. Verify bootstrap''s current_task matches task output
+
+      4. Verify plan_folder is same in both
+
+      '
+    success_criteria:
+    - current_task in bootstrap matches task output
+    - plan_folder consistent across commands
+  - id: '08.2'
+    name: Test full agent bootstrap flow
+    description: 'Simulate complete agent bootstrap sequence.
+
+      '
+    status: pending
+    agent: test-runner
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_context_flow.py
+    guidance: 'Create integration test file: test_context_flow.py
+
+
+      Test sequence:
+
+      1. agentic context bootstrap --role planner-build -j
+
+      2. Parse JSON, extract current_task
+
+      3. agentic plan task current -j
+
+      4. Verify task IDs match
+
+      5. agentic context role planner-build -j
+
+      6. Verify process content available
+
+      7. agentic context inputs --role planner-build -j
+
+      8. Verify inputs resolved
+
+      '
+    success_criteria:
+    - Full bootstrap flow completes without error
+    - All data is consistent across commands
+  - id: '08.3'
+    name: Test CLI commands referenced in bootstrap
+    description: 'Verify CLI commands in bootstrap output are valid and work.
+
+      '
+    status: pending
+    agent: test-runner
+    guidance: '1. Run: agentic context bootstrap -j
+
+      2. Extract cli_commands field
+
+      3. Execute each command (with --help to verify syntax)
+
+      4. Verify all commands exist and are valid
+
+      '
+    success_criteria:
+    - All cli_commands references are valid CLI commands
+    - Commands execute without error
+- name: UAT Tests - Agent Bootstrap Flow
+  execution: sequential
+  description: 'User Acceptance Testing for the complete agent bootstrap journey.
+
+    MANDATORY - Primary success criteria for this implementation.
+
+    '
+  tickets: []
+- name: Test Audit
+  execution: sequential
+  description: 'Mandatory audit phase to review test quality and detect potential
+
+    reward hacking or test gaps.
+
+    '
+  tickets:
+  - id: '06.1'
+    name: Audit test coverage and quality
+    description: 'Review all test phases to validate test quality, check for
+
+      reward hacking patterns, and identify gaps.
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    - modules/AgenticCLI/tests/test_plan_task_commands.py
+    - modules/AgenticCLI/tests/test_main_first_resolution.py
+    target_files:
+    - docs/plans/live/260114CL_context_entrypoints/audit/test_audit_results.yml
+    guidance: "AUDIT CHECKLIST:\n1. Review skipped tests - are skip justifications\
+      \ valid?\n2. Check for hardcoded paths that would break in CI\n3. Verify mocks\
+      \ are appropriate (not hiding real bugs)\n4. Check for reward hacking patterns:\n\
+      \   - Tests that always pass\n   - Tests that don't actually validate behavior\n\
+      \   - Tests with overly relaxed assertions\n5. Identify missing test cases:\n\
+      \   - Error handling paths\n   - Edge cases\n   - Boundary conditions\n6. Verify\
+      \ test isolation (no shared state leakage)\n"
+    success_criteria:
+    - All skipped tests have valid justification
+    - No hardcoded paths found
+    - No reward hacking patterns detected
+    - Test coverage adequate for implementation
+  - id: '06.2'
+    name: Audit UAT completeness
+    description: 'Review UAT tests to ensure all user journeys are covered
+
+      and acceptance criteria are properly validated.
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - docs/plans/live/260114CL_context_entrypoints/audit/uat_bootstrap_journey.yml
+    - docs/plans/live/260114CL_context_entrypoints/audit/uat_main_first.yml
+    - docs/plans/live/260114CL_context_entrypoints/audit/uat_policy_propagation.yml
+    target_files:
+    - docs/plans/live/260114CL_context_entrypoints/audit/uat_audit_results.yml
+    guidance: 'UAT AUDIT CHECKLIST:
+
+      1. All user stories from specification covered?
+
+      2. Acceptance criteria measurable and validated?
+
+      3. Friction points documented for remediation?
+
+      4. Success/failure clearly distinguished?
+
+      5. Edge cases considered (no plan, invalid role, etc.)?
+
+      '
+    success_criteria:
+    - All specification user journeys have UAT coverage
+    - Acceptance criteria are measurable
+    - Friction points documented
+  - id: '07.2'
+    name: Audit bootstrap file maintenance
+    description: 'Review maintenance strategy for bootstrap files:
+
+      - Files stay in sync with KNOWN_AGENTS
+
+      - Template file kept updated
+
+      - No stale files for removed agents
+
+      - Syntax consistent across all files
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - .claude/agents/
+    - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    target_files:
+    - docs/plans/live/261115CL_agenticcli/audit/bootstrap_maintenance_audit.yml
+    guidance: 'AUDIT CHECKLIST:
+
+      1. Compare .claude/agents/ files to KNOWN_AGENTS
+
+      2. Identify any orphan files (agent removed but file remains)
+
+      3. Identify any missing files (agent exists but no file)
+
+      4. Review template file currency
+
+      5. Check for syntax inconsistencies
+
+      '
+    success_criteria:
+    - Files match KNOWN_AGENTS list
+    - No orphan files
+    - No missing files
+    - Consistent syntax
+  - id: audit_09_001
+    name: Audit Test Results
+    description: 'Review all test phase results and document findings.
+
+      '
+    status: pending
+    agent: test-audit
+    guidance: 'Review all completed test tasks:
+
+
+      1. Count passed vs failed tests
+
+      2. Identify any regressions found
+
+      3. Document severity of any issues
+
+      4. Create remediation tasks if needed
+
+
+      Produce audit summary report.
+
+      '
+    success_criteria:
+    - All test results reviewed
+    - Regressions documented
+    - Remediation tasks created if needed
+  - id: audit_09_002
+    name: Document Known Issues
+    description: 'Document any known issues or limitations discovered during testing.
+
+      '
+    status: pending
+    agent: test-audit
+    guidance: 'Create known issues document covering:
+
+
+      1. Any deprecated agents (orchestration-build, orchestration-guidance)
+
+      2. Any edge cases not fully covered
+
+      3. Any documentation gaps found
+
+      4. Recommendations for future improvements
+
+      '
+    success_criteria:
+    - Known issues documented
+    - Recommendations provided
+- name: Documentation Validation
+  execution: sequential
+  description: Validate documentation matches implementation
+  tickets:
+  - id: '07.1'
+    name: Validate CLI help documentation
+    description: 'Verify CLI help text accurately describes implemented commands.
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    target_files:
+    - docs/plans/live/260114CL_context_entrypoints/audit/doc_validation.yml
+    guidance: '1. Run `agentic --help` and verify all commands documented
+
+      2. Run `agentic context --help` and verify all subcommands
+
+      3. Run `agentic plan task --help` and verify all subcommands
+
+      4. Check each command''s --help matches actual behavior
+
+      5. Document any discrepancies
+
+      '
+    success_criteria:
+    - All commands appear in help output
+    - Help text matches actual behavior
+    - No undocumented flags or options
+- name: Unit Tests - Positional Argument Syntax
+  execution: sequential
+  description: Test `agentic <agent-name>` positional argument detection and routing
+  tickets: []
+- name: Unit Tests - Agent Discovery
+  execution: sequential
+  description: Test agent discovery from AgenticGuidance module
+  tickets: []
+- name: Unit Tests - Bootstrap Context Loading
+  execution: sequential
+  description: Test bootstrap context injection with --bootstrap flag
+  tickets: []
+- name: Integration Tests - CLI Output
+  execution: sequential
+  description: Test CLI command output for all agents
+  tickets:
+  - id: '04.4'
+    name: Test unknown agent error handling
+    description: 'Integration tests for error handling with unknown agents.
+
+
+      Test cases:
+
+      - Unknown agent exits with code 1
+
+      - Error message includes unknown name
+
+      - Available agents listed in error
+
+      - Grouped by category
+
+      '
+    status: pending
+    agent: null
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    target_files:
+    - modules/AgenticCLI/tests/test_agent_bootstrap.py
+    guidance: '1. Add TestUnknownAgentError class
+
+      2. Test with invalid agent name
+
+      3. Assert exit code 1
+
+      4. Assert error message helpful
+
+      5. Assert available agents shown
+
+      '
+    success_criteria:
+    - Unknown agents return exit code 1
+    - Error message is helpful
+    - Suggests valid agents
+- name: Integration Tests - Bootstrap File Verification
+  execution: sequential
+  description: Verify all 27 .claude/agents/*.md files are correctly formatted
+  tickets: []
+- name: UAT - End-to-End Bootstrap Flow
+  execution: sequential
+  description: User acceptance testing for complete bootstrap journey
+  tickets: []
+- name: End-to-End Workflow Testing
+  execution: sequential
+  description: 'Test complete workflows that span multiple commands, simulating real-world
+
+    usage patterns from initial setup through task completion.
+
+    '
+  tickets:
+  - id: test_01_001
+    name: ''
+    description: Test complete agent bootstrap to task completion workflow
+    status: pending
+    agent: test-builder
+    inputs:
+    - path: modules/AgenticCLI/tests/integration/test_workflow_sequences.py
+      reason: Reference for integration test patterns
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_e2e_workflows.py
+    guidance: "Implement end-to-end test for the primary agent workflow:\n\n1. Create\
+      \ test fixture with:\n   - Git repo with plan folder structure\n   - Plan file\
+      \ with multiple phases and tasks\n   - Agent definition (planner-build style)\n\
+      \n2. Test workflow sequence:\n   a. `agentic planner-build` - Agent quick help\n\
+      \   b. `agentic planner-build --bootstrap` - Full context retrieval\n   c. `agentic\
+      \ context bootstrap --role planner-build -j` - JSON context\n   d. `agentic\
+      \ plan task current` - Get active task\n   e. `agentic plan task update <task_id>\
+      \ --status in_progress`\n   f. `agentic plan task update <task_id> --status\
+      \ completed --note \"Done\"`\n   g. `agentic plan task current` - Verify next\
+      \ task returned\n\n3. Assertions:\n   - Each command returns exit code 0\n \
+      \  - Bootstrap context includes expected fields\n   - Task status persists across\
+      \ commands\n   - JSON output is valid at each step\n"
+    success_criteria:
+    - Full workflow completes without errors
+    - Task state transitions persist correctly
+    - Context data consistent between commands
+    - JSON output parseable at each step
+  - id: test_01_002
+    name: ''
+    description: Test plan lifecycle from creation through archive
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_e2e_workflows.py
+    guidance: 'Test the complete plan lifecycle:
+
+
+      1. `agentic plan init feature-test --description "Test feature"`
+
+      2. `agentic plan status` - Verify empty/new plan
+
+      3. `agentic plan task add "First task" --phase build_01`
+
+      4. `agentic plan task add "Second task" --phase build_01`
+
+      5. `agentic plan task list` - Verify both tasks pending
+
+      6. `agentic plan task start <task_id>`
+
+      7. `agentic plan task complete <task_id>`
+
+      8. `agentic plan move task <task_id>` - Move to completed
+
+      9. `agentic plan status` - Verify task counts updated
+
+      10. `agentic plan move folder` - Archive entire plan
+
+
+      Verify at each step that file system state matches expected.
+
+      '
+    success_criteria:
+    - Plan folder created with correct structure
+    - Tasks added to correct phase
+    - Task status transitions valid
+    - Completed tasks movable to plan_completed.yml
+    - Archive operation preserves all data
+  - id: test_01_003
+    name: ''
+    description: Test workflow handoff between different agent types
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_e2e_workflows.py
+    guidance: "Simulate orchestration handoff between agents:\n\n1. Setup: Plan with\
+      \ planner task followed by build task\n\n2. Planner agent workflow:\n   a. `agentic\
+      \ planner-build --bootstrap`\n   b. `agentic plan task current` - Get planner\
+      \ task\n   c. `agentic plan task update <task_id> --status completed`\n\n3.\
+      \ Builder agent workflow:\n   a. `agentic build-python --bootstrap`\n   b. `agentic\
+      \ plan task current` - Should get build task (not planner task)\n   c. `agentic\
+      \ context inputs --role build-python`\n   d. `agentic plan task update <task_id>\
+      \ --status completed`\n\n4. Verify:\n   - Each agent sees correct task for their\
+      \ role\n   - Task completion by one agent visible to next\n   - No task skipped\
+      \ or duplicated\n"
+    success_criteria:
+    - Agents see role-appropriate tasks
+    - Completed tasks not returned by task current
+    - State consistent across agent boundaries
+- name: CLI Command Chaining
+  execution: sequential
+  description: 'Test command sequences that build on each other''s output,
+
+    particularly the context -> plan -> agent chain.
+
+    '
+  tickets:
+  - id: test_02_001
+    name: ''
+    description: Test context commands feeding into plan commands
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_command_chaining.py
+    guidance: 'Test the CCI context retrieval chain:
+
+
+      1. `agentic context bootstrap -j` -> Extract active_task.id
+
+      2. `agentic plan task status <task_id>` - Verify task exists
+
+      3. `agentic context task -j` -> Extract task details
+
+      4. `agentic plan task update <task_id> --status in_progress`
+
+      5. `agentic context bootstrap -j` -> Verify task now shows in_progress
+
+
+      Test JSON parsing and field extraction between commands.
+
+      '
+    success_criteria:
+    - Task ID from context matches plan
+    - Status updates reflected in context
+    - JSON structure consistent across commands
+  - id: test_02_002
+    name: ''
+    description: Test config commands affecting worktree behavior
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_command_chaining.py
+    guidance: 'Test configuration affecting subsequent commands:
+
+
+      1. `agentic config init` - Initialize config
+
+      2. `agentic preferences set worktree.default_base develop`
+
+      3. `agentic worktree create test-branch` - Should use develop as base
+
+      4. `agentic worktree status` - Verify base branch
+
+      5. `agentic preferences delete worktree.default_base`
+
+      6. `agentic worktree create test-branch-2` - Should use main as base
+
+
+      Verify preference changes affect command behavior.
+
+      '
+    success_criteria:
+    - Preferences applied to subsequent commands
+    - Preference deletion resets to defaults
+    - No stale preference values
+  - id: test_02_003
+    name: ''
+    description: Test template generation feeding into plan commands
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_command_chaining.py
+    guidance: 'Test template -> plan workflow:
+
+
+      1. `agentic template generate build --output /tmp/plan.yml`
+
+      2. Copy plan.yml to plan folder live/ directory
+
+      3. `agentic plan validate <path>` - Should pass
+
+      4. `agentic plan status` - Should show tasks from template
+
+      5. `agentic plan task list` - Should list template tasks
+
+
+      Verify generated templates are valid and usable.
+
+      '
+    success_criteria:
+    - Generated template is valid YAML
+    - Template passes plan validation
+    - Tasks from template visible in status
+  - id: test_02_004
+    name: ''
+    description: Test LangSmith data informing context commands
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_command_chaining.py
+    guidance: 'Test LangSmith integration (when API available):
+
+
+      1. `agentic langsmith projects` - List projects
+
+      2. `agentic langsmith sessions --project <name>` - Get recent sessions
+
+      3. `agentic langsmith friction --project <name>` - Get friction patterns
+
+      4. Verify friction patterns can inform context bootstrap guidance
+
+
+      Note: This test may require mocked LangSmith responses if no API key.
+
+      '
+    success_criteria:
+    - LangSmith commands execute without error
+    - Project/session data retrievable
+    - Graceful degradation without API key
+- name: Cross-Worktree Functionality
+  execution: sequential
+  description: 'Test Main-First plan resolution and data consistency across
+
+    multiple git worktrees.
+
+    '
+  tickets:
+  - id: test_03_001
+    name: ''
+    description: Test plan resolution from feature worktree to main
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_cross_worktree.py
+    guidance: "Test Main-First resolution:\n\n1. Create main worktree with plan folder\
+      \ (e.g., 260126AE_feature)\n2. Create feature worktree linked to plan branch\n\
+      3. From feature worktree:\n   a. `agentic context bootstrap -j` - Should find\
+      \ plan in main\n   b. `agentic plan task current` - Should resolve to main plan\n\
+      \   c. `agentic plan task update <task_id> --status completed`\n4. From main\
+      \ worktree:\n   a. `agentic plan task list` - Should show updated status\n\n\
+      Verify cross-worktree state synchronization.\n"
+    success_criteria:
+    - Feature worktree resolves plan from main
+    - Updates from feature visible in main
+    - Branch-to-folder matching works correctly
+    - No data loss across worktree boundary
+  - id: test_03_002
+    name: ''
+    description: Test worktree creation auto-scaffolds plan folder
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_cross_worktree.py
+    guidance: 'Test automatic plan scaffolding:
+
+
+      1. `agentic worktree create feature-new --base main`
+
+      2. Verify plan folder created in main worktree: docs/plans/live/YYMMDDXX_feature-new/
+
+      3. Verify folder structure: live/, completed/, audit/
+
+      4. `agentic plan status` from new worktree - Should find plan
+
+      5. `agentic worktree remove feature-new` - Verify cleanup behavior
+
+      '
+    success_criteria:
+    - Plan folder auto-created with correct naming
+    - Folder structure matches convention
+    - Plan accessible from new worktree
+    - Removal handles plan folder appropriately
+  - id: test_03_003
+    name: ''
+    description: Test concurrent operations across multiple worktrees
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_cross_worktree.py
+    guidance: "Test concurrent access patterns:\n\n1. Create shared plan with multiple\
+      \ tasks\n2. Simulate concurrent updates from different worktrees:\n   - Worktree\
+      \ A updates task 1\n   - Worktree B updates task 2 (simultaneously)\n3. Verify:\n\
+      \   - Both updates persisted\n   - No file corruption\n   - No lost updates\n\
+      \nUse threading or multiprocessing to simulate concurrency.\n"
+    success_criteria:
+    - Concurrent updates don't corrupt YAML
+    - All updates persisted correctly
+    - No race condition data loss
+  - id: test_03_004
+    name: ''
+    description: Test worktree list shows associated plan status
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_cross_worktree.py
+    guidance: "Test worktree-plan association:\n\n1. Create multiple worktrees with\
+      \ plans\n2. `agentic worktree list` - Verify shows:\n   - Worktree path\n  \
+      \ - Branch name\n   - Associated plan folder\n   - Task completion percentage\n\
+      3. `agentic worktree list -j` - Verify JSON includes plan data\n"
+    success_criteria:
+    - Worktree list shows plan association
+    - Task counts accurate per worktree
+    - JSON output includes full plan status
+- name: Error Handling and Edge Cases
+  execution: sequential
+  description: 'Test error scenarios, graceful degradation, and edge case handling
+
+    to ensure robust CLI behavior under adverse conditions.
+
+    '
+  tickets:
+  - id: test_04_001
+    name: ''
+    description: Test graceful handling when plan folder missing
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_error_handling.py
+    guidance: "Test error scenarios for missing plans:\n\n1. `agentic plan status`\
+      \ in repo without plan folder\n   - Verify helpful error message\n   - Suggest\
+      \ `agentic plan scaffold`\n\n2. `agentic plan task current` without active plan\n\
+      \   - Verify explains no plan found\n   - Exit code non-zero but not crash\n\
+      \n3. `agentic context bootstrap` without plan\n   - Verify partial context returned\n\
+      \   - Role guidance still available\n"
+    success_criteria:
+    - Error messages actionable
+    - Suggest corrective actions
+    - Non-zero exit but no stack trace
+    - Partial functionality when possible
+  - id: test_04_002
+    name: ''
+    description: Test handling of malformed YAML in plan files
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_error_handling.py
+    guidance: 'Test YAML parsing resilience:
+
+
+      1. Create plan file with invalid YAML (missing quotes, bad indentation)
+
+      2. `agentic plan status` - Should report parse error with line number
+
+      3. `agentic plan validate` - Should identify specific YAML issues
+
+      4. `agentic plan task list` - Should skip invalid file, report warning
+
+
+      Verify CLI doesn''t crash on bad input.
+
+      '
+    success_criteria:
+    - YAML errors include file and line number
+    - Validation reports specific issues
+    - Other valid files still processed
+    - No Python tracebacks to user
+  - id: test_04_003
+    name: ''
+    description: Test handling of file permission errors
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_error_handling.py
+    guidance: "Test permission error handling:\n\n1. Create read-only plan file\n\
+      2. `agentic plan task update <task_id> --status completed`\n   - Should report\
+      \ permission denied\n   - Suggest checking file permissions\n\n3. Create unreadable\
+      \ plan folder\n4. `agentic plan status` - Should handle gracefully\n\nNote:\
+      \ Skip these tests on Windows if permissions work differently.\n"
+    success_criteria:
+    - Permission errors explained clearly
+    - Suggest corrective actions
+    - No data corruption on failed write
+  - id: test_04_004
+    name: ''
+    description: Test handling of invalid or non-existent task IDs
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_error_handling.py
+    guidance: "Test invalid task references:\n\n1. `agentic plan task start nonexistent_task`\n\
+      \   - Error: Task ID not found\n   - Suggest: List available tasks\n\n2. `agentic\
+      \ plan task update \"\" --status completed`\n   - Error: Task ID required\n\n\
+      3. `agentic plan task status 01.1` (valid format, doesn't exist)\n   - Error:\
+      \ Task not found in plan\n   - Show similar task IDs if any\n"
+    success_criteria:
+    - Invalid IDs rejected with clear error
+    - Suggestions for valid alternatives
+    - Format validation helpful
+  - id: test_04_005
+    name: ''
+    description: Test graceful handling of network/API errors
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_error_handling.py
+    guidance: "Test network error scenarios:\n\n1. Mock LangSmith API timeout\n2.\
+      \ `agentic langsmith runs --project test`\n   - Timeout error with retry suggestion\n\
+      \n3. Mock LangSmith API 401 Unauthorized\n4. `agentic langsmith projects`\n\
+      \   - Auth error with setup instructions\n\n5. Mock network unreachable\n6.\
+      \ `agentic langsmith stats --project test`\n   - Network error, suggest checking\
+      \ connection\n"
+    success_criteria:
+    - Timeout errors suggest retry
+    - Auth errors explain API key setup
+    - Network errors actionable
+    - Graceful degradation for offline use
+  - id: test_04_006
+    name: ''
+    description: Test recovery from corrupted CLI state
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_error_handling.py
+    guidance: 'Test state corruption recovery:
+
+
+      1. Corrupt ~/.config/agenticcli/state.json
+
+      2. `agentic state list` - Should detect and offer repair
+
+
+      3. Corrupt preferences.json
+
+      4. `agentic preferences list` - Should recreate defaults
+
+
+      5. `agentic config init` after corruption - Should reset cleanly
+
+      '
+    success_criteria:
+    - Corrupted state detected
+    - Automatic recovery when possible
+    - Manual repair instructions when needed
+    - No data loss beyond corrupted file
+- name: CLI Output Format Consistency
+  execution: parallel
+  description: 'Test that output formats (human-readable, JSON, YAML) are consistent
+
+    across all command groups and suitable for both human and machine consumption.
+
+    '
+  tickets:
+  - id: test_05_001
+    name: ''
+    description: Test JSON output valid and consistent across commands
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_output_formats.py
+    guidance: 'Test JSON output for all commands supporting -j flag:
+
+
+      Commands to test:
+
+      - `agentic plan status -j`
+
+      - `agentic plan task list -j`
+
+      - `agentic plan task current -j`
+
+      - `agentic context bootstrap -j`
+
+      - `agentic context task -j`
+
+      - `agentic worktree list -j`
+
+      - `agentic worktree status -j`
+
+      - `agentic preferences list -j`
+
+      - `agentic state list -j`
+
+      - `agentic health -j`
+
+      - `agentic langsmith projects -j`
+
+      - `agentic manifest list -j`
+
+      - `agentic template list -j`
+
+
+      For each:
+
+      1. Verify output is valid JSON (json.loads)
+
+      2. Verify consistent key naming (snake_case)
+
+      3. Verify errors also return valid JSON
+
+      4. Verify no Rich formatting leaks into JSON
+
+      '
+    success_criteria:
+    - All -j outputs parseable as JSON
+    - Consistent key naming convention
+    - Error cases return JSON with 'error' key
+    - No ANSI codes or Rich markup in JSON
+  - id: test_05_002
+    name: ''
+    description: Test human-readable output formatting
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_output_formats.py
+    guidance: 'Test human output characteristics:
+
+
+      1. Tables render correctly (Rich tables)
+
+      2. Colors applied appropriately (status indicators)
+
+      3. Long text wrapped reasonably
+
+      4. Headers/sections clearly delineated
+
+      5. No JSON structures in human output
+
+
+      Commands to verify:
+
+      - plan status (table format)
+
+      - plan task list (table with status colors)
+
+      - worktree list (table with paths)
+
+      - health (checkmarks/x marks)
+
+      '
+    success_criteria:
+    - Tables aligned properly
+    - Status colors visible in terminal
+    - Long paths truncated or wrapped
+    - Clear visual hierarchy
+  - id: test_05_003
+    name: ''
+    description: Test output suitable for AI agent consumption
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_output_formats.py
+    guidance: "Test output for agent parsing:\n\n1. `agentic planner-build --bootstrap`\
+      \ output:\n   - Clear section headers (OBJECTIVE, PROCESS, INPUTS)\n   - File\
+      \ paths absolute and resolvable\n   - No ambiguous formatting\n\n2. `agentic\
+      \ context bootstrap -j` output:\n   - All paths absolute\n   - Task IDs consistent\
+      \ format\n   - Status values from defined enum\n\n3. Agent file paths in output:\n\
+      \   - All paths exist on filesystem\n   - Paths work from any working directory\n"
+    success_criteria:
+    - Output parseable by AI agents
+    - Paths resolvable without context
+    - Structured data consistently formatted
+  - id: test_05_004
+    name: ''
+    description: Test error message format consistency
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_output_formats.py
+    guidance: "Test error message standards:\n\n1. Error messages follow pattern:\
+      \ \"Error: <description>\"\n2. Suggestions follow: \"Try: <action>\" or \"Hint:\
+      \ <info>\"\n3. Exit codes consistent:\n   - 0: Success\n   - 1: User error (bad\
+      \ input)\n   - 2: Configuration error\n   - 3: Network/external error\n\n4.\
+      \ JSON errors include:\n   - \"error\": true\n   - \"message\": string\n   -\
+      \ \"code\": string identifier\n"
+    success_criteria:
+    - Error format consistent across commands
+    - Exit codes meaningful and documented
+    - JSON errors machine-parseable
+- name: Performance and Response Time
+  execution: sequential
+  description: 'Test CLI performance characteristics to ensure responsive experience
+
+    for both interactive use and scripted automation.
+
+    '
+  tickets:
+  - id: test_06_001
+    name: ''
+    description: Test CLI startup and basic command response time
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_performance.py
+    guidance: "Test startup performance:\n\n1. Measure `agentic --version` execution\
+      \ time\n   - Target: < 500ms\n\n2. Measure `agentic --help` execution time\n\
+      \   - Target: < 500ms\n\n3. Measure `agentic plan status` (simple plan)\n  \
+      \ - Target: < 1 second\n\n4. Measure `agentic context bootstrap -j`\n   - Target:\
+      \ < 2 seconds\n\nUse subprocess with timing to measure real-world performance.\n"
+    success_criteria:
+    - Version/help under 500ms
+    - Simple commands under 1 second
+    - Complex commands under 2 seconds
+    - No import-time slowdowns
+  - id: test_06_002
+    name: ''
+    description: Test performance with large plan files
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_performance.py
+    guidance: "Test with large data:\n\n1. Create plan file with 100 tasks across\
+      \ 10 phases\n2. Measure `agentic plan task list`\n   - Target: < 2 seconds\n\
+      \n3. Create 10 plan files with 50 tasks each\n4. Measure `agentic plan status`\n\
+      \   - Target: < 3 seconds\n\n5. Measure task update in large file\n   - Target:\
+      \ < 1 second\n"
+    success_criteria:
+    - Large file parsing efficient
+    - Task list pagination if needed
+    - No memory issues with large plans
+  - id: test_06_003
+    name: ''
+    description: Test performance with many worktrees
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_performance.py
+    guidance: "Test worktree scaling:\n\n1. Create 10 worktrees with associated plans\n\
+      2. Measure `agentic worktree list`\n   - Target: < 2 seconds\n\n3. Measure Main-First\
+      \ resolution with many candidates\n   - Target: < 1 second\n\n4. Measure `agentic\
+      \ worktree status` in deep worktree\n   - Target: < 1 second\n"
+    success_criteria:
+    - Worktree list scales linearly
+    - Resolution efficient with many worktrees
+    - Status command fast regardless of worktree count
+  - id: test_06_004
+    name: ''
+    description: Test repeated command execution performance
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/test_performance.py
+    guidance: "Test repeated invocation patterns:\n\n1. Run `agentic plan task list`\
+      \ 10 times sequentially\n   - Verify consistent timing\n   - No memory leaks\n\
+      \n2. Run `agentic context bootstrap -j` in loop\n   - Verify no accumulating\
+      \ state\n\n3. Run mixed commands in rapid succession\n   - Verify no file locking\
+      \ issues\n"
+    success_criteria:
+    - Consistent timing across runs
+    - No memory growth
+    - No file handle leaks
+    - No state accumulation
+- name: Test Infrastructure and CI Integration
+  execution: sequential
+  description: 'Ensure test suite works in CI environment and provides useful
+
+    coverage and reporting.
+
+    '
+  tickets:
+  - id: test_07_001
+    name: ''
+    description: Create CI-compatible test fixtures
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/conftest.py
+    guidance: 'Create fixtures for CI:
+
+
+      1. Temporary git repo fixture (no real git operations)
+
+      2. Isolated config directory fixture (XDG_CONFIG_HOME override)
+
+      3. Mock worktree fixture (no actual git worktree commands)
+
+      4. Plan file fixture with various states
+
+
+      All fixtures should:
+
+      - Use tempfile for isolation
+
+      - Clean up after test
+
+      - Work without network access
+
+      - Work without real git repo
+
+      '
+    success_criteria:
+    - All tests pass in CI
+    - No real filesystem pollution
+    - No network dependencies
+    - Cleanup complete after test failure
+  - id: test_07_002
+    name: ''
+    description: Configure integration test coverage reporting
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/pyproject.toml
+    guidance: 'Configure coverage for integration tests:
+
+
+      1. Add pytest-cov configuration
+
+      2. Set coverage thresholds for integration paths
+
+      3. Exclude test files from coverage
+
+      4. Generate XML and HTML reports
+
+
+      Target: 80% coverage for integration test paths.
+
+      '
+    success_criteria:
+    - Coverage reports generated
+    - Threshold enforced in CI
+    - Reports accessible for review
+  - id: test_07_003
+    name: ''
+    description: Add pytest markers for test categorization
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/integration/conftest.py
+    - modules/AgenticCLI/pyproject.toml
+    guidance: 'Add markers for test selection:
+
+
+      1. @pytest.mark.integration - All integration tests
+
+      2. @pytest.mark.slow - Tests taking > 5 seconds
+
+      3. @pytest.mark.network - Tests requiring network
+
+      4. @pytest.mark.worktree - Tests requiring git worktrees
+
+
+      Configure in pyproject.toml and document usage.
+
+      '
+    success_criteria:
+    - Tests selectable by marker
+    - CI can skip slow/network tests
+    - Markers documented
+- name: Environment Verification
+  execution: sequential
+  description: Verify CLI installation and baseline functionality
+  tickets:
+  - id: verify_01_001
+    name: Verify CLI Installation
+    description: 'Confirm the latest CLI version is installed and accessible.
+
+      '
+    status: pending
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/pyproject.toml
+    guidance: '1. Run: `agentic --version`
+
+      2. Compare version with pyproject.toml
+
+      3. Run: `agentic --help`
+
+      4. Verify help output displays without errors
+
+      '
+    success_criteria:
+    - agentic --version returns expected version
+    - agentic --help displays without errors
+    - No import or dependency errors
+  - id: verify_01_002
+    name: Verify KNOWN_AGENTS List Accuracy
+    description: 'Verify the KNOWN_AGENTS list in agent_help.py matches actual agent
+      directories.
+
+      '
+    status: pending
+    agent: test-audit
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    - modules/AgenticGuidance/agents/
+    guidance: "1. Extract KNOWN_AGENTS list from agent_help.py\n2. List all agent\
+      \ directories in modules/AgenticGuidance/agents/*/\n3. Compare lists - identify\
+      \ any:\n   - Missing agents (in directory but not in KNOWN_AGENTS)\n   - Orphaned\
+      \ entries (in KNOWN_AGENTS but no directory)\n   - Verify category mappings\
+      \ are correct\n4. Document any discrepancies\n"
+    success_criteria:
+    - KNOWN_AGENTS matches actual agent directories
+    - No orphaned entries in KNOWN_AGENTS
+    - Category mappings accurate
+  - id: verify_01_003
+    name: Verify Bootstrap Files Match Agents
+    description: 'Verify .claude/agents/*.md files exist for all registered agents.
+
+      '
+    status: pending
+    agent: test-audit
+    inputs:
+    - .claude/agents/
+    - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+    guidance: '1. List all .md files in .claude/agents/
+
+      2. Compare with KNOWN_AGENTS list
+
+      3. Verify each agent has a corresponding bootstrap file
+
+      4. Check bootstrap files use new positional syntax (not --agent-name)
+
+      '
+    success_criteria:
+    - Bootstrap file exists for each KNOWN_AGENT
+    - All bootstrap files use positional syntax
+    - No references to deprecated --agent-name syntax
+- name: Positional Syntax Regression Tests
+  execution: sequential
+  description: Verify the new positional agent syntax works for all agents
+  tickets:
+  - id: test_02_005
+    name: Test Breaking Change - Old Syntax Fails
+    description: 'Verify the old --agent-name syntax no longer works.
+
+      '
+    status: pending
+    agent: test-runner
+    guidance: 'Test that old syntax fails:
+
+
+      ```bash
+
+      agentic --planner-build 2>&1 || echo "Expected failure"
+
+      agentic --test-runner 2>&1 || echo "Expected failure"
+
+      agentic --build-python 2>&1 || echo "Expected failure"
+
+      ```
+
+
+      Verify:
+
+      1. Commands exit with non-zero status
+
+      2. Error message is human-readable
+
+      3. (Nice to have) Error suggests new syntax
+
+      '
+    success_criteria:
+    - Old --agent-name syntax fails
+    - Error message is clear
+    - Exit code is non-zero
+- name: Bootstrap Flag Regression Tests
+  execution: sequential
+  description: Verify --bootstrap flag provides full context for all agents
+  tickets: []
+- name: Folder Creation Automation Tests
+  execution: sequential
+  description: Verify `agentic plan init` still works correctly
+  tickets: []
+- name: Task Management Commands Tests
+  execution: sequential
+  description: Verify task subcommands work correctly
+  tickets: []
+- name: CLI Help and Documentation Accuracy
+  execution: sequential
+  description: Verify CLI help text matches implementation
+  tickets: []
+- name: Backward Compatibility Tests
+  execution: sequential
+  description: Verify existing commands not affected by CCI changes
+  tickets:
+  - id: test_07_004
+    name: Test JSON Output Mode
+    description: 'Verify -j flag works across all commands.
+
+      '
+    status: pending
+    agent: test-runner
+    guidance: 'Test JSON output for various commands:
+
+
+      ```bash
+
+      agentic -j plan status | jq ''.''
+
+      agentic -j worktree list | jq ''.''
+
+      agentic -j planner-build | jq ''.''
+
+      agentic -j planner-build --bootstrap | jq ''.''
+
+      ```
+
+
+      Verify all produce valid JSON.
+
+      '
+    success_criteria:
+    - All commands with -j produce valid JSON
+    - No partial or malformed JSON output
+- name: Integration and End-to-End Tests
+  execution: sequential
+  description: Verify complete workflows still function
+  tickets:
+  - id: test_08_001
+    name: Test Agent Bootstrap Workflow
+    description: 'Test complete agent bootstrap workflow end-to-end.
+
+      '
+    status: pending
+    agent: test-runner
+    guidance: 'Simulate agent bootstrap workflow:
+
+
+      1. Read thin-client file:
+
+      ```bash
+
+      cat .claude/agents/planner-build.md
+
+      ```
+
+
+      2. Get initial context:
+
+      ```bash
+
+      agentic planner-build
+
+      ```
+
+
+      3. Get full bootstrap context:
+
+      ```bash
+
+      agentic planner-build --bootstrap -j
+
+      ```
+
+
+      4. Verify workflow completes without errors.
+
+      '
+    success_criteria:
+    - Thin-client file readable
+    - Initial context returned
+    - Bootstrap context returned
+    - Workflow completes end-to-end
+  - id: test_08_002
+    name: Test Plan Init to Task Workflow
+    description: 'Test workflow from plan init to task management.
+
+      '
+    status: pending
+    agent: test-runner
+    guidance: 'Verify plan commands work together:
+
+
+      1. View plan status:
+
+      ```bash
+
+      agentic plan status
+
+      ```
+
+
+      2. List tasks:
+
+      ```bash
+
+      agentic plan task list
+
+      ```
+
+
+      3. Get current task:
+
+      ```bash
+
+      agentic plan task status <task-id>
+
+      ```
+
+
+      Verify workflow coherence.
+
+      '
+    success_criteria:
+    - Plan status shows current plan
+    - Task list shows tasks
+    - Task status shows task details
+- name: Test Infrastructure Validation
+  execution: sequential
+  description: Verify test environment and existing coverage
+  tickets: []
+- name: Context Bootstrap Command Tests
+  execution: sequential
+  description: Comprehensive testing of `agentic context bootstrap` command
+  tickets:
+  - id: '02.5'
+    name: Test bootstrap with no active plan
+    description: 'Validate graceful handling when no plan is found for current branch.
+
+      '
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    guidance: 'Add test case: test_bootstrap_no_plan_graceful
+
+
+      1. Run in directory with no matching plan
+
+      2. Verify JSON output has null for plan-related fields
+
+      3. Verify no crash or error exit code
+
+      4. Verify cli_commands still populated (commands are available even without
+      plan)
+
+      '
+    success_criteria:
+    - Command exits with code 0 even without plan
+    - plan_folder, objective are null
+    - cli_commands still present
+- name: Context Role Command Tests
+  execution: sequential
+  description: Comprehensive testing of `agentic context role` command
+  tickets: []
+- name: Context Task Command Tests
+  execution: sequential
+  description: Comprehensive testing of `agentic context task` command
+  tickets:
+  - id: '04.5'
+    name: Test task JSON structure completeness
+    description: 'Verify task JSON includes all required fields for agent execution.
+
+      '
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    guidance: 'Add test case: test_task_json_structure_complete
+
+
+      Verify task object includes:
+
+      - id, name, description, status
+
+      - phase, phase_id
+
+      - agent_type
+
+      - inputs (array)
+
+      - target_files (array)
+
+      - guidance (string)
+
+      - success_criteria (array)
+
+      - source_file (string)
+
+      '
+    success_criteria:
+    - All 12 task fields present
+    - Arrays are arrays, strings are strings
+- name: Context Inputs Command Tests
+  execution: sequential
+  description: Comprehensive testing of `agentic context inputs` command
+  tickets:
+  - id: '05.4'
+    name: Test inputs requires --role flag
+    description: 'Test that inputs command fails gracefully without --role.
+
+      '
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    guidance: 'Add test case: test_inputs_requires_role
+
+
+      1. Run: `agentic context inputs`
+
+      2. Verify exit code is 1
+
+      3. Verify error message indicates --role is required
+
+      4. Verify usage hint provided
+
+      '
+    success_criteria:
+    - Exit code 1 without --role
+    - Error message is clear
+- name: Main-First Plan Resolution Tests
+  execution: sequential
+  description: Testing Main-First plan resolution in feature worktrees
+  tickets:
+  - id: '06.3'
+    name: Test plan resolution defaults on main branch
+    description: 'Test that when on main/master branch, most recent active plan returned.
+
+      '
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    guidance: 'Add test case: test_plan_resolution_main_branch_default
+
+
+      1. Set current branch to "main"
+
+      2. Create multiple plan folders with live/ content
+
+      3. Verify most recent (by folder name sort) is returned
+
+      '
+    success_criteria:
+    - Most recent active plan returned on main
+    - Sorted by YYMMDDXX prefix correctly
+  - id: '06.4'
+    name: Test plan resolution returns None gracefully
+    description: 'Test graceful handling when no matching plan is found.
+
+      '
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    guidance: 'Add test case: test_plan_resolution_no_match
+
+
+      1. Set current branch to "random-unmatched-branch"
+
+      2. Verify resolve_active_plan() returns None
+
+      3. Verify no exception raised
+
+      '
+    success_criteria:
+    - Returns None, not exception
+    - No error output
+  - id: '06.5'
+    name: Test worktree list parsing
+    description: 'Test parsing of `git worktree list --porcelain` output.
+
+      '
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    guidance: 'Add test case: test_worktree_list_parsing
+
+
+      Mock git worktree list output:
+
+      ```
+
+      worktree /home/code/AgenticEngineering
+
+      HEAD abc123
+
+      branch refs/heads/main
+
+
+      worktree /home/code/AgenticEngineering-feature
+
+      HEAD def456
+
+      branch refs/heads/feature/test
+
+      ```
+
+
+      Verify find_main_worktree() correctly identifies main.
+
+      '
+    success_criteria:
+    - Correctly identifies main/master worktree
+    - Handles multiple worktree entries
+- name: JSON Output Format Tests
+  execution: sequential
+  description: Testing JSON output consistency across all context commands
+  tickets:
+  - id: '07.3'
+    name: Test JSON error responses
+    description: 'Verify error cases also return valid JSON when -j flag is used.
+
+      '
+    status: pending
+    agent: test-builder
+    target_files:
+    - modules/AgenticCLI/tests/test_context_commands.py
+    guidance: 'Add test case: test_json_error_format
+
+
+      1. Run: agentic context task -j (with no plan)
+
+      2. Verify output is valid JSON
+
+      3. Verify JSON contains ''error'' field when applicable
+
+      '
+    success_criteria:
+    - Error cases return valid JSON
+    - Error field present in error responses
+- name: Test Execution and Validation
+  execution: sequential
+  description: Run all tests and validate coverage
+  tickets:
+  - id: '09.1'
+    name: Run full test suite
+    description: 'Execute all context command tests and verify pass rate.
+
+      '
+    status: pending
+    agent: test-runner
+    guidance: '1. Run: `uv run pytest tests/test_context_commands.py -v --tb=short`
+
+      2. Document pass/fail for each test
+
+      3. Run: `uv run pytest tests/integration/test_context_flow.py -v` (if created)
+
+      4. Calculate pass rate
+
+      '
+    success_criteria:
+    - All tests pass (100% pass rate)
+    - No flaky tests
+  - id: '09.2'
+    name: Generate test coverage report
+    description: 'Generate coverage report for context commands.
+
+      '
+    status: pending
+    agent: test-runner
+    guidance: '1. Run: `uv run pytest tests/test_context_commands.py --cov=agenticcli.commands.context
+      --cov-report=term-missing`
+
+      2. Document coverage percentage
+
+      3. Identify uncovered lines
+
+      '
+    success_criteria:
+    - Coverage >= 80% for context.py
+    - Critical paths covered
+  - id: '09.3'
+    name: Final validation and documentation
+    description: 'Document test results and any issues discovered.
+
+      '
+    status: pending
+    agent: test-runner
+    target_files:
+    - docs/plans/live/261115CL_agenticcli/audit/test_context_commands_results.yml
+    guidance: 'Create audit file documenting:
+
+      1. Total tests: count
+
+      2. Passed: count
+
+      3. Failed: count (with reasons)
+
+      4. Coverage: percentage
+
+      5. Issues discovered
+
+      6. Recommendations
+
+      '
+    success_criteria:
+    - Audit file created with complete results
+    - All issues documented
+- name: CLI Command Availability and Help Validation
+  execution: sequential
+  description: 'Smoke tests to verify all JIT context commands are registered,
+
+    available, and provide correct help documentation.
+
+    '
+  tickets: []
+- name: Main-First Plan Resolution Testing
+  execution: sequential
+  description: 'Verify the Main-First plan resolution logic correctly finds
+
+    plans in the main worktree from feature worktrees.
+
+    '
+  tickets: []
+- name: Context Bootstrap End-to-End Testing
+  execution: sequential
+  description: 'Comprehensive testing of the context bootstrap command and
+
+    aggregated Seed Context output.
+
+    '
+  tickets: []
+- name: Agent Integration Testing
+  execution: sequential
+  description: 'Validate that agents can successfully use JIT commands to
+
+    bootstrap, work on tasks, and update progress.
+
+    '
+  tickets: []
+- name: Regression Testing
+  execution: sequential
+  description: 'Verify that JIT Context Entrypoints implementation does not
+
+    break existing CLI functionality.
+
+    '
+  tickets: []
+- name: Gap Analysis and Follow-up Planning
+  execution: sequential
+  description: 'CRITICAL PHASE: Analyze test results to identify gaps and trigger
+
+    remediation planning if needed.
+
+
+    GAP CRITERIA:
+
+    - Missing functionality: Feature specified but not implemented
+
+    - Failed tests: Tests that cannot pass due to implementation issues
+
+    - Edge cases: Scenarios not covered by current implementation
+
+    - UX issues: Commands work but are confusing or error-prone
+
+
+    REMEDIATION TRIGGER:
+
+    If ANY gaps are identified, create plan_live_jit_remediation.yml
+
+    following the same structure as this test plan.
+
+    '
+  tickets: []
+context: 'DEDICATED Implementation Verification Test Plan for JIT Context Entrypoints.
+
+
+  This plan differs from the general test plan (plan_live_test.yml) by focusing
+
+  specifically on IMPLEMENTATION VERIFICATION - validating that the built
+
+  functionality matches the specification and works end-to-end.
+
+
+  KEY COMMANDS UNDER TEST:
+
+  - `agentic context bootstrap --role <role-id>` - Primary Seed Context entrypoint
+
+  - `agentic context role <role-id>` - Role-specific process/guidelines
+
+  - `agentic context task` - Active task from Main-First plan
+
+  - `agentic context inputs` - JIT manifest of relevant files
+
+  - `agentic plan task status|update|current` - Plan task management
+
+
+  KEY FEATURES TO VALIDATE:
+
+  1. Main-First Plan Resolution from feature worktrees
+
+  2. Thin-client agent bootstrap flow
+
+  3. Context aggregation and JSON output
+
+  4. Plan task status updates without holding plan in context
+
+
+  TEST STRATEGY:
+
+  - Phase 1: CLI availability and help validation (smoke tests)
+
+  - Phase 2: Main-First plan resolution verification
+
+  - Phase 3: Context bootstrap end-to-end testing
+
+  - Phase 4: Agent integration testing (subagent using JIT commands)
+
+  - Phase 5: Regression testing against existing CLI functionality
+
+  - Phase 6: Gap analysis and follow-up planning
+
+
+  RELATIONSHIP TO OTHER PLANS:
+
+  - Build plan: plan_live_build.yml (implementation reference)
+
+  - General test plan: plan_live_test.yml (unit/integration/UAT coverage)
+
+  - This plan: Implementation verification and gap detection
+
+  '

@@ -245,7 +245,7 @@ def is_epic_fully_completed(plan_folder: Path) -> bool:
         # Count tasks from phases structure
         phases = _get_phases_from_content(content)
         for phase in phases:
-            tasks = phase.get("tickets", phase.get("tasks", []))
+            tasks = phase.get("tickets", [])
             for task in tasks:
                 total_tasks += 1
                 status = task.get("status", "pending")
@@ -889,7 +889,7 @@ def cmd_new(args, ctx=None):
                     {
                         "name": phase.name,
                         "execution": phase.execution or "sequential",
-                        "tasks": [
+                        "tickets": [
                             {"id": t.id, "name": t.name, "status": t.status or "pending"}
                             for t in (phase.tasks or [])
                         ],
@@ -926,7 +926,7 @@ def cmd_new(args, ctx=None):
                 for phase_idx, phase in enumerate(phases, 1):
                     phase_name = phase.get("name", f"Phase {phase_idx}")
                     execution_mode = phase.get("execution", "sequential")
-                    tasks = phase.get("tickets", phase.get("tasks", []))
+                    tasks = phase.get("tickets", [])
 
                     if not tasks:
                         continue
@@ -1049,7 +1049,7 @@ def cmd_new(args, ctx=None):
                         # Count remaining tasks
                         remaining = []
                         for phase in phases:
-                            for task in phase.get("tickets", phase.get("tasks", [])):
+                            for task in phase.get("tickets", []):
                                 if task.get("status", "pending") != "completed":
                                     remaining.append(task.get("id", "unknown"))
 
@@ -1169,7 +1169,7 @@ context: |
 
 phases:
   - name: "Initial Research and Planning"
-    tasks:
+    tickets:
       - id: "IM_001"
         name: "Research existing implementation"
         status: "pending"
@@ -1750,7 +1750,7 @@ def cmd_validate(args):
                             phase_id = _get_phase_id(phase)
                             if phase_id:
                                 yaml_phases.add(phase_id.upper())
-                            for task in phase.get("tickets", phase.get("tasks", [])):
+                            for task in phase.get("tickets", []):
                                 task_id = task.get("id") or task.get("task_id", "")
                                 if task_id:
                                     yaml_tasks.add(task_id.upper())
@@ -1982,7 +1982,7 @@ def _update_task_status(plan_path: Path, task_id: str, new_status: str):
         for key in ["phases", "implementation_steps"]:
             items = plan.get(key, []) or data.get(key, [])
             for item in items:
-                nested_tasks = item.get("tasks", [])
+                nested_tasks = item.get("tickets", [])
                 for task in nested_tasks:
                     if task.get("id") == task_id or task.get("task_id") == task_id:
                         task["status"] = new_status
@@ -2141,7 +2141,7 @@ def cmd_task_list(args, ctx=None):
             for phase in phases:
                 phase_id = _get_phase_id(phase)
                 phase_name = phase.get("name", "")
-                tasks = phase.get("tickets", phase.get("tasks", []))
+                tasks = phase.get("tickets", [])
 
                 for task in tasks:
                     task_status = task.get("status", "pending")
@@ -2266,7 +2266,7 @@ def cmd_task_status(args, ctx=None):
 
             phases = _get_phases_from_content(content)
             for phase in phases:
-                tasks = phase.get("tickets", phase.get("tasks", []))
+                tasks = phase.get("tickets", [])
                 for task in tasks:
                     if task.get("id") == task_id or task.get("task_id") == task_id:
                         task_data = task
@@ -2449,21 +2449,20 @@ def cmd_task_add(args, ctx=None):
             if phases:
                 target_phase = phases[-1]
             else:
-                target_phase = {"phase_id": "adhoc_01", "name": "Ad-hoc Tasks", "status": "pending", "tasks": []}
+                target_phase = {"phase_id": "adhoc_01", "name": "Ad-hoc Tasks", "status": "pending", "tickets": []}
                 phases.append(target_phase)
                 content["phases"] = phases
 
         if not new_task_id:
-            existing_ids = [t.get("task_id", "") for t in target_phase.get("tickets", target_phase.get("tasks", []))]
+            existing_ids = [t.get("task_id", "") for t in target_phase.get("tickets", [])]
             phase_prefix = _get_phase_id(target_phase) or "task"
             task_num = len(existing_ids) + 1
             new_task_id = f"{phase_prefix}_{task_num:03d}"
 
         new_task = {"task_id": new_task_id, "description": description, "status": "pending", "priority": priority}
-        if "tickets" not in target_phase and "tasks" not in target_phase:
+        if "tickets" not in target_phase:
             target_phase["tickets"] = []
-        ticket_key = "tickets" if "tickets" in target_phase else "tasks"
-        target_phase[ticket_key].append(new_task)
+        target_phase["tickets"].append(new_task)
 
         with open(target_file, "w") as f:
             yaml.dump(content, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
@@ -3172,7 +3171,7 @@ def cmd_task_update(args, ctx=None):
 
             phases = _get_phases_from_content(content)
             for phase in phases:
-                tasks = phase.get("tickets", phase.get("tasks", []))
+                tasks = phase.get("tickets", [])
                 for task in tasks:
                     tid = task.get("id") or task.get("task_id") or ""
                     if tid == task_id:
@@ -3313,7 +3312,7 @@ def cmd_task_current(args, ctx=None):
             for phase in phases:
                 phase_name = phase.get("name", "")
                 phase_id = _get_phase_id(phase)
-                tasks = phase.get("tickets", phase.get("tasks", []))
+                tasks = phase.get("tickets", [])
 
                 for task in tasks:
                     task_info = {
@@ -3496,7 +3495,7 @@ def cmd_phase_add(args, ctx=None):
             "phase_id": phase_id,
             "name": phase_name,
             "status": "pending",
-            "tasks": [],
+            "tickets": [],
         }
         if phase_description:
             new_phase["description"] = phase_description
@@ -3604,7 +3603,7 @@ def cmd_phase_list(args, ctx=None):
             phase_id = _get_phase_id(phase)
             phase_name = phase.get("name", "")
             phase_status = phase.get("status", "pending")
-            tasks = phase.get("tickets", phase.get("tasks", []))
+            tasks = phase.get("tickets", [])
             task_count = len(tasks)
 
             phases_data.append({
@@ -3853,7 +3852,7 @@ def _generate_phase_subgraph(phase: dict, phase_index: int) -> list[str]:
     phase_id = _get_phase_id(phase) or f"P{phase_index}"
     phase_name = phase.get("name", f"Phase {phase_index}")
     agent_type = _determine_agent_type(phase_name, phase_id)
-    tasks = phase.get("tickets", phase.get("tasks", []))
+    tasks = phase.get("tickets", [])
 
     # Create a safe subgraph ID (alphanumeric only)
     sg_id = f"{phase_id.replace('-', '_')}_SG"
@@ -3957,7 +3956,7 @@ def cmd_orchestration_generate(args, ctx=None):
                     "name": phase.name,
                     "status": phase.status,
                     "execution": phase.execution,
-                    "tasks": [
+                    "tickets": [
                         {"id": t.id, "task_id": t.id, "name": t.name, "status": t.status, "agent": t.agent}
                         for t in (phase.tasks or [])
                     ],
@@ -4095,7 +4094,7 @@ def cmd_orchestration_generate(args, ctx=None):
         else:
             # Generate standard phase subgraph
             agent_type = _determine_agent_type(phase_name, phase_id)
-            tasks = phase.get("tickets", phase.get("tasks", []))
+            tasks = phase.get("tickets", [])
             task_ids = [t.get("id") or t.get("task_id", "") for t in tasks]
 
             mmd_lines.append(f"    %% AGENT_ROUTING: {agent_type} agent")
@@ -4271,7 +4270,7 @@ def cmd_orchestration_validate(args, ctx=None):
                     yaml_phase_ids.add(phase_id)
 
                 # Collect tasks from this phase
-                tasks = phase.get("tickets", phase.get("tasks", []))
+                tasks = phase.get("tickets", [])
                 for task in tasks:
                     task_id = task.get("id") or task.get("task_id", "")
                     if task_id:

@@ -3,46 +3,6 @@ worktree_path: /home/code/AgenticEngineering
 branch: main
 status: active
 priority: high
-context: 'Multiple agent guidance files reference CLI commands with wrong signatures,
-
-  missing parameters, or behaviors that aren''t enforced. This causes agents to
-
-  generate commands that fail at runtime. Audit found 8 gaps; some were already
-
-  fixed in prior batches. This plan addresses the remaining gaps.
-
-
-  Pre-resolved open questions:
-
-  - Q1: Fix GUIDANCE to match CLI (CLI is source of truth)
-
-  - Q2: Keep generic prompt-based loop approach (no structured loop-type positional)
-
-  - Q3: Add --worktree as alias for --directory on session spawn
-
-  - Q4: Parallel task execution is DEFERRED
-
-
-  Gap status assessment (after prior fixes):
-
-  - Gap 1 (loop start syntax): ALREADY FIXED in cli-commands.yml and orchestration-executor/process.yml
-
-  - Gap 2 (session spawn --worktree): NEEDS CLI CHANGE - add --worktree alias
-
-  - Gap 3 (loop status required arg): ALREADY FIXED in cli-commands.yml
-
-  - Gap 4 (loop history flags): ALREADY FIXED in cli-commands.yml
-
-  - Gap 5 (short-name resolution): ALREADY FIXED in plans.yml
-
-  - Gap 6 (AGENT_ROUTING validation): NEEDS CLI CHANGE - enhance validation against
-  manifest.yml
-
-  - Gap 7 (loop type validation): NEEDS CLI CHANGE - validate loop types against agent-loops.yml
-
-  - Gap 8 (parallel task execution): DEFERRED per Q4
-
-  '
 objective: 'Fix remaining guidance-CLI alignment gaps: add --worktree alias to session
   spawn,
 
@@ -51,44 +11,9 @@ objective: 'Fix remaining guidance-CLI alignment gaps: add --worktree alias to s
   and verify all previously-fixed gaps are consistent across all guidance files.
 
   '
-dependencies: []
-affected_stories: []
-impacted_artifacts:
-- artifact_type: cli_command
-  artifact_identifier: agentic session spawn --worktree
-  impact_type: modified
-  description: Add --worktree/-w as alias for --directory/-d
-  breaking_change: false
-- artifact_type: cli_command
-  artifact_identifier: agentic plan validate
-  impact_type: modified
-  description: Enhance AGENT_ROUTING validation to check manifest.yml spawns
-  breaking_change: false
-- artifact_type: guidance_file
-  artifact_identifier: cli-commands.yml
-  impact_type: modified
-  description: Document --worktree alias on session spawn
-  breaking_change: false
-open_questions:
-- id: Q1
-  question: Fix guidance or CLI for each gap?
-  status: ANSWERED
-  answer: Fix GUIDANCE to match CLI. CLI is source of truth.
-- id: Q2
-  question: Add structured loop-type pattern or keep generic prompt?
-  status: ANSWERED
-  answer: Keep generic prompt-based approach. No positional loop-type arg.
-- id: Q3
-  question: Add --worktree alias or just update docs?
-  status: ANSWERED
-  answer: Add --worktree as alias for --directory on session spawn.
-- id: Q4
-  question: Implement parallel task execution?
-  status: ANSWERED
-  answer: Deferred. Not a priority for this plan.
+created: ''
 phases:
 - name: 'Phase 1: Verify Already-Fixed Gaps'
-  id: P1
   execution: sequential
   description: 'Confirm that gaps 1, 3, 4, and 5 are fully fixed across ALL guidance
     files
@@ -98,7 +23,7 @@ phases:
     file for stale references.
 
     '
-  tasks:
+  tickets:
   - id: GA_001
     name: Audit all guidance files for stale loop start syntax
     description: 'Search all .yml files under modules/AgenticGuidance/ for any reference
@@ -187,7 +112,6 @@ phases:
     - plans.yml documents short-name resolution with prefix matching
     - No guidance file contradicts this (says "NOT supported")
 - name: 'Phase 2: Add --worktree Alias to Session Spawn'
-  id: P2
   execution: sequential
   description: 'Add --worktree/-w as an alias for --directory/-d on the session spawn
     command.
@@ -197,7 +121,7 @@ phases:
     Update guidance to document both flags.
 
     '
-  tasks:
+  tickets:
   - id: GA_004
     name: Add --worktree alias to session spawn in CLI
     description: 'In cli.py, add --worktree/-w as a secondary option that maps to
@@ -274,7 +198,6 @@ phases:
     - Mutual exclusion error test passes
     - All existing session tests still pass
 - name: 'Phase 3: Enhance AGENT_ROUTING Validation'
-  id: P3
   execution: sequential
   description: 'Upgrade plan validate and orchestration validate to check AGENT_ROUTING
 
@@ -283,7 +206,7 @@ phases:
     requires this as a hard fail for missing validation routing.
 
     '
-  tasks:
+  tickets:
   - id: GA_007
     name: Build dynamic agent type registry from manifest files
     description: 'Create a utility function that discovers valid agent types by scanning
@@ -373,7 +296,6 @@ phases:
     - Invalid agent type causes validation error
     - Fallback to hardcoded set tested
 - name: 'Phase 4: Add Loop Type Awareness'
-  id: P4
   execution: sequential
   description: 'agent-loops.yml defines valid loop types (test-fix-loop, audit-test-fix-loop,
 
@@ -386,7 +308,7 @@ phases:
     guidance references invalid loop types.
 
     '
-  tasks:
+  tickets:
   - id: GA_010
     name: Create loop type registry utility
     description: 'Create a utility that reads agent-loops.yml and returns valid loop
@@ -472,7 +394,6 @@ phases:
     - Unknown loop types generate warning
     - Plans without loop structures validate cleanly
 - name: 'Phase 5: Cross-Guidance Consistency Sweep'
-  id: P5
   execution: sequential
   description: 'Final sweep across all process.yml, inputs.yml, and specification
     files to
@@ -482,7 +403,7 @@ phases:
     catches any stragglers not covered by gaps 1-8.
 
     '
-  tasks:
+  tickets:
   - id: GA_013
     name: Sweep all process.yml files for CLI command references
     description: 'Search every process.yml for `agentic` command invocations.
@@ -531,14 +452,13 @@ phases:
     - All specification file CLI references match actual CLI
     - No stale command signatures in spec files
 - name: 'Phase 6: Integration Testing'
-  id: P6
   execution: sequential
   description: 'Run all tests to ensure changes don''t break existing functionality.
 
     Verify the new --worktree alias and enhanced validation work end-to-end.
 
     '
-  tasks:
+  tickets:
   - id: GA_015
     name: Run full test suite
     description: 'Execute pytest across AgenticCLI to verify no regressions from
@@ -550,7 +470,6 @@ phases:
     agent: test-runner
     inputs:
     - modules/AgenticCLI/tests/
-    target_files: []
     guidance: '1. Run: python3 -m pytest modules/AgenticCLI/tests/ -v
 
       2. Report all failures with context
@@ -572,7 +491,6 @@ phases:
     agent: test-runner
     inputs:
     - modules/AgenticCLI/src/agenticcli/cli.py
-    target_files: []
     guidance: '1. Run: agentic session spawn --help
 
       2. Verify --worktree/-w appears in help output
@@ -586,12 +504,43 @@ phases:
     - --worktree appears in session spawn help
     - --directory still present
     - validate command still accessible
-success_criteria:
-- All previously-fixed gaps (1, 3, 4, 5) verified consistent across all guidance files
-- --worktree/-w alias added to session spawn and working
-- AGENT_ROUTING validation uses dynamic agent type discovery from filesystem
-- Invalid agent routing is error (not warning) in validation
-- Loop type validation warns on unknown types in plan files
-- All process.yml and specification files use correct CLI syntax
-- Full test suite passes with no regressions
-- Gap 8 (parallel task execution) explicitly deferred
+context: 'Multiple agent guidance files reference CLI commands with wrong signatures,
+
+  missing parameters, or behaviors that aren''t enforced. This causes agents to
+
+  generate commands that fail at runtime. Audit found 8 gaps; some were already
+
+  fixed in prior batches. This plan addresses the remaining gaps.
+
+
+  Pre-resolved open questions:
+
+  - Q1: Fix GUIDANCE to match CLI (CLI is source of truth)
+
+  - Q2: Keep generic prompt-based loop approach (no structured loop-type positional)
+
+  - Q3: Add --worktree as alias for --directory on session spawn
+
+  - Q4: Parallel task execution is DEFERRED
+
+
+  Gap status assessment (after prior fixes):
+
+  - Gap 1 (loop start syntax): ALREADY FIXED in cli-commands.yml and orchestration-executor/process.yml
+
+  - Gap 2 (session spawn --worktree): NEEDS CLI CHANGE - add --worktree alias
+
+  - Gap 3 (loop status required arg): ALREADY FIXED in cli-commands.yml
+
+  - Gap 4 (loop history flags): ALREADY FIXED in cli-commands.yml
+
+  - Gap 5 (short-name resolution): ALREADY FIXED in plans.yml
+
+  - Gap 6 (AGENT_ROUTING validation): NEEDS CLI CHANGE - enhance validation against
+  manifest.yml
+
+  - Gap 7 (loop type validation): NEEDS CLI CHANGE - validate loop types against agent-loops.yml
+
+  - Gap 8 (parallel task execution): DEFERRED per Q4
+
+  '

@@ -43,7 +43,7 @@ class TestNoAutoArchiveOnCompletion:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "in_progress",
-                    "tasks": [
+                    "tickets": [
                         {
                             "task_id": "build_01_001",
                             "description": "First task",
@@ -91,7 +91,7 @@ class TestNoAutoArchiveOnCompletion:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "pending",
-                    "tasks": [
+                    "tickets": [
                         {
                             "task_id": "build_01_001",
                             "description": "Only task",
@@ -130,7 +130,7 @@ class TestNoAutoArchiveOnCompletion:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "in_progress",
-                    "tasks": [
+                    "tickets": [
                         {
                             "task_id": "build_01_001",
                             "description": "Build task",
@@ -151,7 +151,7 @@ class TestNoAutoArchiveOnCompletion:
                     "phase_id": "test_01",
                     "name": "Test Phase",
                     "status": "pending",
-                    "tasks": [
+                    "tickets": [
                         {
                             "task_id": "test_01_001",
                             "description": "Test task",
@@ -294,7 +294,7 @@ class TestNoAutoArchiveOnCompletion:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "in_progress",
-                    "tasks": [
+                    "tickets": [
                         {
                             "task_id": "build_01_001",
                             "description": "Already done",
@@ -358,7 +358,7 @@ class TestIsPlanFullyCompleted:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "pending",
-                    "tasks": [],  # Empty tasks
+                    "tickets": [],  # Empty tickets
                 }
             ],
         }
@@ -379,7 +379,7 @@ class TestIsPlanFullyCompleted:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "in_progress",
-                    "tasks": [
+                    "tickets": [
                         {"task_id": "task_001", "description": "Task 1", "status": "completed"},
                         {"task_id": "task_002", "description": "Task 2", "status": "pending"},
                     ],
@@ -403,7 +403,7 @@ class TestIsPlanFullyCompleted:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "in_progress",
-                    "tasks": [
+                    "tickets": [
                         {"task_id": "task_001", "description": "Task 1", "status": "completed"},
                         {"task_id": "task_002", "description": "Task 2", "status": "in_progress"},
                     ],
@@ -427,7 +427,7 @@ class TestIsPlanFullyCompleted:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "completed",
-                    "tasks": [
+                    "tickets": [
                         {"task_id": "task_001", "description": "Task 1", "status": "completed"},
                         {"task_id": "task_002", "description": "Task 2", "status": "completed"},
                     ],
@@ -452,7 +452,7 @@ class TestIsPlanFullyCompleted:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "completed",
-                    "tasks": [
+                    "tickets": [
                         {"task_id": "build_001", "description": "Build", "status": "completed"},
                     ],
                 }
@@ -469,7 +469,7 @@ class TestIsPlanFullyCompleted:
                     "phase_id": "test_01",
                     "name": "Test Phase",
                     "status": "pending",
-                    "tasks": [
+                    "tickets": [
                         {"task_id": "test_001", "description": "Test", "status": "pending"},
                     ],
                 }
@@ -503,7 +503,7 @@ class TestIsPlanFullyCompleted:
                     "phase_id": "build_01",
                     "name": "Build Phase",
                     "status": "completed",
-                    "tasks": [
+                    "tickets": [
                         {"task_id": "task_001", "description": "Task 1", "status": "completed"},
                     ],
                 }
@@ -518,7 +518,7 @@ class TestIsPlanFullyCompleted:
             "phases": [
                 {
                     "phase_id": "other_01",
-                    "tasks": [
+                    "tickets": [
                         {"task_id": "other_001", "status": "pending"},
                     ],
                 }

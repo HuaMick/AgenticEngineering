@@ -1,87 +1,20 @@
-name: phone-notifications
-status: active
+name: Phone Notifications - Test Plan
+worktree_path: ''
+branch: ''
+status: pending
 priority: high
-context: 'Add phone push notifications via ntfy.sh and an interactive wizard CLI for
+objective: 'Validate the phone notifications implementation across all 4 build phases:
 
-  answering questions from mobile. When agents create questions, the daemon
+  ntfy client, config schema, interactive wizard, and suggested answers.
 
-  detects new pending questions and sends an ntfy push to the user''s phone.
+  Each build phase has a corresponding test phase with test-fix loops,
 
-  The user SSHs via Termux and runs `agentic question answer --interactive`
+  followed by test-audit-fix loops to catch reward hacking, and a final
 
-  to select from suggested answers or type a custom response.
-
-
-  The question watcher (QuestionWatcherHandler) already monitors pending/
-
-  and answered/ folders with debounced callbacks. This plan hooks ntfy
-
-  notification sending into that callback path.
-
-
-  Configuration uses the existing TieredConfigLoader + CLI config commands
-
-  to store ntfy topic and server URL in preferences.
-
-
-  The Question model gains an optional suggested_answers field so agents
-
-  can propose answer choices when creating questions.
+  UAT phase as PRIMARY SUCCESS CRITERIA.
 
   '
-dependencies:
-  depends_on:
-  - plan_id: 260203QF
-    description: Question Foundation - provides QuestionQueue, Question model, YAML
-      serialization
-  - plan_id: 260203QC
-    description: Question CLI - provides answer, ask, watch commands
-  - plan_id: 260203QT
-    description: Question Tmux - provides watcher daemon and tmux notifications
-  required_by: []
-inputs:
-- location: modules/AgenticCLI/src/agenticcli/services/question_watcher.py
-  description: QuestionWatcherHandler callback path - ntfy hook integrates here
-- location: modules/AgenticCLI/src/agenticcli/commands/question.py
-  description: Existing question commands - answer gets --interactive flag
-- location: modules/AgenticGuidance/src/agenticguidance/models/question.py
-  description: Question dataclass - gains suggested_answers field
-- location: modules/AgenticGuidance/src/agenticguidance/services/question.py
-  description: QuestionQueue service - create_question gains suggested_answers param
-- location: modules/AgenticGuidance/src/agenticguidance/services/config.py
-  description: TieredConfigLoader and DEFAULT_CONFIG - gains ntfy config keys
-- location: modules/AgenticCLI/src/agenticcli/commands/config.py
-  description: CLI config get/set commands - used to configure ntfy topic
-- location: modules/AgenticCLI/src/agenticcli/utils/tmux_notify.py
-  description: Tmux notification patterns - reference for notification integration
-objective: 'Implement phone push notifications via ntfy.sh and an interactive answer
-
-  wizard so users can answer agent questions from their phone.
-
-
-  Phase 1: ntfy notification client and watcher hook
-
-  Phase 2: Configuration schema for ntfy settings
-
-  Phase 3: Interactive wizard for --interactive answer mode
-
-  Phase 4: Suggested answers support in Question model and CLI
-
-  '
-loop_structures:
-- id: loop_implementation
-  type: test-fix-loop
-  applies_to_phase: All phases
-  trigger: After each phase's implementation tasks complete
-  description: 'Each phase includes verification tasks. Run tests after
-
-    implementation, fix failures, iterate until passing.
-
-    '
-  exit_criteria:
-    success: All tests pass for the phase
-    max_iterations: 3
-    escalation: Escalate to user with test results
+created: ''
 phases:
 - name: 'Phase 1: ntfy Notification Hook'
   execution: sequential
@@ -90,7 +23,7 @@ phases:
     callback so that new pending questions trigger a push notification.
 
     '
-  tasks:
+  tickets:
   - id: PN-001
     name: Create ntfy client utility module
     description: 'HTTP client for ntfy.sh push notifications. Uses urllib.request
@@ -134,8 +67,6 @@ phases:
       '
     status: completed
     agent: build-python
-    depends_on:
-    - PN-001
     inputs:
     - modules/AgenticCLI/src/agenticcli/commands/question.py
     - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
@@ -167,8 +98,6 @@ phases:
     description: Unit tests for the ntfy utility module
     status: completed
     agent: test-builder
-    depends_on:
-    - PN-002
     inputs:
     - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
     target_files:
@@ -229,7 +158,7 @@ phases:
     configure their ntfy topic via `agentic config set ntfy.topic <topic>`.
 
     '
-  tasks:
+  tickets:
   - id: PN-004
     name: Add ntfy keys to DEFAULT_CONFIG and ENV_VAR_MAPPING
     description: 'Register ntfy.topic and ntfy.server in the configuration schema
@@ -265,8 +194,6 @@ phases:
       '
     status: completed
     agent: build-python
-    depends_on:
-    - PN-004
     inputs:
     - modules/AgenticCLI/src/agenticcli/commands/config.py
     - modules/AgenticGuidance/src/agenticguidance/services/config.py
@@ -290,8 +217,6 @@ phases:
     description: Test the new config keys and validation
     status: completed
     agent: test-builder
-    depends_on:
-    - PN-005
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/config.py
     target_files:
@@ -341,7 +266,7 @@ phases:
     a rich TUI wizard for selecting answers, optimized for mobile SSH.
 
     '
-  tasks:
+  tickets:
   - id: PN-007
     name: Create interactive answer wizard module
     description: 'A rich-based interactive prompt that displays the question and
@@ -393,8 +318,6 @@ phases:
       '
     status: completed
     agent: build-python
-    depends_on:
-    - PN-007
     inputs:
     - modules/AgenticCLI/src/agenticcli/commands/question.py
     - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
@@ -432,8 +355,6 @@ phases:
     description: Test the interactive answer wizard and CLI integration
     status: completed
     agent: test-builder
-    depends_on:
-    - PN-008
     inputs:
     - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
     - modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -466,7 +387,7 @@ phases:
     answer choices. These appear as numbered options in the interactive wizard.
 
     '
-  tasks:
+  tickets:
   - id: PN-010
     name: Add suggested_answers field to Question model
     description: 'Extend the Question dataclass with an optional suggested_answers
@@ -506,8 +427,6 @@ phases:
       '
     status: completed
     agent: build-python
-    depends_on:
-    - PN-010
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
@@ -537,9 +456,6 @@ phases:
       '
     status: completed
     agent: build-python
-    depends_on:
-    - PN-011
-    - PN-008
     inputs:
     - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
     - modules/AgenticCLI/src/agenticcli/commands/question.py
@@ -566,8 +482,6 @@ phases:
     description: Test suggested answers model, service, and CLI integration
     status: completed
     agent: test-builder
-    depends_on:
-    - PN-012
     inputs:
     - modules/AgenticGuidance/src/agenticguidance/models/question.py
     - modules/AgenticGuidance/src/agenticguidance/services/question.py
@@ -624,14 +538,522 @@ phases:
     - CLI integration tested
     - Backward compatibility verified
     - All tests pass
-success_criteria:
-- ntfy notifications sent when new pending questions appear
-- Notifications include severity, question text, and priority mapping
-- ntfy configuration via agentic config set ntfy.topic
-- agentic question answer --interactive launches TUI wizard
-- Interactive wizard works over SSH from Termux
-- Suggested answers shown as numbered options in wizard
-- Custom text input always available as fallback
-- agentic question ask --suggest creates suggestions
-- All existing question tests still pass (no regressions)
-- Network errors in ntfy client never crash the watcher daemon
+- name: 'Phase T1: ntfy Notification Hook Tests'
+  description: 'Test the ntfy client utility (PN-001), watcher hook integration (PN-002),
+
+    and unit tests from the build phase (PN-003).
+
+    '
+  tickets:
+  - id: T1-001
+    name: Run ntfy client unit tests
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/tests/test_ntfy.py
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    guidance: 'Execute pytest on test_ntfy.py. Verify:
+
+      - TestSendNtfy tests (success, network failure, HTTP error, timeout, custom
+      server, tags)
+
+      - TestNotifyNewQuestion tests (blocking, high, medium severity, truncation)
+
+      - TestNtfyWatcherHook tests (configured send, no-topic skip, dedup)
+
+      All HTTP interactions must be mocked (no real network calls).
+
+      '
+  - id: T1-002
+    name: Verify ntfy watcher integration does not break existing watch tests
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/tests/
+    guidance: 'Run the full question command test suite to verify PN-002 watcher hook
+
+      changes did not break existing watch/daemon tests.
+
+      Execute: pytest modules/AgenticCLI/tests/ -k "question" --tb=short
+
+      '
+  - id: T1-003
+    name: Verify ntfy error isolation
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/tests/test_ntfy.py
+    guidance: 'Specifically verify that network errors in ntfy never propagate to
+
+      crash the watcher daemon. Run the failure-path tests and confirm
+
+      send_ntfy returns False without raising.
+
+      '
+- name: 'Phase T2: Configuration Schema Tests'
+  description: 'Test ntfy config keys (PN-004), validation (PN-005), and config unit
+    tests (PN-006).
+
+    '
+  tickets:
+  - id: T2-001
+    name: Run ntfy config unit tests
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticGuidance/tests/test_config_ntfy.py
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    guidance: 'Execute pytest on test_config_ntfy.py. Verify:
+
+      - TestNtfyConfigDefaults (empty topic, default server, enabled=True)
+
+      - TestNtfyConfigEnvVars (AGENTIC_NTFY_TOPIC, AGENTIC_NTFY_SERVER mapping)
+
+      - TestNtfyConfigValidation (valid URL, invalid URL rejected, empty topic ok,
+      boolean enabled)
+
+      '
+  - id: T2-002
+    name: Verify existing config tests unaffected
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticGuidance/tests/
+    guidance: 'Run all config-related tests to verify PN-004/PN-005 changes did not
+
+      break existing config functionality.
+
+      Execute: pytest modules/AgenticGuidance/tests/ -k "config" --tb=short
+
+      '
+  - id: T2-003
+    name: Verify config CLI integration
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/config.py
+    guidance: 'Test that `agentic config set ntfy.topic test-topic` and
+
+      `agentic config get ntfy.topic` work through the CLI layer.
+
+      Use subprocess or CLI test helpers to verify end-to-end config flow.
+
+      '
+- name: 'Phase T3: Interactive Wizard Tests'
+  description: 'Test interactive answer wizard (PN-007), --interactive flag (PN-008),
+
+    and wizard unit tests (PN-009).
+
+    '
+  tickets:
+  - id: T3-001
+    name: Run interactive wizard unit tests
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/tests/test_interactive_answer.py
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    guidance: 'Execute pytest on test_interactive_answer.py. Verify:
+
+      - TestInteractiveAnswerWizard (select suggested, custom, defer, confirm, no
+      suggestions, retries)
+
+      - TestAnswerCommandInteractive (flag launches wizard, non-interactive unchanged,
+      no question_id)
+
+      All input() calls must be mocked.
+
+      '
+  - id: T3-002
+    name: Verify --interactive flag registered in Typer CLI
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/cli.py
+    guidance: 'Verify that `agentic question answer --help` shows the --interactive
+      / -i flag.
+
+      Run: agentic question answer --help and check output contains "--interactive".
+
+      '
+  - id: T3-003
+    name: Verify existing answer command unaffected without --interactive
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/tests/
+    guidance: 'Run existing question answer tests WITHOUT --interactive flag to verify
+
+      no regressions in the standard answer flow.
+
+      Execute: pytest modules/AgenticCLI/tests/ -k "answer" --tb=short
+
+      '
+- name: 'Phase T4: Suggested Answers Tests'
+  description: 'Test suggested_answers model field (PN-010), create_question param
+    (PN-011),
+
+    wizard wiring (PN-012), and suggested answers unit tests (PN-013).
+
+    '
+  tickets:
+  - id: T4-001
+    name: Run suggested answers unit tests
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticGuidance/tests/test_suggested_answers.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: 'Execute pytest on test_suggested_answers.py. Verify:
+
+      - TestQuestionSuggestedAnswers (default None, with values, to_dict include/omit,
+      from_dict, YAML round-trip)
+
+      - TestCreateQuestionSuggested (with suggestions, without, validation for empty
+      list/string/max 10)
+
+      - TestInteractiveWithSuggestions (displayed in wizard, [S] indicator)
+
+      '
+  - id: T4-002
+    name: Verify Question model backward compatibility
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticGuidance/tests/
+    guidance: 'Run all Question model tests to verify PN-010 did not break existing
+
+      Question serialization or deserialization.
+
+      Execute: pytest modules/AgenticGuidance/tests/ -k "question" --tb=short
+
+      '
+  - id: T4-003
+    name: Verify --suggest flag in ask command
+    description: ''
+    status: completed
+    agent: test-runner
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: 'Verify that `agentic question ask --help` shows the --suggest flag.
+
+      Run: agentic question ask --help and check output.
+
+      Then verify the flag correctly passes suggestions to create_question.
+
+      '
+- name: 'Phase T5: Audit ntfy Tests'
+  description: 'Audit ntfy test quality for reward hacking, weak assertions, and coverage
+    gaps.
+
+    '
+  tickets:
+  - id: T5-001
+    name: Audit ntfy test coverage and quality
+    description: ''
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticCLI/tests/test_ntfy.py
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: 'Audit test_ntfy.py for:
+
+      - Reward hacking: tests that pass trivially or assert on mocks not behavior
+
+      - Weak assertions: missing assert on return values, HTTP headers, body content
+
+      - Coverage gaps: untested error paths, missing edge cases
+
+      - Mock correctness: mocks match real interfaces (urllib.request)
+
+      - Deduplication logic: verify seen-question tracking tested properly
+
+      '
+- name: 'Phase T6: Audit Config Tests'
+  description: 'Audit config test quality for reward hacking and coverage gaps.
+
+    '
+  tickets:
+  - id: T6-001
+    name: Audit config test coverage and quality
+    description: ''
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticGuidance/tests/test_config_ntfy.py
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    guidance: 'Audit test_config_ntfy.py for:
+
+      - Reward hacking: tests that check dict keys exist without verifying values
+
+      - Weak assertions: missing validation of actual config loading behavior
+
+      - Coverage gaps: env var override not tested end-to-end, missing edge cases
+
+      - Integration: config set -> config get round-trip tested
+
+      - Validation: error messages are informative, not just "raises ValueError"
+
+      '
+- name: 'Phase T7: Audit Interactive Wizard Tests'
+  description: 'Audit wizard test quality for reward hacking and coverage gaps.
+
+    '
+  tickets:
+  - id: T7-001
+    name: Audit wizard test coverage and quality
+    description: ''
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticCLI/tests/test_interactive_answer.py
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: 'Audit test_interactive_answer.py for:
+
+      - Reward hacking: tests that mock too much (wizard never actually runs)
+
+      - Weak assertions: testing "called" but not "called with correct args"
+
+      - Coverage gaps: confirmation rejection loop, max retry exhaustion, display
+      width
+
+      - Input mocking: builtins.input properly mocked for all paths
+
+      - SSH compatibility: no terminal-specific features tested (should be plain input)
+
+      - DEFER_SENTINEL handling: defer path tested end-to-end
+
+      '
+- name: 'Phase T8: Audit Suggested Answers Tests'
+  description: 'Audit suggested answers test quality for reward hacking and coverage
+    gaps.
+
+    '
+  tickets:
+  - id: T8-001
+    name: Audit suggested answers test coverage and quality
+    description: ''
+    status: completed
+    agent: test-audit
+    inputs:
+    - modules/AgenticGuidance/tests/test_suggested_answers.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    guidance: 'Audit test_suggested_answers.py for:
+
+      - Reward hacking: YAML round-trip tests that serialize/deserialize trivial data
+
+      - Weak assertions: checking field exists but not checking value correctness
+
+      - Coverage gaps: boundary cases (exactly 10 suggestions, Unicode strings, very
+      long answers)
+
+      - Backward compatibility: explicitly test loading YAML files WITHOUT suggested_answers
+      field
+
+      - Validation: all error paths produce meaningful messages
+
+      - Integration: --suggest flag -> create_question -> YAML -> interactive wizard
+      end-to-end
+
+      '
+- name: 'Phase T9: UAT - User Acceptance Testing (PRIMARY SUCCESS CRITERIA)'
+  description: 'MANDATORY UAT phase validating the complete phone notifications feature
+
+    against user story acceptance criteria. This is the PRIMARY SUCCESS CRITERIA
+
+    for the plan - all prior test phases are prerequisites.
+
+
+    Strategy: test-user-simulator
+
+    Rationale: CLI tool with interactive features requiring full user journey validation.
+
+    '
+  tickets:
+  - id: T9-001
+    name: 'UAT: Watch questions with ntfy notifications (US-CLI-065)'
+    description: ''
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    - modules/AgenticGuidance/src/agenticguidance/services/config.py
+    guidance: 'Simulate user journey for US-CLI-065: Watch Questions with Tmux Notifications
+
+      Extended to include ntfy push notifications.
+
+
+      Steps:
+
+      1. Configure ntfy topic: agentic config set ntfy.topic test-phone
+
+      2. Start question watcher: agentic question watch --plan <test-plan>
+
+      3. Create a test question in a second process
+
+      4. Verify ntfy notification would be sent (mock HTTP, check headers/body)
+
+      5. Verify tmux notification still works alongside ntfy
+
+      6. Verify deduplication: same question does not trigger second notification
+
+      7. Verify graceful handling when ntfy server unreachable
+
+
+      Use mock/tmp_path for isolation. Do not make real HTTP calls.
+
+      '
+  - id: T9-002
+    name: 'UAT: Run question watch as daemon with ntfy (US-CLI-066)'
+    description: ''
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/services/question_watcher.py
+    guidance: 'Simulate user journey for US-CLI-066: Run Question Watch as Daemon
+
+      Extended to include ntfy in daemon mode.
+
+
+      Steps:
+
+      1. Configure ntfy topic
+
+      2. Start daemon: agentic question watch --daemon --plan <test-plan>
+
+      3. Verify daemon starts successfully
+
+      4. Create a pending question
+
+      5. Verify ntfy notification sent from daemon callback
+
+      6. Verify daemon survives ntfy network error
+
+      7. Stop daemon cleanly
+
+      '
+  - id: T9-003
+    name: 'UAT: Answer a question interactively (US-CLI-062)'
+    description: ''
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    guidance: 'Simulate user journey for US-CLI-062: Answer a Question
+
+      Extended with interactive wizard flow.
+
+
+      Steps:
+
+      1. Create a pending question with suggested answers
+
+      2. Run: agentic question answer --interactive (no question_id)
+
+      3. Verify pending questions listed with [S] indicator
+
+      4. Select a question by number
+
+      5. Verify wizard displays question text, severity, suggested answers
+
+      6. Select a suggested answer by number
+
+      7. Verify confirmation prompt
+
+      8. Confirm answer
+
+      9. Verify question moved to answered/ with correct text and confidence
+
+
+      Also test:
+
+      - Custom answer flow (select C, type answer)
+
+      - Defer flow (select D)
+
+      - Non-interactive flow still works: agentic question answer <id> --text "answer"
+
+      '
+  - id: T9-004
+    name: 'UAT: Ask a question with suggested answers (US-CLI-060)'
+    description: ''
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    - modules/AgenticGuidance/src/agenticguidance/models/question.py
+    guidance: "Simulate user journey for US-CLI-060: Ask a Question During Workflow\n\
+      Extended with suggested answers support.\n\nSteps:\n1. Ask a question with suggestions:\n\
+      \   agentic question ask --text \"Use pytest or unittest?\" \\\n     --suggest\
+      \ \"Use pytest\" --suggest \"Use unittest\" --suggest \"Use both\" \\\n    \
+      \ --plan <test-plan>\n2. Verify question YAML file created in pending/\n3. Verify\
+      \ suggested_answers field in YAML contains all 3 suggestions\n4. Verify question\
+      \ without --suggest still works (backward compatible)\n5. Verify validation:\
+      \ empty suggest rejected, >10 suggestions rejected\n"
+  - id: T9-005
+    name: 'UAT: End-to-end notification-to-answer flow'
+    description: ''
+    status: completed
+    agent: test-user-simulator
+    inputs:
+    - modules/AgenticCLI/src/agenticcli/commands/question.py
+    - modules/AgenticCLI/src/agenticcli/utils/ntfy.py
+    - modules/AgenticCLI/src/agenticcli/utils/interactive_answer.py
+    - modules/AgenticGuidance/src/agenticguidance/services/question.py
+    guidance: "Simulate the complete phone notification workflow end-to-end:\n\n1.\
+      \ Configure ntfy: agentic config set ntfy.topic my-phone\n2. Agent asks question\
+      \ with suggestions:\n   agentic question ask --text \"Deploy to prod?\" \\\n\
+      \     --suggest \"Yes, deploy now\" --suggest \"No, wait for review\"\n3. Watcher\
+      \ detects question -> ntfy push sent (verify mock HTTP)\n4. User answers interactively:\n\
+      \   agentic question answer --interactive\n5. User selects from suggestions\
+      \ -> answer persisted\n6. Verify full data flow: ask -> notify -> answer ->\
+      \ complete\n\nThis validates the complete user journey from phone notification\n\
+      receipt to interactive answer submission.\n"
+context: 'Add phone push notifications via ntfy.sh and an interactive wizard CLI for
+
+  answering questions from mobile. When agents create questions, the daemon
+
+  detects new pending questions and sends an ntfy push to the user''s phone.
+
+  The user SSHs via Termux and runs `agentic question answer --interactive`
+
+  to select from suggested answers or type a custom response.
+
+
+  The question watcher (QuestionWatcherHandler) already monitors pending/
+
+  and answered/ folders with debounced callbacks. This plan hooks ntfy
+
+  notification sending into that callback path.
+
+
+  Configuration uses the existing TieredConfigLoader + CLI config commands
+
+  to store ntfy topic and server URL in preferences.
+
+
+  The Question model gains an optional suggested_answers field so agents
+
+  can propose answer choices when creating questions.
+
+  '
