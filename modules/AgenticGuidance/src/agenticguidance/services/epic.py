@@ -5,7 +5,6 @@ git status verification.
 """
 
 import logging
-import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,11 +12,46 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-import yaml
-
 from .state import FileLock
 
 logger = logging.getLogger(__name__)
+
+
+class EpicStatus(Enum):
+    """Canonical epic statuses."""
+
+    PROPOSED = "proposed"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
+# Maps all legacy status strings to the 3 canonical values
+EPIC_STATUS_MIGRATION: dict[str, str] = {
+    "proposed": "proposed",
+    "pending": "proposed",
+    "planning": "proposed",
+    "approved": "in_progress",
+    "active": "in_progress",
+    "in_progress": "in_progress",
+    "partially_completed": "in_progress",
+    "blocked": "in_progress",
+    "completed": "completed",
+    "fully_completed": "completed",
+    "cancelled": "completed",
+    "deferred": "proposed",
+}
+
+
+def normalize_epic_status(status: str) -> str:
+    """Normalize any legacy status string to a canonical EpicStatus value.
+
+    Args:
+        status: Any status string (old or new).
+
+    Returns:
+        One of 'proposed', 'in_progress', 'completed'.
+    """
+    return EPIC_STATUS_MIGRATION.get(status.lower().strip(), "proposed")
 
 
 class MoveResult(Enum):
@@ -281,89 +315,56 @@ class EpicMovementWorkflow:
         force: bool = False,
         silent: bool = False,
     ) -> FolderMoveResult:
-        """Archive the epic folder to docs/epics/completed/.
+        """Archive the epic by setting status to 'completed' in TinyDB.
 
-        Moves the folder on disk and updates TinyDB status to 'completed'.
+        No filesystem operations are performed. The TinyDB status field is
+        the sole source of truth for epic lifecycle state.
 
         Args:
             dry_run: If True, don't make any changes.
-            force: If True, archive even if git status is unclean.
-            silent: If True, run without any user interaction (implies force=True).
+            force: Accepted for backward compatibility; has no effect.
+            silent: Accepted for backward compatibility; has no effect.
 
         Returns:
             FolderMoveResult with operation outcome.
         """
-        if silent:
-            force = True
-
-        dest_dir = self.epic_path.parent.parent / "completed" / self.epic_path.name
-
-        # Check git status if not forcing
-        if not force and self.git_checker.has_uncommitted_changes(self.epic_path):
-            return FolderMoveResult(
-                source=str(self.epic_path),
-                destination=str(dest_dir),
-                result=MoveResult.SKIPPED,
-                message="Uncommitted changes in epic folder. Use --force to override.",
-            )
+        epic_name = self.epic_path.name
 
         if dry_run:
             return FolderMoveResult(
                 source=str(self.epic_path),
-                destination=str(dest_dir),
+                destination="(TinyDB status=completed)",
                 result=MoveResult.SUCCESS,
-                message=f"[dry-run] Would archive to {dest_dir}",
+                message=f"[dry-run] Would set status=completed in TinyDB for {epic_name}",
             )
 
-        # Check if destination exists
-        if dest_dir.exists():
+        if self._repository is None:
             return FolderMoveResult(
                 source=str(self.epic_path),
-                destination=str(dest_dir),
-                result=MoveResult.SKIPPED,
-                message=f"Destination already exists: {dest_dir}",
+                destination="(TinyDB status=completed)",
+                result=MoveResult.FAILED,
+                message="TinyDB repository not available",
             )
 
         try:
-            # Copy the folder (keeps non-YAML artifacts like .mmd files)
-            shutil.copytree(self.epic_path, dest_dir)
-
-            # Update TinyDB status to completed
-            if self._repository:
-                try:
-                    self._repository.archive_epic(self.epic_path.name)
-                except Exception:
-                    logger.warning(
-                        "Failed to update TinyDB status for archived epic %s",
-                        self.epic_path.name,
-                    )
-
-            # Remove the source folder after successful copy
-            rmtree_error = None
-            try:
-                shutil.rmtree(self.epic_path)
-            except OSError as e:
-                rmtree_error = str(e)
-
-            if rmtree_error:
+            update_result = self._repository.archive_epic(epic_name)
+            if update_result.success:
                 return FolderMoveResult(
                     source=str(self.epic_path),
-                    destination=str(dest_dir),
+                    destination="(TinyDB status=completed)",
                     result=MoveResult.SUCCESS,
-                    message=f"Archived to {dest_dir} (warning: failed to remove source: {rmtree_error})",
+                    message=f"Set status=completed in TinyDB for {epic_name}",
                 )
-
             return FolderMoveResult(
                 source=str(self.epic_path),
-                destination=str(dest_dir),
-                result=MoveResult.SUCCESS,
-                message=f"Archived to {dest_dir}",
+                destination="(TinyDB status=completed)",
+                result=MoveResult.FAILED,
+                message=f"TinyDB update failed: {update_result.message}",
             )
-
-        except OSError as e:
+        except Exception as e:
             return FolderMoveResult(
                 source=str(self.epic_path),
-                destination=str(dest_dir),
+                destination="(TinyDB status=completed)",
                 result=MoveResult.FAILED,
                 message=f"Archive failed: {e}",
             )
@@ -543,10 +544,19 @@ class PhaseData:
     execution: Optional[str] = None
     status: Optional[str] = None
     tasks: list = None
+    agent: Optional[str] = None
+    loop_type: Optional[str] = None
+    loop_max_iterations: Optional[int] = None
+    feedback_triggers: Optional[dict] = None
+    phase_id: Optional[str] = None
+    max_turns: Optional[int] = None
+    timeout: Optional[int] = None  # Per-phase timeout in seconds (None = use default)
 
     def __post_init__(self):
         if self.tasks is None:
             self.tasks = []
+        if self.feedback_triggers is None:
+            self.feedback_triggers = {}
 
 
 @dataclass
@@ -610,32 +620,32 @@ class EpicService:
         ...     print(validation.errors)
     """
 
-    def __init__(self, repo_path: Optional[Path] = None, yaml_sync_enabled: bool = False):
+    def __init__(self, repo_path: Optional[Path] = None, *, repository=None):
         """Initialize epic service.
 
-        TinyDB is the sole data store. YAML sync is disabled.
+        TinyDB is the sole data store.
 
         Args:
             repo_path: Path to git repository. Defaults to auto-detected repo root.
-            yaml_sync_enabled: Deprecated, ignored. Kept for API compatibility.
+            repository: Optional EpicRepository instance (for testing).
         """
         self.repo_path = repo_path or self._find_repo_root()
         self.epics_base = self.repo_path / "docs" / "epics"
         # Keep plans_base as internal alias for compatibility with shared repository logic
         self.plans_base = self.epics_base
         self.git_checker = GitSafetyChecker(self.repo_path)
-        self._yaml_sync_enabled = False  # YAML sync permanently disabled
-        self._repository = None
-        try:
-            from .epic_repository import EpicRepository
-            # Use repo-local DB so tests with tmp_path get isolated instances
-            db_path = self.repo_path / ".agentic" / "epics.db"
-            self._repository = EpicRepository(
-                db_path=db_path,
-                epics_base=self.epics_base,
-            )
-        except Exception:
-            pass
+        self._repository = repository
+        if self._repository is None:
+            try:
+                from .epic_repository import EpicRepository
+                # Use repo-local DB so tests with tmp_path get isolated instances
+                db_path = self.repo_path / ".agentic" / "epics.db"
+                self._repository = EpicRepository(
+                    db_path=db_path,
+                    epics_base=self.epics_base,
+                )
+            except Exception:
+                pass
 
     @staticmethod
     def _find_repo_root(start: Optional[Path] = None) -> Path:
@@ -709,8 +719,7 @@ class EpicService:
 
         Creates a new epic folder in docs/epics/live/ with:
         - Epic folder named according to YYMMDDXX_description convention
-        - README.md with objective and status
-        - plan_build.yml with basic structure
+        - Epic record in TinyDB (sole data store)
 
         Args:
             objective: Epic objective/goal.
@@ -724,27 +733,19 @@ class EpicService:
         folder_name = self._generate_epic_folder_name(description, branch)
         epic_folder = self.epics_base / "live" / folder_name
 
-        if epic_folder.exists():
-            return EpicCreateResult(
-                epic_folder=epic_folder,
-                epic_folder_name=folder_name,
-                success=False,
-                message=f"Epic folder already exists: {folder_name}",
-            )
-
         if dry_run:
             return EpicCreateResult(
                 epic_folder=epic_folder,
                 epic_folder_name=folder_name,
                 success=True,
-                message=f"[dry-run] Would create epic folder: {folder_name}",
+                message=f"[dry-run] Would create epic: {folder_name}",
             )
 
         epic_scaffold = {
             "name": folder_name.replace("_", "-"),
             "worktree_path": str(self.repo_path),
             "branch": branch,
-            "status": "pending",
+            "status": "proposed",
             "priority": "medium",
             "created": datetime.now().strftime("%Y-%m-%d"),
             "objective": objective,
@@ -757,28 +758,32 @@ class EpicService:
         # TinyDB-first: write to repository as primary store
         if self._repository is not None:
             try:
-                self._repository.create_epic({
+                repo_result = self._repository.create_epic({
                     "epic_folder_name": folder_name,
                     "epic_folder": str(epic_folder),
                     "name": epic_scaffold["name"],
                     "worktree_path": epic_scaffold["worktree_path"],
                     "branch": branch,
-                    "status": "pending",
+                    "status": "proposed",
                     "priority": "medium",
                     "objective": objective,
                     "created": epic_scaffold["created"],
                 })
+                if not repo_result.success:
+                    return EpicCreateResult(
+                        epic_folder=epic_folder,
+                        epic_folder_name=folder_name,
+                        success=False,
+                        message=repo_result.message,
+                    )
             except Exception:
                 pass
-
-        # Create epic folder on disk (for orchestration MMD files, etc.)
-        epic_folder.mkdir(parents=True, exist_ok=True)
 
         return EpicCreateResult(
             epic_folder=epic_folder,
             epic_folder_name=folder_name,
             success=True,
-            message=f"Created epic folder: {folder_name}",
+            message=f"Created epic: {folder_name}",
         )
 
     def get_epic(self, epic_id_or_path: str) -> Optional[EpicData]:
@@ -864,30 +869,19 @@ class EpicService:
     def list_epics(self, status: str = "live") -> list[EpicMetadata]:
         """List all epics with a given status.
 
-        TinyDB is the sole data store.
+        TinyDB is the sole data store. The status field in the DB is the
+        sole source of truth. 'live' maps to the set of active statuses
+        (proposed, in_progress, active, planning, approved, pending, blocked).
 
         Args:
-            status: Epic status folder (live, completed, deferred).
+            status: Directory-style status ('live', 'completed', 'deferred')
+                    or a direct DB status value.
 
         Returns:
             List of EpicMetadata objects sorted by folder name (newest first).
         """
         if self._repository is not None:
-            results = self._repository.list_epics(status=status)
-
-            # Fix stale paths (resurrection detection)
-            epics_dir = self.epics_base / status
-            if epics_dir.exists():
-                for r in results:
-                    if r.epic_folder and f"/epics/{status}/" not in str(r.epic_folder):
-                        correct_path = epics_dir / r.epic_folder_name
-                        if correct_path.exists():
-                            self._repository.resync_epic_folder(
-                                r.epic_folder_name, str(correct_path)
-                            )
-                            r.epic_folder = correct_path
-
-            return results
+            return self._repository.list_epics(status=status)
 
         return []
 
@@ -926,12 +920,14 @@ class EpicService:
         Returns:
             EpicUpdateResult with update outcome.
         """
-        valid_statuses = ["planning", "pending", "active", "in_progress", "completed", "partially_completed", "fully_completed", "blocked", "cancelled", "deferred"]
-        if new_status not in valid_statuses:
+        # Accept any known status string (old or new) via normalization
+        normalized = normalize_epic_status(new_status)
+        if new_status not in EPIC_STATUS_MIGRATION:
             return EpicUpdateResult(
                 success=False,
-                message=f"Invalid status: {new_status}. Valid: {', '.join(valid_statuses)}",
+                message=f"Invalid status: {new_status}. Valid: {', '.join(sorted(set(EPIC_STATUS_MIGRATION.values())))}",
             )
+        new_status = normalized
 
         # Resolve epic and get old status
         if self._repository is not None:
@@ -945,23 +941,11 @@ class EpicService:
             epic_folder = epic_data.epic_folder
             old_status = epic_data.status
         else:
-            # Emergency YAML fallback
-            epic_folder = self._resolve_epic_folder(epic_id)
-            if not epic_folder or not epic_folder.exists():
-                return EpicUpdateResult(
-                    success=False,
-                    message=f"Epic not found: {epic_id}",
-                )
-            old_status = None
-            for epic_file in epic_folder.glob("plan_*.yml"):
-                try:
-                    with open(epic_file) as f:
-                        data = yaml.safe_load(f)
-                    if data and "status" in data:
-                        old_status = data["status"]
-                        break
-                except (yaml.YAMLError, IOError):
-                    continue
+            # No TinyDB repository available
+            return EpicUpdateResult(
+                success=False,
+                message=f"TinyDB repository not available. Cannot update status for: {epic_id}",
+            )
 
         if dry_run:
             return EpicUpdateResult(
@@ -1015,17 +999,20 @@ class EpicService:
         return []
 
     def validate_epic_structure(self, epic_path: Path) -> ValidationResult:
-        """Validate epic folder structure and content.
+        """Validate epic structure and content using TinyDB as the sole data source.
 
-        Checks:
+        Checks against TinyDB:
         - Folder naming convention (YYMMDDXX_description)
-        - Epic files in folder root (not subdirectories)
-        - Required fields present
+        - Epic registered in TinyDB
         - Valid status values
         - Phase/ticket IDs unique
+        - Phases exist in TinyDB
+
+        The epic_path argument is used only to extract the epic folder name;
+        no filesystem existence checks are performed.
 
         Args:
-            epic_path: Path to epic folder.
+            epic_path: Path whose name component identifies the epic.
 
         Returns:
             ValidationResult with errors and warnings.
@@ -1033,100 +1020,53 @@ class EpicService:
         errors = []
         warnings = []
 
-        # Check folder exists
-        if not epic_path.exists():
-            errors.append(f"Epic folder does not exist: {epic_path}")
+        epic_folder_name = epic_path.name
+
+        # Check folder naming convention (name-only, no filesystem access)
+        if not self._is_valid_epic_folder_name(epic_folder_name):
+            errors.append(f"Folder name does not match YYMMDDXX_description pattern: {epic_folder_name}")
+
+        # All remaining checks require TinyDB
+        if self._repository is None:
+            errors.append("TinyDB repository not available for validation")
             return ValidationResult(valid=False, errors=errors, warnings=warnings)
 
-        # Check folder naming convention
-        if not self._is_valid_epic_folder_name(epic_path.name):
-            errors.append(f"Folder name does not match YYMMDDXX_description pattern: {epic_path.name}")
-
-        # Check for epic files in root
-        epic_files = list(epic_path.glob("plan_*.yml"))
-        if not epic_files:
-            errors.append("No plan_*.yml files found in folder root")
+        # Check epic record exists in TinyDB
+        epic_data = self._repository.get_epic(epic_folder_name)
+        if epic_data is None:
+            errors.append(f"Epic '{epic_folder_name}' not found in TinyDB")
             return ValidationResult(valid=False, errors=errors, warnings=warnings)
 
-        # Check epic files are not in subdirectories
-        for subdir in epic_path.iterdir():
-            if subdir.is_dir() and list(subdir.glob("plan_*.yml")):
-                warnings.append(f"Found epic files in subdirectory: {subdir.name}")
+        # Validate status - warn on old strings, error on unknown
+        if epic_data.status:
+            if epic_data.status not in EPIC_STATUS_MIGRATION:
+                errors.append(f"Invalid status '{epic_data.status}'")
+            elif epic_data.status not in {s.value for s in EpicStatus}:
+                warnings.append(f"Old status '{epic_data.status}' should be normalized to '{normalize_epic_status(epic_data.status)}'")
 
-        # Validate YAML structure
-        required_fields = ["name", "status", "phases"]
-        valid_statuses = ["planning", "pending", "active", "in_progress", "completed", "partially_completed", "fully_completed", "blocked", "cancelled", "deferred"]
+        # Check phases exist in TinyDB (replaces MMD file check)
+        phases = self._repository.list_phases(epic_folder_name)
+        if not phases:
+            warnings.append("No phases found in TinyDB for this epic")
 
+        # Validate tickets from TinyDB
+        tickets = self._repository.get_tickets(epic_folder_name)
         all_task_ids = set()
-        all_phase_ids = set()
 
-        for epic_file in epic_files:
-            try:
-                with open(epic_file) as f:
-                    data = yaml.safe_load(f)
-            except yaml.YAMLError as e:
-                errors.append(f"Invalid YAML in {epic_file.name}: {e}")
-                continue
+        for ticket in tickets:
+            task_id = ticket.id if hasattr(ticket, "id") else getattr(ticket, "ticket_id", "")
+            if task_id:
+                if task_id in all_task_ids:
+                    errors.append(f"Duplicate ticket ID: {task_id}")
+                all_task_ids.add(task_id)
 
-            if not data:
-                errors.append(f"Empty epic file: {epic_file.name}")
-                continue
+            # Quality checks
+            desc = ticket.description if hasattr(ticket, "description") else ""
+            if not desc or not desc.strip():
+                warnings.append(f"Ticket {task_id} has empty description")
 
-            # Skip scaffold templates (created by `agentic epic init`)
-            if data.get("_template_status") == "stub":
-                warnings.append(f"Scaffold template not yet populated: {epic_file.name}")
-                continue
-
-            # Skip completed-items tracking files
-            if set(data.keys()) <= {"completed_items"}:
-                continue
-
-            # Check for root-level tasks: key (tickets must be nested under phases[].tasks[])
-            if "tasks" in data:
-                errors.append(
-                    f"Root-level 'tasks' key found in {epic_file.name}. "
-                    "Tickets must be nested under phases[].tasks[], not at the root level."
-                )
-
-            # Check required fields
-            for field in required_fields:
-                if field not in data:
-                    errors.append(f"Missing required field '{field}' in {epic_file.name}")
-
-            if "worktree_path" not in data:
-                warnings.append(f"Missing recommended field 'worktree_path' in {epic_file.name}")
-
-            # Validate status
-            if "status" in data and data["status"] not in valid_statuses:
-                errors.append(f"Invalid status '{data['status']}' in {epic_file.name}")
-
-            # Check phase/ticket IDs for uniqueness
-            phases = data.get("phases", [])
-            for phase in phases:
-                phase_id = phase.get("id", "")
-                if phase_id:
-                    if phase_id in all_phase_ids:
-                        errors.append(f"Duplicate phase ID: {phase_id}")
-                    all_phase_ids.add(phase_id)
-
-                # Warn about phases with no tickets
-                phase_name = phase.get("name", phase_id or "unnamed")
-                if not phase.get("tickets"):
-                    warnings.append(f"Phase '{phase_name}' has no tickets")
-
-                for task in phase.get("tickets", []):
-                    task_id = task.get("id", "")
-                    if task_id:
-                        if task_id in all_task_ids:
-                            errors.append(f"Duplicate ticket ID: {task_id}")
-                        all_task_ids.add(task_id)
-
-                    # Quality checks
-                    if not task.get("description", "").strip():
-                        warnings.append(f"Ticket {task_id} has empty description")
-
-                    if not task.get("success_criteria"):
-                        warnings.append(f"Ticket {task_id} has no success criteria")
+        if not tickets:
+            warnings.append("No tickets found in TinyDB for this epic")
 
         valid = len(errors) == 0
         return ValidationResult(valid=valid, errors=errors, warnings=warnings)

@@ -3,18 +3,24 @@
 Commands for spawning, listing, stopping, and monitoring Claude Code sessions.
 """
 
+import atexit
 import json
 import logging
 import os
+import re
+import shutil
 import signal
 import subprocess
 import sys
 import time
-import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
+from agenticcli.utils.context_file import get_context_dir, write_context_file
+from agenticcli.utils.session_id import generate_session_id
+from agenticcli.utils.session_id import tmux_session_name as _tmux_session_name_util
+from agenticcli.utils.session_state import mark_failed
 from agenticcli.utils.state_store import StateStore, is_process_running
 from agenticcli.utils.subprocess_utils import get_clean_env
 
@@ -40,9 +46,41 @@ def _get_context_dir() -> Path:
     Returns:
         Path to ~/.agentic/sessions/context/
     """
-    context_dir = Path.home() / ".agentic" / "sessions" / "context"
-    context_dir.mkdir(parents=True, exist_ok=True)
-    return context_dir
+    return get_context_dir()
+
+
+def _tmux_session_name(
+    session_id: str,
+    epic_folder: Optional[Path] = None,
+    role: Optional[str] = None,
+) -> str:
+    """Generate a descriptive tmux session name.
+
+    Delegates to agenticcli.utils.session_id.tmux_session_name for the
+    canonical implementation. Kept as a thin wrapper so internal callers
+    are not broken.
+    """
+    return _tmux_session_name_util(session_id, epic_folder=epic_folder, role=role)
+
+
+# Track tmux sessions for atexit cleanup
+_active_tmux_sessions: list[str] = []
+
+
+def _cleanup_tmux_sessions():
+    """Kill any orphaned tmux sessions on unexpected exit."""
+    for session_name in _active_tmux_sessions:
+        try:
+            subprocess.run(
+                ["tmux", "kill-session", "-t", session_name],
+                capture_output=True,
+                timeout=5,
+            )
+        except Exception:
+            pass
+
+
+atexit.register(_cleanup_tmux_sessions)
 
 
 def _compile_spawn_context(
@@ -313,9 +351,11 @@ def _spawn_diagnostic_planner(stuck_session: dict) -> str | None:
         f"Exit when investigation is complete."
     )
 
-    # Build command for background spawn
-    new_session_id = str(uuid.uuid4())
-    cmd = ["claude", "--print", "--dangerously-skip-permissions", "--max-turns", "10", prompt]
+    # Build command for background spawn (diagnostic planner uses -p for
+    # consistency with main spawn path; limited to 10 turns since it's
+    # investigative, not a full agent session).
+    new_session_id = generate_session_id()
+    cmd = ["claude", "--dangerously-skip-permissions", "--max-turns", "10", "-p", prompt]
 
     logs_dir = _get_logs_dir()
     stdout_log = open(logs_dir / f"{new_session_id}.stdout.log", "w")
@@ -558,7 +598,7 @@ do NOT work around it silently. Instead:
 2. If a relevant plan exists, add a task to it or start working on the gap task.
 3. If no plan exists, create one: agentic plan init <descriptive-name>
 4. Then spawn a subagent to implement the fix:
-   agentic session spawn --role build-python --plan <plan_folder> -b
+   agentic session spawn --role build-python --epic <plan_folder> -b
 5. Continue your original work once the gap is resolved.
 This ensures gaps are tracked and fixed systematically rather than patched ad-hoc.
 """.strip()
@@ -601,7 +641,7 @@ def _build_ticket_prompt(ticket_id: str, epic_folder: Path) -> str | None:
 
     Args:
         ticket_id: Ticket identifier (e.g., 'CLI_001').
-        epic_folder: Path to epic folder containing ticket_build.yml.
+        epic_folder: Path to epic folder.
 
     Returns:
         Constructed prompt string, or None if ticket not found.
@@ -643,6 +683,114 @@ def _build_ticket_prompt(ticket_id: str, epic_folder: Path) -> str | None:
 _build_task_prompt = _build_ticket_prompt
 
 
+def _build_tmux_wrapper_cmd(claude_cmd_str: str, session_id: str, state_dir: Path) -> str:
+    """Build a bash wrapper command that runs claude and writes completion state.
+
+    The returned bash string:
+    1. Unsets CLAUDECODE / CLAUDE_CODE_ENTRYPOINT (env isolation)
+    2. Runs the claude command
+    3. Captures $? as EXIT_CODE
+    4. Uses python3 -c to atomically update the session state JSON file with
+       status (completed/failed), exit_code, and ended_at.
+
+    This eliminates the correctness bug where tmux-spawned sessions always show
+    status="completed" because wait_for_session inferred status from PID death
+    and had no exit code information.
+
+    Args:
+        claude_cmd_str: The fully-quoted claude command string to execute.
+        session_id: Session UUID for state file lookup.
+        state_dir: Directory containing session state JSON files
+                   (typically ~/.agentic/sessions/).
+
+    Returns:
+        A bash command string suitable for ``bash -c <wrapper>``.
+    """
+    import shlex
+
+    state_file = str(state_dir / f"{session_id}.json")
+    safe_state_file = shlex.quote(state_file)
+    safe_session_id = shlex.quote(session_id)
+
+    # The python3 inline script loads the state file, updates fields, and
+    # writes it back.  If the file is missing or corrupt, a minimal fresh
+    # record is written so downstream consumers always have state.
+    python_update_script = (
+        "import json, sys, os\n"
+        "from datetime import datetime\n"
+        "sf = sys.argv[1]\n"
+        "sid = sys.argv[2]\n"
+        "ec = int(sys.argv[3])\n"
+        "try:\n"
+        "    with open(sf) as f:\n"
+        "        data = json.load(f)\n"
+        "except (FileNotFoundError, json.JSONDecodeError):\n"
+        "    data = {'session_id': sid, 'status': 'running'}\n"
+        "data['status'] = 'completed' if ec == 0 else 'failed'\n"
+        "data['exit_code'] = ec\n"
+        "data['ended_at'] = datetime.now().isoformat()\n"
+        "if ec != 0:\n"
+        "    data['error_code'] = 'tmux_exit_nonzero'\n"
+        "    data['failure_reason'] = {\n"
+        "        'error_code': 'tmux_exit_nonzero',\n"
+        "        'error_type': 'unknown',\n"
+        "        'suggested_action': 'escalate',\n"
+        "        'detail': f'tmux session exited with code {ec}',\n"
+        "        'retryable': True,\n"
+        "        'matched_pattern': '',\n"
+        "    }\n"
+        "with open(sf, 'w') as f:\n"
+        "    json.dump(data, f, indent=2)\n"
+    )
+    safe_python_script = shlex.quote(python_update_script)
+
+    wrapper = (
+        f"unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; "
+        f"{claude_cmd_str}; "
+        f"EXIT_CODE=$?; "
+        f"python3 -c {safe_python_script} {safe_state_file} {safe_session_id} $EXIT_CODE"
+    )
+    return wrapper
+
+
+def _build_sdk_tmux_cmd(
+    session_id: str,
+    role: str,
+    context_file: "Path",
+    working_dir: str,
+    timeout: "int | None" = None,
+) -> str:
+    """Build command string for SDK pane runner in tmux.
+
+    Unlike _build_tmux_wrapper_cmd, this does NOT wrap in a bash status callback
+    because the pane runner writes its own state file.
+
+    Args:
+        session_id: Session UUID.
+        role: Agent role identifier.
+        context_file: Path to compiled context file.
+        working_dir: Working directory for the agent.
+        timeout: Optional timeout override (seconds).
+
+    Returns:
+        Command string for tmux new-session.
+    """
+    import shlex
+
+    cmd_parts = [
+        "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT;",
+        "python3", "-m", "agenticcli.utils.sdk_pane_runner",
+        "--role", shlex.quote(role),
+        "--session-id", shlex.quote(session_id),
+        "--context-file", shlex.quote(str(context_file)),
+        "--working-dir", shlex.quote(working_dir),
+    ]
+    if timeout is not None:
+        cmd_parts.extend(["--timeout", str(timeout)])
+
+    return " ".join(cmd_parts)
+
+
 def cmd_spawn(args, ctx=None):
     """Spawn a new Claude Code session.
 
@@ -674,11 +822,11 @@ def cmd_spawn(args, ctx=None):
     if epic_folder:
         from agenticcli.commands.plan import has_pending_questions
         if has_pending_questions(epic_folder):
-            print_warning(f"Epic {epic_folder.name} has pending questions. Check: agentic question list --plan {epic_folder.name}")
+            print_warning(f"Epic {epic_folder.name} has pending questions. Check: agentic question list --epic {epic_folder.name}")
 
-    # Validate: --task requires --plan
+    # Validate: --task requires --epic
     if task_id and not epic_folder:
-        print_error("--task requires --plan to be set.")
+        print_error("--task requires --epic to be set.")
         sys.exit(1)
 
     # Build prompt from role or ticket if --prompt not provided
@@ -696,19 +844,53 @@ def cmd_spawn(args, ctx=None):
 
     max_turns = getattr(args, "max_turns", None)
     background = getattr(args, "background", False)
-    no_sdk = getattr(args, "no_sdk", False)
+    use_tmux = getattr(args, "tmux", False)
+    dry_run = getattr(args, "dry_run", False)
     working_dir = getattr(args, "directory", None) or os.getcwd()
 
+    # Safety net: apply a default max_turns for background/tmux sessions to
+    # prevent agents from running indefinitely.  Foreground sessions are not
+    # capped (the operator can Ctrl-C manually).
+    DEFAULT_BACKGROUND_MAX_TURNS = 200
+    if max_turns is None and (background or use_tmux):
+        max_turns = DEFAULT_BACKGROUND_MAX_TURNS
+        logger.info("No --max-turns specified for background/tmux session; defaulting to %d", max_turns)
+
+    # ── Pre-flight health check ───────────────────────────────────────
+    # Detect problematic environment state before committing to a spawn.
+    from agenticcli.utils.subprocess_utils import get_clean_env
+    env_warnings = []
+    for var in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
+        if var in os.environ:
+            env_warnings.append(var)
+    if env_warnings:
+        logger.warning(
+            "Pre-flight: detected Claude Code env vars %s — spawned agent "
+            "may fail with 'nested session' error unless env isolation works correctly",
+            env_warnings,
+        )
+        if not is_json_output():
+            print_warning(
+                f"Detected Claude Code env vars: {env_warnings}. "
+                f"Will strip before spawn to avoid nested-session errors."
+            )
+
+    # Determine which spawn path will be used
+    from agenticcli.utils.sdk_runner import SDK_AVAILABLE
+    from agenticcli.utils.transport import determine_transport, SDK_TMUX, TMUX, SUBPROCESS
+    spawn_path = determine_transport(sdk_available=SDK_AVAILABLE, tmux_requested=use_tmux)
+
+    logger.info("Pre-flight: spawn path = %s, background=%s, tmux=%s, max_turns=%s",
+                spawn_path, background, use_tmux, max_turns)
+
     # Generate session ID
-    session_id = str(uuid.uuid4())
+    session_id = generate_session_id()
 
     # Compile full context (prompt + bootstrap data) into a temp file
     # This avoids OS argument length limits and removes the need for
     # agents to manually run `agentic -j context bootstrap`
     compiled_context = _compile_spawn_context(prompt, role, epic_folder)
-    context_dir = _get_context_dir()
-    context_file = context_dir / f"{session_id}.md"
-    context_file.write_text(compiled_context)
+    context_file = write_context_file(session_id, compiled_context)
 
     short_prompt = (
         f"Your full instructions and context have been pre-compiled into a file. "
@@ -716,21 +898,69 @@ def cmd_spawn(args, ctx=None):
         f"It contains your role, task details, and bootstrap context."
     )
 
-    # Build claude command (used for subprocess path)
-    # Always skip permissions for spawned sessions — they run autonomously
-    cmd = ["claude", "--print", "--dangerously-skip-permissions"]
+    # Build claude command base — both tmux and subprocess paths use -p
+    # (print/pipe mode) which is multi-turn agentic with tool use.
+    # The only difference is tmux provides a real PTY; subprocess does not.
+    cmd_base = ["claude", "--dangerously-skip-permissions"]
     if max_turns:
-        cmd.extend(["--max-turns", str(max_turns)])
-    # Use JSON output for background sessions to capture Claude Code session_id
-    # This enables post-completion LangSmith trace capture
+        cmd_base.extend(["--max-turns", str(max_turns)])
+
+    # Agentic command for tmux (has PTY, supports interactive tool use)
+    cmd_agentic = list(cmd_base) + ["-p", short_prompt]
+
+    # Agentic command for subprocess fallback (no PTY, but still multi-turn
+    # with tool use via -p mode + --dangerously-skip-permissions).
+    # NOTE: --output-format must come BEFORE -p since -p consumes the next
+    # argument as the prompt text.
+    cmd = list(cmd_base)
     if background:
+        # Use JSON output for background sessions to capture Claude Code session_id
+        # This enables post-completion LangSmith trace capture
         cmd.extend(["--output-format", "json"])
-    cmd.append(short_prompt)
+    cmd.extend(["-p", short_prompt])
 
     # Estimate token usage from the compiled context (what the agent will process)
     prompt_tokens = estimate_tokens(compiled_context)
     usage_percent = context_usage_percent(prompt_tokens)
     usage_color = get_usage_color(usage_percent)
+
+    # ── Dry-run exit: report diagnostics without spawning ─────────────
+    if dry_run:
+        # Clean up the context file since we're not spawning
+        context_file.unlink(missing_ok=True)
+
+        dry_run_info = {
+            "dry_run": True,
+            "spawn_path": spawn_path,
+            "background": background,
+            "tmux": use_tmux,
+            "max_turns": max_turns,
+            "estimated_tokens": prompt_tokens,
+            "context_usage_percent": round(usage_percent, 1),
+            "compiled_context_bytes": len(compiled_context),
+            "env_warnings": env_warnings,
+            "working_dir": working_dir,
+            "role": role,
+            "claude_available": shutil.which("claude") is not None,
+            "tmux_available": shutil.which("tmux") is not None,
+            "sdk_available": SDK_AVAILABLE,
+        }
+        if is_json_output():
+            print_json(dry_run_info)
+        else:
+            console.print("[bold]Dry-run report:[/bold]")
+            console.print(f"  Spawn path: [cyan]{spawn_path}[/cyan]")
+            console.print(f"  Background: {background}")
+            console.print(f"  Max turns: {max_turns}")
+            console.print(f"  Context: [{usage_color}]{usage_percent:.1f}%[/{usage_color}] (~{prompt_tokens:,} tokens, {len(compiled_context):,} bytes)")
+            console.print(f"  claude available: {shutil.which('claude') is not None}")
+            console.print(f"  tmux available: {shutil.which('tmux') is not None}")
+            console.print(f"  SDK available: {SDK_AVAILABLE}")
+            if env_warnings:
+                console.print(f"  [yellow]Env warnings: {env_warnings}[/yellow]")
+            else:
+                console.print(f"  Env: [green]clean[/green]")
+        return
 
     # Create session record
     session_data = {
@@ -744,68 +974,301 @@ def cmd_spawn(args, ctx=None):
         "ended_at": None,
         "background": background,
         "working_dir": working_dir,
-        "command": " ".join(cmd),
+        "command": " ".join(cmd_agentic if use_tmux else cmd),
         "estimated_tokens": prompt_tokens,
         "context_usage_percent": usage_percent,
     }
+    if use_tmux:
+        session_data["tmux"] = True
 
-    # ── SDK-first path for background sessions ─────────────────────────
-    from agenticcli.utils.sdk_runner import SDK_AVAILABLE
+    # ── SDK-in-tmux path: spawn SDK pane runner inside tmux ───────────
+    if spawn_path == SDK_TMUX:
+        tmux_session_name = _tmux_session_name(session_id, epic_folder, role)
 
-    if background and SDK_AVAILABLE and not no_sdk:
+        sdk_tmux_cmd = _build_sdk_tmux_cmd(
+            session_id=session_id,
+            role=role or "general",
+            context_file=context_file,
+            working_dir=working_dir,
+            timeout=None,  # Let pane runner use role-based timeout from ROLE_TIMEOUT_SECONDS
+        )
+
         try:
-            from claude_agent_sdk import ClaudeAgentOptions
-            from agenticcli.utils.sdk_runner import run_agent_sync
-
-            sdk_options = ClaudeAgentOptions(
-                permission_mode="bypassPermissions",
+            tmux_result = subprocess.run(
+                ["tmux", "new-session", "-d", "-s", tmux_session_name,
+                 "bash", "-c", sdk_tmux_cmd],
+                capture_output=True,
+                text=True,
                 cwd=working_dir,
-                env=get_clean_env(),
             )
-            if max_turns:
-                sdk_options.max_turns = max_turns
 
-            session_data["status"] = "running"
-            session_data["transport"] = "sdk"
-            _store.save(session_data)
-
-            if not is_json_output():
-                console.print(f"[dim]Context usage: [{usage_color}]{usage_percent:.1f}%[/{usage_color}] (~{prompt_tokens:,} tokens)[/dim]")
-                console.print(f"[dim]Running via SDK (session {session_id[:8]})[/dim]")
-
-            sdk_result = run_agent_sync(compiled_context, sdk_options)
-
-            session_data["status"] = sdk_result.status
-            session_data["exit_code"] = 0 if sdk_result.status == "completed" else 1
-            session_data["ended_at"] = datetime.now().isoformat()
-            session_data["cost_usd"] = sdk_result.cost_usd
-            session_data["duration_ms"] = sdk_result.duration_ms
-            session_data["sdk_session_id"] = sdk_result.session_id
-            _store.save(session_data)
-
-            if is_json_output():
-                print_json({
-                    "session_id": session_id,
-                    "status": sdk_result.status,
-                    "transport": "sdk",
-                    "cost_usd": sdk_result.cost_usd,
-                    "duration_ms": sdk_result.duration_ms,
-                    "sdk_session_id": sdk_result.session_id,
-                    "estimated_tokens": prompt_tokens,
-                    "context_usage_percent": usage_percent,
-                })
+            if tmux_result.returncode != 0:
+                logger.warning(
+                    "sdk-tmux session creation failed (rc=%d): %s",
+                    tmux_result.returncode, tmux_result.stderr,
+                )
+                if not is_json_output():
+                    print_warning("sdk-tmux session creation failed, falling back to tmux")
+                # Fall through to legacy tmux path
             else:
-                if sdk_result.status == "completed":
-                    print_success(f"Session {session_id[:8]} completed via SDK (${sdk_result.cost_usd:.4f}, {sdk_result.duration_ms}ms)")
-                else:
-                    print_error(f"Session {session_id[:8]} failed via SDK: {sdk_result.result[:200]}")
-            return
-        except Exception as e:
-            # SDK path failed, fall through to subprocess
-            logger.warning("SDK spawn failed, falling back to subprocess: %s", e)
-            session_data["status"] = "starting"
-            session_data.pop("transport", None)
+                # Verify session started
+                time.sleep(0.5)
+                from agenticcli.utils.tmux import session_exists as _tmux_session_exists
 
+                if not _tmux_session_exists(tmux_session_name):
+                    logger.error("sdk-tmux session %s exited immediately", tmux_session_name)
+                    if not is_json_output():
+                        print_warning("sdk-tmux session exited immediately, falling back to tmux")
+                else:
+                    # Success — only track for atexit cleanup in foreground mode.
+                    # Background spawns must survive CLI exit.
+                    if not background:
+                        _active_tmux_sessions.append(tmux_session_name)
+
+                    # Get PID
+                    pid_result = subprocess.run(
+                        ["tmux", "list-panes", "-t", tmux_session_name, "-F", "#{pane_pid}"],
+                        capture_output=True, text=True,
+                    )
+                    tmux_pid = None
+                    if pid_result.returncode == 0 and pid_result.stdout.strip():
+                        try:
+                            tmux_pid = int(pid_result.stdout.strip().split("\n")[0])
+                        except ValueError:
+                            pass
+
+                    session_data["pid"] = tmux_pid
+                    session_data["status"] = "running"
+                    session_data["transport"] = "sdk-tmux"
+                    session_data["tmux_session"] = tmux_session_name
+                    session_data["last_activity"] = session_data["started_at"]
+                    if role:
+                        session_data["role"] = role
+                    if epic_folder:
+                        session_data["epic_folder"] = str(epic_folder)
+                    _store.save(session_data)
+
+                    # Auto-start question watch-daemon
+                    if epic_folder:
+                        try:
+                            from agenticcli.commands.question import _ensure_watch_daemon
+                            started, reason = _ensure_watch_daemon(epic_folder)
+                            if started:
+                                logger.info("Auto-started question watch-daemon for %s", epic_folder.name)
+                        except Exception as e:
+                            logger.debug("Failed to auto-start watch-daemon: %s", e)
+
+                    if background:
+                        if is_json_output():
+                            print_json({
+                                "session_id": session_id,
+                                "pid": tmux_pid,
+                                "status": "running",
+                                "background": True,
+                                "transport": "sdk-tmux",
+                                "tmux_session": tmux_session_name,
+                                "estimated_tokens": prompt_tokens,
+                                "context_usage_percent": round(usage_percent, 1),
+                            })
+                        else:
+                            console.print(f"[dim]Context usage: [{usage_color}]{usage_percent:.1f}%[/{usage_color}] (~{prompt_tokens:,} tokens)[/dim]")
+                            console.print(f"[green]Spawned SDK-in-tmux session {session_id[:8]}[/green]")
+                            console.print(f"[dim]tmux attach -t {tmux_session_name}[/dim]")
+                        return
+                    else:
+                        # Foreground: attach to tmux session
+                        if not is_json_output():
+                            console.print(f"[dim]Context usage: [{usage_color}]{usage_percent:.1f}%[/{usage_color}] (~{prompt_tokens:,} tokens)[/dim]")
+                            console.print(f"[green]Attaching to SDK-in-tmux session {session_id[:8]}...[/green]")
+                        subprocess.run(
+                            ["tmux", "attach-session", "-t", tmux_session_name],
+                            cwd=working_dir,
+                        )
+                        return
+        except Exception as e:
+            logger.warning("sdk-tmux path failed, falling back: %s", e)
+            if not is_json_output():
+                print_warning(f"sdk-tmux path failed ({e}), falling back")
+
+    # ── Tmux path: spawn claude inside a tmux session ─────────────────
+    if use_tmux:
+        tmux_spawned = False
+
+        if not shutil.which("tmux"):
+            logger.warning("tmux not available, falling back to subprocess")
+            if not is_json_output():
+                print_warning("tmux not available, falling back to subprocess")
+        else:
+            # Generate descriptive tmux session name
+            tmux_session_name = _tmux_session_name(session_id, epic_folder, role)
+
+            # Build the claude command string for tmux, wrapped with a
+            # completion callback that writes status/exit_code/ended_at back
+            # to the session state file when claude exits.  This eliminates
+            # the correctness bug where wait_for_session had to infer status
+            # from PID death and always defaulted to "completed".
+            import shlex
+            claude_cmd_str = " ".join(shlex.quote(c) for c in cmd_agentic)
+            wrapped_cmd = _build_tmux_wrapper_cmd(
+                claude_cmd_str, session_id, _store.get_dir(),
+            )
+
+            try:
+                # Create tmux session with command (session closes when command exits)
+                tmux_result = subprocess.run(
+                    ["tmux", "new-session", "-d", "-s", tmux_session_name,
+                     "bash", "-c", wrapped_cmd],
+                    capture_output=True,
+                    text=True,
+                    cwd=working_dir,
+                )
+
+                if tmux_result.returncode != 0:
+                    logger.warning(
+                        "tmux session creation failed (rc=%d): %s",
+                        tmux_result.returncode, tmux_result.stderr,
+                    )
+                    if not is_json_output():
+                        print_warning(f"tmux session creation failed, falling back to subprocess")
+                    session_data["tmux_fallback"] = True
+                else:
+                    # Verify session started and is still running
+                    time.sleep(0.5)
+                    from agenticcli.utils.tmux import session_exists as _tmux_session_exists
+
+                    if not _tmux_session_exists(tmux_session_name):
+                        logger.error("tmux session %s exited immediately", tmux_session_name)
+                        if not is_json_output():
+                            print_warning("tmux session exited immediately, falling back to subprocess")
+                        session_data["tmux_fallback"] = True
+                    else:
+                        # Tmux session is running successfully
+                        tmux_spawned = True
+
+                        # Track for atexit cleanup (foreground only — background
+                        # sessions must survive CLI process exit).
+                        if not background:
+                            _active_tmux_sessions.append(tmux_session_name)
+
+                        # Get PID of the process inside tmux for StateStore compatibility
+                        pid_result = subprocess.run(
+                            ["tmux", "list-panes", "-t", tmux_session_name, "-F", "#{pane_pid}"],
+                            capture_output=True,
+                            text=True,
+                        )
+                        tmux_pid = None
+                        if pid_result.returncode == 0 and pid_result.stdout.strip():
+                            try:
+                                tmux_pid = int(pid_result.stdout.strip().split("\n")[0])
+                            except ValueError:
+                                pass
+
+                        # Update session data
+                        session_data["pid"] = tmux_pid
+                        session_data["status"] = "running"
+                        session_data["transport"] = "tmux"
+                        session_data["tmux_session"] = tmux_session_name
+                        session_data["last_activity"] = session_data["started_at"]
+                        _store.save(session_data)
+
+                        # Auto-start ntfy question watch-daemon for this epic
+                        if epic_folder:
+                            try:
+                                from agenticcli.commands.question import _ensure_watch_daemon
+                                started, reason = _ensure_watch_daemon(epic_folder)
+                                if started:
+                                    logger.info("Auto-started question watch-daemon for %s", epic_folder.name)
+                            except Exception as e:
+                                logger.debug("Failed to auto-start watch-daemon: %s", e)
+
+                        if background:
+                            # Background: return immediately
+                            if is_json_output():
+                                print_json({
+                                    "session_id": session_id,
+                                    "pid": tmux_pid,
+                                    "status": "running",
+                                    "background": True,
+                                    "transport": "tmux",
+                                    "tmux_session": tmux_session_name,
+                                    "estimated_tokens": prompt_tokens,
+                                    "context_usage_percent": usage_percent,
+                                })
+                            else:
+                                print_success(f"Session {session_id[:8]} started in tmux (session: {tmux_session_name})")
+                                console.print(f"[dim]Context usage: [{usage_color}]{usage_percent:.1f}%[/{usage_color}] (~{prompt_tokens:,} tokens)[/dim]")
+                                console.print(f"[dim]Attach: tmux attach -t {tmux_session_name}[/dim]")
+                            return
+                        else:
+                            # Foreground: attach to tmux session and block until it ends
+                            if not is_json_output():
+                                console.print(f"[dim]Attaching to tmux session {tmux_session_name} (Ctrl+B, D to detach)...[/dim]")
+
+                            attach_result = subprocess.run(
+                                ["tmux", "attach", "-t", tmux_session_name],
+                            )
+
+                            # After attach returns, session is done (or user detached)
+                            if _tmux_session_exists(tmux_session_name):
+                                # User detached - session still running
+                                if is_json_output():
+                                    print_json({
+                                        "session_id": session_id,
+                                        "status": "running",
+                                        "transport": "tmux",
+                                        "tmux_session": tmux_session_name,
+                                        "detached": True,
+                                    })
+                                else:
+                                    print_success(f"Detached from session {session_id[:8]} (still running)")
+                                    console.print(f"[dim]Re-attach: tmux attach -t {tmux_session_name}[/dim]")
+                            else:
+                                # Session ended
+                                session_data["status"] = "completed" if attach_result.returncode == 0 else "failed"
+                                session_data["ended_at"] = datetime.now().isoformat()
+                                session_data["exit_code"] = attach_result.returncode
+                                # Add structured failure info for tmux failures (P6_001/P6_003)
+                                if attach_result.returncode != 0:
+                                    mark_failed(
+                                        session_data,
+                                        error_code="tmux_exit_nonzero",
+                                        error_type="unknown",
+                                        detail=f"tmux session exited with code {attach_result.returncode}",
+                                        retryable=True,
+                                    )
+                                _store.save(session_data)
+
+                                # Remove from atexit tracking
+                                if tmux_session_name in _active_tmux_sessions:
+                                    _active_tmux_sessions.remove(tmux_session_name)
+
+                                if is_json_output():
+                                    print_json({
+                                        "session_id": session_id,
+                                        "status": session_data["status"],
+                                        "exit_code": attach_result.returncode,
+                                        "transport": "tmux",
+                                        "tmux_session": tmux_session_name,
+                                    })
+                                else:
+                                    if session_data["status"] == "completed":
+                                        print_success(f"Session {session_id[:8]} completed")
+                                    else:
+                                        print_error(f"Session {session_id[:8]} failed (exit code {attach_result.returncode})")
+                            return
+
+            except Exception as e:
+                logger.warning("tmux spawn failed, falling back to subprocess: %s", e)
+                if not is_json_output():
+                    print_warning(f"tmux spawn failed, falling back to subprocess")
+                session_data["tmux_fallback"] = True
+
+    # ── Subprocess path (fallback) ────────────────────────────────────
+    # The -p flag passes the prompt as a CLI argument, so stdin is not
+    # needed for prompt delivery.  Background sessions use DEVNULL;
+    # foreground sessions inherit the parent's stdin (unused by Claude
+    # in -p mode but harmless to leave open).
+    session_data["transport"] = "subprocess"
     try:
         if background:
             # Background mode: use Popen and return immediately
@@ -849,9 +1312,26 @@ def cmd_spawn(args, ctx=None):
             # Check for immediate spawn failure
             time.sleep(1)
             if not is_process_running(process.pid):
-                session_data["status"] = "failed"
-                session_data["ended_at"] = datetime.now().isoformat()
                 session_data["error"] = "Process died immediately after spawn"
+                mark_failed(
+                    session_data,
+                    error_code="spawn_failure",
+                    error_type="spawn_failure",
+                    detail="Process died immediately after spawn",
+                    retryable=True,
+                )
+                # Try to run diagnostics on log files if available
+                try:
+                    from agenticcli.utils.session_diagnostics import diagnose_session_log, failure_summary
+                    diag = diagnose_session_log(
+                        session_data.get("stdout_log", "/dev/null"),
+                        session_data.get("stderr_log"),
+                    )
+                    summary = failure_summary(diag)
+                    session_data["error_code"] = summary["error_code"]
+                    session_data["failure_reason"] = summary
+                except Exception:
+                    pass  # Keep the generic failure_reason set above
                 _store.save(session_data)
                 if is_json_output():
                     print_json({
@@ -870,6 +1350,7 @@ def cmd_spawn(args, ctx=None):
                     "pid": process.pid,
                     "status": "running",
                     "background": True,
+                    "transport": "subprocess",
                     "estimated_tokens": prompt_tokens,
                     "context_usage_percent": usage_percent,
                 })
@@ -916,6 +1397,15 @@ def cmd_spawn(args, ctx=None):
             session_data["status"] = "completed" if returncode == 0 else "failed"
             session_data["ended_at"] = datetime.now().isoformat()
             session_data["exit_code"] = returncode
+            # Add structured failure diagnostics for non-zero exit (P6_001/P6_003)
+            if returncode != 0 and stderr:
+                mark_failed(
+                    session_data,
+                    error_code="process_exit_nonzero",
+                    error_type="unknown",
+                    detail=stderr,
+                    retryable=False,
+                )
             _store.save(session_data)
 
             if is_json_output():
@@ -939,16 +1429,27 @@ def cmd_spawn(args, ctx=None):
                         console.print(f"[red]{stderr}[/red]")
 
     except FileNotFoundError:
-        session_data["status"] = "failed"
-        session_data["ended_at"] = datetime.now().isoformat()
         session_data["error"] = "Claude CLI not found. Make sure 'claude' is installed and in PATH."
+        mark_failed(
+            session_data,
+            error_code="cli_not_found",
+            error_type="cli_not_found",
+            detail="Claude CLI not found. Make sure 'claude' is installed and in PATH.",
+            retryable=False,
+            suggested_action="check_permissions",
+        )
         _store.save(session_data)
         print_error("Claude CLI not found. Make sure 'claude' is installed and in PATH.")
         sys.exit(1)
     except Exception as e:
-        session_data["status"] = "failed"
-        session_data["ended_at"] = datetime.now().isoformat()
         session_data["error"] = str(e)
+        mark_failed(
+            session_data,
+            error_code="spawn_exception",
+            error_type="unknown",
+            detail=str(e),
+            retryable=False,
+        )
         _store.save(session_data)
         print_error(f"Failed to spawn session: {e}")
         sys.exit(1)
@@ -1049,6 +1550,18 @@ def cmd_list(args, ctx=None):
     # Display as table
     from rich.table import Table
 
+    # Only show Tmux column if any session has a tmux_session
+    display_sessions = sorted(all_sessions if show_all else sessions, key=lambda s: s.get("started_at", ""), reverse=True)
+    has_tmux_sessions = any(s.get("tmux_session") for s in display_sessions)
+    has_transport = any(s.get("transport") for s in display_sessions)
+
+    _transport_labels = {
+        "sdk-tmux": "SDK+Tmux",
+        "tmux": "Tmux",
+        "subprocess": "Proc",
+        "sdk": "SDK",
+    }
+
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("ID", style="yellow", width=10)
     table.add_column("Type", style="cyan", width=13)
@@ -1056,6 +1569,10 @@ def cmd_list(args, ctx=None):
     table.add_column("Health", width=8)
     table.add_column("Age", style="dim", width=10)
     table.add_column("PID", style="white", width=7)
+    if has_tmux_sessions:
+        table.add_column("Tmux", style="dim", width=20)
+    if has_transport:
+        table.add_column("Transport", style="cyan", width=10)
     table.add_column("Description", style="dim", no_wrap=False)
 
     status_colors = {
@@ -1068,7 +1585,7 @@ def cmd_list(args, ctx=None):
 
     stale_count = 0
 
-    for session in sorted(all_sessions if show_all else sessions, key=lambda s: s.get("started_at", ""), reverse=True):
+    for session in display_sessions:
         if not show_all and session.get("status") not in ("running", "starting"):
             continue
         session_id = session.get("session_id", "")[:8]
@@ -1100,15 +1617,31 @@ def cmd_list(args, ctx=None):
             health_display = "[dim]-[/dim]"
             status_display = f"[{status_color}]{status}[/{status_color}]"
 
-        table.add_row(
-            session_id,
-            session_type,
-            status_display,
-            health_display,
-            age,
-            pid,
-            prompt,
-        )
+        # Build row data
+        row = [session_id, session_type, status_display, health_display, age, pid]
+
+        if has_tmux_sessions:
+            # Tmux column: show session name if tmux-spawned, "-" otherwise
+            tmux_name = session.get("tmux_session", "")
+            if tmux_name and session.get("status") in ("running", "starting"):
+                row.append(f"[cyan]{tmux_name}[/cyan]")
+            elif tmux_name:
+                row.append(f"[dim]{tmux_name}[/dim]")
+            else:
+                row.append("[dim]-[/dim]")
+
+        if has_transport:
+            transport_raw = session.get("transport", "")
+            transport_label = _transport_labels.get(transport_raw, transport_raw or "-")
+            if transport_raw and session.get("status") in ("running", "starting"):
+                row.append(f"[cyan]{transport_label}[/cyan]")
+            elif transport_raw:
+                row.append(f"[dim]{transport_label}[/dim]")
+            else:
+                row.append("[dim]-[/dim]")
+
+        row.append(prompt)
+        table.add_row(*row)
 
     console.print(table)
 
@@ -1185,6 +1718,23 @@ def cmd_stop(args, ctx=None):
 
     # Try to stop the process
     force = getattr(args, "force", False)
+
+    # Kill associated tmux session if present
+    tmux_session_name = session.get("tmux_session")
+    if tmux_session_name:
+        try:
+            subprocess.run(
+                ["tmux", "kill-session", "-t", tmux_session_name],
+                capture_output=True,
+                timeout=5,
+            )
+            logger.info("Killed tmux session %s", tmux_session_name)
+            # Remove from atexit tracking
+            if tmux_session_name in _active_tmux_sessions:
+                _active_tmux_sessions.remove(tmux_session_name)
+        except Exception as e:
+            # tmux session may already be dead — that's fine
+            logger.debug("tmux kill-session %s failed (may already be dead): %s", tmux_session_name, e)
 
     try:
         if pid is None:

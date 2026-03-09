@@ -199,7 +199,7 @@ def _create_new_session_layout(
             )
 
             # Start the question dashboard in the questions pane
-            question_cmd = ["agentic", "plan", "question", "dashboard", "--refresh", str(question_refresh)]
+            question_cmd = ["agentic", "question", "dashboard", "--refresh", str(question_refresh)]
             subprocess.run(
                 ["tmux", "send-keys", "-t", questions_pane_id, _shell_escape_cmd(question_cmd), "Enter"],
                 check=True,
@@ -208,8 +208,11 @@ def _create_new_session_layout(
             # Send the Claude command to the main pane and execute it immediately.
             # claude_cmd_str is pre-formatted by the caller with proper quoting
             # (e.g. double-quotes around $(cat file) for shell expansion).
+            # First unset CLAUDECODE vars so nested claude sessions aren't blocked.
+            # The tmux server inherits these from the parent Claude Code process.
             subprocess.run(
-                ["tmux", "send-keys", "-t", main_pane_id, claude_cmd_str, "Enter"],
+                ["tmux", "send-keys", "-t", main_pane_id,
+                 f"unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; {claude_cmd_str}", "Enter"],
                 check=True,
             )
 
@@ -329,7 +332,7 @@ def _create_inplace_layout(
             )
 
             # Start the question dashboard in the questions pane
-            question_cmd = ["agentic", "plan", "question", "dashboard", "--refresh", str(question_refresh)]
+            question_cmd = ["agentic", "question", "dashboard", "--refresh", str(question_refresh)]
             subprocess.run(
                 ["tmux", "send-keys", "-t", questions_pane_id, _shell_escape_cmd(question_cmd), "Enter"],
                 check=True,

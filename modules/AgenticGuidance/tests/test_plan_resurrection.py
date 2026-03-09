@@ -259,51 +259,44 @@ class TestPlanServiceResurrection:
         # Should NOT have triggered resync (no live/ version)
         mock_repo.resync_epic_folder.assert_not_called()
 
-    def test_list_plans_includes_resurrected(self, resurrected_plan):
-        """list_epics(status='live') should include epics found on filesystem
-        even if TinyDB doesn't know about them."""
+    def test_list_plans_uses_status_field_not_path(self, resurrected_plan):
+        """list_epics(status='live') uses DB status field, not folder path.
+
+        With pure DB routing, an epic with status='in_progress' appears in
+        live queries regardless of its epic_folder path.
+        """
         from agenticguidance.services.epic import EpicMetadata, EpicService
 
         plan_name, plans_base = resurrected_plan
         repo_root = plans_base.parent.parent
 
-        # Mock repository that returns NO live epics (because it only knows completed/)
+        # Repository returns epic with completed/ path but live-compatible status
         mock_repo = MagicMock()
-        # Return a result that points to completed/ (not live/)
         completed_meta = EpicMetadata(
             epic_folder=plans_base / "completed" / plan_name,
             epic_folder_name=plan_name,
         )
         mock_repo.list_epics.return_value = [completed_meta]
-        mock_repo.resync_epic_folder.return_value = True
 
         service = EpicService(repo_path=repo_root)
         service._repository = mock_repo
 
         results = service.list_epics(status="live")
 
-        # Should find the resurrected epic via filesystem scan
+        # list_epics delegates directly to repository — path is irrelevant
         result_names = {r.plan_folder_name for r in results}
         assert plan_name in result_names, (
-            f"Resurrected epic {plan_name} should appear in live list"
+            f"Epic {plan_name} should appear based on DB status, not path"
         )
 
-        # The live/ version should be the one returned
-        for r in results:
-            if r.plan_folder_name == plan_name:
-                assert "live" in str(r.plan_folder)
-                break
-
     def test_list_plans_no_duplicates(self, resurrected_plan):
-        """list_epics() should not return duplicates when TinyDB and filesystem
-        both find the same epic."""
+        """list_epics() should not return duplicates — delegates to repository."""
         from agenticguidance.services.epic import EpicMetadata, EpicService
 
         plan_name, plans_base = resurrected_plan
         repo_root = plans_base.parent.parent
         live_path = plans_base / "live" / plan_name
 
-        # Mock repository that already returns the live/ path
         mock_repo = MagicMock()
         live_meta = EpicMetadata(
             epic_folder=live_path,
@@ -316,7 +309,6 @@ class TestPlanServiceResurrection:
 
         results = service.list_epics(status="live")
 
-        # Count occurrences of our epic
         count = sum(1 for r in results if r.plan_folder_name == plan_name)
         assert count == 1, f"Epic should appear exactly once, found {count} times"
 
@@ -397,10 +389,13 @@ class TestDeathLoopSimulation:
         assert result.epic_folder == live_dir
         mock_repo.resync_epic_folder.assert_called_once()
 
-    def test_list_plans_finds_resurrected_after_archive(self, tmp_path):
-        """list_epics(status='live') finds resurrected epic even when
-        TinyDB returns empty for live status."""
-        from agenticguidance.services.epic import EpicService
+    def test_list_plans_uses_db_status_after_archive(self, tmp_path):
+        """list_epics(status='live') relies on DB status, not folder path.
+
+        With pure DB routing, path mismatches don't matter — the status
+        field determines which query bucket an epic falls into.
+        """
+        from agenticguidance.services.epic import EpicMetadata, EpicService
 
         repo_dir = tmp_path / "repo"
         repo_dir.mkdir()
@@ -409,26 +404,20 @@ class TestDeathLoopSimulation:
         plans_base = repo_dir / "docs" / "epics"
         plan_name = "260222NE_death_loop_list"
 
-        # Create live/ epic
-        live_dir = plans_base / "live" / plan_name
-        live_dir.mkdir(parents=True)
-        (live_dir / "plan_build.yml").write_text(
-            "name: Death Loop List\nstatus: in_progress\nobjective: Test\nphases: []\n"
-        )
-        (plans_base / "completed").mkdir(exist_ok=True)
-
-        # Mock TinyDB that returns nothing for "live" status
         mock_repo = MagicMock()
-        mock_repo.list_epics.return_value = []
+        # Repository returns epic with stale completed/ path
+        stale_meta = EpicMetadata(
+            epic_folder=plans_base / "completed" / plan_name,
+            epic_folder_name=plan_name,
+        )
+        mock_repo.list_epics.return_value = [stale_meta]
 
         service = EpicService(repo_path=repo_dir)
         service._repository = mock_repo
 
-        # Even though TinyDB returns nothing, filesystem scan should find it
-        # Note: when tinydb_results is empty (falsy), the code falls through
-        # to the YAML scan path which DOES scan the filesystem.
         results = service.list_epics(status="live")
         result_names = {r.plan_folder_name for r in results}
+        # Epic appears because repository (status-based) returned it
         assert plan_name in result_names
 
 
@@ -439,48 +428,35 @@ class TestDeathLoopSimulation:
 class TestResyncPlanFolder:
     """Tests for EpicRepository.resync_epic_folder()."""
 
-    def test_resync_updates_path_and_reimports(self, tmp_path):
-        """resync_epic_folder should update epic_folder and re-import YAML."""
+    def test_resync_updates_path(self, tmp_path):
+        """resync_epic_folder should update epic_folder to the new path."""
         from agenticguidance.services.epic_repository import EpicRepository
 
         db_path = tmp_path / "epics.db"
 
-        # Create an epic folder with ticket_*.yml files
+        # Create old and new epic folders
+        old_dir = tmp_path / "completed" / "260222NE_resync_test"
+        old_dir.mkdir(parents=True)
         plan_dir = tmp_path / "live" / "260222NE_resync_test"
         plan_dir.mkdir(parents=True)
-        (plan_dir / "ticket_build.yml").write_text(
-            yaml.dump({
-                "name": "Resync Test",
-                "status": "in_progress",
-                "phases": [
-                    {
-                        "name": "Phase 1",
-                        "tickets": [
-                            {"id": "R1", "name": "Task R1", "status": "pending"},
-                        ],
-                    }
-                ],
-            })
-        )
 
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
 
-        # First import from an old location
-        old_dir = tmp_path / "completed" / "260222NE_resync_test"
-        old_dir.mkdir(parents=True)
-        (old_dir / "ticket_build.yml").write_text(
-            yaml.dump({
-                "name": "Resync Test",
-                "status": "completed",
-                "phases": [],
-            })
-        )
-        repo.import_from_yaml(old_dir)
+        # Create epic pointing to old location, with some tickets
+        repo.create_epic({
+            "epic_folder_name": "260222NE_resync_test",
+            "epic_folder": str(old_dir),
+            "name": "Resync Test",
+            "status": "completed",
+        })
+        repo.add_ticket("260222NE_resync_test", "Phase 1", {
+            "id": "R1", "name": "Task R1", "status": "pending",
+        })
 
         # Verify it's pointing to old location
         epic = repo.get_epic("260222NE_resync_test")
         assert epic is not None
-        assert epic.plan_folder == old_dir
+        assert epic.epic_folder == old_dir
 
         # Resync to new location
         result = repo.resync_epic_folder("260222NE_resync_test", str(plan_dir))
@@ -489,9 +465,9 @@ class TestResyncPlanFolder:
         # Verify path updated
         epic = repo.get_epic("260222NE_resync_test")
         assert epic is not None
-        assert epic.plan_folder == plan_dir
+        assert epic.epic_folder == plan_dir
 
-        # Verify tickets were re-imported from new location
+        # Verify existing tickets are still accessible (resync doesn't clear them)
         tickets = repo.get_tickets("260222NE_resync_test")
         task_ids = [t.id for t in tickets]
         assert "R1" in task_ids
@@ -517,11 +493,15 @@ class TestResyncPlanFolder:
         db_path = tmp_path / "epics.db"
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
 
-        # Create an epic
+        # Create an epic via TinyDB directly (no YAML import)
         plan_dir = tmp_path / "epics" / "260222NE_bad_path"
         plan_dir.mkdir(parents=True)
-        (plan_dir / "ticket_build.yml").write_text("name: Test\nstatus: pending\nphases: []\n")
-        repo.import_from_yaml(plan_dir)
+        repo.create_epic({
+            "epic_folder_name": "260222NE_bad_path",
+            "epic_folder": str(plan_dir),
+            "name": "Bad Path Test",
+            "status": "active",
+        })
 
         # Try to resync to non-existent path
         result = repo.resync_epic_folder("260222NE_bad_path", "/tmp/does_not_exist_xyz")

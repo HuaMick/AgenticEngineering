@@ -244,7 +244,7 @@ class TestSessionSpawnCommand:
         call_args = mock_popen.call_args
         cmd = call_args[0][0]
         assert "claude" in cmd
-        assert "--print" in cmd
+        assert "-p" in cmd
         assert "--max-turns" in cmd
         assert "5" in cmd
         # Prompt is now a short reference to a context file
@@ -496,6 +496,87 @@ class TestSessionListCommand:
         assert output["total"] == 2
         assert output["filtered"] is False
 
+    def test_list_shows_transport_column(self, mock_sessions_dir, sample_session_data, capsys):
+        """Test that Transport column header and SDK+Tmux label appear when sessions have transport."""
+        from agenticcli.commands import session
+
+        sample_session_data["transport"] = "sdk-tmux"
+        session._store.save(sample_session_data)
+
+        with patch.object(session, "is_process_running", return_value=True):
+            args = SimpleNamespace(show_all=False)
+            session.cmd_list(args)
+
+        captured = capsys.readouterr()
+        assert "Transport" in captured.out
+        assert "SDK+Tmux" in captured.out
+
+    def test_list_transport_labels(self, mock_sessions_dir, sample_session_data, capsys):
+        """Test all transport label mappings: sdk-tmux->SDK+Tmux, tmux->Tmux, subprocess->Proc, sdk->SDK."""
+        from agenticcli.commands import session
+
+        label_map = {
+            "sdk-tmux": "SDK+Tmux",
+            "tmux": "Tmux",
+            "subprocess": "Proc",
+            "sdk": "SDK",
+        }
+
+        base_id = "aaaaaaaa-0000-0000-0000-"
+        for idx, (transport_value, _) in enumerate(label_map.items()):
+            data = sample_session_data.copy()
+            data["session_id"] = f"{base_id}{str(idx).zfill(12)}"
+            data["transport"] = transport_value
+            # Mark as completed so all appear under --all without process checks
+            data["status"] = "completed"
+            session._store.save(data)
+
+        args = SimpleNamespace(show_all=True)
+        session.cmd_list(args)
+
+        captured = capsys.readouterr()
+        for transport_value, expected_label in label_map.items():
+            assert expected_label in captured.out, (
+                f"Expected label '{expected_label}' for transport '{transport_value}' "
+                f"not found in output:\n{captured.out}"
+            )
+
+    def test_list_no_transport_column_when_empty(self, mock_sessions_dir, sample_session_data, capsys):
+        """Test that Transport column is absent when no sessions have a transport field."""
+        from agenticcli.commands import session
+
+        # Ensure no transport field in session data
+        data = sample_session_data.copy()
+        data.pop("transport", None)
+        session._store.save(data)
+
+        with patch.object(session, "is_process_running", return_value=True):
+            args = SimpleNamespace(show_all=False)
+            session.cmd_list(args)
+
+        captured = capsys.readouterr()
+        assert "Transport" not in captured.out
+
+    @patch("agenticcli.console.is_json_output")
+    def test_list_json_includes_transport(self, mock_json_output, mock_sessions_dir, sample_session_data, capsys):
+        """Test that JSON list output includes the transport field."""
+        from agenticcli.commands import session
+
+        mock_json_output.return_value = True
+        sample_session_data["transport"] = "sdk-tmux"
+        session._store.save(sample_session_data)
+
+        with patch.object(session, "is_process_running", return_value=True):
+            args = SimpleNamespace(show_all=False)
+            session.cmd_list(args)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        assert output["count"] == 1
+        sessions_list = output["sessions"]
+        assert len(sessions_list) == 1
+        assert sessions_list[0].get("transport") == "sdk-tmux"
+
 
 class TestSessionStopCommand:
     """Tests for the session stop command."""
@@ -720,28 +801,37 @@ class TestBuildTaskPrompt:
     """Tests for _build_task_prompt helper."""
 
     def test_task_prompt_with_valid_task(self, tmp_path):
-        """Test building a task prompt from a valid plan file."""
+        """Test building a task prompt from TinyDB ticket data."""
         from agenticcli.commands import session
+        from agenticguidance.services.epic_repository import EpicRepository
 
         plan_folder = tmp_path / "260207TA_test"
         plan_folder.mkdir()
 
-        # Create a ticket_build.yml with a task
-        plan_file = plan_folder / "ticket_build.yml"
-        plan_file.write_text("""
-phases:
-  - name: "Test Phase"
-    tickets:
-      - id: "CLI_001"
-        name: "Add --task argument"
-        status: "pending"
-        description: "Add the --task argument to session spawn."
-        target_files:
-          - modules/AgenticCLI/src/agenticcli/commands/session.py
-        inputs:
-          - modules/AgenticCLI/src/agenticcli/commands/plan.py
-        guidance: "Follow existing patterns."
-""")
+        # Create .git so TicketService can find repo root at tmp_path
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        db_path = tmp_path / ".agentic" / "epics.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Populate TinyDB with the ticket (TicketService reads from TinyDB only)
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.create_epic({
+            "epic_folder_name": "260207TA_test",
+            "epic_folder": str(plan_folder),
+            "name": "260207TA_test",
+            "status": "active",
+        })
+        repo.add_phase("260207TA_test", {"name": "Test Phase"})
+        repo.add_ticket("260207TA_test", "Test Phase", {
+            "task_id": "CLI_001",
+            "name": "Add --task argument",
+            "status": "pending",
+            "description": "Add the --task argument to session spawn.",
+            "target_files": ["modules/AgenticCLI/src/agenticcli/commands/session.py"],
+            "inputs": ["modules/AgenticCLI/src/agenticcli/commands/plan.py"],
+            "guidance": "Follow existing patterns.",
+        })
+        repo.close()
 
         prompt = session._build_task_prompt("CLI_001", plan_folder)
         assert prompt is not None
@@ -756,17 +846,7 @@ phases:
 
         plan_folder = tmp_path / "260207TA_test"
         plan_folder.mkdir()
-
-        plan_file = plan_folder / "ticket_build.yml"
-        plan_file.write_text("""
-phases:
-  - name: "Test Phase"
-    tickets:
-      - id: "CLI_001"
-        name: "Existing task"
-        status: "pending"
-        description: "A task that exists."
-""")
+        # No TinyDB entry - _build_task_prompt reads from TinyDB, returns None for unknown ticket
 
         prompt = session._build_task_prompt("NONEXISTENT", plan_folder)
         assert prompt is None
@@ -830,26 +910,37 @@ class TestSpawnWithRoleAndPlan:
     @patch("agenticcli.commands.session.is_process_running")
     @patch("agenticcli.commands.session.subprocess.Popen")
     def test_spawn_with_task(self, mock_popen, mock_is_running, mock_sessions_dir, tmp_path, monkeypatch, capsys):
-        """Test spawn with --task loads task context and spawns agent."""
+        """Test spawn with --task loads task context from TinyDB and spawns agent."""
         from agenticcli.commands import session
+        from agenticguidance.services.epic_repository import EpicRepository
 
         # Set up epic folder with task
         live_dir = tmp_path / "docs" / "epics" / "live"
         plan_dir = live_dir / "260207TA_test"
         plan_dir.mkdir(parents=True)
 
-        plan_file = plan_dir / "ticket_build.yml"
-        plan_file.write_text("""
-phases:
-  - name: "Build Phase"
-    tickets:
-      - id: "CLI_001"
-        name: "Add feature"
-        status: "pending"
-        description: "Add a new feature."
-        target_files:
-          - src/main.py
-""")
+        # Create .git so TicketService can find repo root at tmp_path
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        db_path = tmp_path / ".agentic" / "epics.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Populate TinyDB (TicketService reads from TinyDB only)
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.create_epic({
+            "epic_folder_name": "260207TA_test",
+            "epic_folder": str(plan_dir),
+            "name": "260207TA_test",
+            "status": "active",
+        })
+        repo.add_phase("260207TA_test", {"name": "Build Phase"})
+        repo.add_ticket("260207TA_test", "Build Phase", {
+            "task_id": "CLI_001",
+            "name": "Add feature",
+            "status": "pending",
+            "description": "Add a new feature.",
+            "target_files": ["src/main.py"],
+        })
+        repo.close()
 
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
 
@@ -890,8 +981,8 @@ phases:
         assert "CLI_001" in context_content
         assert "Add feature" in context_content
 
-    def test_spawn_task_requires_plan(self, mock_sessions_dir, capsys):
-        """Test that --task without --plan fails."""
+    def test_spawn_task_requires_epic(self, mock_sessions_dir, capsys):
+        """Test that --task without --epic fails."""
         from agenticcli.commands import session
 
         args = SimpleNamespace(
@@ -910,7 +1001,7 @@ phases:
 
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
-        assert "--task requires --plan" in captured.err
+        assert "--task requires --epic" in captured.err
 
     def test_spawn_invalid_plan(self, mock_sessions_dir, tmp_path, monkeypatch, capsys):
         """Test that spawn with nonexistent plan fails."""
@@ -945,17 +1036,7 @@ phases:
         plan_dir = live_dir / "260207TA_test"
         plan_dir.mkdir(parents=True)
 
-        plan_file = plan_dir / "plan_build.yml"
-        plan_file.write_text("""
-phases:
-  - name: "Build Phase"
-    tickets:
-      - id: "CLI_001"
-        name: "Real task"
-        status: "pending"
-        description: "A real task."
-""")
-
+        # No TinyDB entry - cmd_spawn reads from TinyDB for ticket lookup
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
 
         args = SimpleNamespace(
@@ -2416,3 +2497,591 @@ class TestSpawnAutoWatchDaemon:
         assert len(sessions) == 1
         assert sessions[0]["status"] == "running"
         assert sessions[0]["pid"] == 44444
+
+
+# ── TT_001: Test --tmux flag parsing and propagation ──────────────────
+
+
+class TestTmuxFlagParsing:
+    """TT_001: Tests for --tmux flag parsing and propagation in cmd_spawn."""
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.Popen")
+    def test_spawn_tmux_flag_defaults_false(
+        self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, capsys
+    ):
+        """Verify default behavior without --tmux doesn't trigger tmux path."""
+        from agenticcli.commands import session
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_popen.return_value = mock_process
+        mock_is_running.return_value = True
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=True,
+            directory=None,
+        )
+
+        session.cmd_spawn(args)
+
+        # Should use subprocess.Popen (not tmux)
+        mock_popen.assert_called_once()
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        # No tmux-related fields
+        assert sessions[0].get("transport") != "tmux"
+        assert sessions[0].get("tmux_session") is None
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.run")
+    @patch("agenticcli.commands.session.shutil.which")
+    @patch("agenticcli.commands.session.time.sleep")
+    def test_spawn_tmux_flag_propagated(
+        self, mock_sleep, mock_which, mock_run, mock_is_running,
+        mock_sessions_dir, mock_logs_dir, capsys, monkeypatch,
+    ):
+        """Verify --tmux=True reaches cmd_spawn and triggers tmux path."""
+        from agenticcli.commands import session
+
+        mock_which.return_value = "/usr/bin/tmux"
+        mock_is_running.return_value = True
+
+        # Mock subprocess.run for tmux new-session, has-session, list-panes
+        def mock_run_fn(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "99999\n"
+            result.stderr = ""
+            return result
+
+        mock_run.side_effect = mock_run_fn
+
+        # Mock session_exists to return True (session started ok)
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists", lambda name: True
+        )
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=True,
+            directory=None,
+            tmux=True,
+        )
+
+        session.cmd_spawn(args)
+
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        assert sessions[0].get("tmux") is True
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.run")
+    @patch("agenticcli.commands.session.shutil.which")
+    @patch("agenticcli.commands.session.time.sleep")
+    def test_spawn_tmux_flag_in_session_data(
+        self, mock_sleep, mock_which, mock_run, mock_is_running,
+        mock_sessions_dir, mock_logs_dir, capsys, monkeypatch,
+    ):
+        """Verify the tmux flag is recorded in the session state JSON."""
+        from agenticcli.commands import session
+
+        mock_which.return_value = "/usr/bin/tmux"
+        mock_is_running.return_value = True
+
+        def mock_run_fn(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "88888\n"
+            result.stderr = ""
+            return result
+
+        mock_run.side_effect = mock_run_fn
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists", lambda name: True
+        )
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=True,
+            directory=None,
+            tmux=True,
+        )
+
+        session.cmd_spawn(args)
+
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        data = sessions[0]
+        # The tmux flag should be set at the top of cmd_spawn
+        assert data.get("tmux") is True
+        # The session should have tmux transport and session name
+        assert data.get("transport") == "tmux"
+        assert data.get("tmux_session") is not None
+        assert data["tmux_session"].startswith("agentic-spawn-")
+
+
+# ── TT_002: Test tmux session creation in cmd_spawn ───────────────────
+
+
+class TestTmuxSessionCreation:
+    """TT_002: Tests for tmux session creation path when --tmux is set."""
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.run")
+    @patch("agenticcli.commands.session.shutil.which")
+    @patch("agenticcli.commands.session.time.sleep")
+    def test_spawn_tmux_creates_session(
+        self, mock_sleep, mock_which, mock_run, mock_is_running,
+        mock_sessions_dir, mock_logs_dir, capsys, monkeypatch,
+    ):
+        """Mock tmux new-session and verify correct args and session data."""
+        from agenticcli.commands import session
+
+        mock_which.return_value = "/usr/bin/tmux"
+        mock_is_running.return_value = True
+
+        calls = []
+
+        def mock_run_fn(cmd, **kwargs):
+            calls.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "77777\n"
+            result.stderr = ""
+            return result
+
+        mock_run.side_effect = mock_run_fn
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists", lambda name: True
+        )
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=True,
+            directory=None,
+            tmux=True,
+        )
+
+        session.cmd_spawn(args)
+
+        # Find the tmux new-session call
+        new_session_calls = [c for c in calls if isinstance(c, list) and "new-session" in c]
+        assert len(new_session_calls) >= 1, f"Expected tmux new-session call, got: {calls}"
+
+        new_session_cmd = new_session_calls[0]
+        assert new_session_cmd[0] == "tmux"
+        assert "-d" in new_session_cmd
+        assert "-s" in new_session_cmd
+
+        # Session name should follow convention: agentic-spawn-{id[:8]}
+        idx = new_session_cmd.index("-s")
+        tmux_name = new_session_cmd[idx + 1]
+        assert tmux_name.startswith("agentic-spawn-")
+
+        # Session data should be saved correctly
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        data = sessions[0]
+        assert data["transport"] == "tmux"
+        assert data["tmux_session"] == tmux_name
+        assert data["status"] == "running"
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.run")
+    @patch("agenticcli.commands.session.shutil.which")
+    @patch("agenticcli.commands.session.time.sleep")
+    def test_spawn_tmux_background_returns_immediately(
+        self, mock_sleep, mock_which, mock_run, mock_is_running,
+        mock_sessions_dir, mock_logs_dir, capsys, monkeypatch,
+    ):
+        """With -b flag, verify cmd_spawn returns without blocking (no tmux attach)."""
+        from agenticcli.commands import session
+
+        mock_which.return_value = "/usr/bin/tmux"
+        mock_is_running.return_value = True
+
+        calls = []
+
+        def mock_run_fn(cmd, **kwargs):
+            calls.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "66666\n"
+            result.stderr = ""
+            return result
+
+        mock_run.side_effect = mock_run_fn
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists", lambda name: True
+        )
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=True,
+            directory=None,
+            tmux=True,
+        )
+
+        session.cmd_spawn(args)
+
+        # tmux attach should NOT be called for background sessions
+        attach_calls = [c for c in calls if isinstance(c, list) and "attach" in c]
+        assert len(attach_calls) == 0, f"tmux attach should not be called in background mode, got: {attach_calls}"
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.run")
+    @patch("agenticcli.commands.session.shutil.which")
+    @patch("agenticcli.commands.session.time.sleep")
+    def test_spawn_tmux_foreground_attaches(
+        self, mock_sleep, mock_which, mock_run, mock_is_running,
+        mock_sessions_dir, mock_logs_dir, capsys, monkeypatch,
+    ):
+        """Without -b flag, verify tmux attach is called."""
+        from agenticcli.commands import session
+
+        mock_which.return_value = "/usr/bin/tmux"
+        mock_is_running.return_value = True
+
+        calls = []
+
+        def mock_run_fn(cmd, **kwargs):
+            calls.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "55555\n"
+            result.stderr = ""
+            return result
+
+        mock_run.side_effect = mock_run_fn
+
+        # First call to session_exists returns True (session started ok),
+        # second call returns False (session ended after attach)
+        exists_calls = []
+
+        def mock_session_exists(name):
+            exists_calls.append(name)
+            if len(exists_calls) == 1:
+                return True  # verify step
+            return False  # after attach, session is done
+
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists", mock_session_exists
+        )
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=False,
+            directory=None,
+            tmux=True,
+        )
+
+        session.cmd_spawn(args)
+
+        # tmux attach SHOULD be called for foreground sessions
+        attach_calls = [c for c in calls if isinstance(c, list) and "attach" in c]
+        assert len(attach_calls) >= 1, f"Expected tmux attach call, got: {calls}"
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.run")
+    @patch("agenticcli.commands.session.shutil.which")
+    @patch("agenticcli.commands.session.time.sleep")
+    def test_spawn_tmux_verifies_session_started(
+        self, mock_sleep, mock_which, mock_run, mock_is_running,
+        mock_sessions_dir, mock_logs_dir, capsys, monkeypatch,
+    ):
+        """Verify the 0.5s delay + session_exists check after creation."""
+        from agenticcli.commands import session
+
+        mock_which.return_value = "/usr/bin/tmux"
+        mock_is_running.return_value = True
+
+        def mock_run_fn(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "44444\n"
+            result.stderr = ""
+            return result
+
+        mock_run.side_effect = mock_run_fn
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists", lambda name: True
+        )
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=True,
+            directory=None,
+            tmux=True,
+        )
+
+        session.cmd_spawn(args)
+
+        # time.sleep should be called with 0.5 for the verification delay
+        mock_sleep.assert_any_call(0.5)
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.Popen")
+    @patch("agenticcli.commands.session.subprocess.run")
+    @patch("agenticcli.commands.session.shutil.which")
+    @patch("agenticcli.commands.session.time.sleep")
+    def test_spawn_tmux_immediate_exit_reports_failure(
+        self, mock_sleep, mock_which, mock_run, mock_popen, mock_is_running,
+        mock_sessions_dir, mock_logs_dir, capsys, monkeypatch,
+    ):
+        """Mock session_exists returning False to verify spawn falls back."""
+        from agenticcli.commands import session
+
+        mock_which.return_value = "/usr/bin/tmux"
+        mock_is_running.return_value = True
+
+        def mock_run_fn(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "33333\n"
+            result.stderr = ""
+            return result
+
+        mock_run.side_effect = mock_run_fn
+
+        # session_exists returns False => tmux session exited immediately
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists", lambda name: False
+        )
+
+        # Provide Popen mock for fallback path
+        mock_process = MagicMock()
+        mock_process.pid = 33333
+        mock_popen.return_value = mock_process
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=True,
+            directory=None,
+            tmux=True,
+        )
+
+        session.cmd_spawn(args)
+
+        # Session should fall back to subprocess
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        data = sessions[0]
+        assert data.get("tmux_fallback") is True
+
+
+# ── TT_003: Test tmux fallback when tmux unavailable ──────────────────
+
+
+class TestTmuxFallback:
+    """TT_003: Tests for graceful degradation when tmux is not available."""
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.Popen")
+    @patch("agenticcli.commands.session.shutil.which")
+    def test_spawn_tmux_fallback_no_tmux(
+        self, mock_which, mock_popen, mock_is_running,
+        mock_sessions_dir, mock_logs_dir, capsys,
+    ):
+        """When tmux is not installed, fall through to subprocess.Popen path."""
+        from agenticcli.commands import session
+
+        mock_which.return_value = None  # tmux not available
+        mock_is_running.return_value = True
+
+        mock_process = MagicMock()
+        mock_process.pid = 22222
+        mock_popen.return_value = mock_process
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=True,
+            directory=None,
+            tmux=True,
+        )
+
+        session.cmd_spawn(args)
+
+        # Should fall through to Popen subprocess path
+        mock_popen.assert_called_once()
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        data = sessions[0]
+        # Should NOT have tmux_session field
+        assert data.get("tmux_session") is None
+        assert data.get("transport") != "tmux"
+
+    @patch("agenticcli.commands.session.is_process_running")
+    @patch("agenticcli.commands.session.subprocess.Popen")
+    @patch("agenticcli.commands.session.subprocess.run")
+    @patch("agenticcli.commands.session.shutil.which")
+    def test_spawn_tmux_fallback_creation_fails(
+        self, mock_which, mock_run, mock_popen, mock_is_running,
+        mock_sessions_dir, mock_logs_dir, capsys,
+    ):
+        """When tmux new-session returns non-zero, fall back to subprocess."""
+        from agenticcli.commands import session
+
+        mock_which.return_value = "/usr/bin/tmux"
+        mock_is_running.return_value = True
+
+        # tmux new-session fails
+        def mock_run_fn(cmd, **kwargs):
+            result = MagicMock()
+            result.returncode = 1  # failure
+            result.stdout = ""
+            result.stderr = "tmux: session creation failed"
+            return result
+
+        mock_run.side_effect = mock_run_fn
+
+        mock_process = MagicMock()
+        mock_process.pid = 11111
+        mock_popen.return_value = mock_process
+
+        args = SimpleNamespace(
+            prompt="Test task",
+            max_turns=None,
+            background=True,
+            directory=None,
+            tmux=True,
+        )
+
+        session.cmd_spawn(args)
+
+        # Should fall back to subprocess.Popen
+        mock_popen.assert_called_once()
+        sessions = session._store.list_all()
+        assert len(sessions) == 1
+        data = sessions[0]
+        assert data.get("tmux_fallback") is True
+
+    def test_spawn_tmux_session_name_convention(self):
+        """Verify session naming convention for various inputs."""
+        from agenticcli.commands.session import _tmux_session_name
+
+        # Without epic: agentic-spawn-{session_id[:8]}
+        name = _tmux_session_name("abcd1234-5678-9abc-def0-123456789abc")
+        assert name == "agentic-spawn-abcd1234"
+
+        # With epic + role
+        epic = Path("/docs/epics/live/260306AG_tmux_orch")
+        name = _tmux_session_name("abcd1234-5678", epic_folder=epic, role="build-python")
+        assert name == "agentic-260306AG-build-python"
+
+        # With epic only (no role)
+        name = _tmux_session_name("abcd1234-5678", epic_folder=epic)
+        assert name == "agentic-260306AG-abcd1234"
+
+        # Invalid chars replaced with hyphens
+        epic_bad = Path("/docs/epics/live/260306AG_bad!chars")
+        name = _tmux_session_name("abcd1234-5678", epic_folder=epic_bad, role="test")
+        # '!' should be replaced with '-'
+        assert "!" not in name
+        assert all(c.isalnum() or c in ("_", "-") for c in name)
+
+
+# ── TT_006: Test session stop kills tmux session ──────────────────────
+
+
+class TestSessionStopTmux:
+    """TT_006: Tests that session stop properly kills tmux sessions."""
+
+    @patch("os.kill")
+    @patch("agenticcli.commands.session.subprocess.run")
+    def test_stop_kills_tmux_session(
+        self, mock_run, mock_kill, mock_sessions_dir, sample_session_data, capsys
+    ):
+        """Session data has tmux_session — verify tmux kill-session is called."""
+        from agenticcli.commands import session
+
+        sample_session_data["tmux_session"] = "agentic-spawn-12345678"
+        sample_session_data["transport"] = "tmux"
+        session._store.save(sample_session_data)
+
+        mock_run.return_value = MagicMock(returncode=0)
+
+        args = SimpleNamespace(
+            session_id=sample_session_data["session_id"][:8],
+            force=False,
+        )
+
+        session.cmd_stop(args)
+
+        # Verify tmux kill-session was called
+        tmux_kill_calls = [
+            c for c in mock_run.call_args_list
+            if isinstance(c[0][0], list) and "kill-session" in c[0][0]
+        ]
+        assert len(tmux_kill_calls) >= 1, f"Expected tmux kill-session call, got: {mock_run.call_args_list}"
+        kill_cmd = tmux_kill_calls[0][0][0]
+        assert kill_cmd == ["tmux", "kill-session", "-t", "agentic-spawn-12345678"]
+
+    @patch("os.kill")
+    @patch("agenticcli.commands.session.subprocess.run")
+    def test_stop_ignores_dead_tmux_session(
+        self, mock_run, mock_kill, mock_sessions_dir, sample_session_data, capsys
+    ):
+        """tmux kill-session returns non-zero (already dead) — no error raised."""
+        from agenticcli.commands import session
+
+        sample_session_data["tmux_session"] = "agentic-spawn-deadbeef"
+        sample_session_data["transport"] = "tmux"
+        session._store.save(sample_session_data)
+
+        # tmux kill-session "fails" because session is already dead
+        mock_run.return_value = MagicMock(returncode=1, stderr="session not found")
+
+        args = SimpleNamespace(
+            session_id=sample_session_data["session_id"][:8],
+            force=False,
+        )
+
+        # Should NOT raise an error
+        session.cmd_stop(args)
+
+        # Session should still be stopped
+        sessions = session._store.list_all()
+        assert sessions[0]["status"] == "stopped"
+
+    @patch("os.kill")
+    def test_stop_without_tmux_session_unchanged(
+        self, mock_kill, mock_sessions_dir, sample_session_data, capsys, monkeypatch,
+    ):
+        """Session without tmux_session field — no tmux commands called."""
+        from agenticcli.commands import session
+
+        # Ensure no tmux_session field
+        assert "tmux_session" not in sample_session_data
+        session._store.save(sample_session_data)
+
+        # Track all subprocess.run calls
+        run_calls = []
+        original_run = session.subprocess.run
+
+        def tracking_run(cmd, **kwargs):
+            run_calls.append(cmd)
+            return MagicMock(returncode=0)
+
+        monkeypatch.setattr(session.subprocess, "run", tracking_run)
+
+        args = SimpleNamespace(
+            session_id=sample_session_data["session_id"][:8],
+            force=False,
+        )
+
+        session.cmd_stop(args)
+
+        # No tmux commands should be called
+        tmux_calls = [c for c in run_calls if isinstance(c, list) and c[0] == "tmux"]
+        assert len(tmux_calls) == 0, f"No tmux commands expected, got: {tmux_calls}"

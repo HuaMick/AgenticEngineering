@@ -1,8 +1,8 @@
 """Planner Loop workflow for automated orchestration planning.
 
-Encapsulates the orchestration planner logic: discovers plans needing
-orchestration MMDs, spawns specialized planners, runs review loops,
-generates and validates MMD files, and updates task status.
+Encapsulates the orchestration planner logic: discovers epics needing
+planning (no phases in TinyDB), spawns specialized planners, runs review
+loops, and updates task status.
 
 Uses the Claude Agent SDK (when available) for direct agent invocation,
 falling back to subprocess spawning when the SDK is not installed.
@@ -10,19 +10,26 @@ falling back to subprocess spawning when the SDK is not installed.
 
 import json
 import logging
+import os
 import subprocess
 import time
-import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from agenticcli.utils.context_file import write_context_file
+from agenticcli.utils.session_id import generate_session_id
+from agenticcli.utils.retry import exponential_backoff
 from agenticcli.utils.sdk_runner import (
     SDK_AVAILABLE,
     SessionResult,
     get_allowed_tools_for_role,
     run_agent_sync,
+    ROLE_TIMEOUT_SECONDS,
+    get_timeout_for_role,
 )
+from agenticcli.utils.session_state import read_sdk_metrics
+from agenticcli.utils.spawn_command import build_spawn_command
 from agenticcli.utils.state_store import StateStore, is_process_running
 from agenticcli.utils.subprocess_utils import get_clean_env
 
@@ -51,31 +58,20 @@ PLAN_TYPE_TO_PLANNER = {
     "sdk": "planner-sdk",
 }
 
-DEFAULT_COMPLETION_PROMISE = "Planning complete. All plans have orchestration MMDs."
+DEFAULT_COMPLETION_PROMISE = "Planning complete. All epics have phases in TinyDB."
 
-# Timeout budgets by agent role (seconds).  These are passed to run_agent_sync()
-# so the SDK enforces a hard ceiling on each individual agent invocation.
-ROLE_TIMEOUT_SECONDS: dict[str, int] = {
-    "explore": 600,               # 10 min — lightweight codebase analysis
-    "story-generator": 1800,       # 30 min — story generation
-    "planner-build": 1800,         # 30 min
-    "planner-test": 1800,          # 30 min
-    "planner-guidance": 1800,      # 30 min
-    "planner-cleaning": 1800,      # 30 min
-    "planner-guidance-testing": 1800,
-    "planner-sdk": 1800,           # 30 min
-    "planner-reviewer": 1800,      # 30 min
-    "planner-orchestration": 3600, # 60 min — orchestration MMD generation
-}
+# Timeout budgets by agent role (seconds) are imported from sdk_runner.
+# ROLE_TIMEOUT_SECONDS and get_timeout_for_role are re-exported for callers
+# that import them directly from this module.
 
 
-def _build_agent_prompt(role: str, epic_folder: str, epics_dir: Path) -> str:
+def _build_agent_prompt(role: str, epic_folder: str, extra_prompt: Optional[str] = None) -> str:
     """Build a prompt for an agent with role and epic context.
 
     Args:
         role: Agent role identifier.
-        epic_folder: Epic folder name.
-        epics_dir: Path to the epics directory.
+        epic_folder: Epic folder name (ID), not a filesystem path.
+        extra_prompt: Optional additional instructions appended to the prompt.
 
     Returns:
         Prompt string for the agent.
@@ -84,10 +80,12 @@ def _build_agent_prompt(role: str, epic_folder: str, epics_dir: Path) -> str:
         f"You are being spawned as a {role} agent.",
         f"Initialize your context by running: agentic -j agent context bootstrap --role {role}",
         f"Your active epic is: {epic_folder}",
-        f"Epic path: {epics_dir / epic_folder}",
-        f"List tasks with: agentic -j agent plan task list --plan {epic_folder}",
+        f"List tickets with: agentic -j epic ticket list --epic {epic_folder}",
         "Start by loading your bootstrap context, then work through the epic tasks.",
     ]
+    if extra_prompt:
+        parts.append("")
+        parts.append(f"Additional instructions from the operator:\n{extra_prompt}")
     return "\n".join(parts)
 
 
@@ -138,9 +136,10 @@ class PlannerLoopWorkflow:
     falling back to subprocess spawning otherwise.
     """
 
-    def __init__(self, epics_dir: Optional[Path] = None, working_dir: Optional[str] = None):
+    def __init__(self, epics_dir: Optional[Path] = None, working_dir: Optional[str] = None, prompt: Optional[str] = None):
         self.epics_dir = epics_dir or Path.cwd() / "docs" / "epics" / "live"
         self.working_dir = working_dir or str(Path.cwd())
+        self.prompt = prompt
 
         # Initialize EpicRepository for TinyDB-based lookups
         self._repository = None
@@ -156,6 +155,14 @@ class PlannerLoopWorkflow:
             self._repository = EpicRepository(db_path=db_path)
         except Exception:
             logger.warning("Failed to initialize EpicRepository for PlannerLoopWorkflow")
+
+    def _get_repository(self):
+        """Get EpicRepository instance.
+
+        Returns:
+            EpicRepository instance, or None if not available.
+        """
+        return self._repository
 
     def run_health_check(self) -> None:
         """Run health check: agentic --version && agentic epic list.
@@ -181,23 +188,22 @@ class PlannerLoopWorkflow:
         logger.info("Health check passed")
 
     def discover_plans_needing_orchestration(self) -> list[str]:
-        """Find live epics that lack orchestration MMD files.
+        """Find live epics that need planning (no phases in TinyDB).
 
         Returns:
             List of epic folder names needing orchestration.
         """
-        if not self.epics_dir.exists():
-            logger.warning("Epics directory does not exist: %s", self.epics_dir)
+        if self._repository is None:
+            logger.error("No EpicRepository available — cannot discover epics needing orchestration")
             return []
 
+        epics = self._repository.list_epics(status="live")
+
         needs_work = []
-        for epic_dir in sorted(self.epics_dir.iterdir()):
-            if not epic_dir.is_dir():
-                continue
-            # Check for existing orchestration_*.mmd files
-            mmds = list(epic_dir.glob("orchestration_*.mmd"))
-            if not mmds:
-                needs_work.append(epic_dir.name)
+        for epic in epics:
+            phases = self._repository.list_phases(epic.epic_folder_name)
+            if not phases or not all(p.agent for p in phases):
+                needs_work.append(epic.epic_folder_name)
 
         logger.info("Found %d epics needing orchestration: %s", len(needs_work), needs_work)
         return needs_work
@@ -242,7 +248,8 @@ class PlannerLoopWorkflow:
             return None
 
         if not tickets:
-            return None
+            # First-time planning: no tickets yet, default to "build"
+            return "build"
 
         # Infer plan type from ticket agent values
         plan_type = "build"  # Default
@@ -314,10 +321,23 @@ class PlannerLoopWorkflow:
         Returns:
             SessionResult with status and metadata.
         """
-        session_id = str(uuid.uuid4())
-        prompt = _build_agent_prompt(role, epic_folder, self.epics_dir)
+        session_id = generate_session_id()
+        prompt = _build_agent_prompt(role, epic_folder, extra_prompt=self.prompt)
 
-        if SDK_AVAILABLE:
+        # This function intentionally does NOT use determine_transport() from
+        # agenticcli.utils.transport — it has special AGENTIC_FORCE_SDK_DIRECT
+        # override logic and SDK-direct fallbacks that differ from the standard
+        # priority order (sdk-tmux > tmux > subprocess).
+        import shutil
+        force_sdk_direct = os.environ.get("AGENTIC_FORCE_SDK_DIRECT") == "1"
+
+        if force_sdk_direct and SDK_AVAILABLE:
+            logger.warning("Using SDK-direct path (AGENTIC_FORCE_SDK_DIRECT=1) — zombie bug risk")
+            return self._run_via_sdk(session_id, role, epic_folder, prompt)
+        elif SDK_AVAILABLE and shutil.which("tmux"):
+            return self._run_via_tmux_sdk(session_id, role, epic_folder, prompt)
+        elif SDK_AVAILABLE:
+            logger.warning("tmux not available, falling back to SDK-direct (zombie bug risk)")
             return self._run_via_sdk(session_id, role, epic_folder, prompt)
         else:
             return self._run_via_subprocess(session_id, role, epic_folder)
@@ -372,7 +392,7 @@ class PlannerLoopWorkflow:
         result: SessionResult = SessionResult(status="failed", result="No attempt made")
         for attempt in range(1, max_retries + 1):
             if attempt > 1:
-                backoff = 2 ** (attempt - 1)  # 2s, 4s, 8s, ...
+                backoff = exponential_backoff(attempt - 1)  # 2s, 4s, 8s, ...
                 logger.info(
                     "Retrying SDK agent (attempt %d/%d): %s — waiting %ds",
                     attempt, max_retries, result.result[:100], backoff,
@@ -407,6 +427,166 @@ class PlannerLoopWorkflow:
         )
         return result
 
+    def _run_via_tmux_sdk(
+        self,
+        session_id: str,
+        role: str,
+        epic_folder: str,
+        prompt: str,
+        max_retries: int = 3,
+    ) -> SessionResult:
+        """Execute an agent via SDK-in-tmux for process isolation.
+
+        Spawns the agent in a tmux pane running sdk_pane_runner.py, which
+        calls query() exactly once (fresh process, no zombie issue).
+
+        Retries failed runs up to max_retries times with exponential backoff.
+
+        Args:
+            session_id: Pre-generated session ID for state tracking.
+            role: Agent role identifier.
+            epic_folder: Epic folder name.
+            prompt: Compiled prompt for the agent.
+            max_retries: Maximum number of attempts (default: 3).
+
+        Returns:
+            SessionResult from the pane runner (last attempt result on exhaustion).
+        """
+        timeout = get_timeout_for_role(role)
+
+        # Write context file for the pane runner
+        write_context_file(session_id, prompt)
+
+        # Record session start
+        session_data = {
+            "session_id": session_id,
+            "pid": None,
+            "prompt": prompt[:500],
+            "status": "running",
+            "started_at": datetime.now().isoformat(),
+            "ended_at": None,
+            "background": False,
+            "working_dir": self.working_dir,
+            "role": role,
+            "epic_folder": epic_folder,
+            "transport": "sdk-tmux",
+        }
+        _session_store.save(session_data)
+
+        logger.info(
+            "Running %s agent for %s via sdk-tmux (session %s, timeout=%ds)",
+            role, epic_folder, session_id[:8], timeout,
+        )
+
+        result = SessionResult(status="failed", result="No attempt made")
+        for attempt in range(1, max_retries + 1):
+            if attempt > 1:
+                backoff = exponential_backoff(attempt - 1)
+                logger.info(
+                    "Retrying sdk-tmux agent (attempt %d/%d): %s — waiting %ds",
+                    attempt, max_retries, result.result[:100], backoff,
+                )
+                time.sleep(backoff)
+                # New session_id for retry (new tmux pane)
+                session_id = generate_session_id()
+                write_context_file(session_id, prompt)
+                session_data["session_id"] = session_id
+                session_data["status"] = "running"
+                session_data["started_at"] = datetime.now().isoformat()
+                _session_store.save(session_data)
+
+            # Spawn via CLI (routes to sdk-tmux path)
+            spawn_cmd = build_spawn_command(
+                role=role,
+                epic_folder=epic_folder,
+                skip_permissions=True,
+            )
+
+            try:
+                spawn_result = subprocess.run(
+                    spawn_cmd, capture_output=True, text=True, timeout=60,
+                    cwd=self.working_dir,
+                )
+            except subprocess.TimeoutExpired:
+                logger.error("Spawn timed out for %s/%s", role, epic_folder)
+                result = SessionResult(
+                    status="failed", result="Spawn command timed out", is_error=True,
+                )
+                continue
+            except KeyboardInterrupt:
+                logger.info("SDK-tmux agent run cancelled by user")
+                raise
+
+            if spawn_result.returncode != 0:
+                logger.error("Spawn failed for %s/%s: %s", role, epic_folder, spawn_result.stderr)
+                result = SessionResult(
+                    status="failed", result=f"Spawn failed: {spawn_result.stderr}", is_error=True,
+                )
+                continue
+
+            try:
+                data = json.loads(spawn_result.stdout)
+                spawned_session_id = data.get("session_id", session_id)
+            except (json.JSONDecodeError, KeyError):
+                logger.error("Could not parse spawn output for %s/%s", role, epic_folder)
+                result = SessionResult(
+                    status="failed", result="Could not parse spawn output", is_error=True,
+                )
+                continue
+
+            logger.info(
+                "Spawned %s for %s via sdk-tmux: session %s",
+                role, epic_folder, spawned_session_id[:8],
+            )
+
+            # Wait for completion
+            start_wait = time.monotonic()
+            final_status = self.wait_for_session(spawned_session_id, timeout=timeout)
+            elapsed = time.monotonic() - start_wait
+
+            # Quick-exit detection (< 30s)
+            if elapsed < 30 and final_status != "completed":
+                logger.warning(
+                    "Quick exit detected for %s/%s (%.1fs) — may be retryable",
+                    role, epic_folder, elapsed,
+                )
+
+            # Read SDK metrics from session state
+            sdk_metrics = read_sdk_metrics(spawned_session_id)
+
+            result = SessionResult(
+                status=final_status or "failed",
+                result=f"sdk-tmux session {spawned_session_id[:8]} ended: {final_status}",
+                cost_usd=sdk_metrics["cost_usd"],
+                duration_ms=sdk_metrics["duration_ms"],
+                session_id=sdk_metrics["sdk_session_id"] or spawned_session_id,
+                num_turns=sdk_metrics["num_turns"],
+                usage=sdk_metrics["usage"],
+                is_error=(final_status != "completed"),
+            )
+
+            if result.status == "completed":
+                break
+
+            logger.info(
+                "sdk-tmux attempt %d/%d failed for %s/%s: %s",
+                attempt, max_retries, role, epic_folder, result.result[:100],
+            )
+
+        # Update session state with final result
+        session_data["status"] = result.status
+        session_data["ended_at"] = datetime.now().isoformat()
+        session_data["cost_usd"] = result.cost_usd
+        session_data["duration_ms"] = result.duration_ms
+        session_data["sdk_session_id"] = result.session_id
+        _session_store.save(session_data)
+
+        logger.info(
+            "%s agent for %s finished via sdk-tmux: status=%s, cost=$%.4f, duration=%dms",
+            role, epic_folder, result.status, result.cost_usd, result.duration_ms,
+        )
+        return result
+
     def _run_via_subprocess(
         self, session_id: str, role: str, epic_folder: str,
     ) -> SessionResult:
@@ -421,13 +601,11 @@ class PlannerLoopWorkflow:
         Returns:
             SessionResult synthesized from subprocess outcome.
         """
-        cmd = [
-            "agentic", "-j", "session", "spawn",
-            "--role", role,
-            "--plan", epic_folder,
-            "-b",
-            "--dangerously-skip-permissions",
-        ]
+        cmd = build_spawn_command(
+            role=role,
+            epic_folder=epic_folder,
+            skip_permissions=True,
+        )
 
         spawn_result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=60,
@@ -511,6 +689,21 @@ class PlannerLoopWorkflow:
         """
         return self._run_role_agent("planner-reviewer", epic_folder)
 
+    def spawn_orchestration_agent(self, epic_folder: str) -> SessionResult:
+        """Run planner-orchestration agent to create TinyDB phase records.
+
+        This step is critical: it creates phase records with agent routing
+        in TinyDB. Without it, discover_plans_needing_orchestration() will
+        keep finding the epic as needing work (no phases with agent field).
+
+        Args:
+            epic_folder: Epic folder name.
+
+        Returns:
+            SessionResult with completion status.
+        """
+        return self._run_role_agent("planner-orchestration", epic_folder)
+
     def discover_stories(self, epic_folder: str, project: Optional[str] = None) -> list[dict]:
         """Run story discovery for an epic.
 
@@ -543,13 +736,17 @@ class PlannerLoopWorkflow:
             return []
 
     def wait_for_session(self, session_id: str, timeout: int = 600, poll_interval: int = 10) -> Optional[str]:
-        """Wait for a subprocess session to complete.
+        """Wait for a subprocess or tmux session to complete.
 
         Polls the session state store directly (no CLI call required).
         Short-circuits on consecutive read failures to avoid wasting the
         full timeout when the session process dies before writing state.
 
-        Note: This method is only used in the subprocess fallback path.
+        For tmux-spawned sessions, also checks tmux session existence as a
+        supplemental liveness probe. The PID check remains primary; tmux
+        existence is used to catch edge cases (PID reuse, orphaned state).
+
+        Note: This method is only used in the subprocess/tmux fallback path.
         SDK sessions complete synchronously and don't need polling.
 
         Args:
@@ -560,7 +757,9 @@ class PlannerLoopWorkflow:
         Returns:
             Final status string, or None on timeout.
         """
-        deadline = time.time() + timeout
+        QUICK_EXIT_THRESHOLD = 30  # seconds — agent sessions shorter than this are suspicious
+        start_time = time.time()
+        deadline = start_time + timeout
         consecutive_failures = 0
         while time.time() < deadline:
             status = self._get_session_status(session_id)
@@ -576,7 +775,17 @@ class PlannerLoopWorkflow:
             else:
                 consecutive_failures = 0
                 if status in ("completed", "failed", "stopped"):
-                    logger.info("Session %s finished with status: %s", session_id[:8], status)
+                    elapsed = time.time() - start_time
+                    if elapsed < QUICK_EXIT_THRESHOLD:
+                        logger.warning(
+                            "⚠ Session %s exited in %.1fs (status=%s) — "
+                            "this is suspiciously fast and may indicate the agent "
+                            "did not run properly (env isolation issue, missing "
+                            "--max-turns, or prompt error)",
+                            session_id[:8], elapsed, status,
+                        )
+                    else:
+                        logger.info("Session %s finished with status: %s (%.1fs)", session_id[:8], status, elapsed)
                     return status
                 # If still running, check if PID is actually alive to detect
                 # sessions that died without updating their state file.
@@ -584,22 +793,86 @@ class PlannerLoopWorkflow:
                     data = _session_store.load(session_id)
                     if data:
                         pid = data.get("pid")
-                        if pid and not is_process_running(pid):
-                            exit_code = data.get("exit_code")
-                            if exit_code is not None and exit_code != 0:
-                                final_status = "failed"
+                        pid_alive = pid and is_process_running(pid)
+
+                        # Supplemental tmux liveness check (if tmux-spawned)
+                        tmux_session_name = data.get("tmux_session")
+                        tmux_alive = False
+                        if tmux_session_name:
+                            try:
+                                from agenticcli.utils.tmux import session_exists as _tmux_session_exists
+                                tmux_alive = _tmux_session_exists(tmux_session_name)
+                            except Exception:
+                                # tmux check failed (binary gone, etc.) — skip it,
+                                # fall back to PID-only detection
+                                tmux_alive = True  # assume alive on error to avoid false positives
+
+                        # Resolve as dead only when BOTH indicators agree
+                        # - PID dead AND tmux session gone -> definitely dead
+                        # - PID dead AND no tmux field -> use PID-only (existing behavior)
+                        if not pid_alive:
+                            if tmux_session_name and tmux_alive:
+                                # PID dead but tmux session still exists — continue polling
+                                # (tmux may still be running a different process)
+                                logger.debug(
+                                    "Session %s PID %s dead but tmux session %s still alive, continuing poll",
+                                    session_id[:8], pid, tmux_session_name,
+                                )
                             else:
-                                final_status = "completed"
-                            logger.info(
-                                "Session %s PID %d dead, status='running' -> resolving as '%s' (exit_code=%s)",
-                                session_id[:8], pid, final_status, exit_code,
-                            )
-                            data["status"] = final_status
-                            data["ended_at"] = datetime.now().isoformat()
-                            _session_store.save(data)
-                            return final_status
+                                # Both dead (or no tmux) -> resolve
+                                exit_code = data.get("exit_code")
+                                if exit_code is not None and exit_code != 0:
+                                    final_status = "failed"
+                                else:
+                                    final_status = "completed"
+                                elapsed = time.time() - start_time
+                                if elapsed < QUICK_EXIT_THRESHOLD:
+                                    logger.warning(
+                                        "⚠ Session %s PID %s died after %.1fs (< %ds) "
+                                        "— agent may not have run properly",
+                                        session_id[:8], pid, elapsed, QUICK_EXIT_THRESHOLD,
+                                    )
+                                logger.info(
+                                    "Session %s PID %s dead%s, status='running' -> resolving as '%s' (exit_code=%s)",
+                                    session_id[:8], pid,
+                                    f" + tmux session {tmux_session_name} gone" if tmux_session_name else "",
+                                    final_status, exit_code,
+                                )
+                                data["status"] = final_status
+                                data["ended_at"] = datetime.now().isoformat()
+                                # Add structured failure info for dead-PID resolution (P6_001/P6_003)
+                                if final_status == "failed" and "failure_reason" not in data:
+                                    data["error_code"] = "pid_died"
+                                    data["failure_reason"] = {
+                                        "error_code": "pid_died",
+                                        "error_type": "unknown",
+                                        "suggested_action": "escalate",
+                                        "detail": f"PID {pid} died with exit_code={exit_code} after {elapsed:.1f}s",
+                                        "retryable": elapsed < QUICK_EXIT_THRESHOLD,
+                                        "matched_pattern": "",
+                                    }
+                                _session_store.save(data)
+                                return final_status
             time.sleep(poll_interval)
 
+        # Persist timeout failure into session state (P6_001/P6_003)
+        try:
+            data = _session_store.load(session_id)
+            if data and "failure_reason" not in data:
+                data["error_code"] = "timeout"
+                data["failure_reason"] = {
+                    "error_code": "timeout",
+                    "error_type": "unknown",
+                    "suggested_action": "escalate",
+                    "detail": f"Session timed out after {timeout}s",
+                    "retryable": False,
+                    "matched_pattern": "",
+                }
+                data["status"] = "failed"
+                data["ended_at"] = datetime.now().isoformat()
+                _session_store.save(data)
+        except Exception:
+            pass  # Best-effort; don't mask the timeout
         logger.warning("Session %s timed out after %ds", session_id[:8], timeout)
         return None
 
@@ -651,72 +924,6 @@ class PlannerLoopWorkflow:
 
         logger.warning("Max review iterations reached for %s", epic_folder)
         return False, max_reviews, "Max review iterations reached"
-
-    def generate_mmd(self, epic_folder: str) -> bool:
-        """Generate orchestration MMD for an epic.
-
-        Tries CLI first, falls back to planner-orchestration agent.
-
-        Args:
-            epic_folder: Epic folder name.
-
-        Returns:
-            True if generation succeeded.
-        """
-        # Check if MMD already exists (planner may have generated it)
-        epic_dir = self.epics_dir / epic_folder
-        existing_mmds = list(epic_dir.glob("orchestration_*.mmd")) if epic_dir.exists() else []
-        if existing_mmds:
-            logger.info("MMD already exists for %s, skipping generation", epic_folder)
-            return True
-
-        # Try CLI generation first
-        cmd = [
-            "agentic", "agent", "plan", "orchestration", "generate",
-            "--plan", epic_folder,
-        ]
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=120,
-            cwd=self.working_dir,
-        )
-        if result.returncode == 0:
-            logger.info("Generated MMD for %s via CLI", epic_folder)
-            return True
-
-        # Fall back to planner-orchestration agent
-        logger.warning("CLI MMD generation failed for %s, trying planner-orchestration", epic_folder)
-        agent_result = self._run_role_agent("planner-orchestration", epic_folder)
-        return agent_result.status == "completed"
-
-    def validate_mmd(self, epic_folder: str, max_retries: int = 3) -> bool:
-        """Validate orchestration MMD with retries.
-
-        Args:
-            epic_folder: Epic folder name.
-            max_retries: Maximum validation attempts.
-
-        Returns:
-            True if validation passed.
-        """
-        cmd = [
-            "agentic", "agent", "plan", "orchestration", "validate",
-            "--plan", epic_folder,
-        ]
-
-        for attempt in range(1, max_retries + 1):
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=60,
-                cwd=self.working_dir,
-            )
-            if result.returncode == 0:
-                logger.info("MMD validation passed for %s (attempt %d)", epic_folder, attempt)
-                return True
-            logger.warning("MMD validation failed for %s (attempt %d/%d): %s",
-                           epic_folder, attempt, max_retries, result.stderr)
-            if attempt < max_retries:
-                time.sleep(2)
-
-        return False
 
     def update_task_status(self, task_id: str, action: str, epic_folder: str) -> bool:
         """Update task status via CLI.
@@ -800,36 +1007,27 @@ class PlannerLoopWorkflow:
         return epic_status
 
     def archive_plan(self, epic_folder: str) -> bool:
-        """Archive a completed epic via API.
+        """Archive a completed epic by setting status=completed in TinyDB.
 
-        Handles the case where a prior archive attempt copied to completed/
-        but failed to remove the live source (interrupted operation).
+        No filesystem operations are performed. The TinyDB status field is
+        the sole source of truth for epic lifecycle state.
 
         Args:
             epic_folder: Epic folder name.
 
         Returns:
-            True if archived successfully.
+            True if the DB status was updated successfully.
         """
         try:
-            import shutil
-            from agenticguidance.services.epic import EpicMovementWorkflow, MoveResult
-            epic_path = self.epics_dir / epic_folder
-            workflow = EpicMovementWorkflow(epic_path)
-            result = workflow.archive_plan_folder(force=True)
-            if result.result == MoveResult.SUCCESS:
-                logger.info("Archived epic %s", epic_folder)
-                return True
-            elif result.result == MoveResult.SKIPPED and "already exists" in result.message:
-                # Prior archive copied to completed/ but didn't delete live source
-                if epic_path.exists():
-                    shutil.rmtree(epic_path)
-                    logger.info("Cleaned up stale live folder for already-archived epic %s", epic_folder)
-                    return True
-                return True
-            else:
-                logger.error("Failed to archive epic %s: %s", epic_folder, result.message)
+            if self._repository is None:
+                logger.error("TinyDB repository not available; cannot archive epic %s", epic_folder)
                 return False
+            result = self._repository.archive_epic(epic_folder)
+            if result.success:
+                logger.info("Archived epic %s (TinyDB status=completed)", epic_folder)
+                return True
+            logger.error("Failed to archive epic %s: %s", epic_folder, result.message)
+            return False
         except Exception as e:
             logger.error("Exception archiving epic %s: %s", epic_folder, e)
             return False
@@ -891,7 +1089,7 @@ class PlannerLoopWorkflow:
 class PlannerLoopRunner:
     """Orchestrates the full planning loop.
 
-    Discovers plans, spawns planners, runs reviews, generates MMDs,
+    Discovers epics without TinyDB phases, spawns planners, runs reviews,
     and tracks state throughout execution.
     """
 
@@ -939,33 +1137,50 @@ class PlannerLoopRunner:
         # Bootstrap context for overall session
         self.workflow.compile_bootstrap_context()
 
+        # Track epics that failed/skipped within this run to avoid
+        # rediscovering and retrying them every iteration.
+        failed_this_run: set[str] = set()
+
         for iteration in range(1, max_iterations + 1):
             self.state["iteration"] = iteration
             logger.info("=== Planner loop iteration %d/%d ===", iteration, max_iterations)
 
             # Archive completed epics so they aren't left pending
             if not self.epic_folder:
-                for epic_dir in sorted(self.workflow.epics_dir.iterdir()):
-                    if epic_dir.is_dir() and self.workflow.get_plan_status(epic_dir.name) == "completed":
-                        logger.info("Archiving completed epic: %s", epic_dir.name)
-                        self.workflow.archive_plan(epic_dir.name)
-            elif self.workflow.get_plan_status(self.epic_folder) == "completed":
-                logger.info("Archiving single completed epic: %s", self.epic_folder)
-                self.workflow.archive_plan(self.epic_folder)
+                if self.workflow._repository:
+                    for epic in self.workflow._repository.list_epics(status="live"):
+                        if self.workflow.get_plan_status(epic.epic_folder_name) == "completed":
+                            logger.info("Archiving completed epic: %s", epic.epic_folder_name)
+                            self.workflow.archive_plan(epic.epic_folder_name)
+            else:
+                status = self.workflow.get_plan_status(self.epic_folder)
+                if status == "completed":
+                    logger.info("Epic %s is already completed/archived — nothing to plan. "
+                                "Use 'agentic epic unarchive' to reopen it.", self.epic_folder)
+                    return True
 
             if self.epic_folder:
-                # Single-epic mode: check if epic already has MMD
-                epic_dir = self.workflow.epics_dir / self.epic_folder
-                existing_mmds = list(epic_dir.glob("orchestration_*.mmd")) if epic_dir.exists() else []
-                if existing_mmds:
-                    logger.info("Epic %s already has MMD. %s", self.epic_folder, promise)
-                    print(promise)
-                    return True
+                # Single-epic mode: check if epic already has fully-routed phases in TinyDB
+                if self.workflow._repository:
+                    phases = self.workflow._repository.list_phases(self.epic_folder)
+                    if phases and all(p.agent for p in phases):
+                        logger.info("Epic %s already has routed phases in TinyDB. %s", self.epic_folder, promise)
+                        print(promise)
+                        return True
                 plans = [self.epic_folder]
             else:
                 plans = self.workflow.discover_plans_needing_orchestration()
+                # Exclude epics that already failed in this run
+                if failed_this_run:
+                    before = len(plans)
+                    plans = [p for p in plans if p not in failed_this_run]
+                    if before != len(plans):
+                        logger.info(
+                            "Excluded %d previously-failed epic(s) from rediscovery: %s",
+                            before - len(plans), failed_this_run,
+                        )
             if not plans:
-                logger.info("All epics have orchestration MMDs. %s", promise)
+                logger.info("All epics have phases in TinyDB. %s", promise)
                 print(promise)
                 return True
 
@@ -976,12 +1191,21 @@ class PlannerLoopRunner:
                     self.state["plans_processed"].append(epic_folder)
                 else:
                     self.state["plans_skipped"].append(epic_folder)
+                    failed_this_run.add(epic_folder)
 
             self.state["current_plan"] = None
             logger.info("Iteration %d complete: processed=%d, skipped=%d",
                          iteration,
                          len(self.state["plans_processed"]),
                          len(self.state["plans_skipped"]))
+
+            # If every discovered plan failed, stop early — retrying won't help
+            if failed_this_run and not self.state["plans_processed"]:
+                logger.error(
+                    "All discovered epics failed planning — stopping early. "
+                    "Failed: %s", list(failed_this_run),
+                )
+                return False
 
         logger.warning("Max iterations (%d) reached without completion", max_iterations)
         return False
@@ -999,6 +1223,28 @@ class PlannerLoopRunner:
             True if epic was processed successfully.
         """
         logger.info("Processing epic: %s", epic_folder)
+
+        # Guard: detect already-completed or archived epics via TinyDB status
+        status = self.workflow.get_plan_status(epic_folder)
+        if status == "completed":
+            logger.info(
+                "Epic %s is already completed/archived — skipping. "
+                "Use 'agentic epic unarchive' to reopen it for re-planning.",
+                epic_folder,
+            )
+            return True  # Not an error — just nothing to do
+        if status is None:
+            logger.error(
+                "Epic %s not found in TinyDB — cannot plan. "
+                "Create it first with 'agentic epic create'.",
+                epic_folder,
+            )
+            self.state["errors"].append({
+                "plan": epic_folder,
+                "error": "Epic not found in TinyDB",
+                "phase": "pre_check",
+            })
+            return False
 
         # 1. Explore: run explore agent to analyze codebase
         explore_result = self.workflow.spawn_explore_agent(epic_folder)
@@ -1025,10 +1271,10 @@ class PlannerLoopRunner:
         # 3. Determine plan type
         plan_type = self.workflow.determine_plan_type(epic_folder)
         if not plan_type:
-            logger.warning("No plan YAML found for %s, skipping", epic_folder)
+            logger.warning("Could not determine plan type for %s, skipping", epic_folder)
             self.state["errors"].append({
                 "plan": epic_folder,
-                "error": "No plan YAML found",
+                "error": "Could not determine plan type (no tickets in TinyDB)",
                 "phase": "determine_type",
             })
             return False
@@ -1056,23 +1302,18 @@ class PlannerLoopRunner:
             })
             return False
 
-        # 6. Generate MMD
-        if not self.workflow.generate_mmd(epic_folder):
+        # 6. Orchestration: create TinyDB phase records with agent routing
+        #    Without this step, discover_plans_needing_orchestration() will
+        #    keep finding this epic (no phases with agent field) → infinite loop.
+        orch_result = self.workflow.spawn_orchestration_agent(epic_folder)
+        self.workflow._validate_result(orch_result, "planner-orchestration")
+        if orch_result.status != "completed":
             self.state["errors"].append({
                 "plan": epic_folder,
-                "error": "MMD generation failed",
-                "phase": "generate_mmd",
+                "error": f"Orchestration agent failed: {orch_result.result[:200]}",
+                "phase": "orchestration",
             })
             return False
 
-        # 7. Validate MMD
-        if not self.workflow.validate_mmd(epic_folder):
-            self.state["errors"].append({
-                "plan": epic_folder,
-                "error": "MMD validation failed after retries",
-                "phase": "validate_mmd",
-            })
-            return False
-
-        logger.info("Epic %s processed successfully", epic_folder)
+        logger.info("Epic %s processed successfully (with orchestration phases)", epic_folder)
         return True

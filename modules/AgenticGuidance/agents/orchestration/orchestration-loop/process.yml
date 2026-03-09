@@ -1,8 +1,8 @@
 process:
   goal: |
     Run the full orchestration lifecycle: discover all live epics, plan those
-    missing MMDs, execute those with MMDs, archive completed epics, and loop
-    until all epics are done or blocked.
+    missing TinyDB phases, execute those with phases, archive completed epics,
+    and loop until all epics are done or blocked.
 
   profile: "orchestrator"
 
@@ -39,14 +39,16 @@ process:
         For each live epic, classify its state:
 
         1. Run: `agentic --json epic list`
-        2. For each epic folder, check:
-           - `ls docs/epics/live/<folder>/orchestration_*.mmd`
+        2. For each epic, check TinyDB phase records:
            - `agentic --json epic status <folder>`
+           - If status shows 100% complete -> ARCHIVE
+           - If epic has phases with agent routing -> EXECUTE
+           - If epic has no phases or phases lack routing -> PLAN
 
         Classify each epic:
         - 100% complete -> ARCHIVE (run: `agentic agent epic move folder --epic <folder> --force`)
-        - Has orchestration MMD -> EXECUTE
-        - No orchestration MMD -> PLAN
+        - Has TinyDB phases with agent routing -> EXECUTE
+        - No TinyDB phases or routing missing -> PLAN
 
         QUESTION GATE (MANDATORY): Before processing any epic:
         `agentic agent question list --epic <folder>`
@@ -58,7 +60,7 @@ process:
     - id: "planning_pass"
       name: "Plan All Unplanned"
       description: |
-        For each epic classified as PLAN (no orchestration MMD):
+        For each epic classified as PLAN (no TinyDB phases with agent routing):
 
         Launch orchestration-planning via CLI:
         ```bash
@@ -70,7 +72,7 @@ process:
         agentic session spawn --role orchestration-planning --epic <folder> -b --dangerously-skip-permissions
         ```
 
-        After planning completes, re-classify the epic (it should now have an MMD).
+        After planning completes, re-classify the epic (it should now have TinyDB phases with agent routing).
 
     # =========================================================================
     # EXECUTION PASS
@@ -78,7 +80,7 @@ process:
     - id: "execution_pass"
       name: "Execute All Planned"
       description: |
-        For each epic classified as EXECUTE (has orchestration MMD):
+        For each epic classified as EXECUTE (has TinyDB phases with agent routing):
 
         Launch orchestration-executor via CLI:
         ```bash

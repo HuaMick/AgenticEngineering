@@ -8,11 +8,11 @@ import json as json_mod
 import os
 import subprocess
 import sys
-import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from agenticcli.utils.session_id import generate_loop_id
 from agenticcli.utils.state_store import StateStore
 
 
@@ -52,10 +52,11 @@ def _run_planning_loop(args, ctx=None):
     project = getattr(args, "project", None)
     plan_folder = getattr(args, "plan", None)
     working_dir = getattr(args, "directory", None) or os.getcwd()
+    prompt = getattr(args, "prompt", None)
 
     loop_id = os.environ.get("AGENTIC_ORCH_LOOP_ID")
     if not loop_id:
-        loop_id = f"orch-{uuid.uuid4().hex[:12]}"
+        loop_id = generate_loop_id("orch")
 
     state = {
         "session_id": loop_id,
@@ -88,6 +89,8 @@ def _run_planning_loop(args, ctx=None):
             cmd.extend(["--project", project])
         if plan_folder:
             cmd.extend(["--plan", plan_folder])
+        if prompt:
+            cmd.extend(["--prompt", prompt])
         if getattr(args, "dangerously_skip_permissions", False):
             cmd.append("--dangerously-skip-permissions")
         cmd.extend(["--directory", working_dir])
@@ -104,7 +107,8 @@ def _run_planning_loop(args, ctx=None):
 
         # Record SDK transport metadata so consumers know agent calls use the SDK
         from agenticcli.utils.sdk_runner import SDK_AVAILABLE as _ORCH_SDK_AVAILABLE
-        state["transport"] = "sdk" if _ORCH_SDK_AVAILABLE else "subprocess"
+        from agenticcli.utils.transport import determine_transport
+        state["transport"] = determine_transport(sdk_available=_ORCH_SDK_AVAILABLE)
 
         try:
             process = subprocess.Popen(
@@ -137,7 +141,7 @@ def _run_planning_loop(args, ctx=None):
         else:
             print_success(f"Orchestration loop {loop_id} started in background (PID: {process.pid})")
             console.print(f"[dim]Max iterations: {max_iterations}[/dim]")
-            if state["transport"] == "sdk":
+            if state["transport"] in ("sdk", "sdk-tmux"):
                 console.print("[dim]Agent invocations use Claude Agent SDK[/dim]")
         return
 
@@ -150,7 +154,7 @@ def _run_planning_loop(args, ctx=None):
     from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
     epics_dir = Path(working_dir) / "docs" / "epics" / "live"
-    workflow = PlannerLoopWorkflow(epics_dir=epics_dir, working_dir=working_dir)
+    workflow = PlannerLoopWorkflow(epics_dir=epics_dir, working_dir=working_dir, prompt=prompt)
     runner = PlanningRunner(
         workflow=workflow, project=project, plan_folder=plan_folder
     )
@@ -282,7 +286,7 @@ def _run_executing_loop(args, ctx=None):
 
     loop_id = os.environ.get("AGENTIC_EXEC_LOOP_ID")
     if not loop_id:
-        loop_id = f"exec-{uuid.uuid4().hex[:12]}"
+        loop_id = generate_loop_id("exec")
 
     state = {
         "session_id": loop_id,
@@ -332,7 +336,8 @@ def _run_executing_loop(args, ctx=None):
 
         # Record SDK transport metadata so consumers know agent calls use the SDK
         from agenticcli.utils.sdk_runner import SDK_AVAILABLE as _EXEC_SDK_AVAILABLE
-        state["transport"] = "sdk" if _EXEC_SDK_AVAILABLE else "subprocess"
+        from agenticcli.utils.transport import determine_transport
+        state["transport"] = determine_transport(sdk_available=_EXEC_SDK_AVAILABLE)
 
         try:
             process = subprocess.Popen(
@@ -365,7 +370,7 @@ def _run_executing_loop(args, ctx=None):
         else:
             print_success(f"Execution loop {loop_id} started in background (PID: {process.pid})")
             console.print(f"[dim]Max iterations: {max_iterations}[/dim]")
-            if state["transport"] == "sdk":
+            if state["transport"] in ("sdk", "sdk-tmux"):
                 console.print("[dim]Agent invocations use Claude Agent SDK[/dim]")
         return
 

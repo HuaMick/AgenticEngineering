@@ -15,13 +15,11 @@ process:
 
   outputs:
     # FENCE: Output must match declared schema before marking complete
-    - name: "ticket_test.yml"
-      path_template: "docs/epics/live/{planning_folder}/ticket_test.yml"
-      description: "Test phases ticket file with test-fix-loop and audit-test-fix-loop patterns"
-      required_fields:
-        - "name"
-        - "status"
-        - "phases"         # Test phases with test-fix-loop patterns
+    - name: "TinyDB test tickets"
+      description: "Test phases stored in TinyDB with test-fix-loop and audit-test-fix-loop patterns"
+      creation_method: |
+        Use CLI: agentic epic phase add / agentic epic ticket add
+        Do NOT create TinyDB files on disk.
       schema_reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/ticket_example.yml"
       note: "planning_folder is absolute path provided by orchestration (used in path_template)"
 
@@ -119,9 +117,10 @@ process:
     - |
       EPIC FOLDER STRUCTURE:
       See modules/AgenticGuidance/assets/definitions/epics.yml for folder structure and lifecycle.
-      - Read all phase .yml files in epic folder root to understand what was built (your test targets)
-      - Create/update `ticket_test.yml` with your test phases
-      - Output ONLY to `ticket_test.yml` (do not modify other phase tickets)
+      - Load all tickets from TinyDB to understand what was built (your test targets):
+        `agentic -j epic ticket list --epic {epic_folder_name}`
+      - Create your test phases in TinyDB via CLI: `agentic epic phase add` and `agentic epic ticket add`
+      - Output ONLY to TinyDB (do not modify other phase tickets, do not create ticket_*.yml on disk)
     - |
       Create test plan phases following the patterns defined in inputs.yml.
       Reference user story integration guidelines from inputs.yml for:
@@ -142,12 +141,14 @@ process:
       - Component testing and user flow testing integration
 
       INPUT SOURCE (what you're testing):
-      - Read all phase .yml files in the planning folder root to understand what components were built
+      - Load build tickets from TinyDB: `agentic -j epic ticket list --epic {epic_folder_name}`
+      - Review phase descriptions and ticket target_files to understand what components were built
       - Use this to determine what needs to be tested and which files to include in test inputs
 
       OUTPUT TARGET (where you write):
-      - Write your test phases to `ticket_test.yml` in the same planning folder
-      - This file contains ONLY test phases, not build or cleanup phases
+      - Create test phases in TinyDB: `agentic epic phase add` and `agentic epic ticket add`
+      - Do NOT create ticket_test.yml or plan_test.yml files on disk
+      - Test phases belong in TinyDB alongside build phases, not in separate files
 
       DUMPING GROUND: Use additional subfolders (e.g., `analysis/`, `test-results/`) to store agent artifacts
       like test logs, coverage reports, or analysis files to avoid polluting shared spaces.

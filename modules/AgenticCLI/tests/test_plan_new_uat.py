@@ -35,38 +35,57 @@ def create_worktree_for_test(temp_repo: Path, branch: str, base: str = "main") -
     return worktree_path
 
 
+def _populate_tinydb_for_mock(plan_folder_path: Path, db_path: Path) -> None:
+    """Populate TinyDB with mock planner tickets for plan_folder_path.
+
+    Called by mock planner functions to simulate what a real planner agent
+    would write to TinyDB after processing the planning objective.
+    """
+    from agenticguidance.services.epic_repository import EpicRepository
+
+    epic_folder_name = plan_folder_path.name
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+
+    # Ensure the epic record exists (cmd_init already created it, so upsert safely)
+    existing = repo.get_epic(epic_folder_name)
+    if not existing:
+        repo.create_epic({
+            "epic_folder_name": epic_folder_name,
+            "epic_folder": str(plan_folder_path),
+            "name": "Mock Plan",
+            "status": "active",
+        })
+
+    # Add mock phase + ticket so planner_created_tickets check passes
+    repo.add_phase(epic_folder_name, {"name": "Build"})
+    repo.add_ticket(epic_folder_name, "Build", {
+        "id": "MOCK_001",
+        "task_id": "MOCK_001",
+        "name": "Mock task",
+        "status": "pending",
+        "agent": "build-python",
+    })
+    repo.close()
+
+
 @pytest.fixture(autouse=True)
-def mock_claude_subprocess():
+def mock_claude_subprocess(_isolate_tinydb):
     """Mock subprocess.run and SDK path in plan.py so claude calls don't hang.
 
     Git calls pass through to the real subprocess.run.
-    Claude subprocess calls and SDK calls return mock results and create plan_build.yml.
+    Claude subprocess calls and SDK calls return mock results, create plan_build.yml,
+    and populate TinyDB with mock tickets so the post-planner TinyDB validation passes.
     """
     real_subprocess_run = subprocess.run
-
-    # Track the plan folder so the SDK path can also create plan_build.yml
-    _last_plan_dir = {}
+    db_path = _isolate_tinydb
 
     def patched_run(cmd, *args, **kwargs):
         if isinstance(cmd, list) and cmd and cmd[0] == "claude":
-            # Create plan_build.yml in the cwd if provided
+            # Populate TinyDB so the post-planner validation passes
             cwd = kwargs.get("cwd")
             if cwd:
-                plan_build = Path(cwd) / "plan_build.yml"
-                _last_plan_dir["cwd"] = Path(cwd)
-                plan_build.write_text("""name: Mock Plan
-objective: Mock objective
-affected_stories:
-  - US-ORCH-001
-  - US-ORCH-002
-phases:
-  - name: Build
-    tasks:
-      - id: MOCK_001
-        name: Mock task
-        status: pending
-        agent: build-python
-""")
+                plan_folder = Path(cwd)
+                _populate_tinydb_for_mock(plan_folder, db_path)
             mock_result = Mock()
             mock_result.stdout = "Planner output"
             mock_result.stderr = ""
@@ -75,27 +94,14 @@ phases:
         return real_subprocess_run(cmd, *args, **kwargs)
 
     def mock_sdk_run(prompt, options=None, timeout_seconds=1800):
-        """Mock SDK path - creates plan_build.yml when plan.py calls run_agent_sync."""
+        """Mock SDK path - populates TinyDB so post-planner validation passes."""
         from agenticcli.utils.sdk_runner import SessionResult
         # Extract cwd from options if available
         cwd = getattr(options, "cwd", None)
         if cwd:
-            plan_build = Path(cwd) / "plan_build.yml"
-            # Always write plan_build.yml (overwriting init's placeholder)
-            # so the planner output is simulated correctly
-            plan_build.write_text("""name: Mock Plan
-objective: Mock objective
-affected_stories:
-  - US-ORCH-001
-  - US-ORCH-002
-phases:
-  - name: Build
-    tasks:
-      - id: MOCK_001
-        name: Mock task
-        status: pending
-        agent: build-python
-""")
+            plan_folder = Path(cwd)
+            # Populate TinyDB so the post-planner validation passes
+            _populate_tinydb_for_mock(plan_folder, db_path)
         return SessionResult(status="completed", result="Mock SDK planner output")
 
     with patch("agenticcli.commands.epic.subprocess.run", side_effect=patched_run):
@@ -120,8 +126,8 @@ class TestUSORCH001InitiatePlanning:
     - Required phases are determined based on objective type
     """
 
-    def test_plan_new_creates_folder_with_yymmddxx_naming(self, cli_runner, temp_repo):
-        """Verify plan folder created in docs/epics/live/ with YYMMDDXX naming."""
+    def test_plan_new_creates_folder_with_yymmddxx_naming(self, cli_runner, temp_repo, _isolate_tinydb):
+        """Verify epic record created in TinyDB with YYMMDDXX naming (no disk folder needed)."""
         branch = "test-uat-naming"
         objective = "Test feature implementation"
 
@@ -141,29 +147,27 @@ class TestUSORCH001InitiatePlanning:
 
         assert code == 0, f"Command should succeed. stderr: {stderr}"
 
-        # Verify plan folder exists in main worktree
-        plans_live = temp_repo / "docs" / "epics" / "live"
-        assert plans_live.exists(), "docs/epics/live should exist"
+        # Verify epic was created in TinyDB with correct naming (no disk folder required)
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epics = repo.list_epics()
+        repo.close()
 
-        # Find plan folders matching our description
-        plan_folders = [
-            p for p in plans_live.iterdir()
-            if p.is_dir() and "test_feature_implementation" in p.name
-        ]
-        assert len(plan_folders) >= 1, "Plan folder should be created"
+        matching = [e for e in epics if "test_feature_implementation" in e.epic_folder_name]
+        assert len(matching) >= 1, "Epic should be created in TinyDB"
 
         # Verify naming convention: YYMMDDXX_description
-        plan_folder = plan_folders[0]
-        name_parts = plan_folder.name.split("_", 1)
-        assert len(name_parts) == 2, "Folder should have YYMMDDXX_description format"
+        epic_name = matching[0].epic_folder_name
+        name_parts = epic_name.split("_", 1)
+        assert len(name_parts) == 2, "Epic name should have YYMMDDXX_description format"
 
         date_code = name_parts[0]
         assert len(date_code) == 8, "Date code should be 8 chars (YYMMDDXX)"
         assert date_code[:6].isdigit(), "First 6 chars should be YYMMDD"
         assert date_code[6:].isalpha(), "Last 2 chars should be XX code (uppercase letters)"
 
-    def test_plan_new_spawns_planner_agent(self, cli_runner, temp_repo):
-        """Verify planner agent is spawned with the objective."""
+    def test_plan_new_spawns_planner_agent(self, cli_runner, temp_repo, _isolate_tinydb):
+        """Verify planner agent is spawned with the objective and creates TinyDB records."""
         branch = "test-uat-planner"
         objective = "Build new CLI command"
 
@@ -179,16 +183,20 @@ class TestUSORCH001InitiatePlanning:
         # Verify objective was captured
         assert result["objective"] == objective
 
-        # Verify plan folder was created
+        # Verify plan folder path is in result (folder itself not required on disk)
         plan_folder = Path(result["plan_folder"])
-        assert plan_folder.exists()
+        assert "docs/epics/live" in str(plan_folder), "Plan folder path should be in docs/epics/live"
 
-        # Verify plan_build.yml was created by planner
-        plan_build = plan_folder / "plan_build.yml"
-        assert plan_build.exists(), "Planner should create plan_build.yml"
-        assert plan_build.stat().st_size > 0, "plan_build.yml should not be empty"
+        # Verify planner created tickets in TinyDB (TinyDB is the sole data store)
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epic = repo.get_epic(plan_folder.name)
+        assert epic is not None, "Planner should create an epic record in TinyDB"
+        tickets = repo.get_tickets(plan_folder.name)
+        assert len(tickets) > 0, "Planner should create tickets in TinyDB"
+        repo.close()
 
-    def test_plan_new_captures_planning_objective(self, cli_runner, temp_repo):
+    def test_plan_new_captures_planning_objective(self, cli_runner, temp_repo, _isolate_tinydb):
         """Verify planning objective is captured and validated."""
         branch = "test-uat-objective"
         objective = "Add dark mode support"
@@ -205,18 +213,15 @@ class TestUSORCH001InitiatePlanning:
         assert "objective" in result
         assert result["objective"] == objective
 
-        # Verify objective is in plan metadata
+        # Verify objective is captured in the result (TinyDB is the sole data store)
         plan_folder = Path(result["plan_folder"])
-        plan_build = plan_folder / "plan_build.yml"
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epic = repo.get_epic(plan_folder.name)
+        assert epic is not None, "Epic should exist in TinyDB"
+        repo.close()
 
-        import yaml
-        with plan_build.open() as f:
-            plan_data = yaml.safe_load(f)
-
-        assert "objective" in plan_data
-        assert plan_data["objective"] is not None
-
-    def test_plan_new_determines_required_phases(self, cli_runner, temp_repo):
+    def test_plan_new_determines_required_phases(self, cli_runner, temp_repo, _isolate_tinydb):
         """Verify required phases are determined based on objective type."""
         branch = "test-uat-phases"
         objective = "Implement user authentication"
@@ -230,17 +235,13 @@ class TestUSORCH001InitiatePlanning:
         assert code == 0
         result = json.loads(stdout)
 
+        # Verify phases created in TinyDB (TinyDB is the sole data store)
         plan_folder = Path(result["plan_folder"])
-        plan_build = plan_folder / "plan_build.yml"
-
-        import yaml
-        with plan_build.open() as f:
-            plan_data = yaml.safe_load(f)
-
-        # Verify phases exist
-        assert "phases" in plan_data
-        assert isinstance(plan_data["phases"], list)
-        assert len(plan_data["phases"]) >= 1, "At least one phase should be created"
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        phases = repo.list_phases(plan_folder.name)
+        assert len(phases) >= 1, "At least one phase should be created in TinyDB"
+        repo.close()
 
 
 # ---------------------------------------------------------------------------
@@ -282,19 +283,20 @@ class TestUSORCH002PlanCreation:
 
 
 class TestUSORCH005OrchestrationMMD:
-    """UAT for US-ORCH-005: Generate Orchestration MMD from Plan.
+    """UAT for US-ORCH-005: Orchestration phase tracking via TinyDB.
 
-    Acceptance criteria:
-    - planner-orchestration agent generates orchestration_*.mmd files
-    - MMD includes phase nodes with AGENT_ROUTING metadata
-    - MMD defines transitions between phases (success/failure paths)
-    - Test phases include test-fix loop structures
-    - Feedback triggers are defined for failure handling
-    - MMD is validated via agentic plan orchestration validate
+    After the folder-creation removal (260308MA), orchestration data is stored
+    in TinyDB rather than MMD files. MMD generation is best-effort and requires
+    the folder to exist on disk, which is no longer guaranteed.
+
+    These tests verify that:
+    - plan new completes successfully
+    - Phases/tickets are tracked in TinyDB
+    - The result JSON includes the plan folder path
     """
 
-    def test_orchestration_mmd_generated(self, cli_runner, temp_repo):
-        """Verify orchestration_*.mmd file is created after planner."""
+    def test_orchestration_mmd_generated(self, cli_runner, temp_repo, _isolate_tinydb):
+        """Verify plan new completes and TinyDB has phase/ticket records (MMD is best-effort)."""
         branch = "test-orch-mmd"
 
         create_worktree_for_test(temp_repo, branch)
@@ -306,14 +308,16 @@ class TestUSORCH005OrchestrationMMD:
         assert code == 0
         result = json.loads(stdout)
 
+        # TinyDB is the canonical data store; verify epic exists
         plan_folder = Path(result["plan_folder"])
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epic = repo.get_epic(plan_folder.name)
+        repo.close()
+        assert epic is not None, "Epic should be in TinyDB after plan new"
 
-        # Verify orchestration MMD was generated
-        mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
-        assert len(mmd_files) >= 1, "At least one orchestration MMD should exist"
-
-    def test_mmd_contains_phase_nodes(self, cli_runner, temp_repo):
-        """Verify MMD contains phase nodes."""
+    def test_mmd_contains_phase_nodes(self, cli_runner, temp_repo, _isolate_tinydb):
+        """Verify TinyDB has phase records after plan new (replaces MMD phase node check)."""
         branch = "test-mmd-phases"
 
         create_worktree_for_test(temp_repo, branch)
@@ -326,35 +330,27 @@ class TestUSORCH005OrchestrationMMD:
         result = json.loads(stdout)
 
         plan_folder = Path(result["plan_folder"])
-        mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
-
-        assert len(mmd_files) >= 1
-        mmd_content = mmd_files[0].read_text()
-
-        # MMD should be valid Mermaid flowchart
-        assert "flowchart" in mmd_content or "graph" in mmd_content, \
-            "MMD should contain flowchart definition"
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        phases = repo.list_phases(plan_folder.name)
+        repo.close()
+        assert len(phases) >= 1, "TinyDB should have at least one phase record"
 
     def test_mmd_validated_after_generation(self, cli_runner, temp_repo):
-        """Verify MMD is validated after generation."""
+        """Verify plan new completes successfully (orchestration validation is best-effort)."""
         branch = "test-mmd-validate"
 
         create_worktree_for_test(temp_repo, branch)
 
-        # Run plan new (which should auto-validate)
+        # Run plan new
         stdout, stderr, code = cli_runner(
             ["agent", "epic", "new", "Validation test", "--branch", branch]
         )
 
         assert code == 0
 
-        # Verify no validation errors in output
-        combined = stdout + stderr
-        # Should show validation passed or at least attempted
-        assert "validation" in combined.lower() or "generated" in combined.lower()
-
-    def test_orchestration_generation_in_json_output(self, cli_runner, temp_repo):
-        """Verify orchestration MMD is generated (validated via file existence)."""
+    def test_orchestration_generation_in_json_output(self, cli_runner, temp_repo, _isolate_tinydb):
+        """Verify plan new returns valid JSON with plan folder and epic in TinyDB."""
         branch = "test-orch-json"
 
         create_worktree_for_test(temp_repo, branch)
@@ -366,12 +362,16 @@ class TestUSORCH005OrchestrationMMD:
         assert code == 0
         result = json.loads(stdout)
 
-        # Verify orchestration file exists in plan folder
+        # Verify plan folder path is in result
         plan_folder = Path(result["plan_folder"])
-        mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
+        assert "docs/epics/live" in str(plan_folder), "Plan folder should be in docs/epics/live"
 
-        # Orchestration should be generated as part of plan new
-        assert len(mmd_files) >= 1, "Orchestration MMD should be generated"
+        # Verify epic is in TinyDB
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epic = repo.get_epic(plan_folder.name)
+        repo.close()
+        assert epic is not None, "Epic should be in TinyDB"
 
 
 # ---------------------------------------------------------------------------
@@ -382,8 +382,8 @@ class TestUSORCH005OrchestrationMMD:
 class TestFullWorkflowIntegration:
     """Integration tests validating complete user journey."""
 
-    def test_complete_planning_workflow(self, cli_runner, temp_repo):
-        """Validate complete workflow from objective to ready plan."""
+    def test_complete_planning_workflow(self, cli_runner, temp_repo, _isolate_tinydb):
+        """Validate complete workflow from objective to ready plan (TinyDB-only)."""
         objective = "Build REST API endpoint"
         branch = "api-endpoint"
 
@@ -394,24 +394,24 @@ class TestFullWorkflowIntegration:
         assert code == 0, "Plan creation should succeed"
         result = json.loads(stdout)
 
-        # Verify all artifacts exist
+        # Verify all artifacts
         plan_folder = Path(result["plan_folder"])
 
-        # 1. Plan folder exists in repo
-        assert plan_folder.exists()
+        # 1. Plan folder path is in docs/epics/live (folder itself is not on disk)
         assert temp_repo in plan_folder.parents
+        assert "docs/epics/live" in str(plan_folder)
 
-        # 2. plan_build.yml created by planner
-        assert (plan_folder / "plan_build.yml").exists()
+        # 2. Planner created tickets in TinyDB (TinyDB is the sole data store)
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        tickets = repo.get_tickets(plan_folder.name)
+        assert len(tickets) > 0, "Planner should create tickets in TinyDB"
+        repo.close()
 
-        # 3. Orchestration MMD generated
-        mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
-        assert len(mmd_files) >= 1
-
-        # 4. Objective captured
+        # 3. Objective captured
         assert result["objective"] == objective
 
-        # 5. Branch captured
+        # 4. Branch captured
         assert result["branch"] == branch
 
     def test_error_recovery_missing_objective(self, cli_runner, temp_repo):
@@ -425,7 +425,7 @@ class TestFullWorkflowIntegration:
         assert "objective" in combined.lower() or "required" in combined.lower()
 
     def test_duplicate_plan_prevention(self, cli_runner, temp_repo):
-        """Verify duplicate plan folders are prevented."""
+        """Verify duplicate epic creation is prevented via TinyDB duplicate detection."""
         branch = "duplicate-test"
         objective = "Duplicate test"
 
@@ -437,10 +437,10 @@ class TestFullWorkflowIntegration:
         )
         assert code1 == 0
 
-        # Try to create duplicate
+        # Try to create duplicate (same branch = same epic_folder_name)
         stdout2, stderr2, code2 = cli_runner(
             ["agent", "epic", "new", objective, "--branch", branch]
         )
 
-        # Should fail or warn about duplicate
-        assert code2 != 0, "Duplicate plan creation should fail"
+        # Should fail - TinyDB detects duplicate epic_folder_name
+        assert code2 != 0, "Duplicate plan creation should fail (TinyDB duplicate detection)"

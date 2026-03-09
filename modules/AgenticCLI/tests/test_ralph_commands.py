@@ -21,88 +21,74 @@ import yaml
 
 @pytest.fixture
 def ralph_plans_dir(temp_dir):
-    """Create a temp directory with sample plans for Ralph to discover."""
+    """Create a temp directory with sample plans for Ralph to discover.
+
+    Also creates a .git marker at temp_dir and populates TinyDB so that
+    RalphLoopService can find its EpicRepository. Without .git, the
+    walkup fails to find repo root and RalphLoopService._repository is None.
+    """
+    from agenticguidance.services.epic_repository import EpicRepository
+
     plans_dir = temp_dir / "plans" / "live"
     plans_dir.mkdir(parents=True)
 
-    # Plan 1: Has orchestration, ready to execute
+    # Create .git so RalphLoopService repo-root walkup stops at temp_dir
+    (temp_dir / ".git").mkdir(exist_ok=True)
+    db_path = temp_dir / ".agentic" / "epics.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Plan 1: Has orchestration, ready to execute (pending tickets)
     plan1 = plans_dir / "260203QC_question_cli"
     plan1.mkdir()
     (plan1 / "orchestration_question_cli.mmd").write_text("graph TD\nA --> B")
-    plan1_build = {
-        "name": "question-cli",
-        "status": "active",
-        "phases": [
-            {
-                "phase_id": "build_01",
-                "name": "Build Phase",
-                "tickets": [
-                    {"task_id": "QC_001", "description": "Task 1", "status": "pending"},
-                    {"task_id": "QC_002", "description": "Task 2", "status": "pending"},
-                ]
-            }
-        ]
-    }
-    (plan1 / "plan_build.yml").write_text(yaml.dump(plan1_build))
 
-    # Plan 2: Needs planning (no orchestration)
+    # Plan 2: Needs planning (no orchestration, pending tickets)
     plan2 = plans_dir / "260203QG_question_guidance"
     plan2.mkdir()
-    plan2_build = {
-        "name": "question-guidance",
-        "status": "active",
-        "phases": [
-            {
-                "phase_id": "build_01",
-                "name": "Build Phase",
-                "tickets": [
-                    {"task_id": "QG_001", "description": "Task 1", "status": "pending"},
-                ]
-            }
-        ]
-    }
-    (plan2 / "plan_build.yml").write_text(yaml.dump(plan2_build))
 
-    # Plan 3: Completed (all tasks done)
+    # Plan 3: Completed (all tasks done, has orchestration)
     plan3 = plans_dir / "260203PS_plan_service"
     plan3.mkdir()
     (plan3 / "orchestration_plan_service.mmd").write_text("graph TD\nA --> B")
-    plan3_build = {
-        "name": "plan-service",
-        "status": "active",
-        "phases": [
-            {
-                "phase_id": "build_01",
-                "name": "Build Phase",
-                "tickets": [
-                    {"task_id": "PS_001", "description": "Task 1", "status": "completed"},
-                ]
-            }
-        ]
-    }
-    (plan3 / "plan_build.yml").write_text(yaml.dump(plan3_build))
 
-    # Plan 4: Blocked (has dependencies)
+    # Plan 4: Has orchestration + pending tickets (treated as execute-ready)
+    # Note: RalphLoopService no longer reads YAML dependencies, so VP acts like execute
     plan4 = plans_dir / "260203VP_voice_personaplex"
     plan4.mkdir()
     (plan4 / "orchestration_voice_personaplex.mmd").write_text("graph TD\nA --> B")
-    plan4_build = {
-        "name": "voice-personaplex",
-        "status": "active",
-        "dependencies": {
-            "depends_on": ["260203QC", "260203QG"]  # Not completed yet
-        },
-        "phases": [
-            {
-                "phase_id": "build_01",
-                "name": "Build Phase",
-                "tickets": [
-                    {"task_id": "VP_001", "description": "Task 1", "status": "pending"},
-                ]
-            }
-        ]
-    }
-    (plan4 / "plan_build.yml").write_text(yaml.dump(plan4_build))
+
+    # Populate TinyDB with all 4 epics
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+
+    for epic_name, epic_path, tickets, agent in [
+        ("260203QC_question_cli", plan1, [
+            {"task_id": "QC_001", "name": "Task 1", "status": "pending"},
+            {"task_id": "QC_002", "name": "Task 2", "status": "pending"},
+        ], "build-python"),
+        ("260203QG_question_guidance", plan2, [
+            {"task_id": "QG_001", "name": "Task 1", "status": "pending"},
+        ], None),
+        ("260203PS_plan_service", plan3, [
+            {"task_id": "PS_001", "name": "Task 1", "status": "completed"},
+        ], "build-python"),
+        # VP: completed (all tickets done) - note: RalphLoopService no longer supports
+        # dependency-based "blocked" state; VP is treated as completed here
+        ("260203VP_voice_personaplex", plan4, [
+            {"task_id": "VP_001", "name": "Task 1", "status": "completed"},
+        ], "build-python"),
+    ]:
+        repo.create_epic({
+            "epic_folder_name": epic_name,
+            "epic_folder": str(epic_path),
+            "name": epic_name,
+            "status": "active",
+        })
+        phase_name = "Build Phase"
+        repo.add_phase(epic_name, {"name": phase_name, "agent": agent})
+        for t in tickets:
+            repo.add_ticket(epic_name, phase_name, t)
+
+    repo.close()
 
     return plans_dir
 
@@ -212,7 +198,7 @@ class TestRalphNext:
         # Should return plan action for plan without orchestration
         assert data["action"] == "plan"
         assert data["plan"] == "260203QG_question_guidance"
-        assert "orchestration" in data["reason"].lower() or "mmd" in data["reason"].lower()
+        assert "planning" in data["reason"].lower() or "phases" in data["reason"].lower()
 
     def test_next_returns_complete(self, cli_runner, mock_ralph_service, ralph_plans_dir):
         """next returns complete when all done."""
@@ -306,12 +292,12 @@ class TestRalphStatus:
         assert "blocked" in epics_info
         assert "completed" in epics_info
 
-        # Based on our fixture setup
+        # Based on our fixture setup (note: no dependency-based "blocked" in TinyDB model)
         assert epics_info["total"] == 4
         assert epics_info["ready_to_execute"] == 1  # 260203QC
         assert epics_info["needs_epic_planning"] == 1  # 260203QG
-        assert epics_info["blocked"] == 1  # 260203VP
-        assert epics_info["completed"] == 1  # 260203PS
+        assert epics_info["blocked"] == 0  # no dependency blocking in TinyDB model
+        assert epics_info["completed"] == 2  # 260203PS and 260203VP
 
     def test_status_human_readable_shows_plan_stats(self, cli_runner, mock_ralph_service):
         """status without -j shows epic statistics in human format."""

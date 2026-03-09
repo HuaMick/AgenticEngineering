@@ -1,13 +1,12 @@
 # Orchestration Executor Specification
-# Defines the runtime behavior for a generic executor that reads Plan-MMD files and executes them dynamically.
+# Defines the runtime behavior for a generic executor that reads TinyDB phase records and executes them dynamically.
 #
-# SCOPE: Specification for an executor that interprets Plan-MMD metadata and orchestrates agent execution.
-# This specification enables MMD-driven orchestration without hardcoded flows in process.mmd files.
+# SCOPE: Specification for an executor that interprets TinyDB-stored phase metadata and orchestrates agent execution.
+# This specification enables data-driven orchestration without any file-based plan formats (no MMD, no YAML ticket files).
 #
 # RELATED:
-#   - modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml (MMD structural schema)
 #   - modules/AgenticGuidance/assets/definitions/agent-loops.yml (loop definitions)
-#   - modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/orchestration_example.mmd
+#   - modules/AgenticGuidance/agents/orchestration/orchestration-executor/manifest.yml
 
 # =============================================================================
 # SECTION 1: EXECUTOR SCOPE AND RESPONSIBILITIES
@@ -16,35 +15,39 @@
 executor_scope:
   definition: |
     The orchestration executor is an EXECUTION-ONLY runtime component that:
-    - Reads Plan-MMD files and their associated plan YAML files
-    - Interprets AGENT_ROUTING metadata to determine which agent handles each phase
+    - Reads phase records from TinyDB via EpicRepository.list_phases(epic_folder)
+    - Uses the `agent` field on each PhaseData record to determine which agent handles each phase
     - Manages phase progression, feedback loops, and escalation paths
-    - Updates state in both MMD comments and plan YAML files
+    - Updates phase status in TinyDB as execution progresses
     - Does NOT perform planning (planning is delegated to orchestration-planning agent)
+    - Does NOT read or write MMD files or YAML ticket files for execution state
 
   responsibilities:
     execution:
-      - "Parse Plan-MMD header metadata (AGENT_ROUTING, STATUS, FEEDBACK_TRIGGERS)"
-      - "Load corresponding plan YAML files from the plan folder"
-      - "Execute phases in declared order by spawning routed agents"
+      - "Query TinyDB for all phases belonging to the epic via EpicRepository.list_phases()"
+      - "Read agent routing from the PhaseData.agent field in TinyDB"
+      - "Execute phases in declared order (sorted by _order field in TinyDB)"
       - "Monitor agent outputs for feedback triggers"
-      - "Update phase status as execution progresses"
-      - "Handle failures according to FEEDBACK_TRIGGERS patterns"
-      - "Persist state for resume capability"
+      - "Update phase status in TinyDB as execution progresses"
+      - "Handle failures according to PhaseData.feedback_triggers stored in TinyDB"
+      - "Persist state to TinyDB for resume capability"
 
     NOT_responsibilities:
       - "Planning (delegated to orchestration-planning agent)"
       - "Plan creation or task definition (done by planner agents)"
       - "Agent implementation (executor spawns agents, does not implement them)"
       - "Human approval gates (passed through to orchestration-planning)"
+      - "Reading or writing MMD files"
+      - "Reading or writing YAML ticket/phase files"
 
   relationship_to_orchestration_agents:
     orchestration_planning:
-      role: "Creates and refines plans; produces approved Plan-MMD and YAML files"
+      role: "Creates and refines plans; writes phase records to TinyDB"
       interaction: |
-        Executor receives approved plans FROM orchestration-planning.
-        On feedback triggers requiring re-planning, executor invokes orchestration-planning
-        with failure context, then resumes execution with updated plan.
+        Executor reads approved phases FROM TinyDB after orchestration-planning has
+        populated them. On feedback triggers requiring re-planning, executor invokes
+        orchestration-planning with failure context, which then updates TinyDB phases
+        and the executor resumes reading from TinyDB.
 
     orchestration_friction:
       role: "LangSmith trace friction analysis and pattern detection"
@@ -53,49 +56,74 @@ executor_scope:
         Executor may incorporate friction feedback when triggering re-planning phases.
 
   entrypoints_served:
-    _orchestrate.yml:
-      description: "Primary entrypoint for execution with pre-approved plan"
+    _orchestrate:
+      description: "Primary entrypoint for execution with pre-populated TinyDB phases"
       required_inputs:
-        - "plan_path: Path to approved Plan-MMD file"
-        - "epic_folder: Path to epic folder containing YAML files"
+        - "epic_folder: Epic folder name whose phases are stored in TinyDB"
       behavior: |
-        Executor loads the Plan-MMD, validates all referenced YAML files exist,
-        resumes from last incomplete phase (or starts from beginning), and
-        executes until completion or escalation.
+        Executor calls EpicRepository.list_phases(epic_folder), finds the first
+        pending/in_progress phase, resolves its agent field, spawns the agent,
+        and loops until all phases are completed or escalation is required.
 
     fallback_to_planning:
-      description: "When _orchestrate.yml is called without approved plan"
+      description: "When epic has no phases in TinyDB"
       behavior: |
-        If plan_path is missing or plan status is not 'approved', executor
-        delegates to orchestration-planning agent to create/approve plan first,
-        then resumes execution with the approved result.
+        If list_phases() returns an empty list, executor delegates to
+        orchestration-planning agent to populate phases in TinyDB first,
+        then resumes execution.
 
 # =============================================================================
-# SECTION 2: AGENT_ROUTING METADATA FORMAT
+# SECTION 2: AGENT ROUTING (TINYDB PHASE FIELDS)
 # =============================================================================
 
 agent_routing:
   definition: |
-    AGENT_ROUTING is a header comment in Plan-MMD files that maps phases to agent types.
-    The executor uses this mapping to determine which agent to spawn for each phase.
+    Agent routing is stored directly in TinyDB as the `agent` field on each PhaseData record.
+    The executor reads this field from TinyDB — there is no MMD file or YAML header to parse.
+    Planners set the agent field when creating phases via `agentic epic phase add --agent <role>`.
 
-  format:
-    syntax: |
-      %% AGENT_ROUTING: Phase_Name -> agent_type, Phase_Name -> agent_type, ...
-    structure:
-      - "Phase names use PascalCase with underscores (e.g., Environment_Setup)"
-      - "Agent types are lowercase kebab-case categories (e.g., builder, tester, deployer)"
-      - "Mappings are comma-separated"
-      - "All phases in PHASES header must have corresponding AGENT_ROUTING entry"
+  tinydb_phase_schema:
+    key_fields:
+      epic_folder_name: "str — parent epic this phase belongs to"
+      phase_name: "str — unique phase identifier within the epic"
+      phase_id: "str — stable ID for cross-referencing"
+      agent: "str — agent role name (e.g. build-python, test-runner) — REQUIRED for execution"
+      status: "str — pending | in_progress | completed | failed | blocked"
+      execution: "str — sequential | parallel (defaults to sequential)"
+      loop_type: "str — optional loop strategy for this phase"
+      loop_max_iterations: "int — max retries for this phase"
+      max_turns: "int — maximum agentic turns before timeout"
+      timeout: "int — wall-clock timeout in seconds"
+      feedback_triggers: "dict — maps PHASE_FAILURE keys to target phase names"
+      _order: "int — sort key for phase execution order"
 
-    example: |
-      %% PHASES: Environment_Setup, Domain_Build, Workflow_Build, Integration_Test, CI_CD_Validation
-      %% AGENT_ROUTING: Environment_Setup -> builder, Domain_Build -> builder, Workflow_Build -> builder, Integration_Test -> tester, CI_CD_Validation -> deployer
+    example_record: |
+      {
+        "epic_folder_name": "260207XX_feature",
+        "phase_name": "Domain_Build",
+        "phase_id": "phase_domain_build",
+        "agent": "build-python",
+        "status": "pending",
+        "execution": "sequential",
+        "loop_max_iterations": 5,
+        "max_turns": 50,
+        "timeout": 1800,
+        "feedback_triggers": {"DOMAIN_BUILD_FAILURE": "Domain_Build"},
+        "_order": 2
+      }
+
+  agent_field_requirement:
+    description: "The agent field is REQUIRED for every phase. Phases without it cannot execute."
+    enforcement: "HARD — executor logs an error, marks phase as failed, and halts if agent field is absent"
+    error_message: |
+      Phase {phase_name} in {epic_folder} has no agent field set in TinyDB.
+      Use 'agentic epic phase update {phase_name} --agent <agent-name>' to fix.
+    fix_command: "agentic epic phase update <phase-name> --agent <agent-role>"
 
   agent_types:
     description: |
       Agent types map to agent categories defined in agent-categories.yml.
-      The executor resolves the type to a specific agent based on context.
+      The executor uses the agent field value directly as the --role argument when spawning.
 
     valid_types:
       builder:
@@ -127,7 +155,7 @@ agent_routing:
         category: "planner"
         resolves_to: "Appropriate planner sub-agent"
         reference: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#planner"
-        note: "Rarely used in AGENT_ROUTING; planning is usually pre-execution"
+        note: "Rarely used as an execution phase agent; planning is usually pre-execution"
 
       auditor:
         category: "test"
@@ -135,47 +163,40 @@ agent_routing:
         note: "Specialized tester role for quality audits"
 
   validation_rules:
-    routing_coverage:
-      rule: "Every phase in PHASES must have AGENT_ROUTING entry"
-      enforcement: "HARD - executor fails to start if routing is incomplete"
-      example_violation: |
-        %% PHASES: Phase_A, Phase_B, Phase_C
-        %% AGENT_ROUTING: Phase_A -> builder, Phase_C -> tester
-        # ERROR: Phase_B has no routing defined
+    agent_field_present:
+      rule: "Every phase record in TinyDB must have a non-empty agent field"
+      enforcement: "HARD — executor fails phase and halts if agent field is missing"
+      check_command: "agentic epic phase list --epic <folder>"
 
     manifest_alignment:
       rule: "Routed agents must be in orchestrator's manifest.yml spawns fence"
-      enforcement: "HARD - executor refuses to spawn agents not in spawns list"
+      enforcement: "HARD — executor refuses to spawn agents not in spawns list"
       reference: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/manifest.yml#spawns"
-      validation_process: |
-        1. Executor loads orchestrator's manifest.yml
-        2. For each phase routing, resolve agent_type to specific agent
-        3. Verify resolved agent appears in spawns list
-        4. If not in spawns, fail with clear error message
 
     type_validity:
       rule: "Agent types must match defined categories"
-      enforcement: "HARD - unknown agent types cause startup failure"
+      enforcement: "HARD — unknown agent types cause phase failure"
       error_format: |
-        ERROR: Unknown agent type '{type}' in AGENT_ROUTING for phase '{phase}'.
-        Valid types: builder, tester, deployer, teacher, cleaner, planner, auditor
+        ERROR: Unknown agent type '{type}' in TinyDB for phase '{phase}'.
+        Valid types: build-python, build-flutter, test-runner, test-builder,
+                     deploy-cicd, teacher-update-guidance, teacher-update-assets,
+                     test-final-output, test-audit, planner-build, planner-test
 
-  handling_unknown_types:
+  handling_missing_agent:
     behavior: |
-      When executor encounters an unknown or invalid agent type:
-      1. Log error with phase name and invalid type
-      2. Mark phase status as 'blocked' with reason
-      3. Escalate to user with clear message
-      4. Do NOT proceed to subsequent phases
+      When executor encounters a phase with no agent field in TinyDB:
+      1. Log error with phase name and epic folder
+      2. Mark phase status as 'failed' in TinyDB
+      3. Append error to execution state
+      4. Halt execution of this plan
+      5. Report to user with fix command
 
     error_message_format: |
       ROUTING ERROR: Cannot execute phase '{phase_name}'
-      Agent type '{agent_type}' is not valid.
-      Valid agent types: builder, tester, deployer, teacher, cleaner, planner, auditor
-
-      Options:
-      1. Update AGENT_ROUTING in Plan-MMD with valid type
-      2. Add new agent type to orchestration-executor-specification.yml
+      Agent field is not set in TinyDB for this phase.
+      Fix: agentic epic phase update {phase_name} --epic {epic_folder} --agent <agent-role>
+      Valid agent roles: build-python, test-runner, deploy-cicd, teacher-update-guidance,
+                         test-final-output, test-audit, planner-build, planner-test
 
 # =============================================================================
 # SECTION 3: FEEDBACK_TRIGGERS PATTERN
@@ -184,8 +205,32 @@ agent_routing:
 feedback_triggers:
   definition: |
     FEEDBACK_TRIGGERS define conditions that interrupt normal phase progression
-    and trigger corrective actions (re-planning, retry, or escalation).
-    The executor monitors agent outputs for these trigger patterns.
+    and trigger corrective actions (re-run a prior phase, retry, or escalation).
+    Triggers are stored as the `feedback_triggers` dict on each PhaseData record in TinyDB.
+    The executor reads this field after a phase fails and uses it to determine
+    which phase to re-set to pending for re-execution.
+
+  tinydb_storage:
+    field: "feedback_triggers (dict on PhaseData record)"
+    format: |
+      Keys are PHASE_NAME_FAILURE strings (uppercase).
+      Values are the phase_name to reset to pending.
+    example: |
+      {
+        "INTEGRATION_TEST_FAILURE": "Domain_Build",
+        "UNIT_TEST_FAILURE": "Domain_Build"
+      }
+    set_via: "agentic epic phase update <phase> --feedback-triggers 'KEY:target_phase'"
+
+  trigger_resolution:
+    algorithm: |
+      1. Phase fails (agent exits non-zero or session marked failed)
+      2. Executor reads failed_phase.feedback_triggers from TinyDB
+      3. Constructs failure_key: "{PHASE_NAME_UPPER}_FAILURE"
+      4. Looks up failure_key in feedback_triggers dict
+      5. If target phase name found: verify target exists in TinyDB via repo.get_phase()
+      6. If target exists: reset target phase to pending, continue to next iteration
+      7. If no trigger matches or target not found: mark phase failed, halt
 
   trigger_types:
     TEST_FAILURE:
@@ -227,14 +272,14 @@ feedback_triggers:
           1. Package TEST_FAILURE context:
              - failure_type: "TEST_FAILURE"
              - failure_details: test output, failing tests, attempted fixes
-             - original_plan_path: current plan location
+             - epic_folder: current epic folder
              - iteration_count: number of fix attempts
           2. Invoke orchestration-planning with failure context
-          3. Await updated plan approval
+          3. Planning agent updates TinyDB phases with revised plan
           4. Resume execution from affected phase
 
         escalate: |
-          1. Mark phase as 'blocked'
+          1. Mark phase as 'blocked' in TinyDB
           2. Generate failure summary
           3. Present to user with options:
              - Provide fix guidance
@@ -280,13 +325,13 @@ feedback_triggers:
              - failure_type: "CICD_FAILURE"
              - failure_category: configuration_error | integration_error
              - failure_details: validation output, config files affected
-             - original_plan_path: current plan location
+             - epic_folder: current epic folder
           2. Invoke orchestration-planning
-          3. Planning agent determines if build plan needs update
-          4. Resume with updated plan
+          3. Planning agent updates TinyDB phases
+          4. Resume with updated phases
 
         escalate: |
-          1. Mark CI/CD phase as 'blocked'
+          1. Mark CI/CD phase as 'blocked' in TinyDB
           2. Generate infrastructure/permission report
           3. Present to user with:
              - Root cause analysis
@@ -332,13 +377,13 @@ feedback_triggers:
              - failure_type: "BUILD_FAILURE"
              - failure_category: compilation_error | dependency_error | configuration_error
              - failure_details: build output, error messages
-             - original_plan_path: current plan location
+             - epic_folder: current epic folder
           2. Invoke orchestration-planning
-          3. Await updated plan approval
+          3. Planning agent updates TinyDB phases
           4. Resume from build phase
 
         escalate: |
-          1. Mark build phase as 'blocked'
+          1. Mark build phase as 'blocked' in TinyDB
           2. Generate build failure report
           3. Present to user with:
              - Error details
@@ -381,15 +426,15 @@ feedback_triggers:
              - gap_category: build_process | test_design | guidance
              - friction_report: structured gap details
              - affected_agents: list of agents with gaps
-             - original_plan_path: current plan location
+             - epic_folder: current epic folder
           2. Route to appropriate planner based on gap_category
-          3. Await remediation plan approval
+          3. Planner updates TinyDB phases with remediation steps
           4. Execute remediation via teacher agents
           5. Re-run guidance validation
 
         escalate: |
           1. If max_iterations (3) reached without resolution
-          2. Mark guidance phase as 'blocked'
+          2. Mark guidance phase as 'blocked' in TinyDB
           3. Present gap summary to user
           4. Request clarification or additional context
 
@@ -428,13 +473,13 @@ feedback_triggers:
              - failure_category: missing_outputs | quality_issues | documentation_gaps
              - audit_report: detailed findings from test-final-output
              - affected_phases: which build phases produced failing outputs
-             - original_plan_path: current plan location
+             - epic_folder: current epic folder
           2. Invoke orchestration-planning with context
-          3. Planning determines remediation scope
+          3. Planning agent updates TinyDB phases with remediation
           4. Resume execution targeting specific issues
 
         escalate: |
-          1. Mark execution as 'blocked' at final audit
+          1. Mark execution as 'blocked' at final audit (update TinyDB phase status)
           2. Generate completion status report
           3. Present to user with:
              - What passed vs. what failed
@@ -481,13 +526,13 @@ feedback_triggers:
              - failure_category: story_failure | missing_story | environment_issue
              - failed_stories: list of stories that failed
              - story_outputs: detailed failure information
-             - original_plan_path: current plan location
+             - epic_folder: current epic folder
           2. Invoke orchestration-planning with context
-          3. Planning determines if build changes needed
-          4. Resume with updated plan
+          3. Planning agent updates TinyDB phases
+          4. Resume with updated phases
 
         escalate: |
-          1. Mark UAT phase as 'blocked'
+          1. Mark UAT phase as 'blocked' in TinyDB
           2. Generate user journey failure report
           3. Present to user with:
              - Which stories passed vs. failed
@@ -533,43 +578,38 @@ feedback_triggers:
              - Generate plan name using standard naming: YYMMDDXX_<description>
              - Create folder: agentic agent epic init <branch> --description <desc>
              - Write seed file with error context
-          2. Log remediation plan reference in current plan's execution report
+          2. Log remediation plan reference in current execution state
           3. If CRITICAL: Pause and ask user whether to continue or address first
           4. If HIGH/MEDIUM/LOW: Continue execution, report at shutdown
 
         executor_tracking: |
-          Maintain a remediation_plans_spawned list in the execution report:
+          Maintain a remediation_plans_spawned list in the execution state:
           - plan_name: string
           - error_type: string
           - priority: CRITICAL|HIGH|MEDIUM|LOW
           - spawned_by: agent that detected the issue
-          - current_plan: plan that was executing when discovered
+          - current_epic: epic folder that was executing when discovered
 
       protocol_reference: "modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml"
       note: |
-        Unlike TEST_FAILURE/BUILD_FAILURE which re-plan the CURRENT plan,
-        ERROR_REQUIRES_PLANNING spawns a SEPARATE planning folder.
-        The current plan continues execution unless priority is CRITICAL.
+        Unlike TEST_FAILURE/BUILD_FAILURE which re-run phases in the CURRENT epic,
+        ERROR_REQUIRES_PLANNING spawns a SEPARATE epic/planning folder.
+        The current epic continues execution unless priority is CRITICAL.
 
   max_iterations_handling:
     definition: |
-      Each feedback loop has a maximum iteration count defined in agent-loops.yml.
-      When max iterations are reached without resolution, executor must escalate.
+      Each feedback loop has a maximum iteration count defined in the PhaseData.loop_max_iterations
+      field in TinyDB. When max iterations are reached without resolution, executor must escalate.
 
     iteration_tracking:
-      storage: "Iteration count stored in plan YAML under phase metadata"
-      format: |
-        phases:
-          - name: "Integration_Test"
-            status: "in_progress"
-            iteration: 3
-            max_iterations: 5
+      storage: "Iteration count tracked in executor in-memory state and execution_state.yml"
+      tinydb_field: "PhaseData.loop_max_iterations — set via agentic epic phase add/update"
 
     escalation_path:
       trigger: "iteration >= max_iterations AND status != completed"
       actions:
-        - "1. Mark phase status as 'blocked'"
-        - "2. Preserve all iteration context (attempts, failures, partial fixes)"
+        - "1. Mark phase status as 'blocked' in TinyDB"
+        - "2. Preserve all iteration context in execution_state.yml (attempts, failures, partial fixes)"
         - "3. Generate escalation summary with:"
         - "   - Total iterations attempted"
         - "   - Failure patterns observed"
@@ -578,9 +618,9 @@ feedback_triggers:
         - "4. Present to user for decision"
 
       user_options:
-        continue: "User provides additional context; reset iteration count"
-        skip: "User accepts current state; mark phase as 'completed_with_issues'"
-        abort: "User terminates execution; preserve state for later resume"
+        continue: "User provides additional context; reset iteration count; update TinyDB phase to pending"
+        skip: "User accepts current state; mark phase as 'completed_with_issues' in TinyDB"
+        abort: "User terminates execution; preserve state in TinyDB and execution_state.yml for later resume"
 
 # =============================================================================
 # SECTION 4: STATE MODEL
@@ -588,8 +628,9 @@ feedback_triggers:
 
 state_model:
   definition: |
-    The executor maintains execution state to enable progress tracking and resume capability.
-    State is persisted in both the Plan-MMD file (STATUS header) and plan YAML files.
+    The executor maintains execution state exclusively in TinyDB.
+    Phase status transitions are written to TinyDB via EpicRepository.update_phase().
+    No MMD files or YAML ticket files are used to track execution state.
 
   phase_status_values:
     pending:
@@ -608,23 +649,22 @@ state_model:
       description: "Phase finished successfully"
       transitions_to: []  # Terminal state
       requirements:
-        - "All phase tasks marked complete in plan YAML"
+        - "Agent exited with success status"
         - "No active feedback triggers"
-        - "Success criteria met (if defined)"
 
     failed:
       description: "Phase encountered unrecoverable error"
-      transitions_to: ["in_progress"]  # Can retry after re-planning
+      transitions_to: ["in_progress"]  # Can retry after re-planning or trigger reset
       requirements:
-        - "Failure reason documented"
-        - "Re-planning required before retry"
+        - "Failure reason documented in execution_state.yml"
+        - "Feedback trigger (if any) has reset target phase to pending"
 
     blocked:
       description: "Phase cannot proceed without user input"
       transitions_to: ["in_progress", "pending"]  # User can unblock
       triggers:
         - "Max iterations reached"
-        - "Unknown agent type"
+        - "Missing agent field in TinyDB"
         - "Missing dependencies"
         - "Escalation from feedback trigger"
 
@@ -633,83 +673,67 @@ state_model:
       transitions_to: []  # Terminal state with caveats
       requirements:
         - "User explicitly approved continuation"
-        - "Issues documented in status metadata"
+        - "Issues documented in execution_state.yml"
 
   state_transitions:
     valid_transitions:
       pending_to_in_progress:
         trigger: "Executor begins phase execution"
-        action: "Spawn routed agent for phase"
+        action: "EpicRepository.update_phase(epic, phase, {status: in_progress})"
 
       in_progress_to_completed:
-        trigger: "Agent reports success; no feedback triggers"
-        action: "Update both MMD STATUS and plan YAML"
+        trigger: "Agent session exits with success; no feedback triggers"
+        action: "EpicRepository.update_phase(epic, phase, {status: completed})"
 
       in_progress_to_failed:
-        trigger: "Unrecoverable error; no more retries available"
-        action: "Log failure; prepare for re-planning"
+        trigger: "Agent session fails; no feedback trigger resolves it"
+        action: "EpicRepository.update_phase(epic, phase, {status: failed})"
 
       in_progress_to_blocked:
-        trigger: "Escalation required (max iterations, unknown routing)"
-        action: "Pause execution; await user input"
+        trigger: "Escalation required (max iterations, missing agent field)"
+        action: "EpicRepository.update_phase(epic, phase, {status: blocked})"
 
       blocked_to_in_progress:
-        trigger: "User provides resolution"
-        action: "Resume execution with user-provided context"
+        trigger: "User provides resolution and resets phase"
+        action: "EpicRepository.update_phase(epic, phase, {status: pending})"
 
       failed_to_in_progress:
-        trigger: "Re-planning complete; new plan approved"
-        action: "Resume from failed phase with updated plan"
+        trigger: "Feedback trigger resets a prior phase to pending"
+        action: "EpicRepository.update_phase(epic, prior_phase, {status: pending})"
 
   persistence:
-    dual_storage: |
-      State is maintained in TWO locations for different purposes:
-      1. MMD STATUS header: Quick visual status overview
-      2. Plan YAML files: Detailed status with metadata
+    single_source_of_truth: |
+      TinyDB is the ONLY authoritative state store for phase execution status.
+      All state transitions are persisted by calling EpicRepository.update_phase().
+      In-memory execution_state.yml provides a compact session-level summary
+      (active sessions, completed outcomes, iteration counters) for context recovery
+      within a single executor run, but TinyDB is the canonical record.
 
-    mmd_status_format:
-      location: "Header comment in Plan-MMD file"
+    tinydb_phase_record:
+      location: "TinyDB phases table, queried by epic_folder_name"
+      fields_updated_during_execution:
+        - "status: pending | in_progress | completed | failed | blocked"
+      query_method: "EpicRepository.list_phases(epic_folder_name)"
+      update_method: "EpicRepository.update_phase(epic_folder_name, phase_name, updates_dict)"
+
+    execution_state_file:
+      location: "{epic_folder_path}/execution_state.yml"
+      purpose: "Session-level context (active session IDs, per-phase outcomes, iteration counters)"
       format: |
-        %% STATUS: Phase_A=completed, Phase_B=in_progress, Phase_C=pending
-      update_frequency: "On every phase transition"
-      example: |
-        %% STATUS: Environment_Setup=completed, Domain_Build=completed, Integration_Test=in_progress, CI_CD_Validation=pending
-
-    yaml_status_format:
-      location: "Phase entries in ticket_*.yml files"
-      structure: |
-        phases:
-          - name: "Environment_Setup"
-            status: "completed"
-            started_at: "2025-01-10T14:30:00Z"
-            completed_at: "2025-01-10T14:45:00Z"
+        current_phase: "Domain_Build"
+        active_sessions: ["session-abc123"]
+        completed_outcomes:
+          - phase: "Environment_Setup"
+            outcome: "success"
             agent_used: "build-python"
-
-          - name: "Integration_Test"
-            status: "in_progress"
-            started_at: "2025-01-10T15:00:00Z"
-            iteration: 2
-            max_iterations: 5
-            last_failure:
-              type: "TEST_FAILURE"
-              message: "3 unit tests failing"
-              timestamp: "2025-01-10T15:10:00Z"
-
-      update_frequency: "On every significant state change"
-      metadata_tracked:
-        - "started_at: ISO timestamp of phase start"
-        - "completed_at: ISO timestamp of completion"
-        - "agent_used: Specific agent that executed phase"
-        - "iteration: Current iteration count (for loops)"
-        - "last_failure: Most recent failure details"
-
-    sync_protocol:
-      description: "How to keep MMD and YAML in sync"
-      rules:
-        - "YAML is source of truth for detailed state"
-        - "MMD STATUS is derived summary for quick reference"
-        - "On state change: Update YAML first, then regenerate MMD STATUS"
-        - "On load: If MMD and YAML conflict, trust YAML"
+            completed_at: "2026-03-09T14:15:00Z"
+        phases_failed: []
+        iteration: 2
+        errors: []
+      note: |
+        execution_state.yml is a scratch file for the current executor run.
+        It reduces context accumulation between reasoning turns.
+        Authoritative phase status lives in TinyDB, not this file.
 
   resume_capability:
     definition: |
@@ -718,14 +742,13 @@ state_model:
 
     resume_algorithm:
       steps:
-        - "1. Load Plan-MMD and parse STATUS header"
-        - "2. Load all plan YAML files from plan folder"
-        - "3. Identify resume point:"
+        - "1. Call EpicRepository.list_phases(epic_folder) to get all phases from TinyDB"
+        - "2. Identify resume point:"
         - "   - If any phase is 'in_progress': resume from that phase"
-        - "   - If all completed phases contiguous: start next 'pending' phase"
-        - "   - If gap in completed phases: ERROR - state inconsistency"
-        - "4. Load context from YAML (iteration count, last failure)"
-        - "5. Resume execution with preserved context"
+        - "   - If all completed phases are contiguous: start next 'pending' phase"
+        - "   - If gap in completed phases: log warning and start from first pending"
+        - "3. Load execution_state.yml if present (iteration count, prior outcomes)"
+        - "4. Resume execution with preserved context"
 
     resume_point_identification:
       priority_order:
@@ -735,10 +758,9 @@ state_model:
 
     context_preservation:
       preserved_on_resume:
-        - "Iteration count for feedback loops"
-        - "Last failure context"
-        - "Partial outputs from interrupted phase"
-        - "Agent spawn history"
+        - "Phase status in TinyDB (survives process restart)"
+        - "Iteration count (from execution_state.yml)"
+        - "Last failure context (from execution_state.yml)"
 
       not_preserved:
         - "In-memory agent state (agent restarts fresh)"
@@ -747,11 +769,10 @@ state_model:
     crash_recovery:
       scenario: "Executor or agent crashes mid-phase"
       behavior: |
-        1. On restart, executor detects phase with status='in_progress'
-        2. Executor checks for partial outputs from crashed phase
-        3. If outputs exist and valid: Consider phase complete
-        4. If outputs missing or invalid: Restart phase from beginning
-        5. Increment iteration count (crash counts as failed attempt)
+        1. On restart, executor calls list_phases() and detects phase with status='in_progress'
+        2. Executor resets phase to pending and restarts it
+        3. Iteration count is loaded from execution_state.yml if available
+        4. Crash counts as one failed attempt toward max_iterations
 
 # =============================================================================
 # SECTION 5: FALLBACK BEHAVIORS
@@ -760,165 +781,102 @@ state_model:
 fallback_behaviors:
   definition: |
     Fallback behaviors define how the executor handles exceptional conditions
-    that are not covered by normal FEEDBACK_TRIGGERS.
+    that are not covered by normal feedback_triggers.
 
-  missing_agent_routing:
-    scenario: "AGENT_ROUTING header is missing from Plan-MMD"
-    detection: "Parser finds PHASES header but no AGENT_ROUTING"
+  missing_agent_field:
+    scenario: "Phase record in TinyDB has no agent field set"
+    detection: "EpicRepository.list_phases() returns PhaseData with agent=None or agent=''"
 
     fallback_strategy:
-      behavior: "Attempt to infer routing from phase names and plan context"
-      inference_rules:
-        - "Phase contains 'Environment' (without 'Setup'): builder"
-        - "Phase contains 'Build' or 'Implementation': builder"
-        - "Phase contains 'Test': tester"
-        - "Phase contains 'Validation' or 'Audit': tester"
-        - "Phase contains 'Deploy' or 'CI' or 'CD': deployer"
-        - "Phase contains 'Guidance' or 'Teach': teacher"
-        - "Phase contains 'Clean' or 'Removal': cleaner"
+      behavior: "Fail the phase immediately with a clear diagnostic message"
+      actions:
+        - "1. Log error with phase name and epic folder"
+        - "2. Write error to execution state"
+        - "3. Mark phase status as 'failed' in TinyDB"
+        - "4. Halt execution of this epic"
+        - "5. Display fix command to user"
 
-      ambiguous_patterns:
-        - pattern: "Phase contains 'Setup'"
-          possible_agents: ["builder", "deployer"]
-          resolution: |
-            'Setup' is ambiguous because it could mean:
-            - Environment setup (deployer for infrastructure/CI)
-            - Project setup (builder for dependencies/configuration)
-            Inference confidence: LOW - escalate to user for clarification.
-          recommendation: "deployer"
-          reason: "Setup phases typically involve environment or infrastructure preparation"
-
-      confidence_threshold: |
-        Inferred routing is marked as 'inferred' with confidence level.
-        HIGH confidence (keyword match): Execute with warning
-        LOW confidence (no keyword match): Escalate to user
-
-      escalation: |
-        If inference fails or confidence is LOW:
-        1. Mark all phases as 'blocked'
-        2. Present inferred routing (if any) to user
-        3. Request explicit AGENT_ROUTING header
-        4. Do not proceed until user confirms or provides routing
+      error_message: |
+        ROUTING ERROR: Cannot execute phase '{phase_name}' in {epic_folder}
+        The phase has no agent field set in TinyDB.
+        Fix: agentic epic phase update {phase_name} --epic {epic_folder} --agent <agent-role>
+        Valid agent roles: build-python, test-runner, deploy-cicd, teacher-update-guidance,
+                           test-final-output, test-audit, planner-build, planner-test
 
     prevention: |
-      Plan-MMD validation (pre-execution) should catch missing AGENT_ROUTING.
-      This fallback is for backward compatibility with legacy MMD files.
+      Planners must always set the agent field when creating phases via
+      `agentic epic phase add --agent <role>`. The planner-build and
+      planner-orchestration agents are responsible for ensuring all phases
+      have agent fields before execution begins.
+
+  no_phases_in_tinydb:
+    scenario: "EpicRepository.list_phases() returns empty list for the epic"
+    detection: "len(phases) == 0 after calling list_phases()"
+
+    fallback_strategy:
+      behavior: "Delegate to orchestration-planning to populate phases"
+      actions:
+        - "1. Log warning that no phases found"
+        - "2. Check if the epic exists in TinyDB (may be uninitialized)"
+        - "3. If epic exists but has no phases: delegate to orchestration-planning"
+        - "4. If epic does not exist: create it via agentic epic, then delegate to planning"
+        - "5. Once planning completes (phases populated in TinyDB), resume execution"
 
   agent_spawn_failure:
     scenario: "Routed agent fails to start or immediately crashes"
     detection:
       - "Agent spawn command returns error"
-      - "Agent exits within 5 seconds without output"
+      - "Agent session exits within 30 seconds without output (quick exit)"
       - "Agent reports fatal initialization error"
 
     fallback_strategy:
       retry_policy:
         max_retries: 3
         backoff: "exponential (1s, 2s, 4s)"
+        quick_exit_threshold: "30 seconds"
 
       on_retry_exhaustion:
-        - "1. Mark phase as 'blocked'"
+        - "1. Mark phase as 'blocked' in TinyDB"
         - "2. Log detailed spawn failure context:"
-        - "   - Agent name and resolved path"
+        - "   - Agent role and epic folder"
         - "   - Spawn command used"
         - "   - Error messages from failed attempts"
-        - "   - Environment state at failure"
+        - "   - Session diagnostics if available"
         - "3. Check for common causes:"
         - "   - Agent manifest.yml missing or invalid"
         - "   - Agent dependencies not met"
         - "   - Permission issues"
         - "4. Escalate to user with diagnostic information"
 
-      alternative_agent: |
-        If manifest.yml defines alternative agents for same type:
-        1. Check spawns list for alternative with same agent_type
-        2. Attempt spawn with alternative agent
-        3. If successful, continue with warning logged
-        4. If all alternatives fail, escalate
-
-  plan_yaml_mmd_desync:
-    scenario: "Plan YAML files and MMD STATUS header are out of sync"
-    detection:
-      - "MMD shows phase as 'completed' but YAML shows 'pending'"
-      - "YAML has phases not present in MMD PHASES header"
-      - "MMD PHASES order differs from YAML phase order"
-
-    fallback_strategy:
-      resolution_priority: "YAML is source of truth"
-
-      actions:
-        status_conflict:
-          description: "MMD and YAML disagree on phase status"
-          resolution: |
-            1. Trust YAML status
-            2. Regenerate MMD STATUS from YAML
-            3. Log conflict for diagnostics
-            4. Continue execution with YAML state
-
-        phase_mismatch:
-          description: "Different phases in MMD vs YAML"
-          resolution: |
-            1. Identify discrepancies
-            2. If YAML has extra phases: Add to MMD (plan was extended)
-            3. If MMD has extra phases: Warning - orphan phases
-            4. Escalate if significant mismatch (>1 phase difference)
-
-        order_mismatch:
-          description: "Phase execution order differs"
-          resolution: |
-            1. Use YAML order as canonical
-            2. Update MMD PHASES to match
-            3. Log order change
-            4. Continue with YAML order
-
-      prevention:
-        - "Always update YAML before MMD"
-        - "Use atomic writes where possible"
-        - "Run sync check at execution start"
-
-  missing_plan_yaml:
-    scenario: "Plan-MMD references plan folder but YAML files are missing"
-    detection: "epic_folder path exists but required YAML files absent"
-
-    fallback_strategy:
-      check_pattern: |
-        Required files:
-        - ticket_build.yml OR ticket_test.yml OR ticket_teach.yml
-        - At least one ticket_*.yml must exist for execution
-
-      on_missing:
-        - "1. Check if plan needs generation (new plan folder)"
-        - "2. If PLAN_FOLDER header indicates new plan:"
-        - "   - Delegate to orchestration-planning to generate YAMLs"
-        - "3. If existing plan should have YAMLs:"
-        - "   - Mark as 'blocked'"
-        - "   - Report missing files"
-        - "   - Check for backup/alternative locations"
-        - "4. Escalate to user if cannot resolve"
+      quick_exit_detection: |
+        If a session exits suspiciously fast (< 30 seconds), executor:
+        1. Checks session logs for known retryable error patterns
+        2. If error is retryable: retry with exponential backoff
+        3. If error is not retryable: fail immediately without retrying
+        4. If pattern unrecognized: attempt retry up to MAX_SPAWN_RETRIES
 
   circular_feedback:
     scenario: "Feedback triggers create infinite re-planning loop"
     detection:
       - "Same phase fails with same failure type >3 consecutive times"
-      - "Re-planning produces identical plan >2 times"
-      - "Iteration count exceeds 2x max_iterations"
+      - "Iteration count exceeds loop_max_iterations"
 
     fallback_strategy:
       circuit_breaker:
-        trigger: "Identical failure pattern detected 3+ times"
+        trigger: "iteration >= loop_max_iterations (read from PhaseData in TinyDB)"
         action: |
           1. Break feedback loop
-          2. Mark phase as 'blocked'
+          2. Mark phase as 'blocked' in TinyDB
           3. Generate loop analysis:
              - Failure pattern description
-             - Re-planning attempts summary
+             - Iteration count
              - Hypothesis for root cause
           4. Escalate to user with analysis
 
       prevention:
-        - "Track failure signatures (type + message hash)"
-        - "Compare re-planned plans for meaningful diff"
-        - "Require human input after 2 identical re-plans"
+        - "Each phase sets loop_max_iterations in TinyDB (via phase add/update)"
+        - "Executor tracks iteration count and halts when limit is reached"
+        - "User must manually reset phase to pending after providing fix context"
 
 # =============================================================================
 # SECTION 6: EXECUTION PROTOCOL
@@ -930,33 +888,35 @@ execution_protocol:
 
   startup_sequence:
     steps:
-      - step: "1. Load Plan-MMD"
+      - step: "1. Resolve epic folder"
         actions:
-          - "Parse file from plan_path input"
-          - "Extract all header metadata (GOAL, PROFILE, PHASES, AGENT_ROUTING, STATUS)"
-          - "Validate header completeness"
+          - "Accept epic_folder input (folder name or path)"
+          - "Verify epic exists in TinyDB via EpicRepository"
 
-      - step: "2. Load Plan YAML files"
+      - step: "2. Load phase index from TinyDB"
         actions:
-          - "Read epic_folder path"
-          - "Load all ticket_*.yml files"
-          - "Build phase-to-YAML mapping"
+          - "Call EpicRepository.list_phases(epic_folder)"
+          - "Validate that at least one phase record is returned"
+          - "Check that all phases have agent fields set"
+          - "Read only phase index fields at startup (name, agent, status, feedback_triggers)"
+          - "Do NOT load full ticket details at startup — use JIT loading per Section 11"
 
       - step: "3. Validate orchestrator manifest"
         actions:
           - "Load orchestrator's manifest.yml"
           - "Extract spawns fence"
-          - "Validate all routed agents are in spawns list"
+          - "Validate all phase agent values are in spawns list"
 
       - step: "4. Determine resume point"
         actions:
-          - "Parse STATUS from MMD or YAML (prefer YAML)"
-          - "Identify in_progress, blocked, or next pending phase"
-          - "Load context for resume (iteration count, last failure)"
+          - "Scan TinyDB phases for in_progress or pending status"
+          - "Load execution_state.yml if present (iteration count, last failure)"
+          - "Identify starting phase (in_progress takes priority, else first pending)"
 
-      - step: "5. Initialize execution context"
+      - step: "5. Initialize execution state"
         actions:
           - "Set up logging"
+          - "Initialize or restore execution_state.yml"
           - "Initialize iteration counters"
           - "Prepare agent spawn environment"
 
@@ -964,54 +924,57 @@ execution_protocol:
     for_each_phase:
       - step: "1. Transition to in_progress"
         actions:
-          - "Update YAML status to 'in_progress'"
-          - "Update MMD STATUS"
-          - "Record start timestamp"
+          - "Call EpicRepository.update_phase(epic, phase, {status: in_progress})"
+          - "Write phase start to execution_state.yml"
 
       - step: "2. Resolve agent"
         actions:
-          - "Look up agent_type from AGENT_ROUTING"
-          - "Resolve to specific agent based on context (project type, etc.)"
+          - "Read agent field from PhaseData (already loaded from TinyDB)"
           - "Verify agent is in spawns fence"
+          - "Load full ticket details JIT for this phase only"
 
       - step: "3. Spawn agent(s)"
         actions:
-          - "Prepare agent inputs (phase tasks from YAML, context)"
-          - "If phase execution=parallel: Group tasks by target_files overlap (see Section 7)"
-          - "Spawn agents for parallel task groups concurrently using --task flag"
+          - "Prepare agent inputs (phase tickets from TinyDB, context)"
+          - "If phase execution=parallel: Group tickets by target_files overlap (see Section 7)"
+          - "Spawn agents for parallel task groups concurrently using --ticket flag"
           - "Monitor agent execution"
 
       - step: "4. Collect output"
         actions:
           - "Receive agent output (success/failure, artifacts)"
-          - "Parse output for feedback triggers"
-          - "Store output artifacts"
+          - "Summarise output to <=1 KB outcome record (see Section 11)"
+          - "Discard raw output from context after summarisation"
+          - "Store summarised outcome in execution_state.yml"
 
       - step: "5. Evaluate triggers"
         actions:
-          - "Check for TEST_FAILURE, CICD_FAILURE, GUIDANCE_GAP, AUDIT_FAILURE, UAT_FAILURE, ERROR_REQUIRES_PLANNING"
-          - "If trigger detected: Execute trigger response"
-          - "If no trigger: Proceed to completion"
+          - "On failure: read feedback_triggers from PhaseData in TinyDB"
+          - "Construct failure_key: '{PHASE_NAME_UPPER}_FAILURE'"
+          - "Look up failure_key in feedback_triggers dict"
+          - "If trigger found and target phase exists: reset target to pending, continue"
+          - "If no trigger: transition failed phase to 'failed' in TinyDB, halt"
 
       - step: "6. Complete or iterate"
         actions:
-          - "If success: Transition to 'completed', record end timestamp"
-          - "If failure + retries available: Increment iteration, restart from step 2"
-          - "If failure + no retries: Transition to 'failed' or 'blocked'"
+          - "If success: call update_phase({status: completed}), record end in execution_state.yml"
+          - "If failure + trigger resolved: continue to next iteration"
+          - "If failure + no trigger: halt, report to user"
 
   shutdown_sequence:
     on_completion:
-      - "Update all phase statuses to final state"
+      - "Verify all phases have terminal status in TinyDB"
       - "Generate execution summary"
-      - "Archive completed epic to docs/epics/completed/ (if fully complete)"
+      - "Archive completed epic if fully complete (update TinyDB status field)"
 
     on_interruption:
-      - "Persist current state to YAML"
-      - "Update MMD STATUS"
+      - "Persist current iteration state to execution_state.yml"
+      - "TinyDB phase statuses are already current (written on every transition)"
       - "Log resume point for next session"
 
     on_escalation:
-      - "Preserve full context in YAML"
+      - "Mark blocked phase in TinyDB"
+      - "Preserve full context in execution_state.yml"
       - "Generate user-facing summary"
       - "Await user input (do not auto-terminate)"
 
@@ -1019,35 +982,34 @@ execution_protocol:
 # SECTION 7: TASK PARALLELIZATION STRATEGY
 # =============================================================================
 # Defines how the executor determines which tasks can run in parallel
-# based on task-level target_files declarations.
+# based on task-level target_files declarations stored in TinyDB ticket records.
 
 task_parallelization:
   implementation_status: "aspirational - not yet implemented in CLI or executor"
   definition: |
-    The executor uses task-level `target_files` to determine which tasks within a
-    phase can safely run in parallel. Plan-level `impacted_files` is DEPRECATED
-    and should not be used for parallelization decisions.
+    The executor uses ticket-level `target_files` (read from TinyDB ticket records)
+    to determine which tickets within a phase can safely run in parallel.
     NOTE: This algorithm is specified but not yet implemented. Current executor
     runs tasks sequentially within each phase.
 
   scope: |
-    Parallelization applies WITHIN a single plan. Cross-plan parallelism is not
-    supported — each plan is a serial orchestration unit.
+    Parallelization applies WITHIN a single epic. Cross-epic parallelism is not
+    supported — each epic is a serial orchestration unit.
 
   conflict_detection_algorithm:
     description: |
-      Two tasks conflict if their target_files sets overlap (share any common file path).
-      Tasks with non-overlapping target_files can run in parallel.
+      Two tickets conflict if their target_files sets overlap (share any common file path).
+      Tickets with non-overlapping target_files can run in parallel.
 
     steps:
-      - "1. Collect target_files from all tasks within the current phase"
-      - "2. For each pair of tasks, compute set intersection of target_files"
-      - "3. If intersection is empty: tasks are INDEPENDENT (can parallelize)"
-      - "4. If intersection is non-empty: tasks CONFLICT (must run sequentially)"
-      - "5. Build task groups where all tasks in a group are mutually independent"
+      - "1. Load ticket records for the current phase from TinyDB via EpicRepository"
+      - "2. For each pair of tickets, compute set intersection of target_files"
+      - "3. If intersection is empty: tickets are INDEPENDENT (can parallelize)"
+      - "4. If intersection is non-empty: tickets CONFLICT (must run sequentially)"
+      - "5. Build ticket groups where all tickets in a group are mutually independent"
 
     example:
-      tasks:
+      tickets:
         - id: "T_001"
           target_files: ["src/service_a.py", "tests/test_a.py"]
         - id: "T_002"
@@ -1066,28 +1028,28 @@ task_parallelization:
 
   task_grouping:
     description: |
-      Tasks are grouped into parallel execution batches. Within a batch, all tasks
+      Tickets are grouped into parallel execution batches. Within a batch, all tickets
       run concurrently. Batches execute sequentially.
 
     algorithm: |
-      1. Start with all pending tasks in the phase
-      2. Find the maximal set of mutually independent tasks (no pairwise conflicts)
+      1. Start with all pending tickets for the phase (read from TinyDB)
+      2. Find the maximal set of mutually independent tickets (no pairwise conflicts)
       3. This set forms the next parallel batch
-      4. Remove batch tasks from pending set
-      5. Repeat until no pending tasks remain
+      4. Remove batch tickets from pending set
+      5. Repeat until no pending tickets remain
 
     constraints:
-      - "Tasks with explicit `dependencies` must wait for dependencies to complete"
-      - "Phase-level `execution: sequential` overrides parallelization (all tasks serial)"
+      - "Tickets with explicit `dependencies` must wait for dependencies to complete"
+      - "Phase-level `execution: sequential` overrides parallelization (all tickets serial)"
       - "Phase-level `execution: parallel` enables the parallelization algorithm"
 
   spawning_pattern:
     description: |
-      When spawning parallel tasks, the executor uses the --task flag to target
-      specific tasks within a plan.
+      When spawning parallel tickets, the executor uses the --ticket flag to target
+      specific tickets within an epic.
 
     cli_pattern: |
-      # Spawn individual task within a plan
+      # Spawn individual ticket within an epic
       agentic session spawn --role <agent> --epic <folder> --ticket <ticket_id> -b --dangerously-skip-permissions
 
     example: |
@@ -1100,9 +1062,9 @@ task_parallelization:
 
   missing_target_files:
     behavior: |
-      If a task does not declare target_files, it is treated as potentially conflicting
-      with ALL other tasks in the phase. This forces sequential execution for that task.
-      Planners should always include target_files on every task.
+      If a ticket does not declare target_files in TinyDB, it is treated as potentially
+      conflicting with ALL other tickets in the phase. This forces sequential execution
+      for that ticket. Planners should always include target_files on every ticket.
 
 # =============================================================================
 # SECTION 8: INTEGRATION POINTS
@@ -1110,82 +1072,99 @@ task_parallelization:
 
 integration_points:
   agentic_cli:
-    description: "CLI commands the executor uses for plan operations"
+    description: "CLI commands the executor uses for epic operations"
     commands:
-      - "agentic agent epic validate: Validate epic folder structure"
-      - "agentic agent epic move tickets: Move completed tickets to epic_completed.yml"
-      - "agentic agent epic move folder: Archive epic folder to completed/"
+      - "agentic epic phase list --epic <folder>: List all phases with status from TinyDB"
+      - "agentic epic phase update <phase> --status <status>: Update phase status in TinyDB"
+      - "agentic epic ticket list --epic <folder>: List all tickets for phase routing"
+      - "agentic epic move folder: Archive epic folder to completed/"
+
+  tinydb_api:
+    description: "EpicRepository methods used by the executor"
+    methods:
+      list_phases: "EpicRepository.list_phases(epic_folder_name) -> list[PhaseData]"
+      get_phase: "EpicRepository.get_phase(epic_folder_name, phase_name) -> Optional[PhaseData]"
+      update_phase: "EpicRepository.update_phase(epic_folder_name, phase_name, updates: dict)"
+      list_tickets: "EpicRepository.list_tickets(epic_folder_name) -> list[TicketData]"
+      has_pending_phases: "EpicRepository.has_pending_phases(epic_folder_name) -> bool"
 
   orchestration_planning:
     description: "Interface for delegating to planning agent"
     invocation:
-      trigger: "Feedback trigger requires re-planning"
+      trigger: "Feedback trigger requires re-planning or no phases in TinyDB"
       inputs:
         - "failure_context: Structured failure information"
-        - "original_plan_path: Current plan location"
+        - "epic_folder: Current epic folder"
         - "iteration_count: How many attempts made"
       outputs:
-        - "updated_plan_path: Path to updated/approved plan"
-        - "plan_changes: Summary of what changed"
+        - "Updated phases written to TinyDB by planner agent"
+        - "Executor resumes by calling list_phases() again"
 
   agent_spawning:
     description: "How executor spawns agents"
     mechanism: |
       Executor uses standard agent spawning protocol:
-      1. Load agent manifest.yml to understand inputs/outputs
-      2. Prepare input payload (phase tasks, context)
-      3. Spawn agent (CLI command or direct invocation)
-      4. Monitor stdout/stderr and structured output
-      5. Collect exit code and output artifacts
+      1. Read agent field from PhaseData in TinyDB
+      2. Prepare input payload (phase tickets from TinyDB, context)
+      3. Spawn agent via CLI: agentic session spawn --role <agent> --epic <folder>
+      4. Monitor session state via sdk_pane_runner or tmux polling
+      5. Collect exit status and summarised output
 
 # =============================================================================
 # SECTION 9: EXAMPLES
 # =============================================================================
 
 examples:
-  minimal_plan_mmd:
-    description: "Minimal valid Plan-MMD for executor"
+  phase_index_from_tinydb:
+    description: "Phase records returned by EpicRepository.list_phases() at executor startup"
     content: |
-      %% PLAN_MMD_VERSION: 1.1
-      %% GOAL: Implement feature X
-      %% PROFILE: Build
-      %% EPIC_FOLDER: docs/epics/live/250110Repo_feature-x
-      %% PHASES: Setup, Implementation, Testing
-      %% AGENT_ROUTING: Setup -> deployer, Implementation -> builder, Testing -> tester
-      %% STATUS: Setup=pending, Implementation=pending, Testing=pending
+      [
+        PhaseData(name="Environment_Setup", agent="build-python", status="pending",
+                  loop_max_iterations=3, max_turns=30, _order=1,
+                  feedback_triggers={}),
+        PhaseData(name="Domain_Build", agent="build-python", status="pending",
+                  loop_max_iterations=5, max_turns=50, _order=2,
+                  feedback_triggers={"DOMAIN_BUILD_FAILURE": "Domain_Build"}),
+        PhaseData(name="Integration_Test", agent="test-runner", status="pending",
+                  loop_max_iterations=3, max_turns=40, _order=3,
+                  feedback_triggers={"INTEGRATION_TEST_FAILURE": "Domain_Build"}),
+        PhaseData(name="CI_CD_Validation", agent="deploy-cicd", status="pending",
+                  loop_max_iterations=2, max_turns=20, _order=4,
+                  feedback_triggers={})
+      ]
 
-      graph TD
-          Start((Start)) --> Phase1[Setup]
-          Phase1 --> Phase2[Implementation]
-          Phase2 --> Phase3[Testing]
-          Phase3 --> End((End))
-
-  complete_plan_mmd:
-    description: "Full-featured Plan-MMD with feedback loops"
-    reference: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/orchestration_example.mmd"
-
-  status_update_example:
-    description: "How status updates flow"
-    scenario: "Setup completes, Implementation starts"
+  status_update_sequence:
+    description: "TinyDB status updates as execution progresses"
+    scenario: "Environment_Setup completes, Domain_Build starts"
     before:
-      mmd: "%% STATUS: Setup=in_progress, Implementation=pending, Testing=pending"
-      yaml: |
-        phases:
-          - name: Setup
-            status: in_progress
-            started_at: "2025-01-10T14:00:00Z"
+      tinydb: |
+        Environment_Setup: status=in_progress
+        Domain_Build: status=pending
+        Integration_Test: status=pending
     after:
-      mmd: "%% STATUS: Setup=completed, Implementation=in_progress, Testing=pending"
-      yaml: |
-        phases:
-          - name: Setup
-            status: completed
-            started_at: "2025-01-10T14:00:00Z"
-            completed_at: "2025-01-10T14:15:00Z"
-            agent_used: "deploy-cicd"
-          - name: Implementation
-            status: in_progress
-            started_at: "2025-01-10T14:15:00Z"
+      tinydb: |
+        Environment_Setup: status=completed
+        Domain_Build: status=in_progress
+        Integration_Test: status=pending
+
+  feedback_trigger_resolution:
+    description: "Feedback trigger resets a prior phase on failure"
+    scenario: "Integration_Test fails; trigger resets Domain_Build to pending"
+    trigger_record: |
+      PhaseData(
+        name="Integration_Test",
+        feedback_triggers={"INTEGRATION_TEST_FAILURE": "Domain_Build"}
+      )
+    execution_flow: |
+      1. Integration_Test fails (agent exits non-zero)
+      2. Executor reads feedback_triggers: {"INTEGRATION_TEST_FAILURE": "Domain_Build"}
+      3. Constructs failure_key: "INTEGRATION_TEST_FAILURE"
+      4. Looks up target: "Domain_Build"
+      5. Calls repo.get_phase(epic, "Domain_Build") — exists, confirmed
+      6. Calls repo.update_phase(epic, "Integration_Test", {status: failed})
+      7. Calls repo.update_phase(epic, "Domain_Build", {status: pending})
+      8. Next iteration: list_phases() picks up Domain_Build as next pending
+      9. Domain_Build re-executes with fix context from Integration_Test failure
 
 # =============================================================================
 # SECTION 10: VALIDATION CHECKLIST
@@ -1193,24 +1172,171 @@ examples:
 
 validation_checklist:
   pre_execution:
-    - "Plan-MMD has PLAN_MMD_VERSION header"
-    - "PHASES header is present and non-empty"
-    - "AGENT_ROUTING covers all phases"
-    - "All routed agents are valid types"
-    - "All routed agents are in orchestrator's spawns fence"
-    - "Plan folder exists and is accessible"
-    - "At least one ticket_*.yml exists"
-    - "YAML phase names match MMD PHASES"
+    - "EpicRepository.list_phases() returns at least one phase for the epic"
+    - "All phase records have a non-empty agent field in TinyDB"
+    - "All phase agents are valid role names"
+    - "All phase agents are in orchestrator's spawns fence"
+    - "Epic folder exists and is accessible"
 
   during_execution:
     - "Only one phase in_progress at a time"
     - "Status transitions follow valid paths"
-    - "Iteration counts do not exceed max_iterations"
-    - "Spawned agents match routing"
+    - "Iteration counts do not exceed loop_max_iterations from TinyDB"
+    - "Spawned agents match agent field from TinyDB"
     - "Output artifacts are written to declared locations"
 
   post_execution:
-    - "All phases have terminal status (completed, failed, blocked, completed_with_issues)"
-    - "MMD STATUS matches YAML statuses"
-    - "Execution summary generated"
-    - "Plan folder archived if fully complete"
+    - "All phases have terminal status in TinyDB (completed, failed, blocked, completed_with_issues)"
+    - "Execution summary generated and written to execution_state.yml"
+    - "Epic archived in TinyDB if fully complete"
+
+# =============================================================================
+# SECTION 11: CONTEXT BUDGET MANAGEMENT
+# =============================================================================
+# Normative requirements for preventing context overflow during orchestration.
+# These constraints are MUST-follow (not advisory) and prevent the executor
+# from exhausting its context window when managing concurrent sub-agents.
+#
+# BACKGROUND:
+# Session 3ee29cd2 (2026-03-02) ran out of context after 54 turns while
+# executing 22 concurrent sub-agents. Root cause: agent retrieval payloads
+# (~35 KB each) accumulated in context during polling, consuming ~770 KB
+# per poll cycle. After 2-3 cycles the context window was exhausted.
+#
+# REFERENCE: docs/epics/live/260303AG_reduce_orchestration_context_overflow/README.md
+
+context_budget_management:
+  definition: |
+    The context budget management system prevents executor context overflow through
+    five complementary mechanisms: output summarisation, batched polling, state file
+    offloading, JIT phase loading, and concurrency limiting. These mechanisms are
+    normative constraints, not optional optimisations.
+
+  # ---------------------------------------------------------------------------
+  # CONTEXT BUDGET BREAKDOWN
+  # ---------------------------------------------------------------------------
+  context_budget_table:
+    description: "Expected context consumption per component with mitigations applied"
+    entries:
+      - component: "System prompt + guidance"
+        without_mitigation: "~50 KB"
+        with_mitigation: "~50 KB"
+        notes: "Fixed overhead, not reducible"
+
+      - component: "Phase index from TinyDB (startup)"
+        without_mitigation: "~100 KB (all ticket details)"
+        with_mitigation: "~10 KB (phase index only)"
+        notes: "JIT loading reduces 90%"
+
+      - component: "Per-phase ticket details from TinyDB"
+        without_mitigation: "~15 KB × N phases (accumulated)"
+        with_mitigation: "~15 KB (current phase only)"
+        notes: "JIT load + discard after summarisation"
+
+      - component: "Agent launch messages"
+        without_mitigation: "~1 KB × N agents"
+        with_mitigation: "~1 KB × 8 agents max"
+        notes: "Concurrency limit caps N at 8"
+
+      - component: "Agent retrieval payloads (per poll turn)"
+        without_mitigation: "~35 KB × N agents polled"
+        with_mitigation: "~1 KB × 5 agents (summarised)"
+        notes: "Batched polling + summarisation"
+
+      - component: "Execution state"
+        without_mitigation: "Accumulated in context turns"
+        with_mitigation: "~5 KB (execution_state.yml read)"
+        notes: "State offloaded to execution_state.yml"
+
+      - component: "Total per-turn budget"
+        without_mitigation: "~820 KB+ (with 22 agents)"
+        with_mitigation: "~80 KB max"
+        notes: "10× reduction"
+
+  # ---------------------------------------------------------------------------
+  # NORMATIVE REQUIREMENTS
+  # ---------------------------------------------------------------------------
+  requirements:
+    output_summarisation:
+      level: "MUST"
+      description: |
+        After collecting agent output, the executor MUST summarise the result to a
+        fixed-size outcome record (≤1 KB) capturing: outcome, key_artifacts,
+        ticket_ids_completed, errors (truncated to 500 chars), and agent_id.
+        Full raw output MUST be discarded from context after summarisation.
+      reference: "process.yml#loop_collect_output"
+      violation: "Context overflow from accumulated raw agent outputs"
+
+    batched_polling:
+      level: "MUST"
+      description: |
+        The executor MUST poll agents in batches of at most POLL_BATCH_SIZE (default: 5)
+        per reasoning turn. After each batch, outcomes are written to execution_state.yml.
+        The next turn reads the state summary, not raw outputs from prior turns.
+      reference: "process.yml#loop_batched_polling"
+      default_value: 5
+      configurable_via: "TinyDB epic metadata field: poll_batch_size"
+      violation: "Single-turn context spike from polling all agents simultaneously"
+
+    state_file_offloading:
+      level: "MUST"
+      description: |
+        The executor MUST maintain a persistent execution_state.yml file in the epic
+        folder. All running state (active sessions, completed outcomes, current phase,
+        poll cycle counter, blocked tickets) MUST be written to this file rather than
+        held in accumulated context turns. At the start of each reasoning turn, the
+        executor reads this compact state file (~2-5 KB) for context recovery.
+      reference: "process.yml#startup_init_state_file"
+      file_location: "{epic_folder_path}/execution_state.yml"
+      violation: "Context accumulation from state held across reasoning turns"
+
+    jit_phase_loading:
+      level: "MUST"
+      description: |
+        At startup, the executor MUST load only the phase index (phase names, agent
+        routing, status, triggers) from TinyDB — NOT full ticket descriptions.
+        Full ticket details (description, success_criteria, inputs, target_files)
+        MUST be loaded just-in-time from TinyDB when spawning agents for a specific
+        phase, then discarded from context after the phase's outcome is summarised.
+      reference: "process.yml#startup_load_phases"
+      startup_budget: "~10 KB (phase index only)"
+      per_phase_budget: "~15 KB (loaded on demand from TinyDB, discarded after use)"
+      violation: "100 KB+ startup context from loading all ticket details upfront"
+
+    concurrency_limiting:
+      level: "MUST"
+      description: |
+        The executor MUST NOT spawn more than MAX_CONCURRENT_AGENTS (default: 8)
+        sub-agents simultaneously. When a phase has more tickets than the limit,
+        tickets MUST be divided into sub-waves. Each wave completes before the
+        next wave is spawned.
+      reference: "process.yml#loop_spawn_agent"
+      default_value: 8
+      configurable_via: "TinyDB epic metadata field: max_concurrent_agents"
+      violation: "Unbounded concurrency leading to massive poll-cycle payloads"
+
+  # ---------------------------------------------------------------------------
+  # CONTEXT OVERFLOW DETECTION
+  # ---------------------------------------------------------------------------
+  overflow_detection:
+    description: |
+      The executor SHOULD monitor for signs of approaching context limits and
+      take corrective action before compaction failure occurs.
+
+    warning_signals:
+      - signal: "Reasoning turn produces >50 KB of new context"
+        action: "Verify summarisation is working; reduce POLL_BATCH_SIZE to 3"
+      - signal: "execution_state.yml exceeds 10 KB"
+        action: "Prune completed_sessions to last 10 entries"
+      - signal: "More than 30 reasoning turns in a single phase"
+        action: "Write checkpoint to execution_state.yml; consider context compaction"
+      - signal: "Agent output cannot be summarised to ≤1 KB"
+        action: "Truncate to first 500 chars; set outcome: failure; log warning"
+
+    escalation: |
+      If context overflow is imminent (compaction warnings, degraded responses):
+      1. Write full state to execution_state.yml immediately
+      2. Log warning: "CONTEXT BUDGET WARNING: Approaching context limit"
+      3. Reduce POLL_BATCH_SIZE to 1 (poll one agent at a time)
+      4. If still insufficient: transition to blocked, ask user to resume
+         with a fresh session (TinyDB phase statuses enable seamless resume)

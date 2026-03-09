@@ -1,38 +1,39 @@
 name: planner-orchestration
 description: |
-  Generates orchestration MMD files from approved ticket YAMLs.
-  Reads epic phases and tasks, determines agent routing, and produces
-  Mermaid flowcharts consumable by orchestration-executor.
+  Creates TinyDB phase records with agent routing from approved ticket data.
+  Reads epic phases and tasks, determines agent routing, and creates phase
+  records in TinyDB consumable by orchestration-executor.
 version: "1.0"
 
 purpose: |
-  planner-orchestration is a focused artifact generator. Given an epic folder
-  with approved ticket_*.yml files, it produces the orchestration_<name>.mmd
-  file that orchestration-executor needs for dynamic agent routing.
+  planner-orchestration is a focused phase record creator. Given an epic with
+  approved ticket data in TinyDB, it creates phase records with agent routing
+  that orchestration-executor needs for dynamic routing at runtime.
 
-  This agent replaces the MMD generation logic that was previously embedded
-  in orchestration-planning, following the naming convention:
+  This agent replaces the MMD generation logic that was previously used for
+  orchestration routing, following the naming convention:
   - orchestration-* agents execute workflows
   - planner-* agents create planning artifacts
 
 outputs:
-  - name: "orchestration_{epic_name}.mmd"
-    path_template: "docs/epics/live/{epic_id}/orchestration_{epic_name}.mmd"
-    description: "Mermaid flowchart for dynamic orchestration execution"
+  - name: "TinyDB phase records"
+    description: "Phase records in TinyDB with agent routing for dynamic orchestration execution"
     required: true
-    required_metadata:
-      - "GOAL"
-      - "PROFILE"
-      - "PHASES"
-      - "AGENT_ROUTING"
-      - "FEEDBACK_TRIGGERS"
-      - "STATUS"
-    schema_reference: "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
+    required_fields:
+      - "name"              # Phase identifier (e.g., "Build", "Test", "UAT")
+      - "agent"             # Agent type for routing (e.g., "build-python", "test-runner")
+      - "status"            # Initial value: "pending"
+      - "execution"         # "sequential" or "parallel"
+    optional_fields:
+      - "feedback_triggers" # Failure handling paths (TEST_FAILURE, BUILD_FAILURE, etc.)
+      - "loop_structure"    # Loop type, max iterations, exit conditions
+      - "affected_stories"  # Story IDs for UAT phases
+    cli_command: "agentic epic phase add --epic <folder> --name <phase> --agent <agent-type>"
 
 architecture_checklist:
-  - "Read all ticket_*.yml files from epic folder"
-  - "Extract phases, tasks, and loop structures"
-  - "Determine AGENT_ROUTING based on phase types"
-  - "Generate MMD with high-level nodes only (no task-level detail)"
-  - "Validate node granularity before writing"
-  - "Validate MMD against plan-mmd-schema.yml"
+  - "Load all ticket data from TinyDB via `agentic -j epic ticket list --epic <folder>`"
+  - "Extract phases, tasks, and loop structures from ticket records"
+  - "Determine agent routing based on phase types and task agent_type fields"
+  - "Create phase records via `agentic epic phase add` CLI command"
+  - "Validate all phase records have required fields after creation"
+  - "NEVER create ticket_*.yml or plan_*.yml YAML files on disk"

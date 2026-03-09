@@ -90,5 +90,35 @@ above should inform a dedicated planning session to design solutions.
 
 ## Status
 
-Status: needs_planning
+Status: completed
 Created: 2026-03-03
+Completed: 2026-03-09
+
+## Completion Summary
+
+All 8 tickets across 3 phases completed successfully.
+
+### Phase 1: Quick Win Guidance Changes (5 tickets)
+- **teach_01** — Output summarisation mandate in process.yml (`loop_collect_output`)
+- **teach_02** — Batched polling protocol in process.yml (`loop_batched_polling`)
+- **teach_03** — State file offloading in process.yml (`startup_init_state_file`)
+- **teach_04** — JIT manifest loading in process.yml (`startup_load_phases`)
+- **teach_05** — Concurrency limit in process.yml (`loop_spawn_agent`)
+
+### Phase 2: Specification Alignment (2 tickets)
+- **teach_06** — Section 11: Context Budget Management added to orchestration-executor-specification.yml
+- **teach_07** — Context Management (FENCE) section added to .claude/agents/orchestration-executor.md stub
+
+### Phase 3: Audit and Validation (1 ticket)
+- **audit_01** — Guidance review audit passed — consistency, completeness, clarity, no regressions
+
+### Impact
+Before mitigations: ~820 KB+ per-turn context with 22 concurrent agents
+After mitigations: ~80 KB max per-turn context (10× reduction)
+
+Key constraints established (all FENCE-level):
+- MAX_CONCURRENT_AGENTS: 8
+- POLL_BATCH_SIZE: 5
+- Output summarisation: ≤1 KB per agent
+- State file: execution_state.yml (not accumulated context)
+- JIT loading: per-phase only (not all at startup)

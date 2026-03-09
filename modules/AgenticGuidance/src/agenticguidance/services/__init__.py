@@ -40,12 +40,14 @@ from .environment import (
     is_secret_name,
 )
 from .epic import (
+    EPIC_STATUS_MIGRATION,
     EpicCreateResult,
     EpicData,
     EpicDeleteResult,
     EpicMetadata,
     EpicMovementWorkflow,
     EpicService,
+    EpicStatus,
     EpicUpdateResult,
     FolderMoveResult,
     GitSafetyChecker,
@@ -54,6 +56,7 @@ from .epic import (
     TicketData,
     TicketMoveResult,
     ValidationResult,
+    normalize_epic_status,
 )
 from .epic_repository import EpicRepository
 from .preset import (
@@ -122,14 +125,17 @@ __all__ = [
     "SecretSource",
     "is_secret_name",
     # Epic services (new canonical names)
+    "EPIC_STATUS_MIGRATION",
     "EpicCreateResult",
     "EpicData",
     "EpicDeleteResult",
     "EpicMetadata",
     "EpicMovementWorkflow",
     "EpicService",
+    "EpicStatus",
     "EpicUpdateResult",
     "EpicRepository",
+    "normalize_epic_status",
     # Shared movement types (used by both epic and plan modules)
     "FolderMoveResult",
     "GitSafetyChecker",

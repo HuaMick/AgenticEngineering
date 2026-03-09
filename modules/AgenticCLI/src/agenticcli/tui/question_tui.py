@@ -164,24 +164,36 @@ class QuestionTUI:
     # Data refresh
     # ------------------------------------------------------------------
 
+    def _get_repo_db_path(self) -> Path:
+        """Derive the repo-local TinyDB path (.agentic/epics.db under repo root)."""
+        current = self.repo_root
+        while current != current.parent:
+            if (current / ".git").exists():
+                return current / ".agentic" / "epics.db"
+            current = current.parent
+        return Path.home() / ".agentic" / "epics.db"
+
+    def _get_live_epic_dirs(self) -> list[Path]:
+        """Return live epic folder paths from TinyDB, sorted by name."""
+        try:
+            from agenticguidance.services.epic_repository import EpicRepository
+            repo = EpicRepository(db_path=self._get_repo_db_path(), auto_bootstrap=False)
+            metas = repo.list_epics(status="live")
+            dirs = [m.epic_folder for m in metas if m.epic_folder.is_dir()]
+            return sorted(dirs, key=lambda p: p.name)
+        except Exception:
+            return []
+
     def _refresh_questions(self) -> None:
-        """Scan docs/epics/live/*/questions/pending/*.yml and populate self.questions.
+        """Query TinyDB for live epics, scan their questions/pending/*.yml files,
+        and populate self.questions.
 
         Reads each YAML file, builds a list of question dicts, sorts by severity
         (blocking > high > medium > low) then by created_at timestamp.
         """
-        live_epics_dir = self.repo_root / "docs" / "epics" / "live"
-        if not live_epics_dir.exists():
-            self.questions = []
-            self.cursor = 0
-            return
-
         found: list[dict] = []
 
-        for plan_dir in sorted(live_epics_dir.iterdir()):
-            if not plan_dir.is_dir():
-                continue
-
+        for plan_dir in self._get_live_epic_dirs():
             pending_dir = plan_dir / "questions" / "pending"
             if not pending_dir.exists():
                 continue

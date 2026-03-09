@@ -73,7 +73,7 @@ US-INSTALL-* user stories MANDATORY when changes touch:
    - epic_folder_name: Epic folder name in YYMMDDXX_description format
    - build_phases: List of build phase ticket files to test
 
-3. Read all phase .yml files in live/ to understand what was built
+3. Query TinyDB for build phase data via `agentic epic ticket list --epic <folder> -j`
 
 4. Create test plan phases in order from manifest
 
@@ -81,8 +81,8 @@ US-INSTALL-* user stories MANDATORY when changes touch:
 
 ## Outputs
 
-- **ticket_test.yml**: Test phases plan with test-fix-loop and audit patterns
-- Location: docs/epics/live/{epic_folder_name}/live/
+- **TinyDB tickets**: Test phases plan with test-fix-loop and audit patterns created via `agentic epic ticket add` and `agentic epic phase add` CLI commands
+- Do NOT create ticket_*.yml files on disk.
 
 ## Boundaries
 

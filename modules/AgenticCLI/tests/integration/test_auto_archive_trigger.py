@@ -20,7 +20,7 @@ class TestNoAutoArchiveOnCompletion:
     """Integration tests verifying auto-archive is removed from task completion."""
 
     @pytest.fixture
-    def plan_with_multiple_tasks(self, temp_repo):
+    def plan_with_multiple_tasks(self, temp_repo, tinydb_populator):
         """Create a plan folder with multiple tasks for completion testing.
 
         Structure:
@@ -68,6 +68,22 @@ class TestNoAutoArchiveOnCompletion:
         with open(plan_file, "w") as f:
             yaml.dump(plan_content, f)
 
+        # Populate TinyDB with the same data
+        tinydb_populator("260130AA_auto_archive_test", plan_path, {
+            "name": "auto-archive-test-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Build Phase",
+                    "tickets": [
+                        {"id": "build_01_001", "name": "First task", "description": "First task", "status": "pending"},
+                        {"id": "build_01_002", "name": "Second task", "description": "Second task", "status": "pending"},
+                        {"id": "build_01_003", "name": "Third task", "description": "Third task", "status": "in_progress"},
+                    ],
+                }
+            ],
+        })
+
         return {
             "plan_path": plan_path,
             "completed_dir": completed_dir,
@@ -75,7 +91,7 @@ class TestNoAutoArchiveOnCompletion:
         }
 
     @pytest.fixture
-    def plan_with_single_task(self, temp_repo):
+    def plan_with_single_task(self, temp_repo, tinydb_populator):
         """Create a plan folder with a single pending task."""
         plan_path = temp_repo / "docs" / "epics" / "live" / "260130AA_single_task_test"
         plan_path.mkdir(parents=True, exist_ok=True)
@@ -106,6 +122,20 @@ class TestNoAutoArchiveOnCompletion:
         with open(plan_file, "w") as f:
             yaml.dump(plan_content, f)
 
+        # Populate TinyDB
+        tinydb_populator("260130AA_single_task_test", plan_path, {
+            "name": "single-task-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Build Phase",
+                    "tickets": [
+                        {"id": "build_01_001", "name": "Only task", "description": "Only task", "status": "pending"},
+                    ],
+                }
+            ],
+        })
+
         return {
             "plan_path": plan_path,
             "completed_dir": completed_dir,
@@ -113,7 +143,7 @@ class TestNoAutoArchiveOnCompletion:
         }
 
     @pytest.fixture
-    def plan_with_tasks_across_files(self, temp_repo):
+    def plan_with_tasks_across_files(self, temp_repo, tinydb_populator):
         """Create a plan folder with tasks spread across multiple YAML files."""
         plan_path = temp_repo / "docs" / "epics" / "live" / "260130AA_multi_file_test"
         plan_path.mkdir(parents=True, exist_ok=True)
@@ -163,6 +193,26 @@ class TestNoAutoArchiveOnCompletion:
         }
         with open(plan_path / "plan_test.yml", "w") as f:
             yaml.dump(plan_test, f)
+
+        # Populate TinyDB with tickets from both files
+        tinydb_populator("260130AA_multi_file_test", plan_path, {
+            "name": "multi-file-test-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Build Phase",
+                    "tickets": [
+                        {"id": "build_01_001", "name": "Build task", "description": "Build task", "status": "pending"},
+                    ],
+                },
+                {
+                    "name": "Test Phase",
+                    "tickets": [
+                        {"id": "test_01_001", "name": "Test task", "description": "Test task", "status": "pending"},
+                    ],
+                },
+            ],
+        })
 
         return {
             "plan_path": plan_path,
@@ -279,7 +329,7 @@ class TestNoAutoArchiveOnCompletion:
         assert plan_path.exists(), "Plan folder should still exist in live/ (no auto-archive)"
         assert not dest_path.exists(), "Plan folder should NOT be auto-archived to completed/"
 
-    def test_no_archive_when_task_not_found(self, temp_repo, cli_runner):
+    def test_no_archive_when_task_not_found(self, temp_repo, cli_runner, tinydb_populator):
         """Test that failing to complete a task doesn't affect the folder."""
         plan_path = temp_repo / "docs" / "epics" / "live" / "260130AA_edge_case_test"
         plan_path.mkdir(parents=True, exist_ok=True)
@@ -313,6 +363,21 @@ class TestNoAutoArchiveOnCompletion:
         with open(plan_file, "w") as f:
             yaml.dump(plan_content, f)
 
+        # Populate TinyDB
+        tinydb_populator("260130AA_edge_case_test", plan_path, {
+            "name": "edge-case-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Build Phase",
+                    "tickets": [
+                        {"id": "build_01_001", "name": "Already done", "description": "Already done", "status": "completed"},
+                        {"id": "build_01_002", "name": "Last remaining", "description": "Last remaining", "status": "pending"},
+                    ],
+                }
+            ],
+        })
+
         dest_path = completed_dir / plan_path.name
 
         result = cli_runner([
@@ -339,18 +404,18 @@ class TestIsPlanFullyCompleted:
         return plan_path
 
     def test_returns_false_when_no_plan_files(self, plan_folder):
-        """Test returns False when no plan_*.yml files exist."""
+        """Test returns False when no plan_*.yml files exist and no TinyDB entry."""
         from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
-        # Empty folder - no plan files
+        # Empty folder - no plan files, no TinyDB entry
         result = is_plan_fully_completed(plan_folder)
         assert result is False
 
-    def test_returns_false_when_no_tasks(self, plan_folder):
-        """Test returns False when plan files have no tasks."""
+    def test_returns_false_when_no_tasks(self, plan_folder, tinydb_populator):
+        """Test returns False when TinyDB has no tasks for this epic."""
         from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
-        # Plan file with no tasks
+        # Plan file with no tasks - TinyDB also has no tasks
         plan_content = {
             "name": "empty-plan",
             "phases": [
@@ -365,10 +430,17 @@ class TestIsPlanFullyCompleted:
         with open(plan_folder / "plan_build.yml", "w") as f:
             yaml.dump(plan_content, f)
 
+        # Register in TinyDB with no tickets
+        tinydb_populator("260130AA_completion_check", plan_folder, {
+            "name": "empty-plan",
+            "status": "active",
+            "phases": [{"name": "Build Phase", "tickets": []}],
+        })
+
         result = is_plan_fully_completed(plan_folder)
         assert result is False
 
-    def test_returns_false_with_pending_tasks(self, plan_folder):
+    def test_returns_false_with_pending_tasks(self, plan_folder, tinydb_populator):
         """Test returns False when any task is pending."""
         from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
@@ -389,10 +461,24 @@ class TestIsPlanFullyCompleted:
         with open(plan_folder / "plan_build.yml", "w") as f:
             yaml.dump(plan_content, f)
 
+        tinydb_populator("260130AA_completion_check", plan_folder, {
+            "name": "incomplete-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Build Phase",
+                    "tickets": [
+                        {"id": "task_001", "name": "Task 1", "description": "Task 1", "status": "completed"},
+                        {"id": "task_002", "name": "Task 2", "description": "Task 2", "status": "pending"},
+                    ],
+                }
+            ],
+        })
+
         result = is_plan_fully_completed(plan_folder)
         assert result is False
 
-    def test_returns_false_with_in_progress_tasks(self, plan_folder):
+    def test_returns_false_with_in_progress_tasks(self, plan_folder, tinydb_populator):
         """Test returns False when any task is in_progress."""
         from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
@@ -413,10 +499,24 @@ class TestIsPlanFullyCompleted:
         with open(plan_folder / "plan_build.yml", "w") as f:
             yaml.dump(plan_content, f)
 
+        tinydb_populator("260130AA_completion_check", plan_folder, {
+            "name": "incomplete-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Build Phase",
+                    "tickets": [
+                        {"id": "task_001", "name": "Task 1", "description": "Task 1", "status": "completed"},
+                        {"id": "task_002", "name": "Task 2", "description": "Task 2", "status": "in_progress"},
+                    ],
+                }
+            ],
+        })
+
         result = is_plan_fully_completed(plan_folder)
         assert result is False
 
-    def test_returns_true_when_all_completed(self, plan_folder):
+    def test_returns_true_when_all_completed(self, plan_folder, tinydb_populator):
         """Test returns True when all tasks are completed."""
         from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
@@ -437,11 +537,25 @@ class TestIsPlanFullyCompleted:
         with open(plan_folder / "plan_build.yml", "w") as f:
             yaml.dump(plan_content, f)
 
+        tinydb_populator("260130AA_completion_check", plan_folder, {
+            "name": "completed-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Build Phase",
+                    "tickets": [
+                        {"id": "task_001", "name": "Task 1", "description": "Task 1", "status": "completed"},
+                        {"id": "task_002", "name": "Task 2", "description": "Task 2", "status": "completed"},
+                    ],
+                }
+            ],
+        })
+
         result = is_plan_fully_completed(plan_folder)
         assert result is True
 
-    def test_checks_all_plan_files(self, plan_folder):
-        """Test checks tasks across all plan_*.yml files."""
+    def test_checks_all_plan_files(self, plan_folder, tinydb_populator):
+        """Test checks tasks across all plan_*.yml files (via TinyDB)."""
         from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         # First file - all completed
@@ -478,21 +592,41 @@ class TestIsPlanFullyCompleted:
         with open(plan_folder / "plan_test.yml", "w") as f:
             yaml.dump(plan_test, f)
 
+        # TinyDB has both sets of tickets; one is pending
+        tinydb_populator("260130AA_completion_check", plan_folder, {
+            "name": "multi-file-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Build Phase",
+                    "tickets": [
+                        {"id": "build_001", "name": "Build", "description": "Build", "status": "completed"},
+                    ],
+                },
+                {
+                    "name": "Test Phase",
+                    "tickets": [
+                        {"id": "test_001", "name": "Test", "description": "Test", "status": "pending"},
+                    ],
+                },
+            ],
+        })
+
         result = is_plan_fully_completed(plan_folder)
         assert result is False
 
     def test_handles_yaml_parse_errors(self, plan_folder):
-        """Test returns False on YAML parse errors."""
+        """Test returns False on YAML parse errors (TinyDB returns False when no entry)."""
         from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
-        # Create invalid YAML
+        # Create invalid YAML (TinyDB has no entry, so returns False)
         (plan_folder / "plan_invalid.yml").write_text("invalid: yaml: content: {{{")
 
         result = is_plan_fully_completed(plan_folder)
         assert result is False
 
-    def test_ignores_non_plan_files(self, plan_folder):
-        """Test ignores files that don't match plan_*.yml pattern."""
+    def test_ignores_non_plan_files(self, plan_folder, tinydb_populator):
+        """Test ignores non-plan files (TinyDB is the source of truth)."""
         from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
         # Create a plan file with completed tasks
@@ -512,7 +646,7 @@ class TestIsPlanFullyCompleted:
         with open(plan_folder / "plan_build.yml", "w") as f:
             yaml.dump(plan_content, f)
 
-        # Create non-plan file with pending tasks (should be ignored)
+        # Create non-plan file with pending tasks (should be ignored by TinyDB)
         other_content = {
             "name": "other-file",
             "phases": [
@@ -527,14 +661,28 @@ class TestIsPlanFullyCompleted:
         with open(plan_folder / "orchestration.yml", "w") as f:
             yaml.dump(other_content, f)
 
+        # TinyDB only has the completed task (from plan_build.yml context)
+        tinydb_populator("260130AA_completion_check", plan_folder, {
+            "name": "completed-plan",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Build Phase",
+                    "tickets": [
+                        {"id": "task_001", "name": "Task 1", "description": "Task 1", "status": "completed"},
+                    ],
+                }
+            ],
+        })
+
         result = is_plan_fully_completed(plan_folder)
-        assert result is True  # Should only check plan_*.yml
+        assert result is True  # Only TinyDB data matters
 
     def test_handles_legacy_implementation_steps(self, plan_folder):
-        """Test handles legacy structure with implementation_steps."""
+        """Test returns False for legacy structure with no TinyDB entry."""
         from agenticcli.commands.epic import is_epic_fully_completed as is_plan_fully_completed
 
-        # Legacy structure with implementation_steps
+        # Legacy structure with implementation_steps (not in TinyDB)
         plan_content = {
             "plan": {
                 "name": "legacy-plan",
@@ -547,5 +695,6 @@ class TestIsPlanFullyCompleted:
         with open(plan_folder / "plan_legacy.yml", "w") as f:
             yaml.dump(plan_content, f)
 
+        # No TinyDB entry - returns False (no tasks found)
         result = is_plan_fully_completed(plan_folder)
         assert result is False

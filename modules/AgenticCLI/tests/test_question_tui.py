@@ -52,6 +52,29 @@ def _cell(table, col_index: int, row_index: int) -> str:
     return list(table.columns[col_index]._cells)[row_index]
 
 
+def _patch_live_epic_dirs(monkeypatch, tmp_path: Path) -> None:
+    """Patch QuestionTUI._get_live_epic_dirs to scan the filesystem at tmp_path.
+
+    After the change in epic 260308MA, _get_live_epic_dirs() queries TinyDB via
+    EpicRepository instead of iterdir(). Tests that only create filesystem
+    directories (not TinyDB records) must use this helper so the TUI finds them.
+    """
+    live_root = tmp_path / "docs" / "epics" / "live"
+
+    def _fs_live_epic_dirs(self) -> list[Path]:
+        if not live_root.exists():
+            return []
+        return sorted(
+            [d for d in live_root.iterdir() if d.is_dir()],
+            key=lambda p: p.name,
+        )
+
+    monkeypatch.setattr(
+        "agenticcli.tui.question_tui.QuestionTUI._get_live_epic_dirs",
+        _fs_live_epic_dirs,
+    )
+
+
 # ---------------------------------------------------------------------------
 # _build_questions_table tests
 # ---------------------------------------------------------------------------
@@ -94,8 +117,9 @@ class TestBuildQuestionsTable:
         question_cell = _cell(table, 2, 0)
         assert "No pending questions" in question_cell
 
-    def test_build_table_one_question(self, tmp_path: Path):
+    def test_build_table_one_question(self, tmp_path: Path, monkeypatch):
         """One pending question YAML -> table has one data row with correct plan, severity, question text."""
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         _create_pending_question(
             tmp_path,
             plan_name="test_plan",
@@ -130,8 +154,9 @@ class TestBuildQuestionsTable:
         q_cell = _cell(table, 2, 0)
         assert "What framework should we use?" in q_cell
 
-    def test_build_table_multi_plan(self, tmp_path: Path):
+    def test_build_table_multi_plan(self, tmp_path: Path, monkeypatch):
         """Two plans each with one pending question -> table has two rows."""
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         _create_pending_question(
             tmp_path,
             plan_name="plan_alpha",
@@ -167,8 +192,9 @@ class TestBuildQuestionsTable:
         assert "plan_alpha" in all_plan_text
         assert "plan_beta" in all_plan_text
 
-    def test_build_table_severity_ordering(self, tmp_path: Path):
+    def test_build_table_severity_ordering(self, tmp_path: Path, monkeypatch):
         """Critical (blocking) question appears before low -> rows ordered by severity."""
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         base_time = 1700000000.0
 
         # Create a low-severity question first (to ensure ordering is by severity, not insertion)
@@ -266,8 +292,9 @@ class TestRefreshQuestionsNoPending:
 class TestRefreshQuestionsOneQuestion:
     """Tests for a single pending question."""
 
-    def test_build_table_one_question(self, tmp_path: Path):
+    def test_build_table_one_question(self, tmp_path: Path, monkeypatch):
         """One pending question YAML -> one entry with correct plan name and data."""
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         _create_pending_question(
             tmp_path,
             plan_name="260220AB_auth_feature",
@@ -292,8 +319,9 @@ class TestRefreshQuestionsOneQuestion:
 class TestRefreshQuestionsMultiPlan:
     """Tests for questions across multiple plans."""
 
-    def test_build_table_multi_plan(self, tmp_path: Path):
+    def test_build_table_multi_plan(self, tmp_path: Path, monkeypatch):
         """Two plans each with one pending question -> two entries."""
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         _create_pending_question(
             tmp_path,
             plan_name="260220AA_plan_one",
@@ -322,8 +350,9 @@ class TestRefreshQuestionsMultiPlan:
 class TestSeverityOrdering:
     """Tests for severity-based ordering of questions."""
 
-    def test_build_table_severity_ordering(self, tmp_path: Path):
+    def test_build_table_severity_ordering(self, tmp_path: Path, monkeypatch):
         """Questions are ordered by severity: blocking > high > medium > low."""
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         base_time = 1700000000.0
 
         _create_pending_question(
@@ -371,8 +400,9 @@ class TestSeverityOrdering:
         severities = [q["question_data"]["severity"] for q in tui.questions]
         assert severities == ["blocking", "high", "medium", "low"]
 
-    def test_same_severity_ordered_by_created_at(self, tmp_path: Path):
+    def test_same_severity_ordered_by_created_at(self, tmp_path: Path, monkeypatch):
         """Within the same severity level, questions are ordered by created_at ascending."""
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         _create_pending_question(
             tmp_path,
             plan_name="260220XX_plan",
@@ -403,8 +433,9 @@ class TestSeverityOrdering:
 class TestCursorPreservation:
     """Tests for cursor position management across refreshes."""
 
-    def test_cursor_preserved_on_refresh(self, tmp_path: Path):
+    def test_cursor_preserved_on_refresh(self, tmp_path: Path, monkeypatch):
         """Cursor stays on the same question ID after a refresh."""
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         _create_pending_question(
             tmp_path,
             plan_name="260220XX_plan",
@@ -434,8 +465,9 @@ class TestCursorPreservation:
         assert tui.cursor == 1
         assert tui.questions[tui.cursor]["question_data"]["id"] == "Q002"
 
-    def test_cursor_clamped_when_question_removed(self, tmp_path: Path):
+    def test_cursor_clamped_when_question_removed(self, tmp_path: Path, monkeypatch):
         """Cursor is clamped when the selected question disappears."""
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         _create_pending_question(
             tmp_path,
             plan_name="260220XX_plan",
@@ -479,11 +511,12 @@ class TestRenderEmptyState:
 class TestRenderWithQuestions:
     """Tests for rendering with question data present."""
 
-    def test_render_shows_question_data(self, tmp_path: Path):
+    def test_render_shows_question_data(self, tmp_path: Path, monkeypatch):
         """Rendered output includes plan name, severity, and question text."""
         from io import StringIO
         from rich.console import Console
 
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         _create_pending_question(
             tmp_path,
             plan_name="260220AB_my_plan",
@@ -505,11 +538,12 @@ class TestRenderWithQuestions:
         assert "HIGH" in output
         assert "Is this working?" in output
 
-    def test_render_multi_question_count(self, tmp_path: Path):
+    def test_render_multi_question_count(self, tmp_path: Path, monkeypatch):
         """Header shows correct question count with multiple questions."""
         from io import StringIO
         from rich.console import Console
 
+        _patch_live_epic_dirs(monkeypatch, tmp_path)
         _create_pending_question(
             tmp_path,
             plan_name="260220AA_plan",

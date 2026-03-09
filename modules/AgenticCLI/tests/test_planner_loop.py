@@ -22,78 +22,149 @@ def _fail_result(**kwargs) -> SessionResult:
     return SessionResult(status="failed", result="failed", is_error=True, **kwargs)
 
 
+_UNSET = object()  # Sentinel for "not provided" vs explicit None
+
+
+def _setup_tinydb_for_workflow(tmp_path, epic_folder_name, *, agent_type=None,
+                                context=None, status=_UNSET, tickets=None):
+    """Set up TinyDB for PlannerLoopWorkflow tests.
+
+    Creates a .git marker so the workflow can find the repo root,
+    then populates TinyDB with the given epic data.
+
+    Args:
+        tmp_path: pytest tmp_path fixture value.
+        epic_folder_name: Name of the epic folder (e.g. "my_plan").
+        agent_type: Agent type string for the mock ticket (e.g. "build-python").
+        context: Epic context string (used by detect_sdk_objective).
+        status: Epic status string (used by get_plan_status). Pass None to
+                omit the status field entirely; omit the arg to default "active".
+        tickets: List of ticket dicts [{id, name, status, agent_type, ...}].
+                 If None and agent_type is given, one ticket is created.
+
+    Returns:
+        db_path: Path to the isolated TinyDB file.
+    """
+    from agenticguidance.services.epic_repository import EpicRepository
+
+    # Create .git marker so PlannerLoopWorkflow's repo-root walkup stops here
+    (tmp_path / ".git").mkdir(exist_ok=True)
+    db_path = tmp_path / ".agentic" / "epics.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+
+    epic_doc = {
+        "epic_folder_name": epic_folder_name,
+        "epic_folder": str(tmp_path / "epics" / epic_folder_name),
+        "name": epic_folder_name,
+    }
+    if status is _UNSET:
+        epic_doc["status"] = "active"
+    elif status is not None:
+        epic_doc["status"] = status
+    # If status is explicitly None, leave status out of epic_doc
+
+    if context is not None:
+        epic_doc["context"] = context
+    repo.create_epic(epic_doc)
+
+    phase_name = "Phase 1"
+    repo.add_phase(epic_folder_name, {"name": phase_name})
+
+    # Use provided tickets list OR build one from agent_type
+    if tickets is not None:
+        for t in tickets:
+            repo.add_ticket(epic_folder_name, phase_name, t)
+    elif agent_type is not None:
+        repo.add_ticket(epic_folder_name, phase_name, {
+            "task_id": "T001",
+            "name": "Mock ticket",
+            "status": "pending",
+            "agent": agent_type,
+        })
+
+    repo.close()
+    return db_path
+
+
 # ---------------------------------------------------------------------------
 # PlannerLoopWorkflow tests
 # ---------------------------------------------------------------------------
 
 
 class TestDiscoverPlansNeedingOrchestration:
-    """Test discover_plans_needing_orchestration method."""
+    """Test discover_plans_needing_orchestration method.
 
-    def test_finds_plans_without_mmds(self, tmp_path):
-        """Plans missing orchestration_*.mmd are returned."""
+    The primary path checks TinyDB for live epics with no phases.
+    The legacy fallback checks for missing orchestration_*.mmd files on disk.
+    """
+
+    def test_finds_plans_without_phases_in_tinydb(self, tmp_path):
+        """Live epics with no phases in TinyDB are returned."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
+        from agenticguidance.services.epic_repository import EpicRepository
 
         epics_dir = tmp_path / "docs" / "epics" / "live"
         epics_dir.mkdir(parents=True)
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        db_path = tmp_path / ".agentic" / "epics.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Plan with MMD - should NOT be returned
-        plan_a = epics_dir / "260210AA_with_mmd"
-        plan_a.mkdir()
-        (plan_a / "plan_build.yml").write_text("title: A")
-        (plan_a / "orchestration_build.mmd").write_text("graph TD")
-
-        # Plan without MMD - should be returned
-        plan_b = epics_dir / "260210BB_no_mmd"
-        plan_b.mkdir()
-        (plan_b / "plan_build.yml").write_text("title: B")
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        # Epic with routed phases - should NOT be returned (uses "active" which maps to "live")
+        repo.create_epic({"epic_folder_name": "260210AA_with_phases", "status": "active"})
+        repo.add_phase("260210AA_with_phases", {"name": "Phase 1", "agent": "build-python"})
+        # Epic without phases - should be returned (uses "active" which maps to "live")
+        repo.create_epic({"epic_folder_name": "260210BB_no_phases", "status": "active"})
+        repo.close()
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         result = workflow.discover_plans_needing_orchestration()
 
-        assert result == ["260210BB_no_mmd"]
+        assert result == ["260210BB_no_phases"]
 
-    def test_returns_empty_when_all_have_mmds(self, tmp_path):
-        """No plans returned when all have orchestration MMDs."""
+    def test_returns_empty_when_all_have_phases(self, tmp_path):
+        """No plans returned when all live epics have phases in TinyDB."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
+        from agenticguidance.services.epic_repository import EpicRepository
 
         epics_dir = tmp_path / "docs" / "epics" / "live"
         epics_dir.mkdir(parents=True)
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        db_path = tmp_path / ".agentic" / "epics.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        plan_a = epics_dir / "260210AA_done"
-        plan_a.mkdir()
-        (plan_a / "orchestration_build.mmd").write_text("graph TD")
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        # "active" maps to "live" via STATUS_DIR_MAP
+        repo.create_epic({"epic_folder_name": "260210AA_done", "status": "active"})
+        repo.add_phase("260210AA_done", {"name": "Phase 1", "agent": "build-python"})
+        repo.close()
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         result = workflow.discover_plans_needing_orchestration()
 
         assert result == []
 
-    def test_returns_empty_when_no_plans_dir(self, tmp_path):
-        """Returns empty list when epics directory doesn't exist."""
+    def test_returns_empty_when_no_epics_in_tinydb(self, tmp_path):
+        """Returns empty list when no live epics in TinyDB."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow(epics_dir=tmp_path / "nonexistent")
-        result = workflow.discover_plans_needing_orchestration()
-
-        assert result == []
-
-    def test_skips_files_in_plans_dir(self, tmp_path):
-        """Only directories are considered, not files."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
+        from agenticguidance.services.epic_repository import EpicRepository
 
         epics_dir = tmp_path / "docs" / "epics" / "live"
         epics_dir.mkdir(parents=True)
-        (epics_dir / "README.md").write_text("info")
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        db_path = tmp_path / ".agentic" / "epics.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        plan = epics_dir / "260210CC_real"
-        plan.mkdir()
-        (plan / "plan_build.yml").write_text("title: C")
+        # Create an empty DB
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.close()
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         result = workflow.discover_plans_needing_orchestration()
 
-        assert result == ["260210CC_real"]
+        assert result == []
 
 
 class TestRunHealthCheck:
@@ -127,7 +198,7 @@ class TestRunHealthCheck:
             workflow.run_health_check()
 
     def test_health_check_plan_list_failure(self, monkeypatch):
-        """Health check raises when agentic plan list fails."""
+        """Health check raises when agentic epic list fails."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         def mock_run(cmd, **kwargs):
@@ -138,7 +209,7 @@ class TestRunHealthCheck:
         monkeypatch.setattr(subprocess, "run", mock_run)
 
         workflow = PlannerLoopWorkflow()
-        with pytest.raises(RuntimeError, match="agentic plan list"):
+        with pytest.raises(RuntimeError, match="agentic epic list"):
             workflow.run_health_check()
 
 
@@ -146,110 +217,119 @@ class TestDeterminePlanType:
     """Test determine_plan_type method."""
 
     def test_build_type(self, tmp_path):
-        """Returns 'build' when plan_build.yml exists."""
+        """Returns 'build' when TinyDB has a ticket with build agent type."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
         plan = epics_dir / "my_plan"
         plan.mkdir()
-        (plan / "plan_build.yml").write_text("title: test")
+        # Populate TinyDB with a build-type agent ticket
+        _setup_tinydb_for_workflow(tmp_path, "my_plan", agent_type="build-python")
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("my_plan") == "build"
 
     def test_test_type(self, tmp_path):
-        """Returns 'test' when plan_test.yml exists."""
+        """Returns 'test' when TinyDB has a ticket with test agent type."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
         plan = epics_dir / "my_plan"
         plan.mkdir()
-        (plan / "plan_test.yml").write_text("title: test")
+        # Populate TinyDB with a test-type agent ticket
+        _setup_tinydb_for_workflow(tmp_path, "my_plan", agent_type="test-runner")
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("my_plan") == "test"
 
-    def test_no_plan_file(self, tmp_path):
-        """Returns None when no plan_*.yml exists."""
+    def test_no_tickets_defaults_to_build(self, tmp_path):
+        """Defaults to 'build' when no tickets in TinyDB (first-time planning)."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
         plan = epics_dir / "my_plan"
         plan.mkdir()
-        (plan / "README.md").write_text("no plan here")
+        # Only create .git so workflow can initialize, but no tickets in TinyDB
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        (tmp_path / ".agentic").mkdir(exist_ok=True)
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        assert workflow.determine_plan_type("my_plan") is None
+        assert workflow.determine_plan_type("my_plan") == "build"
 
-    def test_nonexistent_folder(self, tmp_path):
-        """Returns None when plan folder doesn't exist."""
+    def test_nonexistent_folder_defaults_to_build(self, tmp_path):
+        """Defaults to 'build' for nonexistent folder (no tickets = first-time planning)."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
+        # Create .git so workflow initializes, but no epic in TinyDB
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        (tmp_path / ".agentic").mkdir(exist_ok=True)
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        assert workflow.determine_plan_type("nonexistent") is None
+        # _process_plan guards against nonexistent epics before calling this,
+        # so in isolation, no tickets defaults to "build"
+        assert workflow.determine_plan_type("nonexistent") == "build"
 
 
 class TestDetectSdkObjective:
-    """Test detect_sdk_objective method."""
+    """Test detect_sdk_objective method (reads epic context from TinyDB)."""
 
     def test_detects_sdk_keyword_in_context(self, tmp_path):
-        """Returns True when plan_build.yml context contains SDK keywords."""
+        """Returns True when TinyDB epic context contains SDK keywords."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "sdk_plan"
-        plan.mkdir()
-        (plan / "plan_build.yml").write_text(
-            "context: |\n  Migrate sessions to use claude-agent-sdk\n"
+        (epics_dir / "sdk_plan").mkdir()
+        _setup_tinydb_for_workflow(
+            tmp_path, "sdk_plan",
+            context="Migrate sessions to use claude-agent-sdk",
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("sdk_plan") is True
 
     def test_no_sdk_keywords(self, tmp_path):
-        """Returns False when context has no SDK keywords."""
+        """Returns False when TinyDB context has no SDK keywords."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "normal_plan"
-        plan.mkdir()
-        (plan / "plan_build.yml").write_text(
-            "context: |\n  Add a new CLI command for listing plans\n"
+        (epics_dir / "normal_plan").mkdir()
+        _setup_tinydb_for_workflow(
+            tmp_path, "normal_plan",
+            context="Add a new CLI command for listing plans",
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("normal_plan") is False
 
     def test_no_context_field(self, tmp_path):
-        """Returns False when plan_build.yml has no context field."""
+        """Returns False when TinyDB epic has no context field."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "no_ctx"
-        plan.mkdir()
-        (plan / "plan_build.yml").write_text("title: test\nstatus: active\n")
+        (epics_dir / "no_ctx").mkdir()
+        _setup_tinydb_for_workflow(tmp_path, "no_ctx", context=None)
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("no_ctx") is False
 
     def test_no_plan_build_yml(self, tmp_path):
-        """Returns False when plan_build.yml doesn't exist."""
+        """Returns False when epic not in TinyDB."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "no_build"
-        plan.mkdir()
-        (plan / "plan_test.yml").write_text("title: test\n")
+        (epics_dir / "no_build").mkdir()
+        # Create .git but don't add epic to TinyDB
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        (tmp_path / ".agentic").mkdir(exist_ok=True)
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("no_build") is False
@@ -260,10 +340,10 @@ class TestDetectSdkObjective:
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "case_plan"
-        plan.mkdir()
-        (plan / "plan_build.yml").write_text(
-            "context: |\n  Replace subprocess calls with SDK Migration patterns\n"
+        (epics_dir / "case_plan").mkdir()
+        _setup_tinydb_for_workflow(
+            tmp_path, "case_plan",
+            context="Replace subprocess calls with SDK Migration patterns",
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
@@ -275,24 +355,24 @@ class TestDetectSdkObjective:
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "multi_sdk"
-        plan.mkdir()
-        (plan / "plan_build.yml").write_text(
-            "context: |\n  Use claude-agent-sdk query() and async iterator for session spawn\n"
+        (epics_dir / "multi_sdk").mkdir()
+        _setup_tinydb_for_workflow(
+            tmp_path, "multi_sdk",
+            context="Use claude-agent-sdk query() and async iterator for session spawn",
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("multi_sdk") is True
 
     def test_malformed_yaml(self, tmp_path):
-        """Returns False on malformed YAML (doesn't crash)."""
+        """Returns False when epic is not in TinyDB (doesn't crash)."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
         plan = epics_dir / "bad_yaml"
         plan.mkdir()
-        (plan / "plan_build.yml").write_text(": : invalid: [yaml\n")
+        # No TinyDB entry - detect_sdk_objective reads from TinyDB, returns False
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.detect_sdk_objective("bad_yaml") is False
@@ -302,157 +382,68 @@ class TestDeterminePlanTypeWithSdkRouting:
     """Test that determine_plan_type routes to SDK when context matches."""
 
     def test_build_with_sdk_context_returns_sdk(self, tmp_path):
-        """plan_build.yml with SDK context returns 'sdk' instead of 'build'."""
+        """Build agent ticket with SDK context returns 'sdk' instead of 'build'."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "sdk_build"
-        plan.mkdir()
-        (plan / "plan_build.yml").write_text(
-            "context: |\n  Migrate subprocess replacement using claude-agent-sdk\n"
+        (epics_dir / "sdk_build").mkdir()
+        _setup_tinydb_for_workflow(
+            tmp_path, "sdk_build",
+            agent_type="build-python",
+            context="Migrate subprocess replacement using claude-agent-sdk",
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("sdk_build") == "sdk"
 
     def test_build_without_sdk_context_returns_build(self, tmp_path):
-        """plan_build.yml without SDK context still returns 'build'."""
+        """Build agent ticket without SDK context still returns 'build'."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "normal_build"
-        plan.mkdir()
-        (plan / "plan_build.yml").write_text(
-            "context: |\n  Add new CLI commands for plan management\n"
+        (epics_dir / "normal_build").mkdir()
+        _setup_tinydb_for_workflow(
+            tmp_path, "normal_build",
+            agent_type="build-python",
+            context="Add new CLI commands for plan management",
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("normal_build") == "build"
 
-    def test_plan_sdk_yml_returns_sdk(self, tmp_path):
-        """plan_sdk.yml returns 'sdk' directly (no context check needed)."""
+    def test_build_with_sdk_context_in_tinydb_returns_sdk(self, tmp_path):
+        """TinyDB epic with SDK context and build agent ticket returns 'sdk'."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "explicit_sdk"
-        plan.mkdir()
-        (plan / "plan_sdk.yml").write_text("title: SDK plan\n")
+        (epics_dir / "explicit_sdk").mkdir()
+        _setup_tinydb_for_workflow(
+            tmp_path, "explicit_sdk",
+            agent_type="build-python",
+            context="Use claude-agent-sdk for session spawning",
+        )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("explicit_sdk") == "sdk"
 
     def test_test_type_not_affected(self, tmp_path):
-        """plan_test.yml returns 'test' (SDK detection only applies to 'build')."""
+        """Test agent ticket returns 'test' even when epic has SDK context."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         epics_dir.mkdir()
-        plan = epics_dir / "test_plan"
-        plan.mkdir()
-        (plan / "plan_test.yml").write_text(
-            "context: |\n  Test claude-agent-sdk integration\n"
+        (epics_dir / "test_plan").mkdir()
+        _setup_tinydb_for_workflow(
+            tmp_path, "test_plan",
+            agent_type="test-runner",
+            context="Test claude-agent-sdk integration",
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.determine_plan_type("test_plan") == "test"
-
-
-class TestGenerateMmd:
-    """Test generate_mmd method."""
-
-    def test_success_via_cli(self, monkeypatch):
-        """Returns True when CLI generation succeeds."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        def mock_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-
-        workflow = PlannerLoopWorkflow()
-        assert workflow.generate_mmd("test_plan") is True
-
-    def test_falls_back_to_agent(self, monkeypatch):
-        """Falls back to planner-orchestration agent when CLI fails."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        def mock_run(cmd, **kwargs):
-            # CLI generate fails
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="fail")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-
-        workflow = PlannerLoopWorkflow()
-        # Mock _run_role_agent to return success
-        monkeypatch.setattr(workflow, "_run_role_agent", lambda role, pf: _ok_result())
-
-        assert workflow.generate_mmd("test_plan") is True
-
-    def test_fallback_agent_failure(self, monkeypatch):
-        """Returns False when both CLI and fallback agent fail."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        def mock_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="fail")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-
-        workflow = PlannerLoopWorkflow()
-        monkeypatch.setattr(workflow, "_run_role_agent", lambda role, pf: _fail_result())
-
-        assert workflow.generate_mmd("test_plan") is False
-
-
-class TestValidateMmd:
-    """Test validate_mmd method."""
-
-    def test_success_first_attempt(self, monkeypatch):
-        """Returns True on first successful validation."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        def mock_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 0, stdout="valid", stderr="")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-
-        workflow = PlannerLoopWorkflow()
-        assert workflow.validate_mmd("test_plan") is True
-
-    def test_failure_then_success(self, monkeypatch):
-        """Retries and succeeds on second attempt."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        attempts = {"n": 0}
-
-        def mock_run(cmd, **kwargs):
-            attempts["n"] += 1
-            if attempts["n"] <= 2:
-                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="invalid")
-            return subprocess.CompletedProcess(cmd, 0, stdout="valid", stderr="")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-        # Speed up test by not sleeping
-        monkeypatch.setattr("time.sleep", lambda _: None)
-
-        workflow = PlannerLoopWorkflow()
-        assert workflow.validate_mmd("test_plan") is True
-        assert attempts["n"] == 3
-
-    def test_all_retries_fail(self, monkeypatch):
-        """Returns False after max retries exhausted."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        def mock_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="invalid")
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-        monkeypatch.setattr("time.sleep", lambda _: None)
-
-        workflow = PlannerLoopWorkflow()
-        assert workflow.validate_mmd("test_plan", max_retries=3) is False
 
 
 # ---------------------------------------------------------------------------
@@ -467,8 +458,14 @@ class TestPlannerLoopRunner:
     The spawn+wait pattern is eliminated — each call blocks until completion.
     """
 
-    def _make_runner(self, monkeypatch, **overrides):
-        """Create a runner with a mocked workflow."""
+    def _make_runner(self, monkeypatch, epic_folders=None, **overrides):
+        """Create a runner with a mocked workflow.
+
+        Args:
+            epic_folders: Optional list of epic folder names to create as
+                stub directories under the temp epics_dir. Defaults to
+                ["test_plan"] for backward compatibility.
+        """
         import tempfile
         from pathlib import Path
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
@@ -476,6 +473,9 @@ class TestPlannerLoopRunner:
         # Create a temporary empty epics_dir so iterdir() won't fail
         tmp_epics_dir = Path(tempfile.mkdtemp()) / "docs" / "epics" / "live"
         tmp_epics_dir.mkdir(parents=True, exist_ok=True)
+        # Create stub epic folders so the folder-existence guard doesn't reject them
+        for folder in (epic_folders or ["test_plan"]):
+            (tmp_epics_dir / folder).mkdir(exist_ok=True)
 
         workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
         # Also mock get_plan_status so archive loop doesn't fail on missing plans
@@ -499,10 +499,8 @@ class TestPlannerLoopRunner:
                             overrides.get("spawn_reviewer", lambda pf: _ok_result()))
         monkeypatch.setattr(workflow, "run_review_cycle",
                             overrides.get("review", lambda pf, **kw: (True, 1, "approved")))
-        monkeypatch.setattr(workflow, "generate_mmd",
-                            overrides.get("generate", lambda pf: True))
-        monkeypatch.setattr(workflow, "validate_mmd",
-                            overrides.get("validate", lambda pf, **kw: True))
+        monkeypatch.setattr(workflow, "spawn_orchestration_agent",
+                            overrides.get("spawn_orchestration", lambda pf: _ok_result()))
 
         return PlannerLoopRunner(workflow=workflow)
 
@@ -515,7 +513,7 @@ class TestPlannerLoopRunner:
         assert "Planning complete" in capsys.readouterr().out
 
     def test_processes_single_plan(self, monkeypatch, capsys):
-        """Runner processes a single plan through full workflow including explore and story steps."""
+        """Runner processes a plan through the 6-step workflow (includes orchestration)."""
         call_log = []
 
         def tracking_discover():
@@ -544,13 +542,9 @@ class TestPlannerLoopRunner:
             call_log.append(("review", pf))
             return (True, 1, "approved")
 
-        def tracking_generate(pf):
-            call_log.append(("generate", pf))
-            return True
-
-        def tracking_validate(pf, **kw):
-            call_log.append(("validate", pf))
-            return True
+        def tracking_orchestration(pf):
+            call_log.append(("orchestration", pf))
+            return _ok_result(session_id="orchestration-session-abc")
 
         runner = self._make_runner(
             monkeypatch,
@@ -560,13 +554,12 @@ class TestPlannerLoopRunner:
             plan_type=tracking_plan_type,
             spawn_planner=tracking_spawn,
             review=tracking_review,
-            generate=tracking_generate,
-            validate=tracking_validate,
+            spawn_orchestration=tracking_orchestration,
         )
         result = runner.run(max_iterations=5)
 
         assert result is True
-        # Verify call sequence includes explore and story steps
+        # Verify call sequence includes all 6 steps
         step_names = [c[0] for c in call_log]
         assert "discover" in step_names
         assert "spawn_explore" in step_names
@@ -574,14 +567,16 @@ class TestPlannerLoopRunner:
         assert "plan_type" in step_names
         assert "spawn" in step_names
         assert "review" in step_names
-        assert "generate" in step_names
-        assert "validate" in step_names
+        assert "orchestration" in step_names
 
-        # Verify ordering: explore must come before story, story before plan_type
+        # Verify ordering: explore -> story -> plan_type -> spawn -> review -> orchestration
         idx_explore = next(i for i, c in enumerate(call_log) if c[0] == "spawn_explore")
         idx_story = next(i for i, c in enumerate(call_log) if c[0] == "spawn_story")
         idx_plan_type = next(i for i, c in enumerate(call_log) if c[0] == "plan_type")
+        idx_review = next(i for i, c in enumerate(call_log) if c[0] == "review")
+        idx_orch = next(i for i, c in enumerate(call_log) if c[0] == "orchestration")
         assert idx_explore < idx_story < idx_plan_type
+        assert idx_review < idx_orch
 
     def test_explore_agent_failure_skips_plan(self, monkeypatch):
         """Plan is skipped when explore agent fails."""
@@ -660,15 +655,19 @@ class TestPlannerLoopRunner:
         assert "rejected_plan" in runner.state["plans_skipped"]
 
     def test_respects_max_iterations(self, monkeypatch):
-        """Runner stops after max_iterations even if plans remain."""
+        """Runner stops early when all discovered epics fail planning."""
         runner = self._make_runner(
             monkeypatch,
+            epic_folders=["always_plan"],
             discover=lambda: ["always_plan"],
+            # Make explore fail so the epic is marked as failed
+            spawn_explore=lambda pf: _fail_result(),
         )
         result = runner.run(max_iterations=2)
 
         assert result is False
-        assert runner.state["iteration"] == 2
+        # Early stop: all discovered epics failed, no point retrying
+        assert "always_plan" in runner.state["plans_skipped"]
 
     def test_handles_health_check_failure(self, monkeypatch):
         """Runner exits early on health check failure."""
@@ -693,6 +692,7 @@ class TestPlannerLoopRunner:
 
         runner = self._make_runner(
             monkeypatch,
+            epic_folders=["no_type_plan"],
             discover=discover,
             plan_type=lambda pf: None,
         )
@@ -705,7 +705,7 @@ class TestRunRoleAgent:
     """Test the _run_role_agent SDK integration method."""
 
     def test_sdk_path_records_session_state(self, monkeypatch):
-        """SDK path writes session state for observability."""
+        """SDK-direct path writes session state (used when tmux unavailable)."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         saved_data = {}
@@ -727,6 +727,8 @@ class TestRunRoleAgent:
         monkeypatch.setattr("agenticcli.workflows.planner_loop._session_store.save", mock_save)
         # Mock _build_sdk_options to avoid importing real SDK (role kwarg supported since PO_003)
         monkeypatch.setattr("agenticcli.workflows.planner_loop._build_sdk_options", lambda wd, role=None: None)
+        # Mock tmux as unavailable so it falls back to SDK-direct
+        monkeypatch.setattr("shutil.which", lambda x: None)
 
         workflow = PlannerLoopWorkflow()
         result = workflow._run_role_agent("explore", "test_plan")
@@ -788,136 +790,155 @@ class TestReviewCycleWithSessionResult:
 
 
 class TestGetPlanStatus:
-    """Test get_plan_status respects YAML status field over task-counting."""
+    """Test get_plan_status reads epic status and ticket counts from TinyDB."""
 
     # ------------------------------------------------------------------
     # Helper
     # ------------------------------------------------------------------
 
-    def _make_plan(self, epics_dir, folder_name, yaml_content):
-        """Write a plan_build.yml under epics_dir/folder_name."""
-        plan_dir = epics_dir / folder_name
-        plan_dir.mkdir(parents=True, exist_ok=True)
-        (plan_dir / "plan_build.yml").write_text(yaml_content)
-        return plan_dir
+    def _make_tinydb_plan(self, tmp_path, epics_dir, folder_name, *,
+                          status=None, tickets=None):
+        """Create an epic in TinyDB under epics_dir/folder_name.
+
+        Args:
+            tmp_path: pytest tmp_path root (used for .git + DB path).
+            epics_dir: The epics dir path.
+            folder_name: Epic folder name.
+            status: Epic-level status string, or None if absent.
+            tickets: List of ticket dicts with at least {task_id, status}.
+        """
+        (epics_dir / folder_name).mkdir(parents=True, exist_ok=True)
+        _setup_tinydb_for_workflow(
+            tmp_path, folder_name,
+            status=status,
+            tickets=tickets or [],
+        )
 
     # ------------------------------------------------------------------
     # Core bug regression: active status must NOT be overridden
     # ------------------------------------------------------------------
 
     def test_active_status_not_overridden_by_all_tasks_complete(self, tmp_path):
-        """YAML status: active is preserved even when all tasks are completed.
+        """TinyDB status: active is preserved even when all tickets are completed.
 
-        This is the regression test for the auto-archive bug: a plan whose
-        plan_build.yml has 'status: active' must NOT be reported as 'completed'
-        just because every task carries status: completed.
+        This is the regression test for the auto-archive bug: an epic whose
+        TinyDB record has status='active' must NOT be reported as 'completed'
+        just because every ticket carries status='completed'.
         """
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
-        self._make_plan(
-            epics_dir,
-            "active_plan",
-            "status: active\nphases:\n"
-            "  - tickets:\n"
-            "      - {name: task1, status: completed}\n"
-            "      - {name: task2, status: completed}\n",
+        self._make_tinydb_plan(
+            tmp_path, epics_dir, "active_plan",
+            status="active",
+            tickets=[
+                {"task_id": "t1", "name": "task1", "status": "completed"},
+                {"task_id": "t2", "name": "task2", "status": "completed"},
+            ],
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("active_plan") == "active"
 
     def test_in_progress_status_not_overridden(self, tmp_path):
-        """Any non-completed YAML status is respected regardless of tasks."""
+        """Any non-completed TinyDB status is respected regardless of tickets."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
-        self._make_plan(
-            epics_dir,
-            "wip_plan",
-            "status: in_progress\nphases:\n"
-            "  - tickets:\n"
-            "      - {name: task1, status: completed}\n",
+        self._make_tinydb_plan(
+            tmp_path, epics_dir, "wip_plan",
+            status="in_progress",
+            tickets=[
+                {"task_id": "t1", "name": "task1", "status": "completed"},
+            ],
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("wip_plan") == "in_progress"
 
     # ------------------------------------------------------------------
-    # Task-counting fallback: no explicit status field
+    # Pending status: returned as-is (non-completed, non-active)
     # ------------------------------------------------------------------
 
-    def test_no_status_field_all_tasks_complete_returns_completed(self, tmp_path):
-        """Plans with no YAML status field are auto-detected as completed via task counting."""
+    def test_pending_status_with_all_tasks_complete_returns_pending(self, tmp_path):
+        """Epic with status=pending is returned as-is even when all tickets are done.
+
+        TinyDB always stores a status (defaulting to 'pending'), so task counting
+        is only triggered when the status field is missing. Since TinyDB always
+        has a status, 'pending' is honoured like any non-completed status.
+        """
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
-        self._make_plan(
-            epics_dir,
-            "implicit_done",
-            "phases:\n"
-            "  - tickets:\n"
-            "      - {name: task1, status: completed}\n"
-            "      - {name: task2, status: completed}\n",
+        self._make_tinydb_plan(
+            tmp_path, epics_dir, "pending_done",
+            status="pending",
+            tickets=[
+                {"task_id": "t1", "name": "task1", "status": "completed"},
+                {"task_id": "t2", "name": "task2", "status": "completed"},
+            ],
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        assert workflow.get_plan_status("implicit_done") == "completed"
+        # "pending" != "completed" and is not None → returned directly
+        assert workflow.get_plan_status("pending_done") == "pending"
 
-    def test_no_status_field_pending_tasks_returns_none(self, tmp_path):
-        """Plans with no status field and pending tasks return None (not completed)."""
+    def test_pending_status_with_mixed_tasks_returns_pending(self, tmp_path):
+        """Epic with status=pending and mixed ticket statuses returns 'pending'."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
-        self._make_plan(
-            epics_dir,
-            "partial_plan",
-            "phases:\n"
-            "  - tickets:\n"
-            "      - {name: task1, status: completed}\n"
-            "      - {name: task2, status: pending}\n",
+        self._make_tinydb_plan(
+            tmp_path, epics_dir, "partial_plan",
+            status="pending",
+            tickets=[
+                {"task_id": "t1", "name": "task1", "status": "completed"},
+                {"task_id": "t2", "name": "task2", "status": "pending"},
+            ],
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        assert workflow.get_plan_status("partial_plan") is None
+        assert workflow.get_plan_status("partial_plan") == "pending"
 
     # ------------------------------------------------------------------
-    # Explicit completed status in YAML
+    # Explicit completed status in TinyDB
     # ------------------------------------------------------------------
 
     def test_explicit_completed_status_all_tasks_done(self, tmp_path):
-        """Explicit status: completed with all tasks done returns completed."""
+        """Explicit status=completed with all tickets done returns completed."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
-        self._make_plan(
-            epics_dir,
-            "done_plan",
-            "status: completed\nphases:\n"
-            "  - tickets:\n"
-            "      - {name: task1, status: completed}\n",
+        self._make_tinydb_plan(
+            tmp_path, epics_dir, "done_plan",
+            status="completed",
+            tickets=[
+                {"task_id": "t1", "name": "task1", "status": "completed"},
+            ],
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         assert workflow.get_plan_status("done_plan") == "completed"
 
     def test_explicit_completed_status_even_with_pending_tasks(self, tmp_path):
-        """Explicit status: completed falls through to task counting which yields None for pending tasks."""
+        """Explicit status=completed is returned even when tickets are still pending.
+
+        When TinyDB says completed but tickets are pending, task counting
+        won't trigger the 'pending==0' branch, so the epic status is returned.
+        """
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        # When YAML says completed but tasks are still pending, task counting
-        # won't trigger the 'pending==0' branch, so the YAML status is returned.
         epics_dir = tmp_path / "epics"
-        self._make_plan(
-            epics_dir,
-            "weird_plan",
-            "status: completed\nphases:\n"
-            "  - tickets:\n"
-            "      - {name: task1, status: pending}\n",
+        self._make_tinydb_plan(
+            tmp_path, epics_dir, "weird_plan",
+            status="completed",
+            tickets=[
+                {"task_id": "t1", "name": "task1", "status": "pending"},
+            ],
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        # Task counting: pending=1, completed=0 -> not triggered -> falls back to yaml_status="completed"
+        # Task counting: pending=1, completed=0 -> not triggered -> falls back to epic_status="completed"
         assert workflow.get_plan_status("weird_plan") == "completed"
 
     # ------------------------------------------------------------------
@@ -925,45 +946,44 @@ class TestGetPlanStatus:
     # ------------------------------------------------------------------
 
     def test_nonexistent_plan_folder_returns_none(self, tmp_path):
-        """Returns None when epic folder does not exist."""
+        """Returns None when epic is not in TinyDB."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
+        # Create .git so workflow initializes but no epic in TinyDB
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        (tmp_path / ".agentic").mkdir(exist_ok=True)
         workflow = PlannerLoopWorkflow(epics_dir=tmp_path / "epics")
         assert workflow.get_plan_status("ghost_plan") is None
 
-    def test_plan_folder_without_plan_build_yml_returns_none(self, tmp_path):
-        """Returns None when plan_build.yml is absent."""
+    def test_plan_folder_without_tinydb_entry_returns_none(self, tmp_path):
+        """Returns None when epic folder exists on disk but not in TinyDB."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
-        plan_dir = epics_dir / "no_build"
+        plan_dir = epics_dir / "no_db_entry"
         plan_dir.mkdir(parents=True)
-        (plan_dir / "README.md").write_text("no plan file")
+        # Create .git but no TinyDB entry
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        (tmp_path / ".agentic").mkdir(exist_ok=True)
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        assert workflow.get_plan_status("no_build") is None
+        assert workflow.get_plan_status("no_db_entry") is None
 
-    def test_malformed_yaml_returns_none(self, tmp_path):
-        """Returns None gracefully when plan_build.yml is malformed."""
+    def test_epic_with_no_tickets_returns_status(self, tmp_path):
+        """Returns the epic status even when there are no tickets in TinyDB."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
-        plan_dir = epics_dir / "bad_yaml"
-        plan_dir.mkdir(parents=True)
-        (plan_dir / "plan_build.yml").write_text(": : invalid: [yaml\n")
+        # Create epic with no tickets - TinyDB defaults status to "pending"
+        self._make_tinydb_plan(
+            tmp_path, epics_dir, "empty_plan",
+            status="pending",
+            tickets=[],
+        )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        assert workflow.get_plan_status("bad_yaml") is None
-
-    def test_empty_phases_no_tasks_returns_none(self, tmp_path):
-        """Returns None when phases exist but contain no tasks (completed=0)."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        epics_dir = tmp_path / "epics"
-        self._make_plan(epics_dir, "empty_plan", "phases:\n  - tickets: []\n")
-
-        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        assert workflow.get_plan_status("empty_plan") is None
+        # "pending" is not None and not "completed" → returned as-is
+        assert workflow.get_plan_status("empty_plan") == "pending"
 
 
 # ---------------------------------------------------------------------------
@@ -1178,6 +1198,9 @@ class TestValidateResult:
         # Create a temporary empty epics_dir so iterdir() won't fail
         tmp_epics_dir = Path(tempfile.mkdtemp()) / "docs" / "epics" / "live"
         tmp_epics_dir.mkdir(parents=True, exist_ok=True)
+        # Create stub epic folders so the folder-existence guard doesn't reject them
+        (tmp_epics_dir / "test_plan").mkdir(exist_ok=True)
+        (tmp_epics_dir / "my_test_plan").mkdir(exist_ok=True)
 
         workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
         monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "in_progress")
@@ -1188,8 +1211,7 @@ class TestValidateResult:
         monkeypatch.setattr(workflow, "determine_plan_type", lambda pf: "build")
         monkeypatch.setattr(workflow, "spawn_planner", lambda pf, pt: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "run_review_cycle", lambda pf, **kw: (True, 1, "approved"))
-        monkeypatch.setattr(workflow, "generate_mmd", lambda pf: True)
-        monkeypatch.setattr(workflow, "validate_mmd", lambda pf, **kw: True)
+        monkeypatch.setattr(workflow, "spawn_orchestration_agent", lambda pf: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "_validate_result", tracking_validate_result)
 
         runner = PlannerLoopRunner(workflow=workflow)
@@ -1208,10 +1230,11 @@ class TestValidateResult:
 
         runner.run(max_iterations=5)
 
-        # explore, story-generator, and planner-build should all be validated
+        # explore, story-generator, planner-build, and planner-orchestration should all be validated
         assert "explore" in validated_roles
         assert "story-generator" in validated_roles
         assert "planner-build" in validated_roles
+        assert "planner-orchestration" in validated_roles
 
 
 # ---------------------------------------------------------------------------
@@ -1303,3 +1326,269 @@ class TestBuildSdkOptionsWithRole:
         workflow._run_via_sdk("sid-test", "explore", "my_plan", "prompt", max_retries=1)
 
         assert "explore" in roles_received
+
+
+# ── TT_005: Test wait_for_session tmux-aware completion detection ─────
+
+
+class TestWaitForSessionTmux:
+    """TT_005: Tests for tmux-aware completion detection in wait_for_session."""
+
+    def _make_workflow(self, monkeypatch):
+        """Create a PlannerLoopWorkflow with controlled defaults."""
+        import tempfile
+        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
+
+        tmp_epics_dir = Path(tempfile.mkdtemp()) / "docs" / "epics" / "live"
+        tmp_epics_dir.mkdir(parents=True, exist_ok=True)
+        return PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
+
+    def test_wait_for_session_checks_tmux_when_present(self, monkeypatch):
+        """Session data has tmux_session field — verify session_exists is called."""
+        workflow = self._make_workflow(monkeypatch)
+
+        session_data = {
+            "session_id": "test-sid-001",
+            "pid": 99999,
+            "status": "running",
+            "tmux_session": "agentic-test-001",
+        }
+
+        # Mock _get_session_status to return "running" once, then "completed"
+        call_count = [0]
+
+        def mock_get_status(sid):
+            call_count[0] += 1
+            if call_count[0] <= 1:
+                return "running"
+            return "completed"
+
+        monkeypatch.setattr(workflow, "_get_session_status", mock_get_status)
+
+        # Mock _session_store.load to return our session data
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop._session_store.load",
+            lambda sid: session_data,
+        )
+
+        # Mock is_process_running to return True (PID alive)
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop.is_process_running",
+            lambda pid: True,
+        )
+
+        # Track session_exists calls
+        tmux_check_calls = []
+
+        def tracking_session_exists(name):
+            tmux_check_calls.append(name)
+            return True
+
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists",
+            tracking_session_exists,
+        )
+
+        # Mock time.sleep to not actually wait
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.time.sleep", lambda s: None)
+
+        result = workflow.wait_for_session("test-sid-001", timeout=5, poll_interval=1)
+
+        assert result == "completed"
+        # session_exists should have been called at least once
+        assert len(tmux_check_calls) >= 1
+        assert "agentic-test-001" in tmux_check_calls
+
+    def test_wait_for_session_pid_dead_tmux_dead_resolves(self, monkeypatch):
+        """Both PID and tmux session dead -> resolves based on exit_code."""
+        workflow = self._make_workflow(monkeypatch)
+
+        session_data = {
+            "session_id": "test-sid-002",
+            "pid": 88888,
+            "status": "running",
+            "tmux_session": "agentic-test-002",
+            "exit_code": 1,  # non-zero -> should resolve as "failed"
+        }
+
+        # Always return "running" status
+        monkeypatch.setattr(workflow, "_get_session_status", lambda sid: "running")
+
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop._session_store.load",
+            lambda sid: dict(session_data),  # fresh copy each time
+        )
+
+        # PID is dead
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop.is_process_running",
+            lambda pid: False,
+        )
+
+        # tmux session is also dead
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists",
+            lambda name: False,
+        )
+
+        # Mock _session_store.save to capture what's saved
+        saved_data = {}
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop._session_store.save",
+            lambda d: saved_data.update(d),
+        )
+
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.time.sleep", lambda s: None)
+
+        result = workflow.wait_for_session("test-sid-002", timeout=5, poll_interval=1)
+
+        # exit_code != 0 -> should resolve as "failed"
+        assert result == "failed"
+        assert saved_data.get("status") == "failed"
+
+    def test_wait_for_session_pid_dead_tmux_alive_continues(self, monkeypatch):
+        """PID dead but tmux session still exists -> should continue polling."""
+        workflow = self._make_workflow(monkeypatch)
+
+        session_data = {
+            "session_id": "test-sid-003",
+            "pid": 77777,
+            "status": "running",
+            "tmux_session": "agentic-test-003",
+        }
+
+        # Return "running" a few times, then "completed" to end the loop
+        call_count = [0]
+
+        def mock_get_status(sid):
+            call_count[0] += 1
+            if call_count[0] <= 2:
+                return "running"
+            return "completed"
+
+        monkeypatch.setattr(workflow, "_get_session_status", mock_get_status)
+
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop._session_store.load",
+            lambda sid: dict(session_data),
+        )
+
+        # PID is dead
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop.is_process_running",
+            lambda pid: False,
+        )
+
+        # But tmux session is alive
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists",
+            lambda name: True,
+        )
+
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.time.sleep", lambda s: None)
+
+        result = workflow.wait_for_session("test-sid-003", timeout=5, poll_interval=1)
+
+        # Should eventually get "completed" after continuing to poll
+        assert result == "completed"
+        # Should have polled more than once (didn't short-circuit on first PID-dead check)
+        assert call_count[0] >= 2
+
+    def test_wait_for_session_no_tmux_field_unchanged(self, monkeypatch):
+        """Session data WITHOUT tmux_session -> PID-only behavior."""
+        workflow = self._make_workflow(monkeypatch)
+
+        session_data = {
+            "session_id": "test-sid-004",
+            "pid": 66666,
+            "status": "running",
+            # NO tmux_session field
+        }
+
+        # Return "running" once
+        monkeypatch.setattr(workflow, "_get_session_status", lambda sid: "running")
+
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop._session_store.load",
+            lambda sid: dict(session_data),
+        )
+
+        # PID is dead -> should resolve immediately (no tmux check needed)
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop.is_process_running",
+            lambda pid: False,
+        )
+
+        # session_exists should NOT be called (no tmux_session field)
+        tmux_check_calls = []
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists",
+            lambda name: tmux_check_calls.append(name) or True,
+        )
+
+        saved_data = {}
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop._session_store.save",
+            lambda d: saved_data.update(d),
+        )
+
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.time.sleep", lambda s: None)
+
+        result = workflow.wait_for_session("test-sid-004", timeout=5, poll_interval=1)
+
+        # PID dead + no tmux -> resolve as completed (exit_code is None -> completed)
+        assert result == "completed"
+        # session_exists should NOT have been called
+        assert len(tmux_check_calls) == 0
+
+    def test_wait_for_session_tmux_check_graceful_on_error(self, monkeypatch):
+        """If session_exists() raises, tmux_alive defaults to True (no false positives)."""
+        workflow = self._make_workflow(monkeypatch)
+
+        session_data = {
+            "session_id": "test-sid-005",
+            "pid": 55555,
+            "status": "running",
+            "tmux_session": "agentic-test-005",
+        }
+
+        # Return "running" a few times, then "completed"
+        call_count = [0]
+
+        def mock_get_status(sid):
+            call_count[0] += 1
+            if call_count[0] <= 2:
+                return "running"
+            return "completed"
+
+        monkeypatch.setattr(workflow, "_get_session_status", mock_get_status)
+
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop._session_store.load",
+            lambda sid: dict(session_data),
+        )
+
+        # PID is dead
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop.is_process_running",
+            lambda pid: False,
+        )
+
+        # session_exists raises an exception (tmux binary gone, etc.)
+        def exploding_session_exists(name):
+            raise OSError("tmux binary not found")
+
+        monkeypatch.setattr(
+            "agenticcli.utils.tmux.session_exists",
+            exploding_session_exists,
+        )
+
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.time.sleep", lambda s: None)
+
+        result = workflow.wait_for_session("test-sid-005", timeout=5, poll_interval=1)
+
+        # On error, tmux_alive defaults to True -> should NOT resolve as dead
+        # Should continue polling until "completed" is returned
+        assert result == "completed"
+        # Should have polled multiple times (didn't short-circuit on first error)
+        assert call_count[0] >= 2

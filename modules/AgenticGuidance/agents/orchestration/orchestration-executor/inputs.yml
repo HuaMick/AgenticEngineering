@@ -12,30 +12,30 @@
 # ==============================================
 # REQUIRED INPUTS
 # ==============================================
-# Orchestration-executor requires a pre-approved plan with MMD.
+# Orchestration-executor requires an epic with phases stored in TinyDB.
 # It does NOT perform planning - it only executes.
+# Phase routing, status, and feedback triggers are all read from TinyDB.
 # ==============================================
 required_inputs:
   - name: "epic_folder_path"
     type: "string"
     description: |
-      Path to the EPIC FOLDER (not the live/ subdirectory).
-      The executor will internally search <epic_folder>/live/ for files.
+      Path to the EPIC FOLDER.
+      Phases and tickets are loaded from TinyDB using the folder name.
     required: true
     example: "docs/epics/260110Repo_feature"
     note: |
       CORRECT:   "docs/epics/260110Repo_feature"
       INCORRECT: "docs/epics/260110Repo_feature/live/"
 
-      The executor appends /live/ internally when searching for:
-      - orchestration_*.mmd (Mermaid flowchart)
-      - ticket_*.yml (ticket definition)
+      The executor extracts the folder name and loads phase data via:
+        agentic -j epic ticket list --epic <folder_name>
+      All routing (phase.agent), status (phase.status), and triggers
+      (phase.feedback_triggers) are stored as fields in TinyDB phase records.
     validation: |
-      Epic folder structure must be:
-        <epic_folder>/
-          live/
-            ticket_*.yml (ticket definition with phases)
-            orchestration_*.mmd (Mermaid flowchart with AGENT_ROUTING)
+      The epic must exist in TinyDB with at least one phase record.
+      Phases must have an agent field specifying the agent type to route to.
+      Use `agentic epic phase add` to add phases if missing.
 
   - name: "target_project_path"
     type: "string"
@@ -88,31 +88,21 @@ inputs:
       - "feedback_triggers"
       - "state_model"
       - "execution_protocol"
+      - "context_budget_management"
 
   # ==============================================
-  # MMD SCHEMA AND VALIDATION
-  # ==============================================
-  - type: file
-    path: "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
-    description: "Plan-MMD structural schema for validation"
-    required: true
-    sections_used:
-      - "agent_routing"
-      - "feedback_triggers"
-      - "status_management"
-      - "validation_checklist"
-
-  # ==============================================
-  # PLAN YAML SCHEMA REFERENCE
+  # TINYDB PHASE SCHEMA REFERENCE
   # ==============================================
   - type: file
     path: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
-    description: "Plan YAML structure reference for phase and task parsing"
+    description: "Plan structure reference for understanding phase and ticket fields in TinyDB"
     required: true
     usage: |
-      Reference when parsing ticket_*.yml files to understand:
+      Reference when reading TinyDB ticket data to understand:
       - Phase structure (name, execution, tickets)
       - Ticket structure (id, name, description, status, agent_type)
+      - Routing fields: phase.agent (agent type to spawn)
+      - Trigger fields: phase.feedback_triggers
       - Success criteria format
       - Output definitions
 
@@ -138,9 +128,9 @@ inputs:
   # ==============================================
   - type: file
     path: "modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml"
-    description: "Process for generating orchestration MMD files from approved plan YAMLs"
+    description: "Process for creating TinyDB phase records with agent routing"
     required: false
-    usage: "Spawn planner-orchestration when MMD regeneration is needed after plan changes"
+    usage: "Spawn planner-orchestration when phase records need to be created or updated after plan changes"
 
   # ==============================================
   # LOOP DEFINITIONS

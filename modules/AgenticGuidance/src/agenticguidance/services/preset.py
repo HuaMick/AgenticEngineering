@@ -26,7 +26,7 @@ class TaskPresetWorkflow:
 
     Provides:
     - Loading preset templates from templates/presets/
-    - Adding preset tasks to plan_*.yml files (flattened structure)
+    - Adding preset tasks to plan_tasks.yml files
     - Listing available presets
     """
 
@@ -166,17 +166,9 @@ class TaskPresetWorkflow:
         """Find existing task file or create path for new one.
 
         Returns:
-            Path to task file (flattened structure: directly in plan_path).
+            Path to task file (directly in plan_path).
         """
-        # Look for existing plan_tasks.yml (flattened structure)
+        # Create new task file if not present
         task_file = self.plan_path / "plan_tasks.yml"
-        if task_file.exists():
-            return task_file
-
-        # Look for any plan_*.yml (flattened structure)
-        for f in self.plan_path.glob("plan_*.yml"):
-            return f
-
-        # Create new task file
         self.plan_path.mkdir(parents=True, exist_ok=True)
         return task_file

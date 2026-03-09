@@ -148,12 +148,20 @@ class TestFormatStatus:
         assert "in_progress" in result
         assert "yellow" in result
 
-    def test_format_pending(self):
-        """Test formatting pending status."""
+    def test_format_pending_normalizes_to_proposed(self):
+        """Test formatting pending status normalizes to proposed."""
         from agenticcli.console import format_status
 
         result = format_status("pending")
-        assert "pending" in result
+        assert "proposed" in result
+        assert "dim" in result
+
+    def test_format_proposed(self):
+        """Test formatting proposed status."""
+        from agenticcli.console import format_status
+
+        result = format_status("proposed")
+        assert "proposed" in result
         assert "dim" in result
 
     def test_format_failed(self):

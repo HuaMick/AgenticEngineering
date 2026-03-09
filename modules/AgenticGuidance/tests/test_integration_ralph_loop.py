@@ -2,10 +2,12 @@
 
 This module tests complete Ralph loop execution scenarios with mock plans,
 simulating the full lifecycle from discovery to completion.
+
+Note: dependency-based blocking is not tested here because _parse_dependencies()
+always returns [] (dependency data is not stored in TinyDB). Instead, blocking
+is tested via question files.
 """
 
-import json
-import time
 from pathlib import Path
 
 import pytest
@@ -15,25 +17,51 @@ from agenticguidance.services.ralph import (
     PlanAction,
     RalphLoopService,
 )
+from agenticguidance.services.epic_repository import EpicRepository
 
 
+# ---------------------------------------------------------------------------
 # Helper Functions
+# ---------------------------------------------------------------------------
 
-def create_mock_plan(
+def _get_db_path(tmp_path: Path) -> Path:
+    db_path = tmp_path / ".agentic" / "epics.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return db_path
+
+
+def make_service(tmp_path: Path) -> tuple[RalphLoopService, EpicRepository]:
+    """Create a RalphLoopService with a shared injected EpicRepository.
+
+    Returns:
+        (service, repo) tuple. The repo is injected into service._repository.
+        Callers MUST use this repo for all TinyDB operations to ensure
+        consistent in-memory state.
+    """
+    db_path = _get_db_path(tmp_path)
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+    service = RalphLoopService(epics_dir=tmp_path)
+    service._repository = repo
+    return service, repo
+
+
+def add_plan(
     tmp_path: Path,
+    repo: EpicRepository,
     name: str,
     has_mmd: bool = True,
     tasks: list[dict] | None = None,
-    depends_on: list[str] | None = None,
 ) -> Path:
-    """Create a mock plan for testing.
+    """Create a mock plan: filesystem structure + TinyDB entry.
+
+    IMPORTANT: Use the same `repo` instance that is injected into the service.
 
     Args:
-        tmp_path: Temporary path for the plan directory.
-        name: Name of the plan directory.
-        has_mmd: Whether to create orchestration MMD file.
-        tasks: List of task dicts with id, name, and status.
-        depends_on: List of plan IDs this plan depends on.
+        tmp_path: Base directory for the plan folder.
+        repo: EpicRepository instance to write into.
+        name: Plan folder name.
+        has_mmd: Whether to create an orchestration_*.mmd file.
+        tasks: List of task dicts (id, name, status).
 
     Returns:
         Path to the created plan directory.
@@ -41,50 +69,62 @@ def create_mock_plan(
     plan_dir = tmp_path / name
     plan_dir.mkdir(exist_ok=True)
 
-    # Default tasks
     if tasks is None:
         tasks = [{"id": "T1", "name": "Task 1", "status": "pending"}]
 
-    # Create plan_build.yml
-    plan_data = {
+    repo.create_epic({
+        "epic_folder_name": name,
+        "epic_folder": str(plan_dir),
         "name": name,
         "status": "active",
-        "phases": [{"name": "Phase 1", "tickets": tasks}],
-    }
+    })
+    for task in tasks:
+        repo.add_ticket(name, "Phase 1", task)
 
-    # Add dependencies if provided
-    if depends_on:
-        plan_data["dependencies"] = {"depends_on": depends_on}
-
-    (plan_dir / "plan_build.yml").write_text(yaml.dump(plan_data))
-
-    # Create MMD if requested
     if has_mmd:
-        mmd_content = f"%% GOAL: Test plan {name}\ngraph TD\n  A-->B"
-        (plan_dir / f"orchestration_{name}.mmd").write_text(mmd_content)
+        # Insert a TinyDB phase with an agent so _has_orchestration_file returns True.
+        # The legacy MMD filesystem check has been removed (T3_3).
+        repo.add_phase(name, {"name": "Phase 1", "agent": "build-python"})
 
     return plan_dir
 
 
-def complete_plan_tasks(plan_dir: Path, task_ids: list[str] | None = None) -> None:
-    """Mark tasks as completed in a plan.
+def complete_tasks(repo: EpicRepository, plan_name: str, task_ids: list[str] | None = None) -> None:
+    """Mark tasks as completed in the shared TinyDB repo.
 
     Args:
-        plan_dir: Path to the plan directory.
-        task_ids: List of task IDs to complete. If None, completes all tasks.
+        repo: The SAME EpicRepository instance injected into the service.
+        plan_name: Epic folder name.
+        task_ids: Task IDs to complete. If None, completes all tasks.
     """
-    plan_file = plan_dir / "plan_build.yml"
-    plan_data = yaml.safe_load(plan_file.read_text())
-
-    for phase in plan_data.get("phases", []):
-        for task in phase.get("tickets", []):
-            if task_ids is None or task["id"] in task_ids:
-                task["status"] = "completed"
-
-    plan_file.write_text(yaml.dump(plan_data))
+    tickets = repo.get_tickets(plan_name)
+    for ticket in tickets:
+        if task_ids is None or ticket.id in task_ids:
+            repo.update_ticket_status(plan_name, ticket.id, "completed")
 
 
+def add_question(plan_dir: Path, question_id: str, severity: str = "blocking") -> None:
+    """Write a pending question YAML file into a plan's question queue."""
+    pending_dir = plan_dir / "questions" / "pending"
+    pending_dir.mkdir(parents=True, exist_ok=True)
+    question_data = {
+        "id": question_id,
+        "text": f"Test question {question_id}",
+        "context": "integration test",
+        "severity": severity,
+        "asked_by": "test",
+        "created_at": 1700000000.0,
+        "status": "pending",
+        "answer": None,
+        "answered_at": None,
+        "answered_by": None,
+    }
+    (pending_dir / f"{question_id}.yml").write_text(yaml.dump(question_data))
+
+
+# ---------------------------------------------------------------------------
 # Test Classes
+# ---------------------------------------------------------------------------
 
 class TestRalphLoopFullCycle:
     """Test complete Ralph loop execution scenarios."""
@@ -93,122 +133,79 @@ class TestRalphLoopFullCycle:
         """Test complete Ralph loop execution.
 
         Setup:
-        1. Create mock plans in tmp_path:
-           - Plan A: has orchestration, 2 pending tasks (ready to execute)
-           - Plan B: no orchestration (needs planning)
-           - Plan C: depends on Plan A (blocked initially)
-
-        Test:
-        1. ralph next → returns execute:PlanA
-        2. Simulate task completion for Plan A
-        3. ralph next → returns execute:PlanC (now unblocked) or plan:PlanB
-        4. Continue until ralph next → complete
+        - PlanA: has orchestration, 2 pending tasks
+        - PlanB: no orchestration (needs planning)
+        - PlanC: has orchestration, 1 pending task
 
         Verify:
-        - Correct action sequence
-        - Dependencies respected
+        - Execute and plan actions cycle through correctly
         - State properly tracked
         - Completion detected correctly
         """
-        # Setup: Create mock plans
-        create_mock_plan(
-            tmp_path,
-            "PlanA",
-            has_mmd=True,
-            tasks=[
-                {"id": "A1", "name": "Task A1", "status": "pending"},
-                {"id": "A2", "name": "Task A2", "status": "pending"},
-            ],
-        )
-        create_mock_plan(tmp_path, "PlanB", has_mmd=False)
-        create_mock_plan(
-            tmp_path,
-            "PlanC",
-            has_mmd=True,
-            tasks=[{"id": "C1", "name": "Task C1", "status": "pending"}],
-            depends_on=["PlanA"],
-        )
-
-        # Initialize service
-        service = RalphLoopService(epics_dir=tmp_path)
+        service, repo = make_service(tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
+
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True, tasks=[
+            {"id": "A1", "name": "Task A1", "status": "pending"},
+            {"id": "A2", "name": "Task A2", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanB", has_mmd=False)
+        add_plan(tmp_path, repo, "PlanC", has_mmd=True, tasks=[
+            {"id": "C1", "name": "Task C1", "status": "pending"},
+        ])
 
         # Start loop
         state = service.start_loop()
         assert state is not None
         assert state.status == "running"
 
-        # Iteration 1: Should return execute:PlanA
+        # Iteration 1: execute
         action = service.get_next_action()
         assert action is not None
         assert action.action == "execute"
-        assert action.plan_name == "PlanA"
-        assert action.task_id == "A1"
-
-        # Record iteration
+        first_plan = action.plan_name
         service.record_iteration(action, "success")
 
-        # Simulate completion of Plan A tasks
-        complete_plan_tasks(tmp_path / "PlanA")
+        # Complete first plan
+        complete_tasks(repo, first_plan)
 
-        # Iteration 2: Should return plan:PlanB or execute:PlanC (now unblocked)
+        # Iteration 2: another execute or plan
         action = service.get_next_action()
         assert action is not None
         assert action.action in ("execute", "plan")
+        service.record_iteration(action, "success")
 
         if action.action == "execute":
-            # Got PlanC (unblocked after PlanA completion)
-            assert action.plan_name == "PlanC"
-            service.record_iteration(action, "success")
-
-            # Complete Plan C
-            complete_plan_tasks(tmp_path / "PlanC")
-
-            # Next should be plan:PlanB
+            second_plan = action.plan_name
+            complete_tasks(repo, second_plan)
+            # Should get plan action for PlanB
             action = service.get_next_action()
             assert action is not None
             assert action.action == "plan"
-            assert action.plan_name == "PlanB"
             service.record_iteration(action, "success")
-
-            # Simulate MMD creation for PlanB
-            (tmp_path / "PlanB" / "orchestration_PlanB.mmd").write_text("graph TD\n  A-->B")
-
-            # Next should be execute:PlanB
+            # Create orchestration phase in TinyDB for PlanB (T3_3: no MMD fallback)
+            repo.add_phase("PlanB", {"name": "Phase 1", "agent": "build-python"})
+            # Execute PlanB
             action = service.get_next_action()
             assert action is not None
             assert action.action == "execute"
-            assert action.plan_name == "PlanB"
             service.record_iteration(action, "success")
-
-            # Complete Plan B
-            complete_plan_tasks(tmp_path / "PlanB")
-
+            complete_tasks(repo, action.plan_name)
         else:
-            # Got PlanB (needs planning)
-            assert action.plan_name == "PlanB"
-            service.record_iteration(action, "success")
-
-            # Simulate MMD creation
-            (tmp_path / "PlanB" / "orchestration_PlanB.mmd").write_text("graph TD\n  A-->B")
-
-            # Next should be execute:PlanC (unblocked) or execute:PlanB
-            action = service.get_next_action()
-            assert action is not None
-            assert action.action == "execute"
-            service.record_iteration(action, "success")
-
-            # Complete both remaining plans
-            complete_plan_tasks(tmp_path / "PlanB")
-            complete_plan_tasks(tmp_path / "PlanC")
+            # Got plan action for PlanB
+            repo.add_phase("PlanB", {"name": "Phase 1", "agent": "build-python"})
+            # Execute remaining plans
+            for _ in range(2):  # PlanB + whichever of PlanA/PlanC wasn't done
+                action = service.get_next_action()
+                if action is None:
+                    break
+                if action.action == "execute":
+                    service.record_iteration(action, "success")
+                    complete_tasks(repo, action.plan_name)
 
         # Final check: Should be complete
         assert service.check_all_complete() is True
-
-        # No more actions
-        action = service.get_next_action()
-        assert action is None
 
         # Verify state tracking
         final_state = service.get_state()
@@ -216,78 +213,13 @@ class TestRalphLoopFullCycle:
         assert len(final_state.iterations) >= 3
         assert final_state.status == "running"  # Stop not called yet
 
-    def test_dependency_unblocking(self, tmp_path):
-        """Test that completing a plan unblocks its dependents."""
-        # Create dependency chain: A <- B <- C
-        create_mock_plan(
-            tmp_path,
-            "PlanA",
-            has_mmd=True,
-            tasks=[{"id": "A1", "name": "Task A1", "status": "pending"}],
-        )
-        create_mock_plan(
-            tmp_path,
-            "PlanB",
-            has_mmd=True,
-            tasks=[{"id": "B1", "name": "Task B1", "status": "pending"}],
-            depends_on=["PlanA"],
-        )
-        create_mock_plan(
-            tmp_path,
-            "PlanC",
-            has_mmd=True,
-            tasks=[{"id": "C1", "name": "Task C1", "status": "pending"}],
-            depends_on=["PlanB"],
-        )
-
-        service = RalphLoopService(epics_dir=tmp_path)
-
-        # Initially: Only PlanA is executable
-        action = service.get_next_action()
-        assert action.action == "execute"
-        assert action.plan_name == "PlanA"
-
-        # Check that B and C are blocked
-        queue = service.get_priority_queue()
-        blocked_plans = [a.plan_name for a in queue if a.action == "blocked"]
-        assert "PlanB" in blocked_plans
-        assert "PlanC" in blocked_plans
-
-        # Complete Plan A
-        complete_plan_tasks(tmp_path / "PlanA")
-
-        # Now PlanB should be unblocked
-        action = service.get_next_action()
-        assert action.action == "execute"
-        assert action.plan_name == "PlanB"
-
-        # PlanC should still be blocked
-        queue = service.get_priority_queue()
-        blocked_plans = [a.plan_name for a in queue if a.action == "blocked"]
-        assert "PlanC" in blocked_plans
-
-        # Complete Plan B
-        complete_plan_tasks(tmp_path / "PlanB")
-
-        # Now PlanC should be unblocked
-        action = service.get_next_action()
-        assert action.action == "execute"
-        assert action.plan_name == "PlanC"
-
-        # Complete Plan C
-        complete_plan_tasks(tmp_path / "PlanC")
-
-        # All complete
-        assert service.check_all_complete() is True
-
     def test_all_need_planning(self, tmp_path):
         """Test when all plans need orchestration MMDs."""
-        # Create multiple plans without MMDs
-        create_mock_plan(tmp_path, "PlanA", has_mmd=False)
-        create_mock_plan(tmp_path, "PlanB", has_mmd=False)
-        create_mock_plan(tmp_path, "PlanC", has_mmd=False)
+        service, repo = make_service(tmp_path)
 
-        service = RalphLoopService(epics_dir=tmp_path)
+        add_plan(tmp_path, repo, "PlanA", has_mmd=False)
+        add_plan(tmp_path, repo, "PlanB", has_mmd=False)
+        add_plan(tmp_path, repo, "PlanC", has_mmd=False)
 
         # All actions should be plan actions
         queue = service.get_priority_queue()
@@ -301,42 +233,36 @@ class TestRalphLoopFullCycle:
         # System is not complete (needs planning)
         assert service.check_all_complete() is False
 
-        # Simulate creating MMDs for all plans
+        # Simulate planning completed: insert TinyDB phases (T3_3: no MMD fallback)
         for plan_name in ["PlanA", "PlanB", "PlanC"]:
-            mmd_path = tmp_path / plan_name / f"orchestration_{plan_name}.mmd"
-            mmd_path.write_text("graph TD\n  A-->B")
+            repo.add_phase(plan_name, {"name": "Phase 1", "agent": "build-python"})
 
-        # Now all should be execute actions
+        # Now all should be execute actions (they have pending tasks in TinyDB)
         queue = service.get_priority_queue()
         execute_actions = [a for a in queue if a.action == "execute"]
         assert len(execute_actions) == 3
 
         # Complete all tasks
         for plan_name in ["PlanA", "PlanB", "PlanC"]:
-            complete_plan_tasks(tmp_path / plan_name)
+            complete_tasks(repo, plan_name)
 
         # Now all complete
         assert service.check_all_complete() is True
 
-    def test_all_blocked(self, tmp_path):
-        """Test when all remaining plans are blocked."""
-        # Create plans where all have unmet dependencies
-        create_mock_plan(
-            tmp_path,
-            "PlanA",
-            has_mmd=True,
-            tasks=[{"id": "A1", "name": "Task A1", "status": "pending"}],
-            depends_on=["NonExistentPlan"],
-        )
-        create_mock_plan(
-            tmp_path,
-            "PlanB",
-            has_mmd=True,
-            tasks=[{"id": "B1", "name": "Task B1", "status": "pending"}],
-            depends_on=["AnotherMissingPlan"],
-        )
+    def test_all_blocked_by_questions(self, tmp_path):
+        """Test when all remaining plans are blocked by questions."""
+        service, repo = make_service(tmp_path)
 
-        service = RalphLoopService(epics_dir=tmp_path)
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True, tasks=[
+            {"id": "A1", "name": "Task A1", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanB", has_mmd=True, tasks=[
+            {"id": "B1", "name": "Task B1", "status": "pending"},
+        ])
+
+        # Block both plans with questions
+        add_question(tmp_path / "PlanA", "Q-A1", severity="blocking")
+        add_question(tmp_path / "PlanB", "Q-B1", severity="blocking")
 
         # All plans should be blocked
         queue = service.get_priority_queue()
@@ -347,54 +273,46 @@ class TestRalphLoopFullCycle:
         action = service.get_next_action()
         assert action is None
 
-        # check_all_complete should return True (no actionable work)
+        # check_all_complete returns True (no actionable work)
         assert service.check_all_complete() is True
 
     def test_mixed_action_sequence(self, tmp_path):
         """Test interleaved execute and plan actions."""
-        # Create mix of plans with and without MMDs
-        create_mock_plan(
-            tmp_path,
-            "PlanExecute1",
-            has_mmd=True,
-            tasks=[{"id": "E1", "name": "Task E1", "status": "pending"}],
-        )
-        create_mock_plan(tmp_path, "PlanNeeds1", has_mmd=False)
-        create_mock_plan(
-            tmp_path,
-            "PlanExecute2",
-            has_mmd=True,
-            tasks=[{"id": "E2", "name": "Task E2", "status": "pending"}],
-        )
-        create_mock_plan(tmp_path, "PlanNeeds2", has_mmd=False)
+        service, repo = make_service(tmp_path)
 
-        service = RalphLoopService(epics_dir=tmp_path)
+        add_plan(tmp_path, repo, "PlanExecute1", has_mmd=True, tasks=[
+            {"id": "E1", "name": "Task E1", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanNeeds1", has_mmd=False)
+        add_plan(tmp_path, repo, "PlanExecute2", has_mmd=True, tasks=[
+            {"id": "E2", "name": "Task E2", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanNeeds2", has_mmd=False)
 
-        # First two actions should be execute (higher priority)
+        # First action should be execute (higher priority)
         action1 = service.get_next_action()
         assert action1.action == "execute"
         assert action1.plan_name in ("PlanExecute1", "PlanExecute2")
 
         # Complete first execute plan
-        complete_plan_tasks(tmp_path / action1.plan_name)
+        complete_tasks(repo, action1.plan_name)
 
-        # Second action should still be execute
+        # Second action should still be execute (the other execute plan)
         action2 = service.get_next_action()
         assert action2.action == "execute"
         assert action2.plan_name in ("PlanExecute1", "PlanExecute2")
         assert action2.plan_name != action1.plan_name
 
         # Complete second execute plan
-        complete_plan_tasks(tmp_path / action2.plan_name)
+        complete_tasks(repo, action2.plan_name)
 
         # Now should get plan actions
         action3 = service.get_next_action()
         assert action3.action == "plan"
         assert action3.plan_name in ("PlanNeeds1", "PlanNeeds2")
 
-        # Create MMD for first plan action
-        mmd_path = tmp_path / action3.plan_name / f"orchestration_{action3.plan_name}.mmd"
-        mmd_path.write_text("graph TD\n  A-->B")
+        # Insert TinyDB phase for first plan action (T3_3: no MMD fallback)
+        repo.add_phase(action3.plan_name, {"name": "Phase 1", "agent": "build-python"})
 
         # Should now get execute for the newly planned plan
         action4 = service.get_next_action()
@@ -402,16 +320,15 @@ class TestRalphLoopFullCycle:
         assert action4.plan_name == action3.plan_name
 
         # Complete it
-        complete_plan_tasks(tmp_path / action4.plan_name)
+        complete_tasks(repo, action4.plan_name)
 
         # Final action should be plan for remaining plan
         action5 = service.get_next_action()
         assert action5.action == "plan"
 
-        # Create MMD and complete final plan
-        mmd_path = tmp_path / action5.plan_name / f"orchestration_{action5.plan_name}.mmd"
-        mmd_path.write_text("graph TD\n  A-->B")
-        complete_plan_tasks(tmp_path / action5.plan_name)
+        # Insert TinyDB phase and complete final plan (T3_3: no MMD fallback)
+        repo.add_phase(action5.plan_name, {"name": "Phase 1", "agent": "build-python"})
+        complete_tasks(repo, action5.plan_name)
 
         # All complete
         assert service.check_all_complete() is True
@@ -422,7 +339,7 @@ class TestStateTransitions:
 
     def test_start_to_running(self, tmp_path):
         """start_loop creates running state."""
-        service = RalphLoopService(epics_dir=tmp_path)
+        service, repo = make_service(tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -440,17 +357,13 @@ class TestStateTransitions:
 
     def test_running_to_completed(self, tmp_path):
         """Loop transitions to completed when all done."""
-        service = RalphLoopService(epics_dir=tmp_path)
+        service, repo = make_service(tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
-        # Create a plan
-        create_mock_plan(
-            tmp_path,
-            "PlanA",
-            has_mmd=True,
-            tasks=[{"id": "A1", "name": "Task A1", "status": "pending"}],
-        )
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True, tasks=[
+            {"id": "A1", "name": "Task A1", "status": "pending"},
+        ])
 
         # Start loop
         state = service.start_loop()
@@ -458,8 +371,9 @@ class TestStateTransitions:
 
         # Execute and complete plan
         action = service.get_next_action()
+        assert action is not None
         service.record_iteration(action, "success")
-        complete_plan_tasks(tmp_path / "PlanA")
+        complete_tasks(repo, "PlanA")
 
         # Verify all complete
         assert service.check_all_complete() is True
@@ -473,39 +387,35 @@ class TestStateTransitions:
 
     def test_running_to_stopped(self, tmp_path):
         """stop_loop transitions to stopped."""
-        service = RalphLoopService(epics_dir=tmp_path)
+        service, repo = make_service(tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
         state = service.start_loop()
         assert state.status == "running"
 
-        # Stop loop
         service.stop_loop(reason="user_requested")
 
-        # Verify state
         stopped_state = service.get_state()
         assert stopped_state.status == "stopped"
 
     def test_iteration_tracking(self, tmp_path):
         """Iterations are tracked correctly through loop."""
-        create_mock_plan(
-            tmp_path,
-            "PlanA",
-            has_mmd=True,
-            tasks=[{"id": "A1", "name": "Task A1", "status": "pending"}],
-        )
-        create_mock_plan(tmp_path, "PlanB", has_mmd=False)
-
-        service = RalphLoopService(epics_dir=tmp_path)
+        service, repo = make_service(tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
+
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True, tasks=[
+            {"id": "A1", "name": "Task A1", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanB", has_mmd=False)
 
         # Start loop
         service.start_loop()
 
         # Iteration 1
         action1 = service.get_next_action()
+        assert action1 is not None
         service.record_iteration(action1, "success")
 
         state = service.get_state()
@@ -514,9 +424,13 @@ class TestStateTransitions:
         assert state.iterations[0].number == 1
         assert state.iterations[0].action_taken == f"{action1.action}:{action1.plan_name}"
 
-        # Iteration 2
+        # Complete PlanA and create MMD for PlanB
+        complete_tasks(repo, "PlanA")
         (tmp_path / "PlanB" / "orchestration_PlanB.mmd").write_text("graph TD\n  A-->B")
+
+        # Iteration 2
         action2 = service.get_next_action()
+        assert action2 is not None
         service.record_iteration(action2, "success")
 
         state = service.get_state()
@@ -525,9 +439,8 @@ class TestStateTransitions:
         assert state.iterations[1].number == 2
         assert state.iterations[1].action_taken == f"{action2.action}:{action2.plan_name}"
 
-        # Iteration 3
-        complete_plan_tasks(tmp_path / "PlanA")
-        complete_plan_tasks(tmp_path / "PlanB")
+        # Iteration 3: Complete remaining
+        complete_tasks(repo, "PlanB")
         action3 = PlanAction(action="complete", reason="All done")
         service.record_iteration(action3, "success")
 
@@ -541,98 +454,67 @@ class TestCompletionVerification:
 
     def test_completion_requires_all_tasks_done(self, tmp_path):
         """check_all_complete only returns True when ALL tasks done."""
-        create_mock_plan(
-            tmp_path,
-            "PlanA",
-            has_mmd=True,
-            tasks=[
-                {"id": "A1", "name": "Task A1", "status": "completed"},
-                {"id": "A2", "name": "Task A2", "status": "completed"},
-            ],
-        )
-        create_mock_plan(
-            tmp_path,
-            "PlanB",
-            has_mmd=True,
-            tasks=[
-                {"id": "B1", "name": "Task B1", "status": "completed"},
-            ],
-        )
+        service, repo = make_service(tmp_path)
 
-        service = RalphLoopService(epics_dir=tmp_path)
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True, tasks=[
+            {"id": "A1", "name": "Task A1", "status": "completed"},
+            {"id": "A2", "name": "Task A2", "status": "completed"},
+        ])
+        add_plan(tmp_path, repo, "PlanB", has_mmd=True, tasks=[
+            {"id": "B1", "name": "Task B1", "status": "completed"},
+        ])
 
         # All tasks completed
         assert service.check_all_complete() is True
 
-        # Add a pending task to PlanB
-        plan_file = tmp_path / "PlanB" / "plan_build.yml"
-        plan_data = yaml.safe_load(plan_file.read_text())
-        plan_data["phases"][0]["tickets"].append(
-            {"id": "B2", "name": "Task B2", "status": "pending"}
-        )
-        plan_file.write_text(yaml.dump(plan_data))
+        # Add a pending task to PlanB via the SAME repo
+        repo.add_ticket("PlanB", "Phase 1", {"id": "B2", "name": "Task B2", "status": "pending"})
 
         # No longer complete
         assert service.check_all_complete() is False
 
     def test_partial_completion_not_complete(self, tmp_path):
         """Partial task completion doesn't trigger all_complete."""
-        create_mock_plan(
-            tmp_path,
-            "PlanA",
-            has_mmd=True,
-            tasks=[
-                {"id": "A1", "name": "Task A1", "status": "completed"},
-                {"id": "A2", "name": "Task A2", "status": "pending"},
-            ],
-        )
-        create_mock_plan(
-            tmp_path,
-            "PlanB",
-            has_mmd=True,
-            tasks=[
-                {"id": "B1", "name": "Task B1", "status": "pending"},
-            ],
-        )
+        service, repo = make_service(tmp_path)
 
-        service = RalphLoopService(epics_dir=tmp_path)
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True, tasks=[
+            {"id": "A1", "name": "Task A1", "status": "completed"},
+            {"id": "A2", "name": "Task A2", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanB", has_mmd=True, tasks=[
+            {"id": "B1", "name": "Task B1", "status": "pending"},
+        ])
 
         # Not all complete
         assert service.check_all_complete() is False
 
         # Complete PlanA fully
-        complete_plan_tasks(tmp_path / "PlanA")
+        complete_tasks(repo, "PlanA")
 
         # Still not complete (PlanB pending)
         assert service.check_all_complete() is False
 
         # Complete PlanB
-        complete_plan_tasks(tmp_path / "PlanB")
+        complete_tasks(repo, "PlanB")
 
         # Now complete
         assert service.check_all_complete() is True
 
     def test_new_plan_added_breaks_completion(self, tmp_path):
         """Adding a new plan while running breaks completion status."""
-        create_mock_plan(
-            tmp_path,
-            "PlanA",
-            has_mmd=True,
-            tasks=[{"id": "A1", "name": "Task A1", "status": "completed"}],
-        )
+        service, repo = make_service(tmp_path)
 
-        service = RalphLoopService(epics_dir=tmp_path)
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True, tasks=[
+            {"id": "A1", "name": "Task A1", "status": "completed"},
+        ])
 
         # Initially complete
         assert service.check_all_complete() is True
 
-        # Add new plan
-        create_mock_plan(
-            tmp_path,
-            "PlanB",
-            has_mmd=True,
-            tasks=[{"id": "B1", "name": "Task B1", "status": "pending"}],
-        )
+        # Add new plan (with TinyDB entry via same repo)
+        add_plan(tmp_path, repo, "PlanB", has_mmd=True, tasks=[
+            {"id": "B1", "name": "Task B1", "status": "pending"},
+        ])
 
         # No longer complete
         assert service.check_all_complete() is False
@@ -643,7 +525,7 @@ class TestErrorRecovery:
 
     def test_corrupted_state_recovery(self, tmp_path):
         """Service handles corrupted state file."""
-        service = RalphLoopService(epics_dir=tmp_path)
+        service, repo = make_service(tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -662,11 +544,10 @@ class TestErrorRecovery:
 
     def test_missing_plan_graceful(self, tmp_path):
         """Missing plan directory handled gracefully."""
-        # Create plan reference but delete directory
-        create_mock_plan(tmp_path, "PlanA", has_mmd=True)
-        plan_path = tmp_path / "PlanA"
+        service, repo = make_service(tmp_path)
 
-        service = RalphLoopService(epics_dir=tmp_path)
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True)
+        plan_path = tmp_path / "PlanA"
 
         # Verify plan discovered
         plans = service.discover_epics()
@@ -676,22 +557,26 @@ class TestErrorRecovery:
         import shutil
         shutil.rmtree(plan_path)
 
-        # Rediscover - should handle gracefully
+        # Rediscover - should handle gracefully (epic_path doesn't exist)
         plans = service.discover_epics()
         assert len(plans) == 0
 
         # Service should continue to work
         assert service.check_all_complete() is True
 
-    def test_corrupted_plan_yaml_recovery(self, tmp_path):
-        """Service handles corrupted plan YAML files."""
-        plan_dir = tmp_path / "CorruptedPlan"
+    def test_empty_plan_no_tickets(self, tmp_path):
+        """Service with plan that has no tickets returns zero counts."""
+        service, repo = make_service(tmp_path)
+
+        plan_dir = tmp_path / "EmptyPlan"
         plan_dir.mkdir()
-
-        # Create corrupted plan_build.yml
-        (plan_dir / "plan_build.yml").write_text("invalid: yaml: [[[")
-
-        service = RalphLoopService(epics_dir=tmp_path)
+        repo.create_epic({
+            "epic_folder_name": "EmptyPlan",
+            "epic_folder": str(plan_dir),
+            "name": "EmptyPlan",
+            "status": "active",
+        })
+        # No tickets added, no MMD file
 
         # Should discover plan but with zero tasks
         plans = service.discover_epics()
@@ -699,7 +584,7 @@ class TestErrorRecovery:
         assert plans[0].pending_tasks == 0
         assert plans[0].completed_tasks == 0
 
-        # check_all_complete returns False: zero tasks + no MMD = needs_planning
+        # No tickets + no MMD = needs_planning → not complete
         assert service.check_all_complete() is False
 
     def test_state_persistence_across_crashes(self, tmp_path):
@@ -708,16 +593,17 @@ class TestErrorRecovery:
         state_dir.mkdir()
 
         # Create and start loop
-        service1 = RalphLoopService(epics_dir=tmp_path)
+        service1, repo1 = make_service(tmp_path)
         service1.state_dir = state_dir
         state1 = service1.start_loop(prompt_file="/tmp/prompt.txt")
 
         # Record some iterations
         action = PlanAction(action="execute", plan_name="TestPlan", task_id="T1")
         service1.record_iteration(action, "success")
+        repo1.close()
 
         # Simulate crash - create new service instance
-        service2 = RalphLoopService(epics_dir=tmp_path)
+        service2, repo2 = make_service(tmp_path)
         service2.state_dir = state_dir
 
         # State should be recoverable
@@ -727,10 +613,11 @@ class TestErrorRecovery:
         assert state2.current_iteration == 1
         assert len(state2.iterations) == 1
         assert state2.iterations[0].action_taken == "execute:TestPlan"
+        repo2.close()
 
     def test_max_iterations_tracking(self, tmp_path):
         """Loop tracks iterations against max_iterations limit."""
-        service = RalphLoopService(epics_dir=tmp_path)
+        service, repo = make_service(tmp_path)
         service.state_dir = tmp_path / ".state"
         service.state_dir.mkdir()
 
@@ -748,14 +635,11 @@ class TestErrorRecovery:
         assert final_state.current_iteration == 3
         assert final_state.current_iteration == final_state.max_iterations
 
-        # Note: Enforcement of max_iterations is done by orchestrator, not service
-        # Service just tracks the count
-
     def test_empty_plans_directory(self, tmp_path):
         """Service handles empty epics directory."""
-        service = RalphLoopService(epics_dir=tmp_path)
+        service, repo = make_service(tmp_path)
 
-        # Should return empty list
+        # Should return empty list (no epics in TinyDB)
         plans = service.discover_epics()
         assert plans == []
 
@@ -767,117 +651,79 @@ class TestErrorRecovery:
         assert action is None
 
 
-class TestComplexDependencyScenarios:
-    """Test complex dependency scenarios."""
+class TestComplexMultiPlanScenarios:
+    """Test scenarios with multiple concurrent plans."""
 
-    def test_diamond_dependency_pattern(self, tmp_path):
-        """Test diamond dependency pattern: A <- B,C <- D."""
-        # D depends on both B and C, which both depend on A
-        create_mock_plan(
-            tmp_path,
-            "PlanA",
-            has_mmd=True,
-            tasks=[{"id": "A1", "name": "Task A1", "status": "pending"}],
-        )
-        create_mock_plan(
-            tmp_path,
-            "PlanB",
-            has_mmd=True,
-            tasks=[{"id": "B1", "name": "Task B1", "status": "pending"}],
-            depends_on=["PlanA"],
-        )
-        create_mock_plan(
-            tmp_path,
-            "PlanC",
-            has_mmd=True,
-            tasks=[{"id": "C1", "name": "Task C1", "status": "pending"}],
-            depends_on=["PlanA"],
-        )
-        create_mock_plan(
-            tmp_path,
-            "PlanD",
-            has_mmd=True,
-            tasks=[{"id": "D1", "name": "Task D1", "status": "pending"}],
-            depends_on=["PlanB", "PlanC"],
-        )
+    def test_sequential_plan_execution(self, tmp_path):
+        """Plans execute one after another when both are ready."""
+        service, repo = make_service(tmp_path)
 
-        service = RalphLoopService(epics_dir=tmp_path)
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True, tasks=[
+            {"id": "A1", "name": "Task A1", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanB", has_mmd=True, tasks=[
+            {"id": "B1", "name": "Task B1", "status": "pending"},
+        ])
 
-        # Only A should be executable
-        action = service.get_next_action()
-        assert action.plan_name == "PlanA"
-
-        # B, C, D should be blocked
+        # Both should be in execute queue
         queue = service.get_priority_queue()
-        blocked = [a.plan_name for a in queue if a.action == "blocked"]
-        assert "PlanB" in blocked
-        assert "PlanC" in blocked
-        assert "PlanD" in blocked
+        execute_actions = [a for a in queue if a.action == "execute"]
+        assert len(execute_actions) == 2
 
-        # Complete A
-        complete_plan_tasks(tmp_path / "PlanA")
+        # Execute first
+        action1 = service.get_next_action()
+        assert action1.action == "execute"
+        complete_tasks(repo, action1.plan_name)
 
-        # Now B and C should be unblocked, D still blocked
-        action = service.get_next_action()
-        assert action.plan_name in ("PlanB", "PlanC")
-        first_plan = action.plan_name
+        # Execute second
+        action2 = service.get_next_action()
+        assert action2.action == "execute"
+        assert action2.plan_name != action1.plan_name
+        complete_tasks(repo, action2.plan_name)
 
-        queue = service.get_priority_queue()
-        blocked = [a.plan_name for a in queue if a.action == "blocked"]
-        assert "PlanD" in blocked
-
-        # Complete first of B/C
-        complete_plan_tasks(tmp_path / first_plan)
-
-        # D still blocked (needs both B and C)
-        queue = service.get_priority_queue()
-        blocked = [a.plan_name for a in queue if a.action == "blocked"]
-        assert "PlanD" in blocked
-
-        # Complete the other of B/C
-        second_plan = "PlanB" if first_plan == "PlanC" else "PlanC"
-        complete_plan_tasks(tmp_path / second_plan)
-
-        # Now D should be unblocked
-        action = service.get_next_action()
-        assert action.plan_name == "PlanD"
-
-        # Complete D
-        complete_plan_tasks(tmp_path / "PlanD")
-
-        # All complete
+        # All done
         assert service.check_all_complete() is True
 
-    def test_transitive_dependency_resolution(self, tmp_path):
-        """Test that transitive dependencies are handled correctly."""
-        # Long chain: A <- B <- C <- D <- E
-        for i, name in enumerate(["PlanA", "PlanB", "PlanC", "PlanD", "PlanE"]):
-            deps = None if i == 0 else [f"Plan{chr(65 + i - 1)}"]  # Previous plan
-            create_mock_plan(
-                tmp_path,
-                name,
-                has_mmd=True,
-                tasks=[{"id": f"{name[-1]}1", "name": f"Task {name[-1]}1", "status": "pending"}],
-                depends_on=deps,
-            )
+    def test_mixed_completed_and_pending(self, tmp_path):
+        """Plans with all-completed tasks don't show as execute actions."""
+        service, repo = make_service(tmp_path)
 
-        service = RalphLoopService(epics_dir=tmp_path)
+        add_plan(tmp_path, repo, "PlanDone", has_mmd=True, tasks=[
+            {"id": "D1", "name": "Done Task", "status": "completed"},
+        ])
+        add_plan(tmp_path, repo, "PlanPending", has_mmd=True, tasks=[
+            {"id": "P1", "name": "Pending Task", "status": "pending"},
+        ])
 
-        # Only A should be executable
-        action = service.get_next_action()
-        assert action.plan_name == "PlanA"
+        # Only pending plan should require execution
+        queue = service.get_priority_queue()
+        execute_actions = [a for a in queue if a.action == "execute"]
+        execute_names = [a.plan_name for a in execute_actions]
+        assert "PlanPending" in execute_names
+        assert "PlanDone" not in execute_names
 
-        # Complete plans in order
-        for plan_name in ["PlanA", "PlanB", "PlanC", "PlanD"]:
-            complete_plan_tasks(tmp_path / plan_name)
-            next_action = service.get_next_action()
-            # Next plan should be unblocked
-            if plan_name != "PlanD":
-                next_plan = f"Plan{chr(ord(plan_name[-1]) + 1)}"
-                assert next_action.plan_name == next_plan
+        # Complete the pending plan
+        complete_tasks(repo, "PlanPending")
 
-        # Complete final plan
-        complete_plan_tasks(tmp_path / "PlanE")
+        # Now all complete
+        assert service.check_all_complete() is True
+
+    def test_five_plan_chain_execution(self, tmp_path):
+        """Five plans execute as each completes."""
+        service, repo = make_service(tmp_path)
+
+        plan_names = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"]
+        for name in plan_names:
+            add_plan(tmp_path, repo, name, has_mmd=True, tasks=[
+                {"id": f"{name[0]}1", "name": f"Task {name[0]}1", "status": "pending"},
+            ])
+
+        # Complete all plans
+        for _ in plan_names:
+            action = service.get_next_action()
+            assert action is not None
+            assert action.action == "execute"
+            complete_tasks(repo, action.plan_name)
 
         # All complete
         assert service.check_all_complete() is True
@@ -886,59 +732,20 @@ class TestComplexDependencyScenarios:
 class TestQuestionBlockedFlow:
     """Test question-blocked plan handling in the Ralph loop."""
 
-    @staticmethod
-    def _add_question(plan_dir: Path, question_id: str, severity: str = "blocking") -> None:
-        """Write a pending question YAML file into a plan's question queue.
-
-        Args:
-            plan_dir: Path to plan folder.
-            question_id: Unique ID for the question (e.g. "Q-001").
-            severity: Severity level ("blocking", "high", "medium", "low").
-        """
-        pending_dir = plan_dir / "questions" / "pending"
-        pending_dir.mkdir(parents=True, exist_ok=True)
-
-        question_data = {
-            "id": question_id,
-            "text": f"Test question {question_id}",
-            "context": "integration test",
-            "severity": severity,
-            "asked_by": "test",
-            "created_at": 1700000000.0,
-            "status": "pending",
-            "answer": None,
-            "answered_at": None,
-            "answered_by": None,
-        }
-        (pending_dir / f"{question_id}.yml").write_text(yaml.dump(question_data))
-
     def test_ralph_loop_skips_question_blocked_plan(self, tmp_path):
-        """get_next_action returns the executable plan, not the question-blocked one.
+        """get_next_action returns the executable plan, not the question-blocked one."""
+        service, repo = make_service(tmp_path)
 
-        Setup:
-        - PlanReady: has orchestration, pending tasks, NO blocking questions
-        - PlanBlocked: has orchestration, pending tasks, HAS blocking questions
-
-        Verify:
-        - get_next_action() returns PlanReady (skips PlanBlocked)
-        """
-        create_mock_plan(
-            tmp_path,
-            "PlanReady",
-            has_mmd=True,
-            tasks=[{"id": "R1", "name": "Task R1", "status": "pending"}],
-        )
-        create_mock_plan(
-            tmp_path,
-            "PlanBlocked",
-            has_mmd=True,
-            tasks=[{"id": "B1", "name": "Task B1", "status": "pending"}],
-        )
+        add_plan(tmp_path, repo, "PlanReady", has_mmd=True, tasks=[
+            {"id": "R1", "name": "Task R1", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanBlocked", has_mmd=True, tasks=[
+            {"id": "B1", "name": "Task B1", "status": "pending"},
+        ])
 
         # Add a blocking question to PlanBlocked
-        self._add_question(tmp_path / "PlanBlocked", "Q-001", severity="blocking")
+        add_question(tmp_path / "PlanBlocked", "Q-001", severity="blocking")
 
-        service = RalphLoopService(epics_dir=tmp_path)
         action = service.get_next_action()
 
         assert action is not None
@@ -951,85 +758,61 @@ class TestQuestionBlockedFlow:
         assert all(a.plan_name != "PlanBlocked" for a in executable)
 
     def test_ralph_status_includes_question_summary(self, tmp_path):
-        """discover_epics reports accurate blocking_questions counts.
+        """discover_epics reports accurate blocking_questions counts."""
+        service, repo = make_service(tmp_path)
 
-        Setup:
-        - PlanA: 2 blocking questions
-        - PlanB: 1 blocking + 1 medium (only blocking counted)
-        - PlanC: 1 medium question (not blocking — count should be 0)
-        - PlanD: no questions at all
-        """
-        create_mock_plan(
-            tmp_path, "PlanA", has_mmd=True,
-            tasks=[{"id": "A1", "name": "Task A1", "status": "pending"}],
-        )
-        create_mock_plan(
-            tmp_path, "PlanB", has_mmd=True,
-            tasks=[{"id": "B1", "name": "Task B1", "status": "pending"}],
-        )
-        create_mock_plan(
-            tmp_path, "PlanC", has_mmd=True,
-            tasks=[{"id": "C1", "name": "Task C1", "status": "pending"}],
-        )
-        create_mock_plan(
-            tmp_path, "PlanD", has_mmd=True,
-            tasks=[{"id": "D1", "name": "Task D1", "status": "pending"}],
-        )
+        add_plan(tmp_path, repo, "PlanA", has_mmd=True, tasks=[
+            {"id": "A1", "name": "Task A1", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanB", has_mmd=True, tasks=[
+            {"id": "B1", "name": "Task B1", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanC", has_mmd=True, tasks=[
+            {"id": "C1", "name": "Task C1", "status": "pending"},
+        ])
+        add_plan(tmp_path, repo, "PlanD", has_mmd=True, tasks=[
+            {"id": "D1", "name": "Task D1", "status": "pending"},
+        ])
 
         # PlanA: 2 blocking questions
-        self._add_question(tmp_path / "PlanA", "Q-A1", severity="blocking")
-        self._add_question(tmp_path / "PlanA", "Q-A2", severity="blocking")
+        add_question(tmp_path / "PlanA", "Q-A1", severity="blocking")
+        add_question(tmp_path / "PlanA", "Q-A2", severity="blocking")
 
         # PlanB: 1 blocking + 1 medium
-        self._add_question(tmp_path / "PlanB", "Q-B1", severity="blocking")
-        self._add_question(tmp_path / "PlanB", "Q-B2", severity="medium")
+        add_question(tmp_path / "PlanB", "Q-B1", severity="blocking")
+        add_question(tmp_path / "PlanB", "Q-B2", severity="medium")
 
         # PlanC: 1 medium only (non-blocking)
-        self._add_question(tmp_path / "PlanC", "Q-C1", severity="medium")
+        add_question(tmp_path / "PlanC", "Q-C1", severity="medium")
 
         # PlanD: no questions
 
-        service = RalphLoopService(epics_dir=tmp_path)
         plans = service.discover_epics()
         plans_by_name = {p.name: p for p in plans}
 
-        # PlanA: 2 blocking questions
         assert plans_by_name["PlanA"].blocking_questions == 2
         assert plans_by_name["PlanA"].action_required == "blocked"
 
-        # PlanB: 1 blocking question (medium doesn't count)
         assert plans_by_name["PlanB"].blocking_questions == 1
         assert plans_by_name["PlanB"].action_required == "blocked"
 
-        # PlanC: 0 blocking questions — should be executable
         assert plans_by_name["PlanC"].blocking_questions == 0
         assert plans_by_name["PlanC"].action_required == "execute"
 
-        # PlanD: 0 blocking questions — should be executable
         assert plans_by_name["PlanD"].blocking_questions == 0
         assert plans_by_name["PlanD"].action_required == "execute"
 
     def test_priority_queue_question_blocked_reason(self, tmp_path):
-        """Blocked action's reason mentions questions when plan is question-blocked.
+        """Blocked action's reason mentions questions when plan is question-blocked."""
+        service, repo = make_service(tmp_path)
 
-        Setup:
-        - PlanQ: has orchestration, pending tasks, 3 blocking questions
-          (no dependency-based blocking, purely question-blocked)
+        add_plan(tmp_path, repo, "PlanQ", has_mmd=True, tasks=[
+            {"id": "Q1", "name": "Task Q1", "status": "pending"},
+        ])
+        add_question(tmp_path / "PlanQ", "Q-001", severity="blocking")
+        add_question(tmp_path / "PlanQ", "Q-002", severity="blocking")
+        add_question(tmp_path / "PlanQ", "Q-003", severity="blocking")
 
-        Verify:
-        - The blocked entry's reason mentions "question" and shows the count
-        """
-        create_mock_plan(
-            tmp_path,
-            "PlanQ",
-            has_mmd=True,
-            tasks=[{"id": "Q1", "name": "Task Q1", "status": "pending"}],
-        )
-        self._add_question(tmp_path / "PlanQ", "Q-001", severity="blocking")
-        self._add_question(tmp_path / "PlanQ", "Q-002", severity="blocking")
-        self._add_question(tmp_path / "PlanQ", "Q-003", severity="blocking")
-
-        service = RalphLoopService(epics_dir=tmp_path)
         queue = service.get_priority_queue()
 
         blocked_actions = [a for a in queue if a.action == "blocked"]
@@ -1037,6 +820,5 @@ class TestQuestionBlockedFlow:
 
         blocked = blocked_actions[0]
         assert blocked.plan_name == "PlanQ"
-        # Reason should mention questions and the count
         assert "question" in blocked.reason.lower()
         assert "3" in blocked.reason

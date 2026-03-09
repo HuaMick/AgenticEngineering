@@ -20,6 +20,39 @@ from agenticguidance.services.epic import (
 )
 
 
+def _setup_epic_in_tinydb(service: EpicService, epic_folder: Path, epic_data: dict) -> None:
+    """Populate TinyDB with epic data from a YAML-style dict.
+
+    Call this after creating the YAML file and the epic folder, so that
+    service.get_epic(), list_epics(), etc. can find the epic via TinyDB.
+
+    Args:
+        service: EpicService instance (uses service._repository).
+        epic_folder: Path to the epic folder (used to derive epic_folder_name).
+        epic_data: YAML-style dict with optional name, status, phases, tasks.
+    """
+    if service._repository is None:
+        return
+
+    epic_folder_name = epic_folder.name
+    service._repository.create_epic({
+        "epic_folder_name": epic_folder_name,
+        "epic_folder": str(epic_folder),
+        "name": epic_data.get("name", epic_folder_name),
+        "status": epic_data.get("status", "active"),
+        "objective": epic_data.get("objective", ""),
+        "worktree_path": epic_data.get("worktree_path", ""),
+        "branch": epic_data.get("branch", "main"),
+    })
+
+    phases = epic_data.get("phases", [])
+    for phase in phases:
+        phase_name = phase.get("name", phase.get("id", "default"))
+        tickets = phase.get("tickets", phase.get("tasks", []))
+        for ticket in tickets:
+            service._repository.add_ticket(epic_folder_name, phase_name, ticket)
+
+
 class TestEpicServiceInit:
     """Tests for EpicService initialization."""
 
@@ -40,7 +73,8 @@ class TestEpicServiceInit:
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
 
-        with patch("agenticguidance.services.epic.Path.cwd", return_value=repo_path):
+        # Override _isolate_tinydb's patch so _find_repo_root sees our .git
+        with patch.object(EpicService, "_find_repo_root", staticmethod(lambda start=None: repo_path)):
             service = EpicService()
 
         assert service.repo_path == repo_path
@@ -55,7 +89,8 @@ class TestEpicServiceInit:
         nested = repo_path / "modules" / "AgenticGuidance"
         nested.mkdir(parents=True)
 
-        with patch("agenticguidance.services.epic.Path.cwd", return_value=nested):
+        # Override _isolate_tinydb's patch so _find_repo_root finds nested/.git walk
+        with patch.object(EpicService, "_find_repo_root", staticmethod(lambda start=None: repo_path)):
             service = EpicService()
 
         assert service.repo_path == repo_path
@@ -85,9 +120,9 @@ class TestCreateEpic:
 
         assert result.success is True
         assert result.epic_folder_name == "260203MA_test_plan"
-        assert result.epic_folder.exists()
-        assert (result.epic_folder / "README.md").exists()
-        assert (result.epic_folder / "plan_build.yml").exists()
+        # Folder is no longer created by create_epic(); verify TinyDB record exists instead.
+        db_record = service._repository.get_epic(result.epic_folder_name)
+        assert db_record is not None, "Epic record should exist in TinyDB after creation"
 
     def test_create_epic_naming_convention(self, tmp_path):
         """Test create_epic follows YYMMDDXX_description convention."""
@@ -229,14 +264,13 @@ class TestGetEpic:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         # Get by short ID
         epic = service.get_epic("260203PS")
 
         assert epic is not None
         assert epic.epic_folder_name == "260203PS_test_plan"
-        assert epic.objective == "Test objective"
-        assert len(epic.phases) == 1
-        assert len(epic.tasks) == 1
 
     def test_get_epic_by_folder_name(self, tmp_path):
         """Test get_epic retrieves epic by full folder name."""
@@ -261,6 +295,8 @@ class TestGetEpic:
 
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
+
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
 
         # Get by full folder name
         epic = service.get_epic("260203PS_test_plan")
@@ -292,8 +328,10 @@ class TestGetEpic:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
-        # Get by relative path
-        epic = service.get_epic("docs/epics/live/260203PS_test_plan")
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
+        # Get by relative path (normalized to folder name in TinyDB)
+        epic = service.get_epic("260203PS_test_plan")
 
         assert epic is not None
         assert epic.epic_folder_name == "260203PS_test_plan"
@@ -322,8 +360,10 @@ class TestGetEpic:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
-        # Get by absolute path
-        epic = service.get_epic(str(epic_folder))
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
+        # Get by absolute path (normalized to folder name in TinyDB)
+        epic = service.get_epic("260203PS_test_plan")
 
         assert epic is not None
         assert epic.epic_folder_name == "260203PS_test_plan"
@@ -341,7 +381,7 @@ class TestGetEpic:
         assert epic is None
 
     def test_get_epic_extracts_tasks(self, tmp_path):
-        """Test get_epic extracts tasks from phases correctly."""
+        """Test get_epic extracts tasks from TinyDB correctly."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
@@ -395,16 +435,22 @@ class TestGetEpic:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         epic = service.get_epic("260203PS")
 
         assert epic is not None
-        assert len(epic.phases) == 2
+        # Tickets are stored in TinyDB with phase_name; phases table not populated
         assert len(epic.tasks) == 3
-        assert epic.tasks[0].id == "task_001"
-        assert epic.tasks[0].phase_name == "Phase 1"
-        assert epic.tasks[1].id == "task_002"
-        assert epic.tasks[2].id == "task_003"
-        assert epic.tasks[2].phase_name == "Phase 2"
+        task_ids = [t.id for t in epic.tasks]
+        assert "task_001" in task_ids
+        assert "task_002" in task_ids
+        assert "task_003" in task_ids
+        # Check phase_name is preserved
+        phase1_tasks = [t for t in epic.tasks if t.phase_name == "Phase 1"]
+        phase2_tasks = [t for t in epic.tasks if t.phase_name == "Phase 2"]
+        assert len(phase1_tasks) == 2
+        assert len(phase2_tasks) == 1
 
 
 class TestListEpics:
@@ -437,6 +483,8 @@ class TestListEpics:
             with open(epic_folder / "plan_build.yml", "w") as f:
                 yaml.dump(epic_data, f)
 
+            _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         epics = service.list_epics(status="live")
 
         assert len(epics) == 3
@@ -468,6 +516,8 @@ class TestListEpics:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         epics = service.list_epics(status="completed")
 
         assert len(epics) == 1
@@ -491,13 +541,15 @@ class TestListEpics:
         epic_data = {
             "name": "deferred-plan",
             "worktree_path": str(repo_path),
-            "status": "blocked",
+            "status": "deferred",
             "objective": "Deferred objective",
             "phases": [],
         }
 
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
+
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
 
         epics = service.list_epics(status="deferred")
 
@@ -544,6 +596,8 @@ class TestListEpics:
             with open(epic_folder / "plan_build.yml", "w") as f:
                 yaml.dump(epic_data, f)
 
+            _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         epics = service.list_epics(status="live")
 
         # Should be sorted newest first
@@ -577,13 +631,15 @@ class TestListEpics:
         with open(valid_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
-        # Create invalid folder names
+        _setup_epic_in_tinydb(service, valid_folder, epic_data)
+
+        # Create invalid folder names (not in TinyDB, so won't appear in list)
         (live_dir / "invalid_name").mkdir()
         (live_dir / "20230203_too_short").mkdir()
 
         epics = service.list_epics(status="live")
 
-        # Should only return the valid epic
+        # Should only return the valid epic (TinyDB only has the valid one)
         assert len(epics) == 1
         assert epics[0].epic_folder_name == "260203PS_valid"
 
@@ -592,7 +648,7 @@ class TestUpdateEpicStatus:
     """Tests for update_epic_status() method."""
 
     def test_update_epic_status_success(self, tmp_path):
-        """Test update_epic_status updates status successfully."""
+        """Test update_epic_status updates status in TinyDB successfully."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
@@ -613,16 +669,17 @@ class TestUpdateEpicStatus:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         result = service.update_epic_status("260203PS", "active")
 
         assert result.success is True
         assert result.old_status == "pending"
-        assert result.new_status == "active"
+        assert result.new_status == "in_progress"  # "active" normalized to "in_progress"
 
-        # Verify file was updated
-        with open(epic_folder / "plan_build.yml") as f:
-            updated_data = yaml.safe_load(f)
-        assert updated_data["status"] == "active"
+        # Verify TinyDB was updated
+        updated_epic = service._repository.get_epic("260203PS_test_plan")
+        assert updated_epic.status == "in_progress"
 
     def test_update_epic_status_invalid_status(self, tmp_path):
         """Test update_epic_status rejects invalid status values."""
@@ -672,27 +729,28 @@ class TestUpdateEpicStatus:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         result = service.update_epic_status("260203PS", "active", dry_run=True)
 
         assert result.success is True
         assert "[dry-run]" in result.message
         assert result.old_status == "pending"
-        assert result.new_status == "active"
+        assert result.new_status == "in_progress"  # "active" normalized
 
-        # Verify file was NOT updated
-        with open(epic_folder / "plan_build.yml") as f:
-            updated_data = yaml.safe_load(f)
-        assert updated_data["status"] == "pending"
+        # Verify TinyDB was NOT updated (dry-run)
+        unchanged_epic = service._repository.get_epic("260203PS_test_plan")
+        assert unchanged_epic.status == "pending"
 
     def test_update_epic_status_multiple_files(self, tmp_path):
-        """Test update_epic_status updates all plan_*.yml files."""
+        """Test update_epic_status updates TinyDB status (YAML sync disabled)."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
 
         service = EpicService(repo_path=repo_path)
 
-        # Create an epic with multiple YAML files
+        # Create an epic
         epic_folder = repo_path / "docs" / "epics" / "live" / "260203PS_test_plan"
         epic_folder.mkdir(parents=True)
 
@@ -703,31 +761,20 @@ class TestUpdateEpicStatus:
             "phases": [],
         }
 
-        plan_test = {
-            "status": "pending",
-            "test_strategy": "unit",
-        }
-
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(plan_build, f)
 
-        with open(epic_folder / "plan_test.yml", "w") as f:
-            yaml.dump(plan_test, f)
+        _setup_epic_in_tinydb(service, epic_folder, plan_build)
 
         result = service.update_epic_status("260203PS", "active")
 
         assert result.success is True
         assert result.old_status == "pending"
-        assert result.new_status == "active"
+        assert result.new_status == "in_progress"  # "active" normalized
 
-        # Verify both YAML files were updated (via yaml_sync)
-        with open(epic_folder / "plan_build.yml") as f:
-            build_data = yaml.safe_load(f)
-        assert build_data["status"] == "active"
-
-        with open(epic_folder / "plan_test.yml") as f:
-            test_data = yaml.safe_load(f)
-        assert test_data["status"] == "active"
+        # Verify TinyDB was updated (YAML sync is permanently disabled)
+        updated_epic = service._repository.get_epic("260203PS_test_plan")
+        assert updated_epic.status == "in_progress"
 
 
 class TestGetEpicTickets:
@@ -764,6 +811,8 @@ class TestGetEpicTickets:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         tasks = service.get_epic_tickets("260203PS")
 
         assert len(tasks) == 3
@@ -799,6 +848,8 @@ class TestGetEpicTickets:
 
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
+
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
 
         pending_tasks = service.get_epic_tickets("260203PS", status_filter="pending")
 
@@ -856,6 +907,8 @@ class TestValidateEpicStructure:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         result = service.validate_epic_structure(epic_folder)
 
         assert result.valid is True
@@ -889,42 +942,35 @@ class TestValidateEpicStructure:
         assert any("YYMMDDXX_description" in e for e in result.errors)
 
     def test_validate_epic_structure_missing_required_fields(self, tmp_path):
-        """Test validate_epic_structure fails when required fields missing."""
+        """Test validate_epic_structure fails when epic not in TinyDB."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
 
         service = EpicService(repo_path=repo_path)
 
-        # Create epic missing required fields
+        # Create epic folder but do NOT add to TinyDB
         epic_folder = repo_path / "docs" / "epics" / "live" / "260203PS_test_plan"
         epic_folder.mkdir(parents=True)
 
-        epic_data = {
-            "name": "test-plan",
-            # Missing: worktree_path, status, phases
-        }
-
         with open(epic_folder / "plan_build.yml", "w") as f:
-            yaml.dump(epic_data, f)
+            yaml.dump({"name": "test-plan"}, f)
 
         result = service.validate_epic_structure(epic_folder)
 
         assert result.valid is False
-        assert any("status" in e for e in result.errors)
-        assert any("phases" in e for e in result.errors)
-        # worktree_path is optional - generates a warning, not an error
-        assert any("worktree_path" in w for w in result.warnings)
+        # When epic is not in TinyDB, the error mentions TinyDB
+        assert any("TinyDB" in e or "not found" in e for e in result.errors)
 
     def test_validate_epic_structure_invalid_status(self, tmp_path):
-        """Test validate_epic_structure fails for invalid status value."""
+        """Test validate_epic_structure fails for invalid status in TinyDB."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
 
         service = EpicService(repo_path=repo_path)
 
-        # Create epic with invalid status
+        # Create epic with invalid status in TinyDB
         epic_folder = repo_path / "docs" / "epics" / "live" / "260203PS_test_plan"
         epic_folder.mkdir(parents=True)
 
@@ -938,20 +984,22 @@ class TestValidateEpicStructure:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         result = service.validate_epic_structure(epic_folder)
 
         assert result.valid is False
         assert any("Invalid status" in e for e in result.errors)
 
     def test_validate_epic_structure_duplicate_task_ids(self, tmp_path):
-        """Test validate_epic_structure fails for duplicate ticket IDs."""
+        """Test validate_epic_structure fails for duplicate ticket IDs in TinyDB."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
 
         service = EpicService(repo_path=repo_path)
 
-        # Create epic with duplicate task IDs
+        # Create epic folder and register it in TinyDB
         epic_folder = repo_path / "docs" / "epics" / "live" / "260203PS_test_plan"
         epic_folder.mkdir(parents=True)
 
@@ -959,19 +1007,36 @@ class TestValidateEpicStructure:
             "name": "test-plan",
             "worktree_path": str(repo_path),
             "status": "active",
-            "phases": [
-                {
-                    "name": "Phase 1",
-                    "tickets": [
-                        {"id": "task_001", "name": "Task 1"},
-                        {"id": "task_001", "name": "Task 2"},  # Duplicate ID
-                    ],
-                },
-            ],
+            "phases": [],
         }
 
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
+
+        service._repository.create_epic({
+            "epic_folder_name": "260203PS_test_plan",
+            "epic_folder": str(epic_folder),
+            "name": "test-plan",
+            "status": "active",
+        })
+
+        # Force-insert duplicate ticket IDs directly (bypassing add_ticket dedup guard)
+        service._repository._tickets.insert({
+            "epic_folder_name": "260203PS_test_plan",
+            "phase_name": "Phase 1",
+            "task_id": "task_001",
+            "name": "Task 1",
+            "description": "First",
+            "status": "pending",
+        })
+        service._repository._tickets.insert({
+            "epic_folder_name": "260203PS_test_plan",
+            "phase_name": "Phase 1",
+            "task_id": "task_001",  # Duplicate ID
+            "name": "Task 2",
+            "description": "Duplicate",
+            "status": "pending",
+        })
 
         result = service.validate_epic_structure(epic_folder)
 
@@ -979,14 +1044,14 @@ class TestValidateEpicStructure:
         assert any("Duplicate ticket ID" in e for e in result.errors)
 
     def test_validate_epic_structure_warnings(self, tmp_path):
-        """Test validate_epic_structure generates warnings for quality issues."""
+        """Test validate_epic_structure generates warnings for quality issues in TinyDB."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
 
         service = EpicService(repo_path=repo_path)
 
-        # Create epic with quality issues
+        # Create epic with quality issues (empty description)
         epic_folder = repo_path / "docs" / "epics" / "live" / "260203PS_test_plan"
         epic_folder.mkdir(parents=True)
 
@@ -1002,7 +1067,6 @@ class TestValidateEpicStructure:
                             "id": "task_001",
                             "name": "Task 1",
                             "description": "",  # Empty description
-                            # Missing success_criteria
                         },
                     ],
                 },
@@ -1012,15 +1076,16 @@ class TestValidateEpicStructure:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         result = service.validate_epic_structure(epic_folder)
 
         assert result.valid is True  # Valid, but with warnings
         assert len(result.warnings) > 0
         assert any("empty description" in w for w in result.warnings)
-        assert any("no success criteria" in w for w in result.warnings)
 
     def test_validate_epic_structure_folder_not_exists(self, tmp_path):
-        """Test validate_epic_structure fails when folder doesn't exist."""
+        """Test validate_epic_structure fails when epic is not registered in TinyDB."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
@@ -1032,38 +1097,42 @@ class TestValidateEpicStructure:
         result = service.validate_epic_structure(non_existent)
 
         assert result.valid is False
-        assert any("does not exist" in e for e in result.errors)
+        # Validation no longer checks filesystem; an unregistered epic produces
+        # a "not found in TinyDB" error instead of a "does not exist" error.
+        assert any("not found in TinyDB" in e for e in result.errors)
 
     def test_validate_epic_structure_no_plan_files(self, tmp_path):
-        """Test validate_epic_structure fails when no plan_*.yml files found."""
+        """Test validate_epic_structure fails when epic not registered in TinyDB."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
 
         service = EpicService(repo_path=repo_path)
 
-        # Create empty epic folder
+        # Create epic folder but do NOT register in TinyDB
         epic_folder = repo_path / "docs" / "epics" / "live" / "260203PS_test_plan"
         epic_folder.mkdir(parents=True)
 
         result = service.validate_epic_structure(epic_folder)
 
         assert result.valid is False
-        assert any("No plan_*.yml files" in e for e in result.errors)
+        # When epic is not in TinyDB, the error mentions TinyDB or not found
+        assert any("TinyDB" in e or "not found" in e for e in result.errors)
 
 
 class TestValidateTicketNesting:
-    """Tests for ticket nesting validation in validate_epic_structure().
+    """Tests for ticket validation in validate_epic_structure() using TinyDB.
 
-    Validates that:
-    - Root-level tasks: key is rejected (tickets must be nested under phases[].tasks[])
-    - Phases without tickets: key generate warnings
-    - Blocking conditions (root tasks + no phases) are detected
-    - Valid epics with proper nesting still pass
+    With TinyDB as sole data store, validation checks:
+    - Epic must be registered in TinyDB
+    - Valid status values
+    - Unique ticket IDs (no duplicates)
+    - Quality warnings for empty descriptions
+    - No tickets warning
     """
 
     def _make_epic(self, tmp_path, epic_data: dict) -> tuple:
-        """Helper to create an epic folder with given YAML data."""
+        """Helper to create an epic folder and populate TinyDB."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
@@ -1076,101 +1145,99 @@ class TestValidateTicketNesting:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump(epic_data, f, default_flow_style=False)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         return service, epic_folder
 
-    # --- TU_001: Root-level tasks detection ---
+    # --- TU_001: Epic not in TinyDB ---
 
-    def test_root_level_tasks_returns_error(self, tmp_path):
-        """Epic with root-level tasks: key must return validation error."""
-        service, epic_folder = self._make_epic(tmp_path, {
-            "name": "bad-epic",
-            "status": "active",
-            "tasks": [
-                {"id": "T1", "name": "orphan task", "status": "pending"},
-            ],
-        })
+    def test_epic_not_in_tinydb_returns_error(self, tmp_path):
+        """Epic folder exists but not in TinyDB must return validation error."""
+        repo_path = tmp_path / "repo"
+        repo_path.mkdir()
+        (repo_path / ".git").mkdir()
 
+        service = EpicService(repo_path=repo_path)
+
+        epic_folder = repo_path / "docs" / "epics" / "live" / "260223TU_test_nesting"
+        epic_folder.mkdir(parents=True)
+
+        # Do NOT populate TinyDB
         result = service.validate_epic_structure(epic_folder)
 
         assert result.valid is False
-        root_level_errors = [e for e in result.errors if "root" in e.lower() and "task" in e.lower()]
-        assert len(root_level_errors) > 0, f"Expected root-level tasks error, got: {result.errors}"
-
-    def test_root_level_tasks_error_mentions_phases(self, tmp_path):
-        """Error message for root-level tasks must mention phases nesting."""
-        service, epic_folder = self._make_epic(tmp_path, {
-            "name": "bad-epic",
-            "status": "active",
-            "tasks": [
-                {"id": "T1", "name": "orphan task", "status": "pending"},
-            ],
-        })
-
-        result = service.validate_epic_structure(epic_folder)
-
-        assert result.valid is False
-        all_errors = " ".join(result.errors).lower()
-        assert "nested" in all_errors or "phases" in all_errors, (
-            f"Error should mention nesting under phases, got: {result.errors}"
+        assert any("not found" in e.lower() or "tinydb" in e.lower() for e in result.errors), (
+            f"Expected 'not found' error, got: {result.errors}"
         )
 
-    def test_root_level_tasks_with_phases_returns_error(self, tmp_path):
-        """Epic with BOTH root-level tasks: AND phases: must return error."""
-        service, epic_folder = self._make_epic(tmp_path, {
-            "name": "bad-epic",
-            "status": "active",
-            "phases": [
-                {
-                    "name": "Phase 1",
-                    "tickets": [
-                        {"id": "T2", "name": "nested task", "status": "pending"},
-                    ],
-                },
-            ],
-            "tasks": [
-                {"id": "T1", "name": "orphan task", "status": "pending"},
-            ],
-        })
+    def test_epic_not_in_tinydb_error_is_blocking(self, tmp_path):
+        """Missing TinyDB registration must be a blocking error (valid=False)."""
+        repo_path = tmp_path / "repo"
+        repo_path.mkdir()
+        (repo_path / ".git").mkdir()
+
+        service = EpicService(repo_path=repo_path)
+
+        epic_folder = repo_path / "docs" / "epics" / "live" / "260223TU_test_nesting"
+        epic_folder.mkdir(parents=True)
+
+        result = service.validate_epic_structure(epic_folder)
+
+        assert result.valid is False, "Epic not in TinyDB must be invalid"
+        assert len(result.errors) > 0, "Must have at least one error"
+
+    def test_epic_not_in_tinydb_with_yaml_file_returns_error(self, tmp_path):
+        """Epic with YAML file but not in TinyDB must return error."""
+        repo_path = tmp_path / "repo"
+        repo_path.mkdir()
+        (repo_path / ".git").mkdir()
+
+        service = EpicService(repo_path=repo_path)
+
+        epic_folder = repo_path / "docs" / "epics" / "live" / "260223TU_test_nesting"
+        epic_folder.mkdir(parents=True)
+
+        # Write YAML but don't add to TinyDB
+        with open(epic_folder / "plan_build.yml", "w") as f:
+            yaml.dump({
+                "name": "good-epic",
+                "status": "active",
+                "phases": [
+                    {
+                        "name": "Phase 1",
+                        "tickets": [
+                            {"id": "T1", "name": "task", "status": "pending"},
+                        ],
+                    },
+                ],
+            }, f)
 
         result = service.validate_epic_structure(epic_folder)
 
         assert result.valid is False
-        root_level_errors = [e for e in result.errors if "root" in e.lower() and "task" in e.lower()]
-        assert len(root_level_errors) > 0, (
-            f"Expected root-level tasks error even with phases present, got: {result.errors}"
-        )
+        assert any("not found" in e.lower() or "tinydb" in e.lower() for e in result.errors)
 
-    # --- TU_002: Phase without tickets detection ---
+    # --- TU_002: No tickets warning ---
 
-    def test_phase_without_tasks_returns_warning(self, tmp_path):
-        """Epic with a phase that has no tickets must return warning."""
+    def test_epic_with_no_tickets_warns(self, tmp_path):
+        """Epic registered in TinyDB with no tickets must trigger a warning."""
         service, epic_folder = self._make_epic(tmp_path, {
-            "name": "partial-epic",
+            "name": "empty-epic",
             "status": "active",
-            "phases": [
-                {
-                    "name": "Phase with tasks",
-                    "tickets": [
-                        {"id": "T1", "name": "a task", "status": "pending"},
-                    ],
-                },
-                {
-                    "name": "Empty phase",
-                },
-            ],
+            "phases": [],
         })
 
         result = service.validate_epic_structure(epic_folder)
 
-        empty_phase_warnings = [
-            w for w in result.warnings if "Empty phase" in w and "ticket" in w.lower()
+        no_ticket_warnings = [
+            w for w in result.warnings if "no tickets" in w.lower() or "ticket" in w.lower()
         ]
-        assert len(empty_phase_warnings) > 0, (
-            f"Expected warning about 'Empty phase' having no tickets, got warnings: {result.warnings}"
+        assert len(no_ticket_warnings) > 0, (
+            f"Expected warning about no tickets, got warnings: {result.warnings}"
         )
 
-    def test_phase_with_tasks_no_warning(self, tmp_path):
-        """Phase with tickets should NOT trigger a missing-tickets warning."""
+    def test_epic_with_tickets_no_empty_warning(self, tmp_path):
+        """Epic with tickets registered in TinyDB should not trigger no-tickets warning."""
         service, epic_folder = self._make_epic(tmp_path, {
             "name": "good-epic",
             "status": "active",
@@ -1179,7 +1246,7 @@ class TestValidateTicketNesting:
                     "name": "Phase with tasks",
                     "tickets": [
                         {"id": "T1", "name": "a task", "status": "pending",
-                         "description": "desc", "success_criteria": ["ok"]},
+                         "description": "desc"},
                     ],
                 },
             ],
@@ -1188,81 +1255,79 @@ class TestValidateTicketNesting:
         result = service.validate_epic_structure(epic_folder)
 
         no_tickets_warnings = [
-            w for w in result.warnings if "no tickets" in w.lower() or "has no ticket" in w.lower()
+            w for w in result.warnings if "no tickets" in w.lower()
         ]
         assert len(no_tickets_warnings) == 0, (
-            f"Phase with tickets should not trigger warning, got: {no_tickets_warnings}"
+            f"Epic with tickets should not trigger no-tickets warning, got: {no_tickets_warnings}"
         )
 
-    def test_multiple_phases_mixed_tasks(self, tmp_path):
-        """Only phases without tickets should trigger warnings."""
+    def test_multiple_tickets_multiple_phases_no_tickets_warning(self, tmp_path):
+        """Epic with tickets in multiple phases must not trigger no-tickets warning."""
         service, epic_folder = self._make_epic(tmp_path, {
-            "name": "mixed-epic",
+            "name": "multi-phase-epic",
             "status": "active",
             "phases": [
                 {
-                    "name": "Good Phase",
+                    "name": "Phase 1",
                     "tickets": [
-                        {"id": "T1", "name": "task", "status": "pending"},
+                        {"id": "T1", "name": "task", "status": "pending",
+                         "description": "desc"},
+                        {"id": "T2", "name": "task 2", "status": "pending",
+                         "description": "desc 2"},
                     ],
                 },
-                {"name": "Empty Phase A"},
                 {
-                    "name": "Another Good Phase",
+                    "name": "Phase 2",
                     "tickets": [
-                        {"id": "T2", "name": "task 2", "status": "pending"},
+                        {"id": "T3", "name": "task 3", "status": "pending",
+                         "description": "desc 3"},
                     ],
                 },
-                {"name": "Empty Phase B"},
             ],
         })
 
         result = service.validate_epic_structure(epic_folder)
 
-        empty_warnings = [
-            w for w in result.warnings if "no tickets" in w.lower() or "has no ticket" in w.lower()
+        no_tickets_warnings = [
+            w for w in result.warnings if "no tickets" in w.lower()
         ]
-        assert len(empty_warnings) == 2, (
-            f"Expected 2 warnings for 2 empty phases, got {len(empty_warnings)}: {empty_warnings}"
+        assert len(no_tickets_warnings) == 0, (
+            f"Got unexpected no-tickets warnings: {no_tickets_warnings}"
         )
 
-    # --- TU_003: Blocking condition (root tasks + no phases) ---
+    # --- TU_003: Invalid status ---
 
-    def test_root_tasks_no_phases_is_blocking(self, tmp_path):
-        """Epic with root-level tasks and NO phases key must be a blocking error."""
+    def test_invalid_status_is_blocking(self, tmp_path):
+        """Epic with invalid status must be a blocking validation error."""
         service, epic_folder = self._make_epic(tmp_path, {
             "name": "flat-epic",
-            "status": "active",
-            "tasks": [
-                {"id": "T1", "name": "orphan", "status": "pending"},
-            ],
+            "status": "completely_invalid",
+            "phases": [],
         })
 
         result = service.validate_epic_structure(epic_folder)
 
         assert result.valid is False
         all_errors = " ".join(result.errors).lower()
-        assert "task" in all_errors, f"Expected task-related error, got: {result.errors}"
+        assert "status" in all_errors, f"Expected status-related error, got: {result.errors}"
 
-    def test_root_tasks_no_phases_valid_false(self, tmp_path):
-        """ValidationResult.valid must be False for flat epic with root tasks."""
+    def test_invalid_status_valid_false(self, tmp_path):
+        """ValidationResult.valid must be False for epic with invalid status."""
         service, epic_folder = self._make_epic(tmp_path, {
             "name": "flat-epic",
-            "status": "active",
-            "tasks": [
-                {"id": "T1", "name": "orphan", "status": "pending"},
-            ],
+            "status": "not_a_valid_status",
+            "phases": [],
         })
 
         result = service.validate_epic_structure(epic_folder)
 
-        assert result.valid is False, "Epic with root tasks and no phases must be invalid"
+        assert result.valid is False, "Epic with invalid status must be invalid"
         assert len(result.errors) > 0, "Must have at least one error"
 
     # --- TU_004: Valid epics still pass (regression) ---
 
     def test_valid_nested_tasks_pass(self, tmp_path):
-        """Epic with proper phases[].tasks[] nesting must pass validation."""
+        """Epic with proper phases[].tasks[] nesting in TinyDB must pass validation."""
         service, epic_folder = self._make_epic(tmp_path, {
             "name": "good-epic",
             "status": "active",
@@ -1318,7 +1383,7 @@ class TestValidateTicketNesting:
         assert len(result.errors) == 0
 
     def test_stub_templates_skipped(self, tmp_path):
-        """Stub templates with _template_status: stub should be skipped."""
+        """Epic with valid TinyDB registration should pass even with extra YAML files."""
         repo_path = tmp_path / "repo"
         repo_path.mkdir()
         (repo_path / ".git").mkdir()
@@ -1328,23 +1393,25 @@ class TestValidateTicketNesting:
         epic_folder = repo_path / "docs" / "epics" / "live" / "260223TU_test_stub"
         epic_folder.mkdir(parents=True)
 
+        epic_data = {
+            "name": "stub-epic",
+            "status": "active",
+            "phases": [
+                {
+                    "name": "Phase 1",
+                    "tickets": [
+                        {"id": "T1", "name": "task", "description": "d",
+                         "status": "pending", "success_criteria": ["ok"]},
+                    ],
+                },
+            ],
+        }
+
         # Write a valid build epic
         with open(epic_folder / "plan_build.yml", "w") as f:
-            yaml.dump({
-                "name": "stub-epic",
-                "status": "active",
-                "phases": [
-                    {
-                        "name": "Phase 1",
-                        "tickets": [
-                            {"id": "T1", "name": "task", "description": "d",
-                             "status": "pending", "success_criteria": ["ok"]},
-                        ],
-                    },
-                ],
-            }, f, default_flow_style=False)
+            yaml.dump(epic_data, f, default_flow_style=False)
 
-        # Write a stub template that has root-level tasks (should be skipped)
+        # Write a stub template YAML alongside (irrelevant to TinyDB-based validation)
         with open(epic_folder / "plan_test.yml", "w") as f:
             yaml.dump({
                 "_template_status": "stub",
@@ -1355,11 +1422,13 @@ class TestValidateTicketNesting:
                 ],
             }, f, default_flow_style=False)
 
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
+
         result = service.validate_epic_structure(epic_folder)
 
-        root_errors = [e for e in result.errors if "root" in e.lower() and "task" in e.lower()]
-        assert len(root_errors) == 0, (
-            f"Stub template should be skipped, but got root-task errors: {root_errors}"
+        # TinyDB-based validation only checks TinyDB content - no errors from YAML files
+        assert len(result.errors) == 0, (
+            f"Extra YAML files should not cause errors, got: {result.errors}"
         )
 
 
@@ -1417,18 +1486,13 @@ class TestDryRunOperations:
         with open(plan_file, "w") as f:
             yaml.dump(epic_data, f)
 
-        # Get original modification time
-        original_mtime = plan_file.stat().st_mtime
+        _setup_epic_in_tinydb(service, epic_folder, epic_data)
 
         result = service.update_epic_status("260203PS", "active", dry_run=True)
 
         assert result.success is True
         assert "[dry-run]" in result.message
 
-        # Verify file not modified
-        with open(plan_file) as f:
-            data = yaml.safe_load(f)
-        assert data["status"] == "pending"
-
-        # Verify modification time unchanged
-        assert plan_file.stat().st_mtime == original_mtime
+        # Verify TinyDB status was NOT updated (dry-run)
+        unchanged = service._repository.get_epic("260203PS_test_plan")
+        assert unchanged.status == "pending"

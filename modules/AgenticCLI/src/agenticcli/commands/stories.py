@@ -52,16 +52,30 @@ def _find_userstories_dir() -> Path | None:
     return None
 
 
+def _get_repo_db_path() -> Path:
+    """Derive the repo-local TinyDB path (.agentic/epics.db under repo root)."""
+    current = Path.cwd()
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current / ".agentic" / "epics.db"
+        current = current.parent
+    return Path.home() / ".agentic" / "epics.db"
+
+
 def _find_plan_stories_dirs() -> list[Path]:
-    """Find user_stories directories inside live plans."""
-    base_dir = Path.cwd() / "docs" / "plans" / "live"
-    if not base_dir.exists():
-        return []
+    """Find user_stories directories inside live epics, querying TinyDB."""
+    try:
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
+        metas = repo.list_epics(status="live")
+    except Exception:
+        metas = []
 
     story_dirs = []
-    for plan_dir in base_dir.iterdir():
-        if plan_dir.is_dir():
-            story_dir = plan_dir / "user_stories"
+    for meta in metas:
+        epic_dir = meta.epic_folder
+        if epic_dir.is_dir():
+            story_dir = epic_dir / "user_stories"
             if story_dir.exists():
                 story_dirs.append(story_dir)
     return story_dirs

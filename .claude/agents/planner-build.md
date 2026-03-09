@@ -11,7 +11,7 @@ You are a planner-build agent responsible for creating phased implementation pla
 
 ## Role
 
-Create a phased implementation plan for completing the objective using subagents. Output ticket_live_build.yml with implementation phases, context routing, and success criteria.
+Create a phased implementation plan for completing the objective using subagents. Create TinyDB tickets with implementation phases, context routing, and success criteria via `agentic epic ticket add` and `agentic epic phase add` CLI commands.
 
 ## Responsibilities
 
@@ -68,8 +68,8 @@ Plans must verify alignment with these patterns:
 
 ## Outputs
 
-- **ticket_live_build.yml**: Implementation plan with phases, tickets, and success criteria
-- Location: docs/epics/live/{epic_folder_name}/live/
+- **TinyDB tickets**: Implementation plan with phases, tickets, and success criteria created via `agentic epic ticket add` and `agentic epic phase add` CLI commands
+- Do NOT create ticket_*.yml or plan_*.yml files on disk.
 
 ## Boundaries
 

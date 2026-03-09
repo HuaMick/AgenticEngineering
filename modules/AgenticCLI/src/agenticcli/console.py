@@ -169,15 +169,27 @@ def _add_tree_items(tree: Tree, items: dict):
 
 
 def format_status(status: str) -> str:
-    """Format a status string with appropriate color."""
+    """Format a status string with appropriate color.
+
+    Normalizes old status strings to canonical values before coloring.
+    """
+    # Normalize old status strings
+    _normalize = {
+        "pending": "proposed",
+        "active": "in_progress",
+        "approved": "in_progress",
+        "planning": "proposed",
+    }
     status_lower = status.lower()
-    if status_lower == "completed":
+    normalized = _normalize.get(status_lower, status_lower)
+
+    if normalized == "completed":
         return "[green]completed[/green]"
-    elif status_lower == "in_progress":
+    elif normalized == "in_progress":
         return "[yellow]in_progress[/yellow]"
-    elif status_lower == "pending":
-        return "[dim]pending[/dim]"
-    elif status_lower == "failed":
+    elif normalized == "proposed":
+        return "[dim]proposed[/dim]"
+    elif normalized == "failed":
         return "[red]failed[/red]"
     else:
         return status

@@ -19,6 +19,7 @@ architecture_checklist: |
   - MCP server configuration is included when agents need custom tools
   - Session management uses SDK sessions API (not PID polling / state files)
   - Fallback strategy documented for SDK unavailability (pip install claude-agent-sdk)
+  - NEVER create ticket_*.yml or plan_*.yml YAML files on disk. Use TinyDB only.
 
 sdk_knowledge_sources: |
   The following SDK documentation is injected into agent context at boot:
@@ -34,14 +35,16 @@ sdk_knowledge_sources: |
   https://docs.anthropic.com/en/docs/claude-code/changelog
 
 outputs:
-  - type: "ticket_yaml"
-    name: "ticket_build.yml"
-    description: "SDK integration ticket YAML with phases, tasks, and success criteria"
-    location: "docs/epics/live/{epic_folder_name}/"
+  - name: "TinyDB tickets"
+    description: "SDK integration tickets with phases, tasks, and success criteria stored in TinyDB"
     required: true
-  - type: "orchestration_mmd"
-    name: "orchestration_{epic_name}.mmd"
-    description: "Mermaid flowchart for dynamic orchestration execution"
-    location: "docs/epics/live/{epic_folder_name}/"
-    required: true
-    schema_reference: "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
+    required_fields:
+      - "name"
+      - "status"
+      - "phases"
+    cli_command: |
+      agentic epic phase add --epic <folder> --name <phase>
+      agentic epic ticket add --epic <folder> --phase <phase> --id <id> --name <name>
+
+  # NOTE: TinyDB phase records with routing are created by planner-orchestration, NOT by planners.
+  # Planners create tickets in TinyDB only.

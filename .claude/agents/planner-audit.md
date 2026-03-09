@@ -40,9 +40,9 @@ Audit epic folder compliance: identify misplaced, stale, or misleading files. Ou
 ## Compliance Rules
 
 **live/ folder should ONLY contain:**
-- Active phase tickets (ticket_live_*.yml) with pending/in-progress items
-- ticket_next_actions.yml (active tracking file)
-- Remediation tickets awaiting review (ticket_*_remediation*.yml)
+- Epic README and supporting documentation
+- Analysis and audit reports
+- Active ticket and phase data lives in TinyDB (query via `agentic epic ticket list --epic <folder> -j`)
 
 **Files that should NOT be in live/:**
 - Phase tickets where ALL items are completed (should be in completed/ only)

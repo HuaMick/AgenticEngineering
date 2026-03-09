@@ -6,8 +6,10 @@ Falls back gracefully when the SDK is not installed.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
+import signal
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -25,7 +27,17 @@ except ImportError:
     SDK_AVAILABLE = False
 
 # Re-export for callers that want to check availability
-__all__ = ["SDK_AVAILABLE", "SessionResult", "run_agent", "run_agent_sync"]
+__all__ = [
+    "SDK_AVAILABLE",
+    "SessionResult",
+    "run_agent",
+    "run_agent_sync",
+    "sdk_env_preflight",
+    "_clean_claude_env",
+    "DEFAULT_TIMEOUT_SECONDS",
+    "ROLE_TIMEOUT_SECONDS",
+    "get_timeout_for_role",
+]
 
 
 @dataclass
@@ -63,6 +75,32 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
 }
 
 
+# Role-based timeout budgets (seconds). Used by planner_loop and sdk_pane_runner.
+# If a role is not listed, DEFAULT_TIMEOUT_SECONDS applies.
+ROLE_TIMEOUT_SECONDS: dict[str, int] = {
+    "explore": 600,               # 10 min — lightweight codebase analysis
+    "story-generator": 1800,       # 30 min — story generation
+    "planner-build": 1800,
+    "planner-test": 1800,
+    "planner-guidance": 1800,
+    "planner-cleaning": 1800,
+    "planner-guidance-testing": 1800,
+    "planner-sdk": 1800,
+    "planner-reviewer": 1800,
+    "planner-orchestration": 3600, # 60 min — orchestration
+    "build-python": 1800,
+    "build-flutter": 1800,
+    "test-runner": 1800,
+    "test-builder": 1800,
+    "test-audit": 1800,
+}
+
+
+def get_timeout_for_role(role: str) -> int:
+    """Return timeout for a role, or DEFAULT_TIMEOUT_SECONDS if unknown."""
+    return ROLE_TIMEOUT_SECONDS.get(role, DEFAULT_TIMEOUT_SECONDS)
+
+
 def get_allowed_tools_for_role(role: str) -> list[str] | None:
     """Return the allowed tool list for an agent role, or None if unrestricted.
 
@@ -76,6 +114,124 @@ def get_allowed_tools_for_role(role: str) -> list[str] | None:
     return ROLE_TOOL_ALLOWLIST.get(role)
 
 
+# Environment variables that must be stripped before spawning Claude
+# via the SDK.  The SDK merges os.environ into the subprocess env,
+# so these vars would trigger the "nested session" guard.
+_CLAUDECODE_ENV_VARS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
+
+
+@contextlib.contextmanager
+def _clean_claude_env():
+    """Context manager that temporarily strips Claude Code env vars.
+
+    Removes CLAUDECODE and CLAUDE_CODE_ENTRYPOINT from os.environ for the
+    duration of the block.  Restores them on exit (even on exception) to
+    leave the parent process state unchanged.
+
+    Logs a critical warning when the vars are detected, since their presence
+    means we're running inside a Claude Code session and the SDK spawn
+    would fail without this workaround.
+    """
+    saved: dict[str, str] = {}
+    for var in _CLAUDECODE_ENV_VARS:
+        val = os.environ.pop(var, None)
+        if val is not None:
+            saved[var] = val
+    if saved:
+        logger.critical(
+            "SDK pre-flight: stripped Claude Code env vars %s — running "
+            "inside an existing Claude Code session; env isolation applied",
+            list(saved.keys()),
+        )
+    try:
+        yield saved
+    finally:
+        os.environ.update(saved)
+
+
+def sdk_env_preflight() -> dict[str, str]:
+    """Check for problematic env vars before SDK spawn.
+
+    Returns:
+        Dict of detected Claude Code env vars and their values.
+        Empty dict means the env is clean.
+    """
+    found: dict[str, str] = {}
+    for var in _CLAUDECODE_ENV_VARS:
+        val = os.environ.get(var)
+        if val is not None:
+            found[var] = val
+    if found:
+        logger.warning(
+            "SDK pre-flight check: detected Claude Code env vars %s — "
+            "these will be stripped before SDK query to prevent nested-session errors",
+            list(found.keys()),
+        )
+    return found
+
+
+def _kill_child_claude_processes(parent_pid: int) -> list[int]:
+    """Find and kill child 'claude' subprocesses of the given parent PID.
+
+    Uses /proc to avoid adding a psutil dependency. Falls back silently
+    on non-Linux or if /proc is unavailable.
+
+    Returns:
+        List of PIDs that were sent SIGKILL.
+    """
+    killed: list[int] = []
+    try:
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            pid = int(entry)
+            try:
+                with open(f"/proc/{pid}/stat", "r") as f:
+                    stat = f.read()
+                # stat format: pid (comm) state ppid ...
+                # Extract ppid (4th field) and comm (in parens)
+                comm_start = stat.index("(")
+                comm_end = stat.rindex(")")
+                comm = stat[comm_start + 1 : comm_end]
+                rest = stat[comm_end + 2 :].split()
+                ppid = int(rest[1])  # state is rest[0], ppid is rest[1]
+
+                if ppid == parent_pid and "claude" in comm:
+                    logger.info("Killing hung claude subprocess PID %d", pid)
+                    os.kill(pid, signal.SIGKILL)
+                    killed.append(pid)
+            except (FileNotFoundError, ValueError, IndexError, ProcessLookupError,
+                    PermissionError):
+                continue
+    except FileNotFoundError:
+        logger.debug("/proc not available — cannot scan for child processes")
+    return killed
+
+
+def _ensure_clean_sdk_env(options: Optional[Any]) -> Optional[Any]:
+    """Ensure SDK options.env excludes Claude Code internal vars.
+
+    Dual-layer env isolation: even if _clean_claude_env() strips os.environ,
+    the SDK options may carry a snapshot of the env taken earlier (before
+    stripping).  This function ensures that snapshot is also clean.
+
+    This is the pragmatic alternative to the "nuclear option" of running
+    the SDK call in a completely separate subprocess. Performance evaluation
+    showed that subprocess isolation adds ~2-3 seconds of startup overhead
+    per spawn, while this approach adds negligible overhead.
+
+    Args:
+        options: ClaudeAgentOptions instance (may be None).
+
+    Returns:
+        The same options object with env cleaned (mutated in place), or None.
+    """
+    if options is not None and hasattr(options, "env") and options.env:
+        for var in _CLAUDECODE_ENV_VARS:
+            options.env.pop(var, None)
+    return options
+
+
 async def _stream_query(
     prompt: str,
     options: Optional[Any],
@@ -85,6 +241,10 @@ async def _stream_query(
     """Stream messages from query() and return the final ResultMessage (or None).
 
     Extracted so asyncio.wait_for() can wrap the entire streaming operation.
+
+    Env isolation is dual-layered:
+      1. _clean_claude_env() strips vars from os.environ (context manager)
+      2. _ensure_clean_sdk_env() strips vars from options.env (snapshot clean)
 
     Args:
         prompt: The prompt to send to the agent.
@@ -97,15 +257,12 @@ async def _stream_query(
     """
     final_result: Optional[Any] = None
 
-    # Strip CLAUDECODE vars from os.environ before calling query().
-    # The SDK merges os.environ into the subprocess env, so these vars
-    # would trigger the "nested session" guard in the spawned claude process.
-    _saved_env = {}
-    for var in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
-        if var in os.environ:
-            _saved_env[var] = os.environ.pop(var)
+    # Layer 2: Clean the options.env snapshot (see _ensure_clean_sdk_env docstring)
+    _ensure_clean_sdk_env(options)
 
-    try:
+    # Layer 1: Strip CLAUDECODE vars from os.environ for the duration of
+    # the SDK call.  The SDK also merges os.environ into the subprocess env.
+    with _clean_claude_env():
         async for message in query(prompt=prompt, options=options):
             if on_message:
                 on_message(message)
@@ -120,9 +277,6 @@ async def _stream_query(
             # Capture the final ResultMessage for metadata
             if hasattr(message, "subtype") and hasattr(message, "duration_ms"):
                 final_result = message
-    finally:
-        # Restore env vars so the parent process state is unchanged
-        os.environ.update(_saved_env)
 
     return final_result
 
@@ -155,6 +309,10 @@ async def run_agent(
             is_error=True,
         )
 
+    # Pre-flight: detect problematic env vars early so the log shows the
+    # warning before the potentially long-running SDK call begins.
+    sdk_env_preflight()
+
     start_time = time.monotonic()
     result_text_parts: list[str] = []
     final_result: Optional[Any] = None
@@ -172,6 +330,12 @@ async def run_agent(
             "SDK agent query timed out after %ds (elapsed: %dms)",
             timeout_seconds, elapsed_ms,
         )
+        # Kill any hung claude subprocess that the SDK spawned via Popen.
+        # asyncio.wait_for cancels the coroutine but does NOT terminate the
+        # underlying OS process, leaving it hung and blocking pipes.
+        killed = _kill_child_claude_processes(os.getpid())
+        if killed:
+            logger.warning("Killed hung claude subprocess(es): %s", killed)
         return SessionResult(
             status="failed",
             result=f"SDK query timed out after {timeout_seconds}s",

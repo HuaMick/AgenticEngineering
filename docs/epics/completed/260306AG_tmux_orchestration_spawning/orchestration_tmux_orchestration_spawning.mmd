@@ -1,0 +1,157 @@
+flowchart LR
+    %% GOAL: Orchestrate tmux-based spawning migration for ExecutionRunner and cmd_spawn.
+    %% PROFILE: orchestrator
+    %% INPUT_PATH: modules/AgenticGuidance/agents/orchestration/orchestration-executor/inputs.yml
+    %% OUTPUT: Tmux-based agent spawning in cmd_spawn, ExecutionRunner, and planner_loop with full test coverage.
+    %% GUIDELINE: modules/AgenticGuidance/assets/guidelines/testing.yml - Testing strategies and validation
+    %%
+    %% PHASES: InputValidation, Build, Test, IntegrationTest
+    %% AGENT_ROUTING: Build -> build-python, Test -> test-builder, IntegrationTest -> test-builder
+    %% FEEDBACK_TRIGGERS: TEST_FAILURE=retry(3), BUILD_FAILURE=escalate
+    %% STATUS: InputValidation=completed, Build=completed, Test=completed, IntegrationTest=completed
+
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    %% Validate epic folder, ticket YAMLs, and key source files exist.
+    %% CCI Bootstrap: agentic agent context bootstrap --role build-python
+
+    subgraph InputValidation_SG ["Input Validation Subgraph"]
+        LoadInputs --> ReviewInputs[Review Epic and Ticket YAMLs]
+        ReviewInputs --> CheckInputs{All Inputs Found?}
+        CheckInputs -- "No: Missing" --> AskUser((Ask User for Clarification))
+        CheckInputs -- "Yes: Verified" --> ValidateKeyFiles[Validate Key Source Files Exist]
+        ValidateKeyFiles --> KeyFilesExist{session.py, orchestration.py, planner_loop.py?}
+        KeyFilesExist -- "No: Missing" --> AskUser
+        KeyFilesExist -- "Yes: Found" --> BuildPhaseStart
+    end
+
+    %% ========================================
+    %% BUILD PHASE
+    %% ========================================
+    %% Implements tmux spawning across 4 sequential sub-phases:
+    %%   Phase 1: Tmux Spawning in cmd_spawn (TO_001, TO_002, TO_003)
+    %%   Phase 2: ExecutionRunner Tmux Integration (TO_004, TO_005, TO_006)
+    %%   Phase 3: Completion Detection Enhancement (TO_007)
+    %%   Phase 4: Observability and Polish (TO_009, TO_010)
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+
+    subgraph Build_SG ["Build Phase Subgraph"]
+        BuildPhaseStart((Build Phase)) --> SpawnBuildPython[Spawn build-python Agent]
+        SpawnBuildPython --> BuildResult{Build Succeeded?}
+        BuildResult -- "Yes: Implemented" --> RunBuildTests[Run Unit Tests]
+        RunBuildTests --> BuildTestsPassed{Tests Passed?}
+    end
+
+    %% Test-Fix Loop for Build Phase
+    subgraph BuildTestFixLoop_SG ["Build Test-Fix-Loop Subgraph"]
+        BuildTestsPassed -- "No: Fix in Iteration" --> CaptureBuildFailures[Capture Test Failures]
+        CaptureBuildFailures --> CheckBuildIterations{Max Iterations?}
+        CheckBuildIterations -- "No: Continue" --> SpawnBuildPythonFix[Spawn build-python Agent]
+        SpawnBuildPythonFix -.->|Retry Build| RunBuildTests
+        CheckBuildIterations -- "Yes: Limit Reached" --> EscalateBuild((Escalate: Build Failures))
+    end
+
+    BuildResult -- "No: Error" --> EscalateBuild
+    BuildTestsPassed -- "Yes: Passed" --> TestPhaseStart
+
+    %% ========================================
+    %% TEST PHASE
+    %% ========================================
+    %% Creates comprehensive test coverage across 4 unit test sub-phases:
+    %%   Phase 1: Unit Tests for cmd_spawn Tmux Path (TT_001, TT_002, TT_003)
+    %%   Phase 2: Unit Tests for ExecutionRunner Tmux Integration (TT_004)
+    %%   Phase 3: Unit Tests for Completion Detection (TT_005)
+    %%   Phase 4: Unit Tests for Session Stop with Tmux (TT_006)
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 5 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached without tests passing, stop and Ask User
+
+    subgraph Test_SG ["Test Phase Subgraph"]
+        TestPhaseStart((Test Phase)) --> SpawnTestBuilder[Spawn test-builder Agent]
+        SpawnTestBuilder --> TestCreated{Tests Created?}
+        TestCreated -- "Yes: Created" --> RunTestSuite[Execute Full Test Suite]
+        RunTestSuite --> AllTestsPassed{All Tests Pass?}
+    end
+
+    %% Test-Fix Loop for Test Phase
+    subgraph TestFixLoop_SG ["Test Test-Fix-Loop Subgraph"]
+        AllTestsPassed -- "No: Failures" --> CaptureTestFailures[Capture Test Failures]
+        CaptureTestFailures --> CheckTestIterations{Max Iterations?}
+        CheckTestIterations -- "No: Continue" --> SpawnTestBuilderFix[Spawn test-builder Agent]
+        SpawnTestBuilderFix -.->|Retry Tests| RunTestSuite
+        CheckTestIterations -- "Yes: Limit Reached" --> EscalateTest((Escalate: Test Failures))
+    end
+
+    TestCreated -- "No: Error" --> EscalateTest
+    AllTestsPassed -- "Yes: All Pass" --> IntegrationPhaseStart
+
+    %% ========================================
+    %% INTEGRATION TEST PHASE
+    %% ========================================
+    %% End-to-end validation with real tmux sessions (TT_007).
+    %% Validates env isolation, session creation, and session attach.
+    %%
+    %% LOOP_DEFINITION: modules/AgenticGuidance/assets/definitions/agent-loops.yml#loop_types.test-fix-loop
+    %% MAX_ITERATIONS: 3 (per test-fix-loop definition)
+    %% ESCALATION: If max iterations reached, stop and Ask User
+
+    subgraph IntegrationTest_SG ["Integration Test Subgraph"]
+        IntegrationPhaseStart((Integration Test Phase)) --> CheckTmuxAvailable{Tmux Available?}
+        CheckTmuxAvailable -- "No: Skip" --> SkipIntegration[Log: Skipping Integration Tests]
+        SkipIntegration --> FinalValidation
+        CheckTmuxAvailable -- "Yes: Available" --> SpawnIntegrationTestBuilder[Spawn test-builder Agent]
+        SpawnIntegrationTestBuilder --> IntegrationResult{Integration Tests Pass?}
+        IntegrationResult -- "Yes: All Pass" --> FinalValidation
+    end
+
+    %% Integration Test-Fix Loop
+    subgraph IntegrationFixLoop_SG ["Integration Fix-Loop Subgraph"]
+        IntegrationResult -- "No: Failures" --> CaptureIntegrationFailures[Capture Integration Failures]
+        CaptureIntegrationFailures --> CheckIntegrationIterations{Max Iterations?}
+        CheckIntegrationIterations -- "No: Continue" --> SpawnIntegrationFix[Spawn build-python Agent]
+        SpawnIntegrationFix -.->|Retry Integration| SpawnIntegrationTestBuilder
+        CheckIntegrationIterations -- "Yes: Limit Reached" --> EscalateIntegration((Escalate: Integration Failures))
+    end
+
+    %% ========================================
+    %% FINAL VALIDATION PHASE
+    %% ========================================
+    %% Verify all success criteria met:
+    %% - ExecutionRunner spawns agents in tmux sessions
+    %% - tmux attach allows live observation
+    %% - Completion detection works (StateStore + tmux)
+    %% - CLAUDECODE workaround removed from _run_phase
+    %% - End-to-end orchestration flow works with tmux
+
+    subgraph FinalCheck_SG ["Final Check Subgraph"]
+        FinalValidation[Enter Final Validation] --> CheckCriteria{All Success Criteria Met?}
+        CheckCriteria -- "No: Gaps" --> AskUser
+        CheckCriteria -- "Yes: Complete" --> GenerateReport[Generate Completion Report]
+    end
+
+    GenerateReport --> End((End: Epic Complete))
+
+    %% ========================================
+    %% FEEDBACK PATHS
+    %% ========================================
+    %% Dashed lines for feedback/re-planning paths
+    %% # FEEDBACK_TRIGGER: TEST_FAILURE -> BuildTestFixLoop_SG
+    %% # FEEDBACK_TRIGGER: BUILD_FAILURE -> EscalateBuild
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef dashedstroke stroke-dasharray: 5 5
+    class Start,BuildPhaseStart,TestPhaseStart,IntegrationPhaseStart,End entrypoint
+    class EscalateBuild,EscalateTest,EscalateIntegration,AskUser exitpoint
+    %% Dashed styling for feedback loop edges (indices: Build=15, Test=26, Integration=39)
+    linkStyle 15,26,39 stroke:#888,stroke-width:2px,stroke-dasharray: 5 5

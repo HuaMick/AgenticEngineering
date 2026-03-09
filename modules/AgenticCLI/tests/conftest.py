@@ -59,6 +59,82 @@ def _isolate_tinydb(tmp_path):
             yield isolated_db_path
 
 
+def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data):
+    """Populate TinyDB with epic/ticket data from a YAML-style dict.
+
+    Converts the dict structure that tests previously wrote to plan_build.yml
+    into TinyDB entries via EpicRepository.
+
+    Args:
+        db_path: Path to the TinyDB database file.
+        epic_folder_name: Epic folder name (e.g. "260103AE_test").
+        epic_folder: Path to the epic folder on disk.
+        yaml_data: Dict with optional keys: name, status, phases, tasks.
+            phases: list of {name, tickets/tasks: [{id, name, status, ...}]}
+            tasks: list of {id, name, status, ...} (flat/legacy structure)
+    """
+    from agenticguidance.services.epic_repository import EpicRepository
+
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+    epic_doc = {
+        "epic_folder_name": epic_folder_name,
+        "epic_folder": str(epic_folder),
+        "name": yaml_data.get("name", epic_folder_name),
+        "status": yaml_data.get("status", "active"),
+    }
+    # Carry over optional metadata fields
+    for field in ("objective", "context", "branch", "priority", "worktree_path"):
+        if field in yaml_data:
+            epic_doc[field] = yaml_data[field]
+    repo.create_epic(epic_doc)
+
+    phases = yaml_data.get("phases", [])
+    for phase in phases:
+        phase_name = phase.get("name", phase.get("id", "default"))
+        # Add the phase record first so get_epic() returns it
+        repo.add_phase(epic_folder_name, {
+            "name": phase_name,
+            "phase_id": phase.get("phase_id", phase.get("id", "")),
+            "description": phase.get("description", ""),
+            "status": phase.get("status", "pending"),
+            "execution": phase.get("execution", "sequential"),
+        })
+        tickets = phase.get("tickets", phase.get("tasks", []))
+        for ticket in tickets:
+            ticket_id = ticket.get("id") or ticket.get("task_id", "")
+            repo.add_ticket(epic_folder_name, phase_name, ticket)
+
+    # Handle flat tasks[] structure (legacy)
+    flat_tasks = yaml_data.get("tasks", [])
+    for ticket in flat_tasks:
+        repo.add_ticket(epic_folder_name, "default", ticket)
+
+    repo.close()
+    return repo
+
+
+@pytest.fixture
+def tinydb_populator(_isolate_tinydb):
+    """Fixture providing a function to populate the isolated TinyDB.
+
+    Usage in tests:
+        def test_something(tinydb_populator, tmp_path):
+            epic_dir = tmp_path / "my_epic"
+            epic_dir.mkdir()
+            tinydb_populator("my_epic", epic_dir, {
+                "name": "My Epic",
+                "status": "active",
+                "phases": [{"name": "P1", "tickets": [...]}]
+            })
+    """
+    db_path = _isolate_tinydb
+
+    def _populate(epic_folder_name, epic_folder, yaml_data):
+        return populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
+
+    return _populate
+
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for tests."""

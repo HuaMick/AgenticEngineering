@@ -38,8 +38,12 @@ process:
 
   outputs:
     - name: "guidance_test_plan"
-      description: "Guidance walkthrough validation plan with test tasks for target agents"
-      location: "docs/epics/live/{epic_folder_name}/ticket_test_guidance.yml"
+      description: "Guidance walkthrough validation plan with test tasks stored in TinyDB"
+      creation_method: |
+        Use CLI to create phases and tickets:
+          agentic epic phase add --epic {epic_folder_name} --name 'GuidanceTest' --agent test-guidance-simulator
+          agentic epic ticket add --epic {epic_folder_name} --phase 'GuidanceTest' --id '<id>' --name '<name>'
+        Do NOT create ticket_test_guidance.yml files on disk.
       required: true
     - name: "friction_report"
       description: "Summary of friction points found during walkthrough validation"
@@ -73,17 +77,17 @@ process:
       the discrepancy in your output.
     - |
       EPIC FOLDER STRUCTURE:
-      Epics are now organized in folders, not single files. The epic folder structure is:
-
-      docs/epics/live/YYMMDDXX_description/
-        - ticket_*.yml                     (Phase files at root)
-        - completed/ticket_completed.yml   (Completed items from all phases)
+      All phases and tickets are stored in TinyDB, not on-disk YAML files.
 
       YOUR RESPONSIBILITIES:
-      - Read all other phase .yml files in epic folder root to understand what was built (your test targets)
-      - Create/update `ticket_test_guidance.yml` with your guidance test phases
+      - Load existing phases from TinyDB to understand what was built (your test targets):
+        `agentic -j epic ticket list --epic {epic_folder_name}`
+      - Create guidance test phases in TinyDB via CLI:
+          agentic epic phase add --epic {epic_folder_name} --name 'GuidanceTest' --agent test-guidance-simulator
+          agentic epic ticket add --epic {epic_folder_name} --phase 'GuidanceTest' --id '<id>' --name '<name>'
+      - Do NOT create ticket_test_guidance.yml files on disk
       - Use `agentic agent epic move tickets --epic <epic_folder>` to archive completed tickets
-      - Output ONLY to `ticket_test_guidance.yml` (do not modify other phase tickets)
+      - Output ONLY to TinyDB (do not modify other phase tickets)
     - |
       Create guidance walkthrough validation plan following the guidance-blind-test strategy.
       Reference test scenario definitions from modules/AgenticGuidance/assets/definitions/guidance-test-scenarios.yml for:
@@ -109,13 +113,15 @@ process:
       - Operation ordering and agent type allocation
 
       INPUT SOURCE (what you're testing):
-      - Read all phase .yml files in the epic folder root to understand what agents were created/modified
-      - Identify target agents that need guidance validation
+      - Load all tickets from TinyDB to understand what agents were created/modified:
+        `agentic -j epic ticket list --epic {epic_folder_name}`
+      - Identify target agents that need guidance validation from the ticket descriptions
       - Determine which test scenarios apply to each target agent
 
       OUTPUT TARGET (where you write):
-      - Write your guidance test phases to `ticket_test_guidance.yml` in the same epic folder
-      - This file contains ONLY guidance walkthrough validation phases, not implementation or build phases
+      - Create guidance test phases in TinyDB using `agentic epic phase add` and `agentic epic ticket add`
+      - Do NOT create ticket_test_guidance.yml files on disk
+      - Guidance test phases belong in TinyDB alongside other phases, not in separate files
 
       DUMPING GROUND: Use additional subfolders (e.g., `test-results/guidance/`) to store agent artifacts
       like test reports, gap analysis, or friction logs to avoid polluting shared spaces.

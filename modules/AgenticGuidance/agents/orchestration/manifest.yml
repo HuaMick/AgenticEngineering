@@ -17,20 +17,23 @@ sub_agents:
 
 routing_logic: |
   Route to specific orchestration sub-agents based on workflow type:
-  - orchestration-planning: Planning-only workflows, produces approved plans for downstream use
-  - orchestration-executor: Generic MMD-driven execution (dynamic agent routing from Plan-MMD metadata)
+  - orchestration-planning: Planning-only workflows, produces TinyDB phase records for downstream use
+  - orchestration-executor: TinyDB-driven execution (dynamic agent routing from phase.agent field)
   - orchestration-friction: LangSmith trace friction analysis and pattern detection
-  - orchestration-loop: Full lifecycle loop (discover -> plan -> execute -> archive across all live plans)
+  - orchestration-loop: Full lifecycle loop (discover -> plan -> execute -> archive across all live epics)
 
   Entry patterns:
-  - _plan_build.yml entrypoint → orchestration-planning (code implementation planning)
-  - _plan_teach.yml entrypoint → orchestration-planning (guidance/teaching planning)
-  - _orchestrate.yml entrypoint → orchestration-executor (MMD-driven execution)
+  - planning_intent: "build" → orchestration-planning (code implementation planning)
+  - planning_intent: "teach" → orchestration-planning (guidance/teaching planning)
+  - agentic session orchestrate executing → orchestration-executor (TinyDB-driven execution)
   - agentic orchestrate --mode loop → orchestration-loop (full lifecycle)
 
+  NOTE: Legacy _plan_build.yml / _plan_teach.yml / _orchestrate.yml entrypoint files
+  are superseded by CLI parameters and TinyDB phase records. Do NOT create these files.
+
   Delegation pattern:
-  - orchestration-planning produces approved Plan-MMD files
-  - orchestration-executor consumes Plan-MMD and routes dynamically based on AGENT_ROUTING metadata
-  - Pre-approved plans can be executed directly via orchestration-executor
+  - orchestration-planning produces approved TinyDB phase records (via planner-orchestration)
+  - orchestration-executor reads TinyDB phases and routes dynamically based on phase.agent field
+  - Pre-approved epics with TinyDB phases can be executed directly via orchestration-executor
   - orchestration-friction analyzes traces for friction patterns and recommends guidance updates
-  - orchestration-loop combines planning and execution in a continuous loop for all live plans
+  - orchestration-loop combines planning and execution in a continuous loop for all live epics

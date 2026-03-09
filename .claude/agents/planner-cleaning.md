@@ -59,7 +59,7 @@ Planners may reorder phases when context warrants.
    - target_project_path: Absolute path to target project root
    - epic_folder_name: Epic folder name in YYMMDDXX_description format
 
-3. Read all .yml files in live/ to understand completed work
+3. Query TinyDB for completed work via `agentic epic ticket list --epic <folder> -j`
 
 4. Check epic folder artifact lifecycle (correct locations, noise reduction)
 

@@ -14,6 +14,7 @@ from agenticcli.validation import (
     validate_epic_yaml,
     validate_epic_yaml_or_raise,
 )
+from tests.conftest import populate_tinydb_from_yaml
 
 
 class TestValidateBranchName:
@@ -123,30 +124,42 @@ class TestValidateEpicFolderStructure:
         assert "not a directory" in issues[0]
 
     def test_missing_plan_files(self, temp_dir):
-        """Test missing plan_*.yml files is invalid (flattened structure)."""
+        """Test missing plan files is invalid - epic not in TinyDB."""
         plan_dir = temp_dir / "plan_folder"
         plan_dir.mkdir()
+        # Not registered in TinyDB, so validation should fail
         is_valid, issues = validate_epic_folder_structure(plan_dir)
         assert is_valid is False
-        assert "no plan_*.yml files" in issues[0]
+        # Error message may say "not found in TinyDB" or "no plan_*.yml files"
+        assert len(issues) > 0
 
     def test_empty_directory(self, temp_dir):
-        """Test empty directory is invalid (no plan_*.yml files)."""
+        """Test empty directory is invalid (epic not in TinyDB)."""
         plan_dir = temp_dir / "plan_folder"
         plan_dir.mkdir()
         # Create a non-plan file
         (plan_dir / "README.md").write_text("# Test")
+        # Not registered in TinyDB, so validation should fail
         is_valid, issues = validate_epic_folder_structure(plan_dir)
         assert is_valid is False
-        assert "no plan_*.yml files" in issues[0]
+        assert len(issues) > 0
 
-    def test_valid_structure(self, temp_dir):
-        """Test valid plan folder structure (flattened: plan_*.yml directly in folder)."""
+    def test_valid_structure(self, temp_dir, _isolate_tinydb):
+        """Test valid plan folder structure - registered in TinyDB."""
+        from unittest.mock import patch, MagicMock
         plan_dir = temp_dir / "plan_folder"
         plan_dir.mkdir()
-        # Flattened: plan file directly in plan_dir
-        (plan_dir / "plan_build.yml").write_text("plan:\n  name: Test")
-        is_valid, issues = validate_epic_folder_structure(plan_dir)
+        # Register in TinyDB (isolated) - TinyDB is the sole data store
+        populate_tinydb_from_yaml(_isolate_tinydb, "plan_folder", plan_dir, {
+            "name": "Test",
+            "status": "active",
+        })
+        # Patch validation's subprocess to return tmp_path as repo root
+        # so it finds the isolated DB
+        mock_result = MagicMock()
+        mock_result.stdout = str(_isolate_tinydb.parent.parent) + "\n"
+        with patch("subprocess.run", return_value=mock_result):
+            is_valid, issues = validate_epic_folder_structure(plan_dir)
         assert is_valid is True
         assert issues == []
 
@@ -154,13 +167,21 @@ class TestValidateEpicFolderStructure:
 class TestValidateEpicFolderOrRaise:
     """Tests for validate_epic_folder_or_raise."""
 
-    def test_valid_returns_path(self, temp_dir):
-        """Test valid folder returns path (flattened structure)."""
+    def test_valid_returns_path(self, temp_dir, _isolate_tinydb):
+        """Test valid folder returns path - registered in TinyDB."""
+        from unittest.mock import patch, MagicMock
         plan_dir = temp_dir / "plan_folder"
         plan_dir.mkdir()
-        # Flattened: plan file directly in plan_dir
-        (plan_dir / "plan_build.yml").write_text("test")
-        result = validate_epic_folder_or_raise(plan_dir)
+        # Register in TinyDB (isolated) - TinyDB is the sole data store
+        populate_tinydb_from_yaml(_isolate_tinydb, "plan_folder", plan_dir, {
+            "name": "Test",
+            "status": "active",
+        })
+        # Patch validation's subprocess to return tmp_path as repo root
+        mock_result = MagicMock()
+        mock_result.stdout = str(_isolate_tinydb.parent.parent) + "\n"
+        with patch("subprocess.run", return_value=mock_result):
+            result = validate_epic_folder_or_raise(plan_dir)
         assert result == plan_dir
 
     def test_invalid_raises(self, temp_dir):

@@ -152,6 +152,16 @@ process:
     - "Step 1..."
 ```
 
+## JIT Context Architecture
+
+Agents use a **Pull-based** (JIT/CCI) context model instead of loading large static files. Thin-client bootstrap files (~350 tokens) instruct agents to fetch context on-demand via CLI commands.
+
+For the complete JIT Context architecture including mermaid diagrams, CLI command reference, Main-First plan resolution, and task lifecycle:
+
+See: [JIT Context Architecture](../../../docs/JIT_CONTEXT_ARCHITECTURE.md)
+
+---
+
 ## Execution Flow
 
 ```

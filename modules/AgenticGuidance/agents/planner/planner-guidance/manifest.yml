@@ -10,30 +10,27 @@ files:
   inputs: "inputs.yml"
 
 # Key changes in v2.0:
-# - Multi-file output structure (ticket_teach.yml, ticket_audit_clean.yml)
+# - TinyDB-based output (tickets stored in TinyDB via CLI, not on-disk YAML files)
 # - Optimized layer loading (removed test-shared, cleaner-shared, deploy-shared)
 # - Simplified fragment reference syntax (category: "planner" instead of #anchor)
 # - Clear escalation for missing planning folder (use CLI: agentic agent epic init)
 
 outputs:
-  - type: "plan_yaml"
-    name: "ticket_teach.yml"
-    description: "Teaching ticket YAML with phases, tasks, and success criteria"
-    location: "docs/epics/live/{epic_folder_name}/"
+  - type: "tinydb_tickets"
+    name: "TinyDB teach phase tickets"
+    description: "Teaching phase tickets stored in TinyDB with phases, tasks, and success criteria"
+    creation_method: "agentic epic phase add / agentic epic ticket add"
     required: true
-  - type: "plan_yaml"
-    name: "ticket_audit_clean.yml"
-    description: "Audit and cleanup phase ticket (if needed)"
-    location: "docs/epics/live/{epic_folder_name}/"
+  - type: "tinydb_tickets"
+    name: "TinyDB audit/cleanup phase tickets"
+    description: "Audit and cleanup phase tickets stored in TinyDB (if needed)"
+    creation_method: "agentic epic phase add / agentic epic ticket add"
     required: false
   - type: "markdown"
     name: "friction-analysis.md"
-    description: "Friction analysis document identifying guidance issues"
+    description: "Friction analysis document identifying guidance issues (written to disk as a reference artifact)"
     location: "docs/epics/live/{epic_folder_name}/analysis/"
     required: true
-  - type: "orchestration_mmd"
-    name: "orchestration_{plan_name}.mmd"
-    description: "Mermaid flowchart for dynamic orchestration execution"
-    location: "docs/epics/live/{epic_folder_name}/"
-    required: true
-    schema_reference: "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
+  - note: |
+      TinyDB phase records with agent routing are created by planner-orchestration, NOT planner-guidance.
+      The handover model is: planner-guidance (TinyDB tickets) -> planner-orchestration (phase records) -> Reviewer

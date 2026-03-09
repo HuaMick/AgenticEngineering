@@ -1,0 +1,488 @@
+##############################################################################
+# Test Audit Results - Context & Task Commands (CCI JIT Architecture)
+# Epic: 260307TA_test_audit_user_story_coverage
+# Task: 06.1 - Audit test coverage and quality
+# Audited: 2026-03-09
+# Auditor: explore agent (re-audit, comprehensive)
+##############################################################################
+
+audit_summary:
+  files_audited:
+    - path: modules/AgenticCLI/tests/test_context_commands.py
+      lines: 807
+      tests: 29
+      result: ALL_PASS
+    - path: modules/AgenticCLI/tests/test_task_list_commands.py
+      lines: 403
+      tests: 16
+      result: ALL_PASS
+    - path: modules/AgenticCLI/tests/test_cli_task.py
+      lines: 175
+      tests: 18
+      result: ALL_PASS
+    - path: modules/AgenticCLI/tests/integration/test_context_bootstrap_planner.py
+      lines: 201
+      tests: 7
+      result: NOT_RERUN  # Checked file structure only
+  files_missing:
+    - path: modules/AgenticCLI/tests/test_plan_task_commands.py
+      note: "Specified as task input, DOES NOT EXIST"
+    - path: modules/AgenticCLI/tests/test_main_first_resolution.py
+      note: "Specified as task input, DOES NOT EXIST - no AgenticCLI-level tests for MainFirstEpicResolver"
+  source_files_reviewed:
+    - modules/AgenticCLI/src/agenticcli/commands/context.py
+    - modules/AgenticGuidance/src/agenticguidance/services/context.py
+    - modules/AgenticCLI/tests/conftest.py
+  total_tests: 63
+  all_passing: true
+  skipped_tests: 0
+  verdict: NEEDS_IMPROVEMENT
+
+##############################################################################
+# 1. SKIPPED TESTS
+##############################################################################
+skipped_tests:
+  count: 0
+  justification: "No skipped tests in any of the audited files"
+  status: PASS
+
+##############################################################################
+# 2. HARDCODED PATHS
+##############################################################################
+hardcoded_paths:
+  in_tests: 0
+  status: PASS
+  notes: >-
+    All test files use tmp_path, temp_dir, or plan_repo/task_repo fixtures for
+    path isolation. No hardcoded filesystem paths found in test code.
+    conftest.py fixtures create isolated git repos with temporary directories.
+
+##############################################################################
+# 3. MOCK APPROPRIATENESS
+##############################################################################
+mock_analysis:
+  status: MIXED
+
+  appropriate_mocks:
+    - test: TestContextInputs::test_context_inputs_returns_manifest
+      mock_target: agenticguidance.services.get_role_inputs_manifest
+      justification: "CLI layer test correctly mocks service layer"
+
+    - test: TestContextInputs::test_context_inputs_role_filter
+      mock_target: agenticguidance.services.get_role_inputs_manifest
+      justification: "Tests CLI filtering logic without depending on actual agent files"
+
+    - test: TestContextInputs::test_context_inputs_resolve_layers
+      mock_target: agenticguidance.services.get_role_inputs_manifest
+      justification: "Tests --resolve flag propagation through CLI to service"
+
+    - test: TestContextRole::test_role_returns_json
+      mock_target: agenticguidance.services.get_role_process
+      justification: "CLI layer test isolates from service"
+
+    - test: TestContextRole::test_role_not_found_error
+      mock_target: agenticguidance.services.get_role_process
+      justification: "Tests CLI error handling when service returns None"
+
+    - test: TestContextGenerateAgent tests
+      mock_target: agenticguidance.services.generate_agent_bootstrap
+      justification: "CLI layer test isolates from file system template loading"
+
+  misleading_mocks:
+    - test: TestContextInputs::test_context_inputs_resolves_paths
+      issue: >-
+        Test name claims to verify "all input paths are resolved to absolute
+        paths" but the mock provides pre-resolved absolute paths. The test
+        actually checks CLI passthrough, not that the service performs path
+        resolution. The real resolution logic in get_role_inputs_manifest()
+        is NOT tested.
+
+    - test: TestContextInputs::test_context_inputs_validates_existence
+      issue: >-
+        Test name claims to verify "missing files are flagged" but the mock
+        provides pre-computed exists flags. Tests CLI passthrough only, not
+        actual file existence detection.
+
+  no_mocks_used:
+    - file: test_task_list_commands.py
+      note: >-
+        All 16 tests run against real TinyDB via task_repo fixture. Good for
+        integration testing but makes tests dependent on fixture setup quality.
+
+    - file: test_cli_task.py
+      note: >-
+        All 18 tests are parser-level only (argument acceptance/rejection).
+        No mocks needed since they test Typer/argparse configuration.
+
+##############################################################################
+# 4. REWARD HACKING PATTERNS
+##############################################################################
+reward_hacking:
+  status: FAIL
+  severity: CRITICAL
+
+  # Category A: Tests that effectively always pass (vacuous truth)
+  always_pass_tests:
+    - test: TestTaskList::test_task_list_json_output
+      file: test_task_list_commands.py
+      line: 196
+      pattern: "vacuous_if_guard"
+      detail: >-
+        Core assertion wrapped in `if stdout.strip():` - empty output passes
+        without any JSON validation. Then `isinstance(data, (list, dict))` is
+        true for virtually any valid JSON.
+
+    - test: TestTaskList::test_task_list_filter_by_status
+      file: test_task_list_commands.py
+      line: 207
+      pattern: "nested_vacuous_guards"
+      detail: >-
+        Triple-nested guards: `if stdout.strip()` → `if isinstance(data, list)`
+        → `if isinstance(task, dict) and "status" in task`. Any empty or
+        non-list output passes all assertions.
+
+    - test: TestTaskCurrent::test_task_current_returns_task
+      file: test_task_list_commands.py
+      line: 227
+      pattern: "vacuous_if_guard"
+      detail: >-
+        Guard `if stdout.strip() and stdout.strip() != "null"` followed by
+        `if data:` means empty output, null, or empty dict all pass silently.
+
+    - test: TestTaskCurrent::test_task_current_prefers_in_progress
+      file: test_task_list_commands.py
+      line: 238
+      pattern: "vacuous_if_guard"
+      detail: >-
+        Same triple guard as above. Key assertion `data["status"] == "in_progress"`
+        only fires if all guards pass - empty/null output passes silently.
+
+    - test: TestTaskIntegration::test_list_then_current_consistent
+      file: test_task_list_commands.py
+      line: 314
+      pattern: "vacuous_if_guard"
+      detail: >-
+        Four nested guards before the consistency assertion. If any guard
+        is False, the test passes without testing anything.
+
+    - test: TestTaskStatus::test_task_status_shows_task_details
+      file: test_task_list_commands.py
+      line: 388
+      pattern: "nested_vacuous_guards_plus_accept_failure"
+      detail: >-
+        Nested `if` guards allow vacuous pass. Final assertion
+        `returncode in [0, 1]` accepts both success and failure.
+
+  # Category B: Tests that accept failure as success
+  accept_failure_tests:
+    - test: TestTaskUpdate::test_task_update_changes_status
+      file: test_task_list_commands.py
+      line: 259
+      pattern: "accept_failure_returncode"
+      detail: >-
+        Asserts `update_result.returncode in [0, 1]` which accepts both
+        success AND failure. Wrapped in guards so empty preconditions skip
+        the entire test body.
+
+    - test: TestTaskAdd::test_task_add_creates_task
+      file: test_task_list_commands.py
+      line: 303
+      pattern: "accept_failure_returncode"
+      detail: >-
+        Asserts `result.returncode in [0, 1]` - accepts both success and
+        failure. Never verifies the task was actually created.
+
+    - test: TestTaskPrefill::test_task_prefill_loads_preset
+      file: test_task_list_commands.py
+      line: 285
+      pattern: "accept_all_outcomes"
+      detail: >-
+        Asserts `code == 0 or "not found" in stderr.lower() or "error" in
+        stderr.lower()` - accepts success, "not found", AND generic error.
+        This test literally cannot fail.
+
+  # Category C: Tests with broken/wrong implementation
+  broken_tests:
+    - test: TestTaskIntegration::test_update_then_current_reflects_change
+      file: test_task_list_commands.py
+      line: 339
+      pattern: "broken_command_plus_pass_body"
+      detail: >-
+        CRITICAL: Calls `["agent", "agent", "plan", "task", "update", ...]`
+        (doubled "agent" prefix) which is NOT a valid command path. The update
+        silently fails. Then the innermost assertion body is literally
+        `pass  # Test passes if no error`. This test does NOTHING.
+
+  # Category D: Weak but acceptable assertions
+  weak_assertions:
+    - test: TestContextHelp::test_context_alias_ctx
+      file: test_context_commands.py
+      line: 170
+      severity: LOW
+      detail: >-
+        OR chain for deprecation message variants is acceptable given that
+        the exact deprecation wording may change.
+
+    - test: TestContextBootstrap::test_bootstrap_human_readable
+      file: test_context_commands.py
+      line: 200
+      severity: LOW
+      detail: >-
+        OR chain `"Bootstrap Context" in stdout or "Role:" in stdout or
+        "CLI Commands" in stdout` - acceptable for rich output format variants.
+
+  summary:
+    total_reward_hacking: 10
+    critical: 4     # always-pass in test_task_list_commands.py
+    high: 4         # accept-failure + broken test
+    low: 2          # weak assertions in test_context_commands.py
+
+##############################################################################
+# 5. MISSING TEST CASES
+##############################################################################
+missing_tests:
+  status: FAIL
+  severity: HIGH
+
+  # ---- Missing test FILES ----
+  missing_files:
+    - path: modules/AgenticCLI/tests/test_plan_task_commands.py
+      expected_coverage: "Task prefill, list, add, status, update, current - full behavioral tests"
+      note: >-
+        test_cli_task.py only covers parser acceptance. test_task_list_commands.py
+        exists but 10 of 16 tests are reward-hacking. Need a clean behavioral
+        test file.
+
+    - path: modules/AgenticCLI/tests/test_main_first_resolution.py
+      expected_coverage: >-
+        MainFirstEpicResolver unit tests at CLI level: branch matching,
+        worktree discovery, epic resolution, ticket extraction priority.
+      note: >-
+        The resolver is tested in AgenticGuidance but not at the AgenticCLI
+        integration level. No CLI tests verify the resolver works correctly
+        when invoked through context commands.
+
+  # ---- Gaps in test_context_commands.py ----
+  context_command_gaps:
+    - name: "test_handle_unknown_command"
+      description: "handle() router with unknown subcommand triggers error exit"
+      source_line: "context.py:37-42"
+      priority: LOW
+
+    - name: "test_bootstrap_role_inferred_from_task_agent_type"
+      description: "Bootstrap infers role from current_task.agent_type when --role not given"
+      source_line: "context.py:75-76"
+      priority: HIGH
+
+    - name: "test_bootstrap_essential_inputs_truncation"
+      description: "Bootstrap truncates essential_inputs to max 10 items"
+      source_line: "context.py:104"
+      priority: MEDIUM
+
+    - name: "test_task_all_tickets_completed"
+      description: "cmd_task when all tickets completed shows completion message"
+      source_line: "context.py:220-221"
+      priority: MEDIUM
+
+    - name: "test_task_human_readable_output"
+      description: "cmd_task non-JSON output with single task and table display"
+      source_line: "context.py:208,218-219"
+      priority: LOW
+
+    - name: "test_role_yaml_output_format"
+      description: "cmd_role default YAML output format (non-JSON)"
+      source_line: "context.py:167"
+      priority: MEDIUM
+
+    - name: "test_generate_agent_with_output_flag"
+      description: "generate-agent with --output writes file to specified path"
+      source_line: "context.py:365-367"
+      priority: MEDIUM
+
+  # ---- Gaps in test_task_list_commands.py ----
+  task_list_gaps:
+    - name: "test_task_list_output_contains_expected_tasks"
+      description: "Verify list JSON output contains specific tasks from fixture (01.1, 01.2, 01.3, 02.1)"
+      priority: HIGH
+
+    - name: "test_task_update_invalid_task_id"
+      description: "task update with nonexistent task_id returns error"
+      priority: HIGH
+
+    - name: "test_task_update_invalid_status"
+      description: "task update with invalid status value returns error"
+      priority: MEDIUM
+
+    - name: "test_task_add_and_verify_in_list"
+      description: "task add followed by task list shows the new task"
+      priority: HIGH
+
+    - name: "test_task_current_all_completed"
+      description: "task current when all tasks completed returns None/empty"
+      priority: MEDIUM
+
+    - name: "test_task_list_empty_plan"
+      description: "task list with empty plan (no tasks) returns empty list"
+      priority: MEDIUM
+
+  # ---- Gaps in test_cli_task.py ----
+  cli_task_gaps:
+    - name: "test_ticket_remove_parser"
+      description: "ticket remove command parser acceptance"
+      priority: LOW
+
+    - name: "test_ticket_batch_parser"
+      description: "ticket batch command parser acceptance"
+      priority: LOW
+
+  total_missing: 16
+  by_priority:
+    HIGH: 5
+    MEDIUM: 7
+    LOW: 4
+
+##############################################################################
+# 6. TEST ISOLATION
+##############################################################################
+test_isolation:
+  status: PASS
+  findings:
+    - item: "TinyDB isolation"
+      detail: "conftest._isolate_tinydb (autouse) redirects all DB writes to per-test tmp_path"
+
+    - item: "Notification isolation"
+      detail: "conftest._block_real_ntfy (autouse) patches ntfy config to None"
+
+    - item: "CWD restoration"
+      detail: "cli_runner, plan_cli_runner, and task_cli_runner all save/restore CWD in teardown"
+
+    - item: "JSON mode reset"
+      detail: "plan_cli_runner and cli_runner call set_json_output(False) in teardown"
+
+    - item: "Git isolation"
+      detail: "plan_repo and task_repo fixtures create isolated git repos in temp directories"
+
+    - item: "No shared state"
+      detail: "Each test class is independent; fixtures don't leak between classes"
+
+  minor_concerns:
+    - item: "task_cli_runner missing JSON reset"
+      detail: >-
+        task_cli_runner (test_task_list_commands.py) does not call
+        set_json_output(False) in teardown, unlike plan_cli_runner. This
+        could theoretically cause JSON mode to leak between tests.
+
+##############################################################################
+# 7. FILE-BY-FILE QUALITY GRADES
+##############################################################################
+file_quality:
+  test_context_commands.py:
+    grade: B+
+    tests: 29
+    strengths:
+      - "Strong structure validation (bootstrap output complete test)"
+      - "Good mock strategy for CLI-layer isolation"
+      - "Integration tests verify cross-command consistency"
+      - "Edge cases covered (no active plan, role override, requires_role)"
+    weaknesses:
+      - "2 misleadingly-named mock tests (resolves_paths, validates_existence)"
+      - "Missing tests for role inference from task agent_type"
+      - "Missing test for generate-agent --output flag"
+
+  test_task_list_commands.py:
+    grade: D
+    tests: 16
+    strengths:
+      - "Good fixture setup with multi-phase, multi-status task data"
+      - "Uses real TinyDB integration (not mocked)"
+    weaknesses:
+      - "10 of 16 tests exhibit reward hacking patterns"
+      - "6 tests use vacuous if-guards allowing empty output to pass"
+      - "3 tests accept failure returncode as success"
+      - "1 test has broken command path AND pass-body (does literally nothing)"
+      - "Missing tests for add-then-verify, invalid IDs, empty plans"
+
+  test_cli_task.py:
+    grade: B
+    tests: 18
+    strengths:
+      - "Clean parser-level tests, appropriate scope"
+      - "Tests both positive and negative parser behavior"
+      - "Covers short flags (-t, -n, -v)"
+    weaknesses:
+      - "Parser-only, no behavioral/runtime tests"
+      - "Missing coverage for ticket remove and batch commands"
+
+  integration/test_context_bootstrap_planner.py:
+    grade: B-
+    tests: 7
+    strengths:
+      - "Real filesystem validation of agent role files"
+      - "Flexible path searching for role definitions"
+    weaknesses:
+      - "Heavy use of pytest.skip() for missing files"
+      - "Broad assertions (any-of checks on expected keys)"
+
+##############################################################################
+# 8. OVERALL VERDICT
+##############################################################################
+overall:
+  verdict: NEEDS_IMPROVEMENT
+  confidence: HIGH
+
+  strengths:
+    - "Zero skipped tests across 63 tests"
+    - "No hardcoded paths in any test file"
+    - "Excellent test isolation via conftest autouse fixtures"
+    - "Strong TinyDB integration in plan_repo and task_repo fixtures"
+    - "test_context_commands.py has solid coverage (29 tests, grade B+)"
+    - "test_cli_task.py parser tests are clean and appropriate"
+    - "Integration tests validate real file structures"
+
+  critical_issues:
+    - issue: "10 reward-hacking tests in test_task_list_commands.py"
+      severity: CRITICAL
+      detail: >-
+        test_task_list_commands.py has 10 of 16 tests with reward hacking
+        patterns: vacuous if-guards, accept-failure returncodes, and one
+        broken test (test_update_then_current_reflects_change) that literally
+        does nothing.
+      action: >-
+        Rewrite all 10 tests with unconditional assertions. Remove if-guards
+        by ensuring fixtures produce deterministic output. Fix the broken
+        command path. Replace `returncode in [0, 1]` with `returncode == 0`.
+
+    - issue: "2 of 3 specified input files do not exist"
+      severity: HIGH
+      detail: >-
+        test_plan_task_commands.py and test_main_first_resolution.py were
+        specified as audit inputs but do not exist. This leaves behavioral
+        task command testing and MainFirstEpicResolver CLI-level testing
+        with no coverage.
+      action: >-
+        Create these test files or update the epic spec. Behavioral task
+        tests need to complement the parser-only test_cli_task.py.
+
+    - issue: "16 missing test cases across all files"
+      severity: HIGH
+      detail: "5 HIGH priority, 7 MEDIUM priority, 4 LOW priority gaps identified"
+      action: "Prioritize role inference, task add-verify, and invalid ID error handling tests"
+
+  recommended_priority:
+    P1_immediate:
+      - "Fix 10 reward-hacking tests in test_task_list_commands.py"
+      - "Fix broken command path in test_update_then_current_reflects_change"
+    P2_high:
+      - "Add test_bootstrap_role_inferred_from_task_agent_type"
+      - "Add test_task_list_output_contains_expected_tasks"
+      - "Add test_task_update_invalid_task_id"
+      - "Add test_task_add_and_verify_in_list"
+    P3_medium:
+      - "Create test_main_first_resolution.py or document as descoped"
+      - "Add test_generate_agent_with_output_flag"
+      - "Add test_role_yaml_output_format"
+      - "Add test_bootstrap_essential_inputs_truncation"
+    P4_low:
+      - "Add handle() unknown command test"
+      - "Add ticket remove/batch parser tests"
+      - "Add human-readable output tests"

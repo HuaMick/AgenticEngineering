@@ -461,17 +461,19 @@ class TestStoriesBatchUpdate:
 
     @pytest.fixture
     def plan_with_stories(self, userstories_dir):
-        """Create a plan with affected_stories referencing test stories."""
+        """Create a plan with affected_stories referencing test stories.
+
+        Uses user_stories.yml (the current format) to store affected_stories.
+        """
         temp_repo = userstories_dir.parent.parent
         plan_dir = temp_repo / "docs" / "plans" / "live" / "260210XX_test_plan"
         plan_dir.mkdir(parents=True, exist_ok=True)
 
-        plan_build = {
-            "description": "Test plan",
+        user_stories = {
             "affected_stories": ["US-TEST-001", "US-TEST-002"],
         }
-        (plan_dir / "plan_build.yml").write_text(
-            yaml.dump(plan_build, sort_keys=False)
+        (plan_dir / "user_stories.yml").write_text(
+            yaml.dump(user_stories, sort_keys=False)
         )
         return plan_dir
 
@@ -519,13 +521,10 @@ class TestStoriesBatchUpdate:
 
     def test_batch_update_no_stories(self, cli_runner, userstories_dir):
         """Test batch update when plan has no affected_stories."""
-        # Create plan without affected_stories
+        # Create plan folder without affected_stories (no user_stories.yml)
         temp_repo = userstories_dir.parent.parent
         plan_dir = temp_repo / "docs" / "plans" / "live" / "260210YY_empty"
         plan_dir.mkdir(parents=True, exist_ok=True)
-        (plan_dir / "plan_build.yml").write_text(
-            yaml.dump({"description": "Empty"}, sort_keys=False)
-        )
 
         stdout, stderr, code = cli_runner([
             "agent", "stories", "batch-update",
@@ -563,17 +562,19 @@ class TestStoriesAffected:
 
     @pytest.fixture
     def plan_with_stories(self, userstories_dir):
-        """Create a plan with affected_stories referencing test stories."""
+        """Create a plan with affected_stories referencing test stories.
+
+        Uses user_stories.yml (the current format) to store affected_stories.
+        """
         temp_repo = userstories_dir.parent.parent
         plan_dir = temp_repo / "docs" / "plans" / "live" / "260210XX_test_plan"
         plan_dir.mkdir(parents=True, exist_ok=True)
 
-        plan_build = {
-            "description": "Test plan",
+        user_stories = {
             "affected_stories": ["US-TEST-001", "US-TEST-002"],
         }
-        (plan_dir / "plan_build.yml").write_text(
-            yaml.dump(plan_build, sort_keys=False)
+        (plan_dir / "user_stories.yml").write_text(
+            yaml.dump(user_stories, sort_keys=False)
         )
         return plan_dir
 

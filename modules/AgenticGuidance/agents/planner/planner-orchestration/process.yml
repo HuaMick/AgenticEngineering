@@ -1,16 +1,17 @@
-goal: "Generate orchestration MMD files from approved ticket YAMLs for downstream execution by orchestration-executor."
+goal: "Create TinyDB phase records with agent routing from approved ticket data for downstream execution by orchestration-executor."
 
 context:
   role: |
-    planner-orchestration is a PLANNING artifact generator. It reads approved ticket YAML files
-    and produces orchestration MMD flowcharts that orchestration-executor can consume.
+    planner-orchestration is a PLANNING artifact creator. It reads tickets from TinyDB
+    and creates TinyDB phase records with agent routing that orchestration-executor can consume.
 
     This agent does NOT execute plans. It does NOT orchestrate other agents.
-    It creates a single artifact: the orchestration_<name>.mmd file.
+    It creates phase records in TinyDB with the correct agent routing, execution mode,
+    feedback triggers, and loop structure fields.
 
   naming_convention: |
-    This agent follows the planner-* naming convention because it creates a planning artifact
-    (the MMD file). orchestration-* agents execute workflows; planner-* agents create artifacts.
+    This agent follows the planner-* naming convention because it creates planning artifacts
+    (phase records). orchestration-* agents execute workflows; planner-* agents create artifacts.
 
 process:
   steps:
@@ -19,13 +20,14 @@ process:
     # ========================================
     - name: "Load Epic Context"
       action: |
-        Read all ticket_*.yml files from the epic folder's live/ directory.
+        Load tickets from TinyDB: `agentic -j epic ticket list --epic {epic_folder_name}`
         Extract:
         - Epic name and metadata
-        - All phases (name, execution mode, description)
+        - All existing phases (name, execution mode, description)
         - All tasks per phase (id, name, agent_type, status)
         - Loop structures (type, applies_to_phase, exit_criteria)
         - Success criteria
+        - Affected stories (if present in epic metadata)
       inputs:
         - epic_folder_path: "Provided by orchestration-planning or user"
 
@@ -34,7 +36,7 @@ process:
     # ========================================
     - name: "Extract Phase Sequence"
       action: |
-        From the plan YAML phases, determine the execution order.
+        From the TinyDB ticket phases, determine the execution order.
         Map each phase to its execution mode (sequential or parallel).
         Identify cross-phase dependencies.
 
@@ -43,9 +45,10 @@ process:
     # ========================================
     - name: "Determine Agent Routing"
       action: |
-        Map each phase to the appropriate agent type using the AGENT_ROUTING table:
+        Map each phase to the appropriate agent type using the routing table below
+        to set the phase.agent field in the TinyDB phase record:
 
-        AGENT_ROUTING mapping:
+        Agent routing mapping:
         - teach phases -> teacher agents (teacher-update-guidance, teacher-update-assets)
         - build phases -> builder agents (build-python, build-flutter)
         - test phases -> tester agents (test-runner, test-builder)
@@ -54,7 +57,7 @@ process:
         - uat phases -> test-user-simulator (user acceptance testing)
 
         For each phase, resolve the generic type to the specific agent based on:
-        - Task agent_type fields in the plan YAML
+        - Task agent_type fields in TinyDB
         - Project technology (Python -> build-python, Flutter -> build-flutter)
         - Phase type defaults from the mapping above
 
@@ -74,124 +77,81 @@ process:
         - Teach phases (requires guidance-self-review-loop OR agent-self-review)
 
         If loops are missing, STOP and report back to orchestration-planning.
-        Do NOT generate the MMD without proper loop definitions.
+        Do NOT create phase records without proper loop definitions.
       reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
 
     # ========================================
-    # STEP 5: Generate MMD Metadata Block
+    # STEP 5: Create Phase Records in TinyDB
     # ========================================
-    - name: "Generate MMD Metadata Block"
+    - name: "Create Phase Records in TinyDB"
       action: |
-        Create the MMD header comments with required metadata:
+        For each phase determined in step 2, create a TinyDB phase record
+        using the CLI commands:
 
-        Required metadata fields:
-        - GOAL: Plan objective (from plan name/context)
-        - PROFILE: "orchestrator" (always)
-        - PHASES: Comma-separated list of phases in execution order
-        - AGENT_ROUTING: Phase->agent type mapping (one per line)
-        - FEEDBACK_TRIGGERS: Failure handling paths
-        - STATUS: Initial status for all phases (Phase=pending)
-        - AFFECTED_STORIES: Story IDs from plan metadata (if present)
+        ```bash
+        # Create a phase with agent routing
+        agentic epic phase add \
+          --epic {epic_folder_name} \
+          --name "{phase_name}" \
+          --agent {resolved_agent_type} \
+          --execution sequential
 
-        Format example:
-        %% GOAL: Implement feature X
-        %% PROFILE: orchestrator
-        %% PHASES: Build, Test, Cleanup, UAT
-        %% AGENT_ROUTING: Build=build-python, Test=test-runner, Cleanup=build-python, UAT=test-user-simulator
-        %% FEEDBACK_TRIGGERS: TEST_FAILURE=retry(3), BUILD_FAILURE=escalate, STORY_REGRESSION=retry(3)
-        %% STATUS: Build=pending, Test=pending, Cleanup=pending, UAT=pending
-        %% AFFECTED_STORIES: US-CLI-001, US-CLI-002
+        # Add tickets to the phase
+        agentic epic ticket add \
+          --epic {epic_folder_name} \
+          --phase "{phase_name}" \
+          --id {ticket_id} \
+          --name "{ticket_name}"
+        ```
 
-        STORY METADATA IN MMD:
-        When plan has affected_stories, include as MMD header comment.
-        UAT phase nodes should annotate which stories they validate.
-        STORY_REGRESSION trigger should be included in FEEDBACK_TRIGGERS.
-        This enables the executor to parse story context directly from the MMD.
-      schema_reference: "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
+        Required fields per phase record:
+        - name: Phase name (e.g., "Build", "Test", "Cleanup", "UAT")
+        - agent: Resolved agent type (e.g., "build-python", "test-runner")
+        - execution: "sequential" or "parallel"
+        - status: "pending" (initial value)
+
+        Optional fields per phase record:
+        - feedback_triggers: Failure handling paths (TEST_FAILURE, BUILD_FAILURE, etc.)
+        - loop_structure: Loop type, max iterations, exit conditions
+        - max_iterations: Retry limit (default 3)
+        - affected_stories: Story IDs from plan metadata (if present)
+
+        STORY METADATA IN PHASE RECORDS:
+        When plan has affected_stories, include in the UAT phase record.
+        UAT phase records should annotate which stories they validate.
+        STORY_REGRESSION trigger should be included in feedback_triggers.
+        This enables the executor to read story context directly from TinyDB.
+
+      example: |
+        # Example phase creation for a build epic:
+        agentic epic phase add --epic 260207PO_refactor --name "Build" --agent build-python --execution sequential
+        agentic epic phase add --epic 260207PO_refactor --name "Test" --agent test-runner --execution sequential
+        agentic epic phase add --epic 260207PO_refactor --name "UAT" --agent test-user-simulator --execution sequential
 
     # ========================================
-    # STEP 6: Build Flowchart Structure
+    # STEP 6: Validate Phase Records
     # ========================================
-    - name: "Build Flowchart Structure"
+    - name: "Validate Phase Records"
       action: |
-        Construct the Mermaid flowchart with:
-        - Start node and input validation phase
-        - CCI Bootstrap block (agentic agent context bootstrap commands)
-        - Phase execution nodes for each plan phase
-        - Loop subgraphs per agent-loops.yml definitions
-        - Feedback paths for re-planning (dashed lines)
-        - Validation gates between phases
-        - Success/escalation endpoints
+        Validate the created phase records by reading them back from TinyDB:
+        `agentic -j epic ticket list --epic {epic_folder_name}`
 
-        Each phase should follow this pattern:
-        1. Enter phase node
-        2. Spawn agent node
-        3. Loop subgraph (if applicable)
-        4. Validation decision node
-        5. Exit phase node (success) or feedback path (failure)
+        Verify:
+        1. All phases from the ticket data are represented in phase records
+        2. Every phase has an agent field set to a valid agent type
+        3. Agent types exist in the manifest spawns fence
+        4. Loop structures match definitions in agent-loops.yml
+        5. Feedback trigger targets reference valid phase names
 
-    # ========================================
-    # STEP 7: Validate Node Granularity (MANDATORY)
-    # ========================================
-    - name: "Validate Node Granularity"
-      action: |
-        FENCE: MMD-NODE-GRANULARITY
-        Generated MMD nodes MUST be high-level (phases, loops, agent spawns).
-        Task-level nodes are FORBIDDEN in orchestration MMDs.
-
-        STOP and regenerate if ANY of these patterns appear:
-        - Task ID nodes: deploy_\d+, build_\d+, test_\d+, teach_\d+, cleanup_\d+
-        - Execute labels: [Execute: ...]
-        - Individual file operations: [Edit ...], [Create ...], [Delete ...]
-
-        REQUIRED patterns for valid MMD:
-        - Phase nodes: [Enter X Phase], ((X Phase))
-        - Spawn nodes: [Spawn X Agent]
-        - Loop nodes: {X Loop}, subgraph X_Loop_SG
-        - Decision nodes: {X?}
-
-      correct_examples:
-        - "BuildPhaseStart((Build Phase))"
-        - "SpawnPlannerBuild[Spawn planner-build Agent]"
-        - "subgraph TestFixLoop_SG [\"Test-Fix-Loop Subgraph\"]"
-        - "ReviewResult{Plan Approved?}"
-
-      incorrect_examples:
-        - "build_001[Implement authentication]"
-        - "EditFile[Edit process.yml]"
-        - "AddFunction[Add validateUser function]"
-
-    # ========================================
-    # STEP 8: Write MMD File
-    # ========================================
-    - name: "Write MMD File"
-      action: |
-        Write the generated MMD to: <epic_folder>/orchestration_<name>.mmd
-        where <name> is derived from the epic folder name.
-
-        Example: docs/epics/live/260207PO_refactor/ -> orchestration_planner_orchestration_refactor.mmd
-
-    # ========================================
-    # STEP 9: Validate MMD Against Schema
-    # ========================================
-    - name: "Validate MMD Against Schema"
-      action: |
-        Validate the written MMD file against the plan-mmd-schema:
-        1. All required metadata fields present
-        2. Node granularity is high-level only
-        3. All phases from ticket YAML are represented
-        4. Loop subgraphs match loop_structure definitions
-        5. Feedback paths exist for failure scenarios
-        6. Start and end nodes are properly defined
-
-        If validation fails, return to Step 6 and fix.
-      schema_reference: "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
+        If validation fails, update the phase records and re-validate.
+      cli_reference: "agentic epic phase add --help"
 
 guidelines:
-  - "NEVER start implementation. Only create the orchestration MMD artifact."
-  - "ALWAYS validate node granularity before writing the MMD file."
-  - "ALWAYS include AGENT_ROUTING metadata - the executor depends on it."
-  - "NEVER include task-level nodes in the MMD. Phases and agent spawns only."
-  - "If loop structures are missing from the plan YAML, report back - do not generate without them."
+  - "NEVER start implementation. Only create TinyDB phase records."
+  - "ALWAYS validate agent routing before creating phase records."
+  - "ALWAYS include agent field on every phase record - the executor depends on it."
+  - "NEVER create ticket_*.yml or plan_*.yml YAML files on disk. Use TinyDB only."
+  - "If loop structures are missing from the ticket data, report back - do not create phase records without them."
+  - "Use `agentic epic phase add` CLI command - do NOT use the Edit tool to modify TinyDB files directly."
 
 inputs_reference: "modules/AgenticGuidance/agents/planner/planner-orchestration/inputs.yml"

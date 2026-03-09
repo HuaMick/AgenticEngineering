@@ -27,8 +27,8 @@ Create a guidance-focused plan to improve agent paths, fences, and signposts. Ke
    - Call out mismatches between guidance and repo reality
 
 3. **Plan Creation**: Build minimal, verifiable guidance improvement plans
-   - Create ticket_live_teach.yml for guidance refinements (path, fence, signpost edits)
-   - Create ticket_live_audit_clean.yml for audit and cleanup tickets
+   - Create TinyDB tickets for guidance refinements (path, fence, signpost edits) via `agentic epic ticket add` CLI commands
+   - Create TinyDB tickets for audit and cleanup via `agentic epic ticket add` CLI commands
    - Each item must name exact files to edit
    - Each item must include verifiable acceptance criteria
 
@@ -68,10 +68,9 @@ Create a guidance-focused plan to improve agent paths, fences, and signposts. Ke
 
 ## Outputs
 
-- **ticket_live_teach.yml**: Teaching phase plan for guidance improvements
-- **ticket_live_audit_clean.yml**: Audit and cleanup phase plan (if needed)
+- **TinyDB tickets**: Teaching phase tickets for guidance improvements and audit/cleanup tickets created via `agentic epic ticket add` and `agentic epic phase add` CLI commands
 - **friction-analysis.md**: Friction analysis document in analysis/
-- Location: docs/epics/live/{epic_folder_name}/
+- Do NOT create ticket_*.yml files on disk.
 
 ## Boundaries
 

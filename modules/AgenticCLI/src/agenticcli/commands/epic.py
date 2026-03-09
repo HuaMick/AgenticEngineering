@@ -159,6 +159,66 @@ def _get_repo():
     return EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
 
 
+def _check_has_orchestration(epic_folder_name: str, plan_path: Path = None) -> bool:
+    """Check if an epic has orchestration phases in TinyDB.
+
+    Checks TinyDB phases only (primary store). The legacy MMD file fallback
+    has been removed as part of the epic folder elimination work.
+
+    Args:
+        epic_folder_name: Epic folder name (e.g. '260307EO_my_epic').
+        plan_path: Unused, kept for backward-compatible call sites.
+
+    Returns:
+        True if orchestration phases with an agent exist in TinyDB.
+    """
+    try:
+        repo = _get_repo()
+        phases = repo.list_phases(epic_folder_name)
+        repo.close()
+        if phases and any(phase.agent for phase in phases):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _ensure_epic_in_db(repo, plan_path: Path) -> bool:
+    """Ensure the epic folder is registered in TinyDB.
+
+    If the epic folder exists on disk but is not yet in TinyDB, this
+    function auto-registers it so that subsequent phase/ticket operations
+    succeed.
+
+    Args:
+        repo: EpicRepository instance.
+        plan_path: Path to the epic folder on disk.
+
+    Returns:
+        True if the epic is now present in TinyDB (either already existed
+        or was just created), False on failure.
+    """
+    plan_doc = repo.get_epic(plan_path.name)
+    if plan_doc is not None:
+        # Already registered - check folder matches
+        if plan_doc.epic_folder.resolve() == plan_path.resolve():
+            return True
+        # Folder path is stale - resync it
+        repo.resync_epic_folder(plan_path.name, str(plan_path))
+        return True
+
+    # Epic folder exists on disk but not in DB - auto-register it
+    if plan_path.is_dir():
+        result = repo.create_epic({
+            "epic_folder_name": plan_path.name,
+            "epic_folder": str(plan_path),
+            "name": plan_path.name,
+            "status": "active",
+        })
+        return result.success
+
+    return False
+
 
 def is_epic_fully_completed(plan_folder: Path) -> bool:
     """Check if all tasks across all plan files are completed.
@@ -202,8 +262,7 @@ def has_pending_questions(plan_path: Path) -> bool:
 def _get_epic_branch(plan_path: Path) -> str | None:
     """Extract the branch name associated with a plan folder.
 
-    Tries PlanRepository (TinyDB) first for fast lookup, then falls back
-    to reading YAML files.
+    Looks up the branch in TinyDB via EpicRepository.
 
     Args:
         plan_path: Path to the plan folder.
@@ -258,10 +317,14 @@ def handle(args, ctx=None):
             cmd_task_add(args, ctx)
         elif args.ticket_action == "update":
             cmd_task_update(args, ctx)
+        elif args.ticket_action == "remove":
+            cmd_task_remove(args, ctx)
+        elif args.ticket_action == "batch":
+            cmd_task_batch(args, ctx)
         elif args.ticket_action == "current":
             cmd_task_current(args, ctx)
         else:
-            print("Usage: agentic epic ticket <start|complete|prefill|list|status|add|update|current> ...", file=sys.stderr)
+            print("Usage: agentic epic ticket <start|complete|prefill|list|status|add|update|remove|batch|current> ...", file=sys.stderr)
             sys.exit(1)
     elif args.epic_command == "archive":
         cmd_archive(args)
@@ -278,9 +341,13 @@ def handle(args, ctx=None):
             cmd_phase_list(args, ctx)
         elif args.phase_action == "update":
             cmd_phase_update(args, ctx)
+        elif args.phase_action == "remove":
+            cmd_phase_remove(args, ctx)
         else:
-            print("Usage: agentic epic phase <add|list|update>", file=sys.stderr)
+            print("Usage: agentic epic phase <add|list|update|remove>", file=sys.stderr)
             sys.exit(1)
+    elif args.epic_command == "replan":
+        cmd_replan(args, ctx)
     elif args.epic_command == "orchestration":
         if args.orchestration_action == "generate":
             cmd_orchestration_generate(args, ctx)
@@ -568,7 +635,7 @@ def cmd_new(args, ctx=None):
     if was_json:
         _set_json(True)
 
-    # If we get here, init succeeded. Find the created plan folder.
+    # If we get here, init succeeded. Find the created plan record from TinyDB.
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -579,13 +646,28 @@ def cmd_new(args, ctx=None):
         print_error("Not in a git repository")
         sys.exit(1)
 
-    plans_live = repo_root / "docs" / "epics" / "live"
+    # Look up the plan folder path from TinyDB (no filesystem scan needed)
+    plan_folder = None
+    try:
+        from agenticcli.utils.naming import generate_epic_folder_name
+        plan_folder_name = generate_epic_folder_name(repo_root, description, branch=branch)
+        from agenticguidance.services.epic_repository import EpicRepository
+        _init_repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
+        epic_doc = _init_repo.get_epic(plan_folder_name)
+        _init_repo.close()
+        if epic_doc is not None:
+            plan_folder = epic_doc.epic_folder
+    except Exception:
+        pass
 
-    # Find the folder we just created (most recently modified matching description)
-    from agenticcli.utils.naming import sanitize_description
-    sanitized = sanitize_description(description)
-    matching = [p for p in plans_live.iterdir() if p.is_dir() and sanitized in p.name]
-    plan_folder = matching[0] if matching else None
+    # Fallback: reconstruct the expected path if TinyDB lookup failed
+    if not plan_folder:
+        try:
+            from agenticcli.utils.naming import generate_epic_folder_name
+            plan_folder_name = generate_epic_folder_name(repo_root, description, branch=branch)
+            plan_folder = repo_root / "docs" / "epics" / "live" / plan_folder_name
+        except Exception:
+            pass
 
     if not plan_folder:
         print_error("Plan folder was not created. Check plan init output above.")
@@ -633,13 +715,14 @@ def cmd_new(args, ctx=None):
         if sdk_result.status != "completed":
             planner_stderr = sdk_result.result
     else:
-        # Subprocess fallback: use claude CLI
-        claude_cmd = ["claude", "--print"]
+        # Subprocess fallback: use claude CLI in -p (pipe/print) mode.
+        # NOTE: -p must come last since it consumes the next argument as prompt.
+        claude_cmd = ["claude"]
         if dangerously_skip_permissions:
             claude_cmd.append("--dangerously-skip-permissions")
         if max_turns:
             claude_cmd.extend(["--max-turns", str(max_turns)])
-        claude_cmd.append(planner_prompt)
+        claude_cmd.extend(["-p", planner_prompt])
 
         try:
             if not is_json_output():
@@ -841,8 +924,8 @@ def cmd_new(args, ctx=None):
                                 print_info(f"    Task {task_id}: already completed (skipped)")
                             continue
 
-                        # Build the spawn command: agentic session spawn --task <id> --plan <folder>
-                        spawn_cmd = ["agentic", "session", "spawn", "--task", task_id, "--plan", str(plan_folder)]
+                        # Legacy path: uses --task instead of --role, not eligible for build_spawn_command.
+                        spawn_cmd = ["agentic", "session", "spawn", "--task", task_id, "--epic", str(plan_folder)]
                         if dangerously_skip_permissions:
                             spawn_cmd.append("--dangerously-skip-permissions")
 
@@ -1038,16 +1121,8 @@ def cmd_init(args, ctx=None):
         print_error(f"Generated name '{plan_folder_name}' is invalid: {error}")
         sys.exit(3)
 
-    # Create plan folder in docs/epics/live/
+    # Compute plan path (no folder creation — TinyDB is the sole data store)
     plan_path = repo_root / "docs" / "epics" / "live" / plan_folder_name
-
-    # Check if folder already exists
-    if plan_path.exists():
-        print_error(f"Plan folder already exists: {plan_path}")
-        sys.exit(2)
-
-    # Create the folder structure
-    plan_path.mkdir(parents=True, exist_ok=True)
 
     # Create epic in TinyDB
     objective = getattr(args, "objective", None)
@@ -1066,7 +1141,11 @@ def cmd_init(args, ctx=None):
         }
         if objective:
             epic_data["context"] = objective
-        repo.create_epic(epic_data)
+        create_result = repo.create_epic(epic_data)
+        if not create_result.success:
+            repo.close()
+            print_error(f"Epic already exists: {plan_folder_name}")
+            sys.exit(2)
         # Also create a default ticket for the initial phase
         if objective:
             repo.add_phase(
@@ -1129,13 +1208,7 @@ def cmd_scaffold(args):
         print("Use 'agentic epic init <branch> --description <description>' instead", file=sys.stderr)
         print("The scaffold command creates only the folder structure.\n", file=sys.stderr)
 
-    if plan_path.exists():
-        print(f"Error: Plan folder already exists: {plan_path}", file=sys.stderr)
-        sys.exit(1)
-
-    plan_path.mkdir(parents=True, exist_ok=True)
-
-    # Create epic in TinyDB (primary data store)
+    # Create epic in TinyDB (primary data store — no folder creation)
     try:
         from agenticguidance.services.epic_repository import EpicRepository
         repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
@@ -1175,12 +1248,34 @@ def cmd_status(args):
         print_table,
     )
 
-    plan_path = find_epic_folder(args.path)
+    # T3_4: Resolve epic via TinyDB-first, so status works even without folder on disk.
+    # Try TinyDB lookup first (by name/id), then fall back to find_epic_folder for
+    # epics that exist on disk but may not yet be indexed.
+    plan_path = None
+    epic_folder_name = None
 
-    # EN-003: Check for orchestration_*.mmd files (filesystem check, not in PlanService)
-    mmd_files = list(plan_path.glob("orchestration_*.mmd"))
-    has_orchestration = len(mmd_files) > 0
-    orchestration_file = mmd_files[0].name if mmd_files else None
+    epic_arg = getattr(args, "path", None)
+    if epic_arg:
+        try:
+            repo = _get_repo()
+            search_key = Path(epic_arg).name if epic_arg else epic_arg
+            epic_db_doc = repo.get_epic(search_key)
+            repo.close()
+            if epic_db_doc is not None:
+                plan_path = epic_db_doc.epic_folder
+                epic_folder_name = epic_db_doc.epic_folder_name
+        except Exception:
+            pass
+
+    if plan_path is None:
+        # Fall back to filesystem-based resolution (requires folder to exist)
+        plan_path = find_epic_folder(epic_arg)
+        epic_folder_name = plan_path.name
+
+    # EN-003: Check for orchestration phases in TinyDB only (T3_1: no MMD fallback)
+    has_orchestration = _check_has_orchestration(epic_folder_name)
+    # orchestration_file kept as None (MMD files no longer used)
+    orchestration_file = None
 
     total_pending = 0
     total_completed = 0
@@ -1193,13 +1288,13 @@ def cmd_status(args):
     try:
         from agenticguidance.services.epic import EpicService
         plan_service = EpicService()
-        plan_data_obj = plan_service.get_epic(str(plan_path))
+        plan_data_obj = plan_service.get_epic(epic_folder_name)
     except Exception as e:
         print_error(f"Failed to load PlanService: {e}")
         sys.exit(1)
 
     if plan_data_obj is None:
-        print_error(f"Plan not found in repository: {plan_path.name}")
+        print_error(f"Plan not found in repository: {epic_folder_name}")
         sys.exit(1)
 
     plan_status = plan_data_obj.status or "unknown"
@@ -1277,10 +1372,10 @@ def cmd_status(args):
 
         # EN-003: Show orchestration status
         if has_orchestration:
-            console.print(f"[bold]Orchestration:[/bold] [green]{orchestration_file}[/green]")
+            console.print(f"[bold]Orchestration:[/bold] [green]Phases in TinyDB[/green]")
         else:
             console.print("[bold]Orchestration:[/bold] [red]MISSING[/red]")
-            console.print("  [dim]Run: agentic entrypoint execute _plan_build --compile[/dim]")
+            console.print("  Run: agentic session orchestrate planning --epic <folder>")
 
         console.print(f"[bold]Status:[/bold] {plan_status}")
 
@@ -1395,7 +1490,7 @@ def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
 
     Args:
         plan_path: Path to the plan folder.
-        yaml_files: List of plan_*.yml files found.
+        yaml_files: Unused (kept for signature compatibility). YAML scanning removed.
         mmd_files: List of orchestration_*.mmd files found.
 
     Returns:
@@ -1405,34 +1500,21 @@ def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
 
     results = {}
 
-    # Collect metadata from all plan YAML files
+    # Collect metadata from TinyDB epic record
     affected_stories = []
     no_stories_rationale = None
-    for yf in yaml_files:
-        try:
-            content = yaml.safe_load(yf.read_text())
-        except yaml.YAMLError:
-            continue
-        if not content or not isinstance(content, dict):
-            continue
-        stories = content.get("affected_stories", [])
-        if stories:
-            affected_stories.extend(stories)
-        rationale = content.get("no_stories_rationale")
-        if rationale:
-            no_stories_rationale = rationale
-
-    # Also check user_stories.yml in plan folder
-    user_stories_file = plan_path / "user_stories.yml"
-    if user_stories_file.exists():
-        try:
-            us_content = yaml.safe_load(user_stories_file.read_text())
-            if us_content and isinstance(us_content, dict):
-                stories = us_content.get("affected_stories", [])
-                if stories:
-                    affected_stories.extend(stories)
-        except yaml.YAMLError:
-            pass
+    try:
+        repo = _get_repo()
+        epic_data = repo.get_epic(plan_path.name)
+        if epic_data:
+            stories = getattr(epic_data, "affected_stories", None) or []
+            if stories:
+                affected_stories.extend(stories)
+            rationale = getattr(epic_data, "no_stories_rationale", None)
+            if rationale:
+                no_stories_rationale = rationale
+    except Exception:
+        pass
 
     # Deduplicate
     affected_stories = sorted(set(affected_stories))
@@ -1523,12 +1605,11 @@ def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
 
 
 def cmd_validate(args):
-    """Validate plan folder structure and YAML.
+    """Validate epic structure and orchestration.
 
     Enhanced with orchestration validation (EN-007):
-    - Checks for orchestration_*.mmd file
-    - Parses MMD to extract phase references
-    - Compares with phases in plan_*.yml files
+    - Checks for orchestration phases in TinyDB
+    - Falls back to checking orchestration_*.mmd file
     - Reports validation results (PASS/FAIL with details)
     """
     from agenticcli.console import is_json_output, print_json
@@ -1545,7 +1626,7 @@ def cmd_validate(args):
         sys.exit(1)
 
     # Validate epic exists in TinyDB
-    yaml_files = []  # No longer used, kept for compatibility with fence checks below
+    yaml_files = []  # Unused; kept for _check_fences signature compatibility
     try:
         repo = _get_repo()
         plan_data_obj = repo.get_epic(plan_path.name)
@@ -1554,80 +1635,50 @@ def cmd_validate(args):
     except Exception as e:
         errors.append(f"Failed to query TinyDB: {e}")
 
-    # EN-007: Orchestration validation
+    # EN-007: Orchestration validation - check TinyDB phases first, then legacy MMD
     mmd_files = list(plan_path.glob("orchestration_*.mmd"))
     orchestration_result = {"status": "PASS", "details": []}
 
-    if not mmd_files:
-        orchestration_result["status"] = "FAIL"
-        orchestration_result["details"].append("Missing: orchestration_*.mmd")
-        orchestration_result["details"].append("Action: Spawn orchestration-planning agent")
-        orchestration_result["details"].append("Command: agentic entrypoint execute _plan_build --compile")
-        if strict:
-            errors.append("Missing orchestration_*.mmd file")
-        else:
-            warnings.append("Missing orchestration_*.mmd file")
-    else:
-        # Parse MMD for phases and tasks
+    # Check TinyDB phases (primary)
+    has_tinydb_phases = False
+    tinydb_phase_count = 0
+    try:
+        repo = _get_repo()
+        phases = repo.list_phases(plan_path.name)
+        repo.close()
+        if phases and any(phase.agent for phase in phases):
+            has_tinydb_phases = True
+            tinydb_phase_count = len(phases)
+    except Exception:
+        pass
+
+    if has_tinydb_phases:
+        orchestration_result["status"] = "PASS"
+        orchestration_result["details"].append("Orchestration phases found in TinyDB")
+        orchestration_result["details"].append(f"Phases found: {tinydb_phase_count}")
+    elif mmd_files:
+        # Legacy: MMD file still valid
         mmd_file = mmd_files[0]
         try:
             mmd_content = mmd_file.read_text()
             mmd_phases = _parse_mmd_phases(mmd_content)
             mmd_tasks = _parse_mmd_tasks(mmd_content)
-
-            # Collect phases and tasks from PlanRepository (TinyDB-first)
-            yaml_phases = set()
-            yaml_tasks = set()
-
-            try:
-                repo = _get_repo()
-                plan_data_obj = repo.get_epic(plan_path.name)
-                if (plan_data_obj and plan_data_obj.phases
-                        and plan_data_obj.epic_folder == plan_path):
-                    for phase in plan_data_obj.phases:
-                        for task in (phase.tasks or []):
-                            if task.id:
-                                yaml_tasks.add(task.id.upper())
-            except Exception:
-                pass  # TinyDB is the sole data source
-
-            # Compare phases
-            mmd_phase_set = set(p.upper() for p in mmd_phases)
-            if yaml_phases and mmd_phase_set:
-                missing_in_mmd = yaml_phases - mmd_phase_set
-                missing_in_yaml = mmd_phase_set - yaml_phases
-
-                if missing_in_mmd:
-                    orchestration_result["details"].append(
-                        f"Phases in YAML but not in MMD: {', '.join(sorted(missing_in_mmd))}"
-                    )
-                if missing_in_yaml:
-                    orchestration_result["details"].append(
-                        f"Phases in MMD but not in YAML: {', '.join(sorted(missing_in_yaml))}"
-                    )
-
-            # Compare tasks
-            mmd_task_set = set(t.upper() for t in mmd_tasks)
-            if yaml_tasks and mmd_task_set:
-                missing_tasks_in_mmd = yaml_tasks - mmd_task_set
-                if missing_tasks_in_mmd and len(missing_tasks_in_mmd) > len(yaml_tasks) // 2:
-                    # Only warn if more than half the tasks are missing
-                    orchestration_result["details"].append(
-                        f"Many YAML tasks not referenced in MMD ({len(missing_tasks_in_mmd)} tasks)"
-                    )
-
-            # Set status based on findings
-            if orchestration_result["details"]:
-                orchestration_result["status"] = "WARN"
-            else:
-                orchestration_result["details"].append(f"Orchestration file: {mmd_file.name}")
-                orchestration_result["details"].append(f"Phases found: {len(mmd_phases)}")
-                orchestration_result["details"].append(f"Tasks referenced: {len(mmd_tasks)}")
-
+            orchestration_result["details"].append(f"Orchestration file: {mmd_file.name}")
+            orchestration_result["details"].append(f"Phases found: {len(mmd_phases)}")
+            orchestration_result["details"].append(f"Tasks referenced: {len(mmd_tasks)}")
         except IOError as e:
             orchestration_result["status"] = "FAIL"
             orchestration_result["details"].append(f"Cannot read MMD: {e}")
             errors.append(f"Cannot read {mmd_file.name}: {e}")
+    else:
+        orchestration_result["status"] = "FAIL"
+        orchestration_result["details"].append("Missing: orchestration phases in TinyDB or MMD file")
+        orchestration_result["details"].append("Action: Spawn orchestration-planning agent")
+        orchestration_result["details"].append("Command: agentic session orchestrate planning --epic <folder>")
+        if strict:
+            errors.append("Missing orchestration phases (TinyDB) or orchestration_*.mmd file")
+        else:
+            warnings.append("Missing orchestration phases (TinyDB) or orchestration_*.mmd file")
 
     # --check-fences: validate UAT fence compliance
     check_fences = getattr(args, "check_fences", False)
@@ -1639,31 +1690,6 @@ def cmd_validate(args):
                 errors.append(f"Fence {fence_name}: {result['message']}")
             elif result["status"] == "WARN":
                 warnings.append(f"Fence {fence_name}: {result['message']}")
-
-    # Loop type validation: check loop_structures.type against agent-loops.yml
-    valid_loop_types = get_valid_loop_types()
-    for yaml_file in yaml_files:
-        try:
-            content = yaml.safe_load(yaml_file.read_text())
-            if not content:
-                continue
-            # Check root-level loop_structures
-            loop_structures = content.get("loop_structures", [])
-            # Also check under plan: key
-            if not loop_structures and isinstance(content.get("plan"), dict):
-                loop_structures = content["plan"].get("loop_structures", [])
-            if not loop_structures or not isinstance(loop_structures, list):
-                continue
-            for loop in loop_structures:
-                if not isinstance(loop, dict):
-                    continue
-                loop_type = loop.get("type")
-                if loop_type and loop_type not in valid_loop_types:
-                    warnings.append(
-                        f"{yaml_file.name}: Loop type '{loop_type}' not defined in agent-loops.yml"
-                    )
-        except (yaml.YAMLError, Exception):
-            continue
 
     # Additional structural validation via PlanService (non-fatal)
     try:
@@ -1735,32 +1761,11 @@ def cmd_validate(args):
 def cmd_task_start(args):
     """Mark a task as in_progress.
 
-    EN-006: Validates that orchestration_*.mmd exists before allowing
-    task execution. Plans must be orchestrated before execution.
+    EN-006: Removed MMD gate - tasks can start without an MMD file since
+    orchestration is now TinyDB-driven.
     """
-    from agenticcli.console import (
-        is_json_output,
-        print_error,
-        print_json,
-    )
-
     task_id = args.task_id
     plan_path = find_epic_folder(args.plan)
-
-    # EN-006: Validate orchestration MMD exists before task start
-    mmd_files = list(plan_path.glob("orchestration_*.mmd"))
-    if not mmd_files:
-        if is_json_output():
-            print_json({
-                "error": "Cannot start task - plan has no orchestration_*.mmd",
-                "task_id": task_id,
-                "plan": plan_path.name,
-                "hint": "Run 'agentic entrypoint execute _plan_build --compile' and spawn orchestration-planning agent",
-            })
-        else:
-            print_error("Cannot start task - plan has no orchestration_*.mmd")
-            print("Hint: Run 'agentic entrypoint execute _plan_build --compile' and spawn planner", file=sys.stderr)
-        sys.exit(1)
 
     _update_task_status(plan_path, task_id, "in_progress")
     print(f"Task {task_id} marked as in_progress")
@@ -2060,7 +2065,8 @@ def cmd_task_add(args, ctx=None):
     to the default/last phase if not specified.
 
     Args:
-        args: Parsed arguments with description, plan, phase, id, priority.
+        args: Parsed arguments with description, plan, phase, id, priority,
+              agent, target_files, success_criteria, guidance, inputs.
         ctx: Optional CLIContext.
     """
     from agenticcli.console import (
@@ -2075,6 +2081,16 @@ def cmd_task_add(args, ctx=None):
     phase_id = getattr(args, "phase", None)
     custom_id = getattr(args, "id", None)
     priority = getattr(args, "priority", "medium")
+    agent = getattr(args, "agent", None)
+    target_files_raw = getattr(args, "target_files", None)
+    success_criteria_raw = getattr(args, "success_criteria", None)
+    guidance = getattr(args, "guidance", None)
+    inputs_raw = getattr(args, "inputs", None)
+
+    # Parse comma-separated list fields
+    target_files = [f.strip() for f in target_files_raw.split(",")] if target_files_raw else []
+    success_criteria = [s.strip() for s in success_criteria_raw.split(",")] if success_criteria_raw else []
+    inputs = [i.strip() for i in inputs_raw.split(",")] if inputs_raw else []
 
     # TinyDB-first: try to add task via PlanRepository
     tinydb_done = False
@@ -2083,12 +2099,9 @@ def cmd_task_add(args, ctx=None):
     try:
         repo = _get_repo()
         if repo is not None:
-            plan_doc = repo.get_epic(plan_path.name)
-            folder_matches = (
-                plan_doc is not None
-                and plan_doc.epic_folder.resolve() == plan_path.resolve()
-            )
-            if not folder_matches:
+            # Ensure the epic is registered in TinyDB (auto-create if folder
+            # exists on disk but has no DB record yet).
+            if not _ensure_epic_in_db(repo, plan_path):
                 repo = None  # Skip TinyDB path
     except Exception:
         repo = None
@@ -2124,12 +2137,25 @@ def cmd_task_add(args, ctx=None):
                 task_num = len(existing) + 1
                 new_task_id = f"{phase_prefix}_{task_num:03d}"
 
-            added = repo.add_ticket(plan_path.name, phase_name_used, {
+            ticket_doc = {
                 "id": new_task_id,
                 "name": description,
                 "description": description,
-                "status": "pending",
-            })
+                "status": "proposed",
+                "priority": priority,
+            }
+            if agent:
+                ticket_doc["agent"] = agent
+            if target_files:
+                ticket_doc["target_files"] = target_files
+            if success_criteria:
+                ticket_doc["success_criteria"] = success_criteria
+            if guidance:
+                ticket_doc["guidance"] = guidance
+            if inputs:
+                ticket_doc["inputs"] = inputs
+
+            added = repo.add_ticket(plan_path.name, phase_name_used, ticket_doc)
             if added:
                 tinydb_done = True
     except Exception:
@@ -2144,6 +2170,11 @@ def cmd_task_add(args, ctx=None):
             "task_id": new_task_id,
             "description": description,
             "phase": phase_name_used,
+            "agent": agent,
+            "target_files": target_files,
+            "success_criteria": success_criteria,
+            "guidance": guidance,
+            "inputs": inputs,
             "source": "TinyDB",
         })
     else:
@@ -2151,244 +2182,72 @@ def cmd_task_add(args, ctx=None):
 
 
 def cmd_archive(args):
-    """Copy plan to completed folder."""
-    import shutil
-
+    """Archive an epic by setting its TinyDB status to 'completed'."""
     plan_path = find_epic_folder(args.path)
+    epic_folder_name = plan_path.name
 
-    # Determine destination
-    # Go up from live/FOLDER to docs/epics/completed/
-    dest_dir = plan_path.parent.parent / "completed" / plan_path.name
+    repo = _get_repo()
+    if repo is None:
+        print("Error: could not connect to TinyDB repository.")
+        sys.exit(1)
 
-    if dest_dir.exists():
-        print(f"Warning: Destination already exists: {dest_dir}")
-        response = input("Overwrite? [y/N] ")
-        if response.lower() != "y":
-            print("Aborted")
-            sys.exit(0)
-        shutil.rmtree(dest_dir)
-
-    # Copy the folder
-    shutil.copytree(plan_path, dest_dir)
-
-    # Update completion metadata (flattened structure: ticket_completed.yml/plan_completed.yml in dest_dir)
-    completed_file = dest_dir / "ticket_completed.yml"
-    if not completed_file.exists():
-        completed_file = dest_dir / "plan_completed.yml"
-    if completed_file.exists():
-        try:
-            data = yaml.safe_load(completed_file.read_text())
-            if data is None:
-                data = {}
-            data["archived_date"] = datetime.now().strftime("%Y-%m-%d")
-            with open(completed_file, "w") as f:
-                yaml.dump(data, f, default_flow_style=False)
-        except yaml.YAMLError:
-            pass
-
-    print(f"Archived plan to: {dest_dir}")
-
-    # TinyDB: archive plan (update status + path)
-    try:
-        repo = _get_repo()
-        if repo is not None:
-            repo.archive_epic(plan_path.name)
-    except Exception:
-        pass
+    result = repo.archive_epic(epic_folder_name)
+    if result.success:
+        print(f"Archived epic: {epic_folder_name}")
+    else:
+        print(f"Error: {result.message}")
+        sys.exit(1)
 
 
 def cmd_unarchive(args, ctx=None):
-    """Move a plan folder from completed/ back to live/.
+    """Unarchive an epic by setting its TinyDB status to 'in_progress'.
 
-    This is the reverse of archiving - useful when a plan was archived
+    This is the reverse of archiving - useful when an epic was archived
     prematurely or needs to be resumed.
 
     Args:
-        args: Parsed arguments with plan name and optional force flag.
+        args: Parsed arguments with plan name.
         ctx: Optional CLIContext.
     """
-    import shutil
-
     from agenticcli.console import (
-        console,
         is_json_output,
         print_error,
         print_json,
         print_success,
-        print_warning,
     )
 
     plan_name = args.plan
-    force = getattr(args, "force", False)
 
-    # Find the repository root by looking for docs/plans
-    cwd = Path.cwd()
-    plans_base = cwd / "docs" / "epics"
-
-    if not plans_base.exists():
-        print_error("No docs/plans directory found in current repository.")
+    repo = _get_repo()
+    if repo is None:
+        if is_json_output():
+            print_json({"error": "Could not connect to TinyDB repository."})
+        else:
+            print_error("Could not connect to TinyDB repository.")
         sys.exit(1)
 
-    completed_dir = plans_base / "completed"
-    live_dir = plans_base / "live"
-
-    if not completed_dir.exists():
-        print_error("No docs/epics/completed directory found.")
-        sys.exit(1)
-
-    # Find the plan in completed/
-    # Support both exact name and partial match
-    source_path = None
-
-    # First try exact match
-    exact_path = completed_dir / plan_name
-    if exact_path.exists() and exact_path.is_dir():
-        source_path = exact_path
-    else:
-        # Try to find by partial match (folder name contains plan_name)
-        matches = [
-            d for d in completed_dir.iterdir()
-            if d.is_dir() and plan_name.lower() in d.name.lower()
-        ]
-        if len(matches) == 1:
-            source_path = matches[0]
-        elif len(matches) > 1:
-            if is_json_output():
-                print_json({
-                    "error": "Multiple plans match the given name",
-                    "matches": [m.name for m in matches],
-                })
-            else:
-                print_error(f"Multiple plans match '{plan_name}':")
-                for m in matches:
-                    console.print(f"  - {m.name}")
-                console.print("\nPlease specify the full folder name.")
-            sys.exit(1)
-
-    if source_path is None:
+    result = repo.unarchive_epic(plan_name)
+    if result.success:
         if is_json_output():
             print_json({
-                "error": f"Plan '{plan_name}' not found in completed/",
-                "searched_in": str(completed_dir),
+                "result": "success",
+                "plan_name": plan_name,
+                "status": "in_progress",
             })
         else:
-            print_error(f"Plan '{plan_name}' not found in {completed_dir}")
-        sys.exit(1)
-
-    # Check destination
-    dest_path = live_dir / source_path.name
-
-    if dest_path.exists():
-        if force:
-            # --force: live/ already exists, just remove the completed/ copy
-            # and update TinyDB to point to live/.
-            try:
-                shutil.rmtree(str(source_path))
-            except OSError as e:
-                if is_json_output():
-                    print_json({"error": f"Failed to remove completed copy: {e}"})
-                else:
-                    print_error(f"Failed to remove completed copy: {e}")
-                sys.exit(1)
-            # Update TinyDB to point to live/ (non-fatal)
-            try:
-                from agenticguidance.services.epic_repository import EpicRepository
-                repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
-                repo.resync_epic_folder(source_path.name, str(dest_path))
-                repo.close()
-            except Exception:
-                pass
-            if is_json_output():
-                print_json({
-                    "result": "success",
-                    "action": "force_resync",
-                    "removed": str(source_path),
-                    "destination": str(dest_path),
-                    "plan_name": source_path.name,
-                })
-            else:
-                print_success(f"Removed completed copy and resynced to: {dest_path}")
-            return
-        else:
-            if is_json_output():
-                print_json({
-                    "error": "Destination already exists",
-                    "source": str(source_path),
-                    "destination": str(dest_path),
-                    "hint": "Use --force to remove the completed/ copy and resync to live/",
-                })
-            else:
-                print_error(f"Destination already exists: {dest_path}")
-                console.print("[dim]Use --force to remove the completed/ copy and resync TinyDB to live/.[/dim]")
-            sys.exit(1)
-
-    # Confirm unless --force is set
-    if not force and not is_json_output():
-        console.print(f"[bold]Unarchiving plan:[/bold] {source_path.name}")
-        console.print(f"  From: {source_path}")
-        console.print(f"  To:   {dest_path}")
-        response = input("\nProceed? [y/N] ")
-        if response.lower() != "y":
-            print_warning("Aborted")
-            sys.exit(0)
-
-    # Ensure live directory exists
-    live_dir.mkdir(parents=True, exist_ok=True)
-
-    # Move the folder
-    try:
-        shutil.move(str(source_path), str(dest_path))
-    except OSError as e:
-        if is_json_output():
-            print_json({
-                "error": f"Failed to move folder: {e}",
-                "source": str(source_path),
-                "destination": str(dest_path),
-            })
-        else:
-            print_error(f"Failed to move folder: {e}")
-        sys.exit(1)
-
-    # Update metadata to reflect unarchival
-    completed_file = dest_path / "ticket_completed.yml"
-    if not completed_file.exists():
-        completed_file = dest_path / "plan_completed.yml"
-    if completed_file.exists():
-        try:
-            data = yaml.safe_load(completed_file.read_text())
-            if data is None:
-                data = {}
-            data["unarchived_date"] = datetime.now().strftime("%Y-%m-%d")
-            data["unarchived_from"] = str(source_path)
-            with open(completed_file, "w") as f:
-                yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-        except yaml.YAMLError:
-            pass  # Non-fatal if metadata update fails
-
-    # TinyDB: unarchive plan (update status + path)
-    try:
-        repo = _get_repo()
-        if repo is not None:
-            repo.unarchive_epic(source_path.name)
-    except Exception:
-        pass
-
-    # Output result
-    if is_json_output():
-        print_json({
-            "result": "success",
-            "source": str(source_path),
-            "destination": str(dest_path),
-            "plan_name": source_path.name,
-        })
+            print_success(f"Unarchived epic: {plan_name}")
     else:
-        print_success(f"Unarchived plan to: {dest_path}")
+        if is_json_output():
+            print_json({"error": result.message})
+        else:
+            print_error(result.message)
+        sys.exit(1)
 
 
 def cmd_cancel(args, ctx=None):
     """Cancel an active plan.
 
-    Sets the plan status to 'cancelled' in plan_build.yml and optionally
+    Sets the plan status to 'cancelled' in TinyDB and optionally
     archives it to the completed folder.
 
     Args:
@@ -2498,29 +2357,19 @@ def cmd_list(args):
         print_table,
     )
 
-    # Find docs/epics/live directory from current working directory
-    cwd = Path.cwd()
-    epics_dir = cwd / "docs" / "epics" / "live"
-
-    if not epics_dir.exists():
-        print_error("No docs/epics/live directory found in current repository.")
-        sys.exit(1)
-
     plans_data = []
 
-    # Get plan data via PlanService (TinyDB-first)
+    # Get plan data via EpicService (TinyDB)
     try:
         from agenticguidance.services.epic import EpicService
         plan_service = EpicService()
         plan_metas = plan_service.list_epics(status="live")
     except Exception as e:
-        print_error(f"Failed to load PlanService: {e}")
+        print_error(f"Failed to load EpicService: {e}")
         sys.exit(1)
 
     for meta in plan_metas:
         plan_folder = meta.epic_folder
-        if not plan_folder.is_dir():
-            continue
 
         # Get task counts via PlanService
         try:
@@ -2529,17 +2378,16 @@ def cmd_list(args):
         except Exception:
             tasks = []
 
-        # Treat in_progress as pending for display (tickets are either pending or done)
-        total_pending = sum(1 for t in tasks if t.status in ("pending", "in_progress"))
+        # Treat in_progress as proposed for display (tickets are either proposed or done)
+        total_proposed = sum(1 for t in tasks if t.status in ("pending", "in_progress", "proposed"))
         total_completed = sum(1 for t in tasks if t.status == "completed")
         has_tasks = len(tasks) > 0
         plan_status = meta.status or "unknown"
 
-        # EN-001: Filesystem check for orchestration (NOT in PlanService)
-        mmd_files = list(plan_folder.glob("orchestration_*.mmd"))
-        has_orchestration = len(mmd_files) > 0
+        # EN-001: Check orchestration via TinyDB phases only (T3_1: no MMD fallback)
+        has_orchestration = _check_has_orchestration(plan_folder.name)
 
-        total = total_pending + total_completed
+        total = total_proposed + total_completed
 
         # EN-002: Determine action_required based on plan state
         # Priority order matters - check from most blocking to least
@@ -2549,14 +2397,12 @@ def cmd_list(args):
             action_required = "needs_planning"
         elif not has_tasks or total == 0:
             action_required = "needs_planning"
-        elif total_pending > 0:
+        elif total_proposed > 0:
             action_required = "execute"
         elif total_completed == total and total > 0:
             action_required = "archive"
         else:
             action_required = "blocked"
-
-        pct = (total_completed / total) * 100 if total > 0 else 0
 
         plans_data.append(
             {
@@ -2565,11 +2411,15 @@ def cmd_list(args):
                 "has_orchestration": has_orchestration,
                 "has_tasks": has_tasks,
                 "action_required": action_required,
-                "pending": total_pending,
+                "proposed": total_proposed,
                 "completed": total_completed,
-                "progress_percent": round(pct, 1),
             }
         )
+
+    # Filter completed epics unless --all is passed
+    show_all = getattr(args, "all", False)
+    if not show_all:
+        plans_data = [p for p in plans_data if p["action_required"] != "archive" or p["status"] != "completed"]
 
     if is_json_output():
         print_json({"plans": plans_data})
@@ -2577,12 +2427,11 @@ def cmd_list(args):
         print_header("Epics in Repository")
 
         if not plans_data:
-            console.print("[dim]No plan folders found.[/dim]")
+            console.print("[dim]No epics found.[/dim]")
             return
 
         rows = []
         for plan in plans_data:
-            progress = f"{plan['progress_percent']:.0f}%" if plan["progress_percent"] > 0 else "N/A"
             # Format orchestration status
             orch = "[green]Yes[/green]" if plan["has_orchestration"] else "[red]No[/red]"
             # Format action_required with color coding
@@ -2604,17 +2453,16 @@ def cmd_list(args):
                     format_status(plan["status"]),
                     orch,
                     action_fmt,
-                    f"[dim]{plan['pending']}[/dim]",
+                    f"[dim]{plan['proposed']}[/dim]",
                     f"[green]{plan['completed']}[/green]",
-                    f"[cyan]{progress}[/cyan]",
                 ]
             )
 
-        print_table("", ["Epic", "Status", "Orch", "Action", "Pending", "Done", "Progress"], rows)
+        print_table("", ["Epic", "Status", "Orch", "Action", "Proposed", "Completed"], rows)
 
 
 def cmd_move(args, ctx=None):
-    """Move completed tasks to plan_completed.yml or archive folder.
+    """Move completed tasks or archive folder.
 
     Supports:
     - plan move task <task-id>: Move a single task
@@ -2682,7 +2530,7 @@ def cmd_move(args, ctx=None):
             failed = sum(1 for r in results if r.result == MoveResult.FAILED)
 
             if success > 0:
-                print_success(f"Moved {success} task(s) to plan_completed.yml")
+                print_success(f"Moved {success} task(s) to completed")
             if skipped > 0:
                 print_warning(f"Skipped {skipped} task(s)")
             if failed > 0:
@@ -2715,13 +2563,14 @@ def cmd_move(args, ctx=None):
 
 
 def cmd_task_update(args, ctx=None):
-    """Update task status in plan YAML file.
+    """Update task fields in plan YAML file.
 
     Enables agents to persist progress without holding plan in context.
-    Modifies EXISTING plan files created by planner agents.
+    Supports updating status and/or any ticket metadata fields.
 
     Args:
-        args: Parsed arguments with task_id, status, optional note.
+        args: Parsed arguments with task_id, optional status/description/name/
+              agent/target_files/success_criteria/guidance/inputs, optional note.
         ctx: Optional CLIContext.
     """
     from agenticcli.console import (
@@ -2734,11 +2583,34 @@ def cmd_task_update(args, ctx=None):
     )
 
     task_id = args.task_id
-    new_status = args.status
+    new_status = getattr(args, "status", None)
     note = getattr(args, "note", None)
     plan_path = find_epic_folder(getattr(args, "plan", None))
 
-    # TinyDB-first: update task status via PlanRepository
+    # Additional fields for T7_2
+    new_description = getattr(args, "description", None)
+    new_name = getattr(args, "name", None)
+    new_agent = getattr(args, "agent", None)
+    target_files_raw = getattr(args, "target_files", None)
+    success_criteria_raw = getattr(args, "success_criteria", None)
+    new_guidance = getattr(args, "guidance", None)
+    inputs_raw = getattr(args, "inputs", None)
+
+    # Parse comma-separated list fields
+    new_target_files = [f.strip() for f in target_files_raw.split(",")] if target_files_raw else None
+    new_success_criteria = [s.strip() for s in success_criteria_raw.split(",")] if success_criteria_raw else None
+    new_inputs = [i.strip() for i in inputs_raw.split(",")] if inputs_raw else None
+
+    # Validate: at least one field to update
+    has_updates = any([
+        new_status, new_description, new_name, new_agent,
+        new_target_files, new_success_criteria, new_guidance, new_inputs,
+    ])
+    if not has_updates:
+        print_error("At least one field to update must be provided (--status, --description, --name, --agent, --target-files, --success-criteria, --guidance, --inputs)")
+        sys.exit(1)
+
+    # TinyDB-first: update task via EpicRepository
     task_found = False
     updated_file = None
     try:
@@ -2755,32 +2627,51 @@ def cmd_task_update(args, ctx=None):
         repo = None
     try:
         if repo is not None:
-            # Check current status for transition validation
             current_task = repo.get_ticket(plan_path.name, task_id)
             if current_task is not None:
-                old_status = current_task.status or "pending"
+                # Handle status update with transition validation
+                if new_status:
+                    old_status = current_task.status or "proposed"
+                    valid_transitions = {
+                        "proposed": ["in_progress", "blocked", "pending"],
+                        "pending": ["in_progress", "blocked", "proposed"],
+                        "in_progress": ["completed", "blocked", "pending", "proposed"],
+                        "completed": ["pending", "in_progress", "proposed"],
+                        "blocked": ["pending", "in_progress", "proposed"],
+                    }
+                    if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
+                        if is_json_output():
+                            print_json({
+                                "error": f"Invalid transition from {old_status} to {new_status}",
+                                "task_id": task_id,
+                                "current_status": old_status,
+                            })
+                        else:
+                            print_warning(f"Status transition from '{old_status}' to '{new_status}' for task {task_id}")
+                    repo.update_ticket_status(plan_path.name, task_id, new_status)
 
-                valid_transitions = {
-                    "pending": ["in_progress", "blocked"],
-                    "in_progress": ["completed", "blocked", "pending"],
-                    "completed": ["pending", "in_progress"],
-                    "blocked": ["pending", "in_progress"],
-                }
+                # Build generic field updates
+                field_updates = {}
+                if new_description is not None:
+                    field_updates["description"] = new_description
+                if new_name is not None:
+                    field_updates["name"] = new_name
+                if new_agent is not None:
+                    field_updates["agent"] = new_agent
+                if new_target_files is not None:
+                    field_updates["target_files"] = new_target_files
+                if new_success_criteria is not None:
+                    field_updates["success_criteria"] = new_success_criteria
+                if new_guidance is not None:
+                    field_updates["guidance"] = new_guidance
+                if new_inputs is not None:
+                    field_updates["inputs"] = new_inputs
 
-                if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
-                    if is_json_output():
-                        print_json({
-                            "error": f"Invalid transition from {old_status} to {new_status}",
-                            "task_id": task_id,
-                            "current_status": old_status,
-                        })
-                    else:
-                        print_warning(f"Status transition from '{old_status}' to '{new_status}' for task {task_id}")
+                if field_updates:
+                    repo.update_ticket(plan_path.name, task_id, field_updates)
 
-                updated = repo.update_ticket_status(plan_path.name, task_id, new_status)
-                if updated:
-                    task_found = True
-                    updated_file = "(via TinyDB)"
+                task_found = True
+                updated_file = "(via TinyDB)"
     except Exception:
         pass
 
@@ -2793,14 +2684,217 @@ def cmd_task_update(args, ctx=None):
         sys.exit(1)
 
     if is_json_output():
-        print_json({
+        result = {
             "task_id": task_id,
-            "new_status": new_status,
-            "file": updated_file.name if updated_file else None,
+            "file": updated_file,
             "note": note,
+        }
+        if new_status:
+            result["new_status"] = new_status
+        if new_description:
+            result["description"] = new_description
+        if new_name:
+            result["name"] = new_name
+        if new_agent:
+            result["agent"] = new_agent
+        if new_target_files:
+            result["target_files"] = new_target_files
+        if new_success_criteria:
+            result["success_criteria"] = new_success_criteria
+        if new_guidance:
+            result["guidance"] = new_guidance
+        if new_inputs:
+            result["inputs"] = new_inputs
+        print_json(result)
+    else:
+        changes = []
+        if new_status:
+            changes.append(f"status={new_status}")
+        if new_name:
+            changes.append(f"name={new_name}")
+        if new_description:
+            changes.append("description updated")
+        if new_agent:
+            changes.append(f"agent={new_agent}")
+        if new_target_files:
+            changes.append(f"target_files={len(new_target_files)} items")
+        if new_success_criteria:
+            changes.append(f"success_criteria={len(new_success_criteria)} items")
+        if new_guidance:
+            changes.append("guidance updated")
+        if new_inputs:
+            changes.append(f"inputs={len(new_inputs)} items")
+        print_success(f"Updated task {task_id}: {', '.join(changes)}")
+
+
+def cmd_task_remove(args, ctx=None):
+    """Remove a ticket from the epic.
+
+    Permanently deletes a ticket from TinyDB. Use --force to skip confirmation.
+
+    Args:
+        args: Parsed arguments with task_id, plan, force.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    task_id = args.task_id
+    plan_path = find_epic_folder(getattr(args, "plan", None))
+    force = getattr(args, "force", False)
+
+    # Confirm deletion unless --force
+    if not force and not is_json_output():
+        print_warning(f"About to permanently remove ticket '{task_id}' from {plan_path.name}")
+        response = input("Confirm? [y/N] ")
+        if response.lower() != "y":
+            print("Aborted")
+            sys.exit(0)
+
+    removed = False
+    try:
+        repo = _get_repo()
+        if repo is not None:
+            if not _ensure_epic_in_db(repo, plan_path):
+                print_error(f"Epic '{plan_path.name}' not found in TinyDB")
+                sys.exit(1)
+            removed = repo.delete_ticket(plan_path.name, task_id)
+    except Exception as e:
+        print_error(f"Error removing ticket: {e}")
+        sys.exit(1)
+
+    if not removed:
+        if is_json_output():
+            print_json({"error": f"Ticket not found: {task_id}"})
+        else:
+            print_error(f"Ticket not found: {task_id}")
+            print("Hint: Use 'agentic epic ticket list' to see available ticket IDs", file=sys.stderr)
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({"task_id": task_id, "removed": True, "epic": plan_path.name})
+    else:
+        print_success(f"Removed ticket '{task_id}' from {plan_path.name}")
+
+
+def cmd_task_batch(args, ctx=None):
+    """Bulk import tickets and phases from JSON (stdin or --file).
+
+    Reads JSON with format: {"phases": [...], "tickets": [...]}
+    and populates TinyDB in one shot.
+
+    Args:
+        args: Parsed arguments with plan, file.
+        ctx: Optional CLIContext.
+    """
+    import json
+
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    plan_path = find_epic_folder(getattr(args, "plan", None))
+    input_file = getattr(args, "file", None)
+
+    # Read JSON from file or stdin
+    try:
+        if input_file:
+            with open(input_file) as f:
+                data = json.load(f)
+        else:
+            data = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        print_error(f"Invalid JSON input: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print_error(f"Error reading input: {e}")
+        sys.exit(1)
+
+    phases_input = data.get("phases", [])
+    tickets_input = data.get("tickets", [])
+
+    if not phases_input and not tickets_input:
+        print_error("Input JSON must contain 'phases' or 'tickets' (or both)")
+        sys.exit(1)
+
+    phases_added = 0
+    phases_skipped = 0
+    tickets_added = 0
+    tickets_skipped = 0
+    errors = []
+
+    try:
+        repo = _get_repo()
+        if repo is None:
+            print_error("TinyDB repository unavailable")
+            sys.exit(1)
+
+        if not _ensure_epic_in_db(repo, plan_path):
+            print_error(f"Epic '{plan_path.name}' could not be registered in TinyDB")
+            sys.exit(1)
+
+        # Insert phases first
+        for phase_doc in phases_input:
+            phase_name = phase_doc.get("name", "")
+            if not phase_name:
+                errors.append("Phase missing 'name' field - skipped")
+                phases_skipped += 1
+                continue
+            ok = repo.add_phase(plan_path.name, phase_doc)
+            if ok:
+                phases_added += 1
+            else:
+                phases_skipped += 1
+
+        # Insert tickets
+        for ticket_doc in tickets_input:
+            ticket_id = ticket_doc.get("id") or ticket_doc.get("task_id", "")
+            if not ticket_id:
+                errors.append("Ticket missing 'id' field - skipped")
+                tickets_skipped += 1
+                continue
+            phase_name = ticket_doc.get("phase_name") or ticket_doc.get("phase", "")
+            if not phase_name:
+                # Use last inserted phase or default
+                all_phases = repo.list_phases(plan_path.name)
+                phase_name = all_phases[-1].name if all_phases else "Ad-hoc Tasks"
+            ok = repo.add_ticket(plan_path.name, phase_name, ticket_doc)
+            if ok:
+                tickets_added += 1
+            else:
+                tickets_skipped += 1
+
+    except Exception as e:
+        print_error(f"Error during batch import: {e}")
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "phases_added": phases_added,
+            "phases_skipped": phases_skipped,
+            "tickets_added": tickets_added,
+            "tickets_skipped": tickets_skipped,
+            "errors": errors,
+            "epic": plan_path.name,
         })
     else:
-        print_success(f"Updated task {task_id} to '{new_status}'")
+        print_success(
+            f"Batch import complete: {phases_added} phases added, "
+            f"{tickets_added} tickets added "
+            f"({phases_skipped} phases skipped, {tickets_skipped} tickets skipped)"
+        )
+        if errors:
+            for err in errors:
+                print_warning(err)
 
 
 def cmd_task_current(args, ctx=None):
@@ -2923,13 +3017,14 @@ def cmd_task_current(args, ctx=None):
 
 
 def cmd_phase_add(args, ctx=None):
-    """Add a new phase to plan_build.yml.
+    """Add a new phase to the epic in TinyDB.
 
-    Creates or updates plan_build.yml to include a new phase with the
-    specified ID, name, and description.
+    Creates a new phase record in TinyDB with the specified ID, name,
+    and description.
 
     Args:
-        args: Parsed arguments with id, name, description, plan.
+        args: Parsed arguments with id, name, description, plan, agent,
+              execution, loop_type, loop_max_iterations, feedback_triggers.
         ctx: Optional CLIContext.
     """
     from agenticcli.console import (
@@ -2944,28 +3039,59 @@ def cmd_phase_add(args, ctx=None):
     phase_description = getattr(args, "description", None) or ""
     plan_path = find_epic_folder(getattr(args, "plan", None))
 
+    # New routing/metadata fields
+    agent = getattr(args, "agent", None)
+    execution = getattr(args, "execution", None)
+    loop_type = getattr(args, "loop_type", None)
+    loop_max_iterations = getattr(args, "loop_max_iterations", None)
+    max_turns = getattr(args, "max_turns", None)
+    timeout = getattr(args, "timeout", None)
+    feedback_triggers_str = getattr(args, "feedback_triggers", None)
+
+    # Parse --feedback-triggers from comma-separated KEY=VALUE string to dict
+    triggers = {}
+    if feedback_triggers_str:
+        for item in feedback_triggers_str.split(","):
+            if "=" in item:
+                k, v = item.split("=", 1)
+                triggers[k.strip()] = v.strip()
+
     # TinyDB-first: add phase via PlanRepository
     tinydb_done = False
     try:
         repo = _get_repo()
         if repo is not None:
-            plan_doc = repo.get_epic(plan_path.name)
-            folder_matches = (
-                plan_doc is not None
-                and plan_doc.epic_folder.resolve() == plan_path.resolve()
-            )
-            if folder_matches:
+            # Ensure the epic is registered in TinyDB (auto-create if folder
+            # exists on disk but has no DB record yet).
+            if _ensure_epic_in_db(repo, plan_path):
                 # Check for duplicate
                 existing = repo.get_phase(plan_path.name, phase_name)
                 if existing:
                     print_error(f"Phase with name '{phase_name}' already exists")
                     sys.exit(1)
 
-                added = repo.add_phase(plan_path.name, {
+                phase_doc = {
                     "name": phase_name,
+                    "phase_id": phase_id,
                     "description": phase_description,
                     "status": "pending",
-                })
+                }
+                if agent is not None:
+                    phase_doc["agent"] = agent
+                if execution is not None:
+                    phase_doc["execution"] = execution
+                if loop_type is not None:
+                    phase_doc["loop_type"] = loop_type
+                if loop_max_iterations is not None:
+                    phase_doc["loop_max_iterations"] = loop_max_iterations
+                if max_turns is not None:
+                    phase_doc["max_turns"] = max_turns
+                if timeout is not None:
+                    phase_doc["timeout"] = timeout
+                if triggers:
+                    phase_doc["feedback_triggers"] = triggers
+
+                added = repo.add_phase(plan_path.name, phase_doc)
                 if added:
                     tinydb_done = True
     except Exception:
@@ -2977,13 +3103,26 @@ def cmd_phase_add(args, ctx=None):
 
     source = "TinyDB"
     if is_json_output():
-        print_json({
+        result = {
             "phase_id": phase_id,
             "name": phase_name,
             "description": phase_description,
             "source": source,
             "plan_path": str(plan_path),
-        })
+        }
+        if agent is not None:
+            result["agent"] = agent
+        if execution is not None:
+            result["execution"] = execution
+        if loop_type is not None:
+            result["loop_type"] = loop_type
+        if loop_max_iterations is not None:
+            result["loop_max_iterations"] = loop_max_iterations
+        if max_turns is not None:
+            result["max_turns"] = max_turns
+        if triggers:
+            result["feedback_triggers"] = triggers
+        print_json(result)
     else:
         print_success(f"Added phase '{phase_id}' ({phase_name}) to {plan_path.name} ({source})")
 
@@ -2992,7 +3131,7 @@ def cmd_phase_list(args, ctx=None):
     """List all phases in the plan with task counts.
 
     Displays a table showing phase ID, name, status, and task count
-    from plan_build.yml.
+    from TinyDB.
 
     Args:
         args: Parsed arguments with optional plan path.
@@ -3015,8 +3154,7 @@ def cmd_phase_list(args, ctx=None):
     try:
         repo = _get_repo()
         plan_data_obj = repo.get_epic(plan_path.name)
-        if (plan_data_obj and plan_data_obj.phases
-                and plan_data_obj.epic_folder == plan_path):
+        if plan_data_obj and plan_data_obj.epic_folder == plan_path:
             phases_data = []
             for i, phase in enumerate(plan_data_obj.phases):
                 phases_data.append({
@@ -3059,7 +3197,7 @@ def cmd_phase_list(args, ctx=None):
 
 
 def cmd_phase_update(args, ctx=None):
-    """Update a phase in plan_build.yml.
+    """Update a phase in TinyDB.
 
     Updates the status and/or name of an existing phase by ID.
 
@@ -3080,9 +3218,33 @@ def cmd_phase_update(args, ctx=None):
     new_name = getattr(args, "name", None)
     plan_path = find_epic_folder(getattr(args, "plan", None))
 
+    # New routing/metadata fields
+    new_agent = getattr(args, "agent", None)
+    new_execution = getattr(args, "execution", None)
+    new_loop_type = getattr(args, "loop_type", None)
+    new_loop_max_iterations = getattr(args, "loop_max_iterations", None)
+    new_max_turns = getattr(args, "max_turns", None)
+    new_timeout = getattr(args, "timeout", None)
+    feedback_triggers_str = getattr(args, "feedback_triggers", None)
+
+    # Parse --feedback-triggers from comma-separated KEY=VALUE string to dict
+    new_triggers = None
+    if feedback_triggers_str:
+        new_triggers = {}
+        for item in feedback_triggers_str.split(","):
+            if "=" in item:
+                k, v = item.split("=", 1)
+                new_triggers[k.strip()] = v.strip()
+
     # Validate that at least one update field is provided
-    if not new_status and not new_name:
-        print_error("At least one of --status or --name must be provided")
+    has_updates = any([
+        new_status, new_name, new_agent, new_execution,
+        new_loop_type, new_loop_max_iterations is not None,
+        new_max_turns is not None, new_timeout is not None,
+        new_triggers is not None,
+    ])
+    if not has_updates:
+        print_error("At least one field to update must be provided (--status, --name, --agent, --execution, --loop-type, --loop-max-iterations, --max-turns, --timeout, --feedback-triggers)")
         sys.exit(1)
 
     # TinyDB-first: update phase via PlanRepository
@@ -3120,6 +3282,20 @@ def cmd_phase_update(args, ctx=None):
 
                 if new_name:
                     updates["name"] = new_name
+                if new_agent is not None:
+                    updates["agent"] = new_agent
+                if new_execution is not None:
+                    updates["execution"] = new_execution
+                if new_loop_type is not None:
+                    updates["loop_type"] = new_loop_type
+                if new_loop_max_iterations is not None:
+                    updates["loop_max_iterations"] = new_loop_max_iterations
+                if new_max_turns is not None:
+                    updates["max_turns"] = new_max_turns
+                if new_timeout is not None:
+                    updates["timeout"] = new_timeout
+                if new_triggers is not None:
+                    updates["feedback_triggers"] = new_triggers
 
                 if updates:
                     updated = repo.update_phase(plan_path.name, phase_id, updates)
@@ -3147,6 +3323,18 @@ def cmd_phase_update(args, ctx=None):
         if new_name:
             result["old_name"] = old_name
             result["new_name"] = new_name
+        if new_agent is not None:
+            result["agent"] = new_agent
+        if new_execution is not None:
+            result["execution"] = new_execution
+        if new_loop_type is not None:
+            result["loop_type"] = new_loop_type
+        if new_loop_max_iterations is not None:
+            result["loop_max_iterations"] = new_loop_max_iterations
+        if new_max_turns is not None:
+            result["max_turns"] = new_max_turns
+        if new_triggers is not None:
+            result["feedback_triggers"] = new_triggers
         print_json(result)
     else:
         changes = []
@@ -3154,7 +3342,207 @@ def cmd_phase_update(args, ctx=None):
             changes.append(f"status: {old_status} -> {new_status}")
         if new_name:
             changes.append(f"name: '{old_name}' -> '{new_name}'")
-        print_success(f"Updated phase '{phase_id}' in {build_file.name} ({', '.join(changes)})")
+        if new_agent is not None:
+            changes.append(f"agent={new_agent}")
+        if new_execution is not None:
+            changes.append(f"execution={new_execution}")
+        if new_loop_type is not None:
+            changes.append(f"loop_type={new_loop_type}")
+        if new_loop_max_iterations is not None:
+            changes.append(f"loop_max_iterations={new_loop_max_iterations}")
+        if new_max_turns is not None:
+            changes.append(f"max_turns={new_max_turns}")
+        if new_triggers is not None:
+            changes.append(f"feedback_triggers={len(new_triggers)} items")
+        print_success(f"Updated phase '{phase_id}' in {plan_path.name} ({', '.join(changes)})")
+
+
+def cmd_phase_remove(args, ctx=None):
+    """Remove a phase from the epic.
+
+    Without --cascade, fails if the phase still has tickets.
+    With --cascade, also removes all tickets in that phase.
+
+    Args:
+        args: Parsed arguments with phase_id, plan, cascade, force.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    phase_id = args.phase_id
+    plan_path = find_epic_folder(getattr(args, "plan", None))
+    cascade = getattr(args, "cascade", False)
+    force = getattr(args, "force", False)
+
+    try:
+        repo = _get_repo()
+        if repo is None:
+            print_error("TinyDB repository unavailable")
+            sys.exit(1)
+
+        if not _ensure_epic_in_db(repo, plan_path):
+            print_error(f"Epic '{plan_path.name}' not found in TinyDB")
+            sys.exit(1)
+
+        # Verify the phase exists
+        phase_obj = repo.get_phase(plan_path.name, phase_id)
+        if phase_obj is None:
+            if is_json_output():
+                print_json({"error": f"Phase not found: {phase_id}"})
+            else:
+                print_error(f"Phase not found: {phase_id}")
+                print("Hint: Use 'agentic epic phase list' to see available phases", file=sys.stderr)
+            sys.exit(1)
+
+        phase_name = phase_obj.name
+
+        # Check for tickets in this phase
+        tickets_in_phase = repo.get_tickets_for_phase(plan_path.name, phase_name)
+        if tickets_in_phase and not cascade:
+            if is_json_output():
+                print_json({
+                    "error": f"Phase '{phase_id}' has {len(tickets_in_phase)} ticket(s). Use --cascade to remove them too.",
+                    "ticket_count": len(tickets_in_phase),
+                })
+            else:
+                print_error(
+                    f"Phase '{phase_id}' has {len(tickets_in_phase)} ticket(s). "
+                    "Use --cascade to also remove them."
+                )
+            sys.exit(1)
+
+        # Confirm unless --force
+        if not force and not is_json_output():
+            cascade_msg = f" and {len(tickets_in_phase)} ticket(s)" if tickets_in_phase else ""
+            print_warning(f"About to permanently remove phase '{phase_id}'{cascade_msg} from {plan_path.name}")
+            response = input("Confirm? [y/N] ")
+            if response.lower() != "y":
+                print("Aborted")
+                sys.exit(0)
+
+        # Remove cascaded tickets first
+        tickets_removed = 0
+        if cascade and tickets_in_phase:
+            for ticket in tickets_in_phase:
+                if repo.delete_ticket(plan_path.name, ticket.id):
+                    tickets_removed += 1
+
+        # Remove the phase
+        removed = repo.delete_phase(plan_path.name, phase_id)
+
+    except Exception as e:
+        print_error(f"Error removing phase: {e}")
+        sys.exit(1)
+
+    if not removed:
+        if is_json_output():
+            print_json({"error": f"Failed to remove phase: {phase_id}"})
+        else:
+            print_error(f"Failed to remove phase: {phase_id}")
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "phase_id": phase_id,
+            "phase_name": phase_name,
+            "removed": True,
+            "tickets_removed": tickets_removed,
+            "epic": plan_path.name,
+        })
+    else:
+        msg = f"Removed phase '{phase_id}'"
+        if tickets_removed:
+            msg += f" and {tickets_removed} ticket(s)"
+        msg += f" from {plan_path.name}"
+        print_success(msg)
+
+
+def cmd_replan(args, ctx=None):
+    """Prepare an epic for new planning.
+
+    Resets all completed ticket statuses back to 'proposed' and removes
+    the orchestration MMD file, ready for a fresh planning cycle.
+
+    Args:
+        args: Parsed arguments with plan, force.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+        print_warning,
+    )
+
+    plan_path = find_epic_folder(getattr(args, "plan", None))
+    force = getattr(args, "force", False)
+
+    if not force and not is_json_output():
+        print_warning(
+            f"About to replan epic '{plan_path.name}':\n"
+            "  - All completed/in_progress ticket statuses will be reset to 'proposed'\n"
+            "  - The orchestration MMD file will be removed"
+        )
+        response = input("Confirm? [y/N] ")
+        if response.lower() != "y":
+            print("Aborted")
+            sys.exit(0)
+
+    tickets_reset = 0
+    mmd_removed = False
+    mmd_path = None
+
+    try:
+        repo = _get_repo()
+        if repo is None:
+            print_error("TinyDB repository unavailable")
+            sys.exit(1)
+
+        if not _ensure_epic_in_db(repo, plan_path):
+            print_error(f"Epic '{plan_path.name}' not found in TinyDB")
+            sys.exit(1)
+
+        # Reset all non-proposed tickets back to proposed
+        all_tickets = repo.get_tickets(plan_path.name)
+        for ticket in all_tickets:
+            if ticket.status and ticket.status != "proposed":
+                repo.update_ticket_status(plan_path.name, ticket.id, "proposed")
+                tickets_reset += 1
+
+    except Exception as e:
+        print_error(f"Error resetting tickets: {e}")
+        sys.exit(1)
+
+    # Remove orchestration MMD file
+    try:
+        mmd_files = list(plan_path.glob("orchestration_*.mmd"))
+        for mmd_file in mmd_files:
+            mmd_path = mmd_file
+            mmd_file.unlink()
+            mmd_removed = True
+    except Exception as e:
+        print_warning(f"Could not remove MMD file: {e}")
+
+    if is_json_output():
+        print_json({
+            "epic": plan_path.name,
+            "tickets_reset": tickets_reset,
+            "mmd_removed": mmd_removed,
+            "mmd_path": str(mmd_path) if mmd_path else None,
+        })
+    else:
+        print_success(
+            f"Replanned '{plan_path.name}': "
+            f"{tickets_reset} ticket(s) reset to 'proposed'"
+            + (f", removed {mmd_path.name}" if mmd_removed else "")
+        )
 
 
 def _determine_agent_type(phase_name: str, phase_id: str) -> str:
@@ -3265,11 +3653,10 @@ def _generate_test_fix_loop(phase_index: int, phase_name: str) -> list[str]:
 
 
 def cmd_orchestration_generate(args, ctx=None):
-    """Generate orchestration MMD from plan YAML files.
+    """Generate orchestration MMD from TinyDB phase data.
 
-    Reads plan_*.yml files in the plan folder and generates a Mermaid
-    flowchart diagram with:
-    - Phase nodes from YAML
+    Reads phases from TinyDB and generates a Mermaid flowchart diagram with:
+    - Phase nodes from TinyDB
     - Agent routing based on phase type
     - Test-fix loop structure for test phases
     - Feedback triggers
@@ -3318,7 +3705,7 @@ def cmd_orchestration_generate(args, ctx=None):
         pass
 
     if not all_phases:
-        print_error("No phases found in plan YAML files")
+        print_error("No phases found in TinyDB for this epic")
         sys.exit(1)
 
     # Determine output file name
@@ -3363,7 +3750,7 @@ def cmd_orchestration_generate(args, ctx=None):
     mmd_lines.append(f"%% GOAL: {plan_objective or 'Execute plan tasks'}")
     mmd_lines.append("%% =============================================================================")
     mmd_lines.append(f"%% PROFILE: Orchestration-{plan_name or plan_path.name}")
-    mmd_lines.append(f"%% INPUT_PATH: {plan_path}/ticket_build.yml")
+    mmd_lines.append(f"%% INPUT_SOURCE: TinyDB epic={plan_path.name}")
     mmd_lines.append("%%")
     mmd_lines.append("%% PHASES:")
     for pn in phase_names:
@@ -3496,11 +3883,11 @@ def cmd_orchestration_generate(args, ctx=None):
 
 
 def cmd_orchestration_validate(args, ctx=None):
-    """Validate orchestration MMD against plan YAML files.
+    """Validate orchestration MMD against TinyDB phase/ticket data.
 
-    Compares the orchestration_*.mmd file against plan_*.yml files to detect:
-    - Missing phases: YAML phases not mentioned in MMD
-    - Missing task IDs: Task IDs from YAML not referenced in MMD
+    Compares the orchestration_*.mmd file against TinyDB data to detect:
+    - Missing phases: TinyDB phases not mentioned in MMD
+    - Missing task IDs: Task IDs from TinyDB not referenced in MMD
     - Invalid agent routing: Agent types not matching expected patterns
 
     Args:
@@ -3548,7 +3935,6 @@ def cmd_orchestration_validate(args, ctx=None):
     yaml_phases = []
     yaml_tasks = []
     yaml_phase_ids = set()
-    yaml_files = []  # No longer used, kept for output compatibility
 
     try:
         repo = _get_repo()
@@ -3703,7 +4089,7 @@ def cmd_orchestration_validate(args, ctx=None):
         print_json({
             "plan_path": str(plan_path),
             "mmd_file": mmd_file.name,
-            "yaml_files": [f.name for f in yaml_files],
+            "data_source": "TinyDB",
             "validation_passed": validation_passed,
             "strict_mode": strict,
             "yaml_phases_count": len(yaml_phases),
@@ -3717,7 +4103,7 @@ def cmd_orchestration_validate(args, ctx=None):
         })
     else:
         print_info(f"Validating: {mmd_file.name}")
-        print_info(f"Against: {', '.join(f.name for f in yaml_files)}")
+        print_info("Against: TinyDB phase/ticket data")
         console.print()
 
         # Print errors
@@ -3752,10 +4138,9 @@ def cmd_orchestration_validate(args, ctx=None):
 
 
 def cmd_stories_list(args, ctx=None):
-    """List user stories from plan YAML files.
+    """List user stories for an epic.
 
-    Reads user_stories arrays from plan_*.yml files and displays
-    them in a table with ID, As (persona), I Want (action), and Command columns.
+    User stories are not yet stored in TinyDB -- this is a stub.
 
     Args:
         args: Parsed arguments with optional plan path.
@@ -3785,8 +4170,7 @@ def cmd_stories_list(args, ctx=None):
 def cmd_stories_test(args, ctx=None):
     """Generate blind test scenarios from user stories.
 
-    Reads user_stories arrays from plan_*.yml files and generates
-    executable test cases in YAML format.
+    Generates executable test cases from user story data.
 
     For each story:
     - Extracts command (if present)

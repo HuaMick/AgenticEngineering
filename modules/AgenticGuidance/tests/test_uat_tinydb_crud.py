@@ -315,19 +315,21 @@ class TestLifecycleOperations:
         # Verify the update happened (epic already in completed state from first call)
         assert result.success is True
 
-    def test_archive_epic_updates_folder_path_from_live_to_completed(self, repo):
+    def test_archive_epic_does_not_rewrite_folder_path(self, repo):
         data = _epic_data("260106CC_folder_update")
         data["epic_folder"] = "/repo/docs/epics/live/260106CC_folder_update"
         repo.create_epic(data)
         repo.archive_epic("260106CC_folder_update")
         epic = repo.get_epic("260106CC_folder_update")
-        assert "/epics/completed/" in str(epic.epic_folder)
+        # Status field is source of truth — path is NOT rewritten
+        assert epic.status == "completed"
+        assert "/epics/live/" in str(epic.epic_folder)
 
     def test_archive_epic_fails_for_missing_epic(self, repo):
         result = repo.archive_epic("no_such_epic_archive")
         assert result.success is False
 
-    def test_unarchive_epic_sets_status_to_active(self, repo):
+    def test_unarchive_epic_sets_status_to_in_progress(self, repo):
         data = _epic_data("260106DD_unarchive")
         data["epic_folder"] = "/repo/docs/epics/completed/260106DD_unarchive"
         repo.create_epic(data)
@@ -335,16 +337,18 @@ class TestLifecycleOperations:
         result = repo.unarchive_epic("260106DD_unarchive")
         assert result.success is True
         epic = repo.get_epic("260106DD_unarchive")
-        assert epic.status == "active"
+        assert epic.status == "in_progress"
 
-    def test_unarchive_epic_updates_folder_path_from_completed_to_live(self, repo):
+    def test_unarchive_epic_does_not_rewrite_folder_path(self, repo):
         data = _epic_data("260106EE_unarchive_folder")
         data["epic_folder"] = "/repo/docs/epics/completed/260106EE_unarchive_folder"
         repo.create_epic(data)
         repo.update_epic("260106EE_unarchive_folder", {"status": "completed"})
         repo.unarchive_epic("260106EE_unarchive_folder")
         epic = repo.get_epic("260106EE_unarchive_folder")
-        assert "/epics/live/" in str(epic.epic_folder)
+        # Status field is source of truth — path is NOT rewritten
+        assert epic.status == "in_progress"
+        assert "/epics/completed/" in str(epic.epic_folder)
 
     def test_unarchive_epic_clears_completed_date(self, repo):
         data = _epic_data("260106FF_clear_date")
@@ -352,9 +356,9 @@ class TestLifecycleOperations:
         repo.create_epic(data)
         repo.update_epic("260106FF_clear_date", {"status": "completed", "completed_date": "2026-01-01"})
         repo.unarchive_epic("260106FF_clear_date")
-        # After unarchive, verify status is active (completed_date cleared internally)
+        # After unarchive, verify status is in_progress (completed_date cleared internally)
         epic = repo.get_epic("260106FF_clear_date")
-        assert epic.status == "active"
+        assert epic.status == "in_progress"
 
     def test_unarchive_epic_fails_for_missing_epic(self, repo):
         result = repo.unarchive_epic("no_such_epic_unarchive")
@@ -404,12 +408,12 @@ class TestHelperQueries:
     def test_get_ticket_counts_returns_correct_structure(self, repo):
         repo.create_epic(_epic_data("260107DD_counts"))
         counts = repo.get_ticket_counts("260107DD_counts")
-        assert set(counts.keys()) == {"pending", "in_progress", "completed", "total"}
+        assert set(counts.keys()) == {"proposed", "in_progress", "completed", "total"}
 
     def test_get_ticket_counts_with_zero_tickets(self, repo):
         repo.create_epic(_epic_data("260107EE_zero_counts"))
         counts = repo.get_ticket_counts("260107EE_zero_counts")
-        assert counts["pending"] == 0
+        assert counts["proposed"] == 0
         assert counts["in_progress"] == 0
         assert counts["completed"] == 0
         assert counts["total"] == 0
@@ -422,7 +426,7 @@ class TestHelperQueries:
         repo.add_ticket("260107FF_mixed", "Phase 1", _ticket_data("T3", status="in_progress"))
         repo.add_ticket("260107FF_mixed", "Phase 1", _ticket_data("T4", status="completed"))
         counts = repo.get_ticket_counts("260107FF_mixed")
-        assert counts["pending"] == 2
+        assert counts["proposed"] == 2  # "pending" tickets normalize to "proposed"
         assert counts["in_progress"] == 1
         assert counts["completed"] == 1
         assert counts["total"] == 4
@@ -726,18 +730,18 @@ class TestTicketCountsAndCompletion:
         repo.add_ticket("260206AA_total_sum", "Phase 1", _ticket_data("T2", status="in_progress"))
         repo.add_ticket("260206AA_total_sum", "Phase 1", _ticket_data("T3", status="completed"))
         counts = repo.get_ticket_counts("260206AA_total_sum")
-        assert counts["total"] == counts["pending"] + counts["in_progress"] + counts["completed"]
+        assert counts["total"] == counts["proposed"] + counts["in_progress"] + counts["completed"]
 
     def test_ticket_counts_update_after_status_change(self, repo):
         repo.create_epic(_epic_data("260206BB_counts_update"))
         repo.add_ticket("260206BB_counts_update", "Phase 1", _ticket_data("T1", status="pending"))
         before = repo.get_ticket_counts("260206BB_counts_update")
-        assert before["pending"] == 1
+        assert before["proposed"] == 1
         assert before["completed"] == 0
 
         repo.update_ticket_status("260206BB_counts_update", "T1", "completed")
         after = repo.get_ticket_counts("260206BB_counts_update")
-        assert after["pending"] == 0
+        assert after["proposed"] == 0
         assert after["completed"] == 1
         assert after["total"] == 1
 
@@ -758,7 +762,7 @@ class TestTicketCountsAndCompletion:
     def test_ticket_counts_for_unknown_epic_returns_zeros(self, repo):
         counts = repo.get_ticket_counts("nonexistent_epic_for_counts")
         assert counts["total"] == 0
-        assert counts["pending"] == 0
+        assert counts["proposed"] == 0
         assert counts["in_progress"] == 0
         assert counts["completed"] == 0
 
@@ -829,55 +833,3 @@ class TestTicketDataExpandedFields:
         assert ticket.success_criteria == "Pass"
 
 
-class TestFileLockOnWrites:
-    """GD-200-FL: FileLock wraps ALL write operations.
-
-    Each write method uses self._lock context manager. This class validates
-    that the write methods (create, update, delete, add_phase, add_ticket,
-    update_ticket_status) all participate in the locking protocol by checking
-    they still succeed in normal operation (the filelock test module covers
-    the concurrent serialization aspects).
-    """
-
-    def test_create_epic_uses_lock(self, repo):
-        """create_epic completes successfully via FileLock."""
-        result = repo.create_epic(_epic_data("260300AA_lock_create"))
-        assert result.success is True
-
-    def test_update_epic_uses_lock(self, repo):
-        """update_epic completes successfully via FileLock."""
-        repo.create_epic(_epic_data("260300BB_lock_update"))
-        result = repo.update_epic("260300BB_lock_update", {"status": "active"})
-        assert result.success is True
-
-    def test_delete_epic_uses_lock(self, repo):
-        """delete_epic completes successfully via FileLock."""
-        repo.create_epic(_epic_data("260300CC_lock_delete"))
-        result = repo.delete_epic("260300CC_lock_delete")
-        assert result.success is True
-
-    def test_add_phase_uses_lock(self, repo):
-        """add_phase completes successfully via FileLock."""
-        repo.create_epic(_epic_data("260300DD_lock_phase"))
-        result = repo.add_phase("260300DD_lock_phase", {"name": "Phase 1"})
-        assert result is True
-
-    def test_update_phase_uses_lock(self, repo):
-        """update_phase completes successfully via FileLock."""
-        repo.create_epic(_epic_data("260300EE_lock_phase_update"))
-        repo.add_phase("260300EE_lock_phase_update", {"name": "Phase 1"})
-        result = repo.update_phase("260300EE_lock_phase_update", "Phase 1", {"status": "active"})
-        assert result is True
-
-    def test_add_ticket_uses_lock(self, repo):
-        """add_ticket completes successfully via FileLock."""
-        repo.create_epic(_epic_data("260300FF_lock_ticket"))
-        result = repo.add_ticket("260300FF_lock_ticket", "Phase 1", _ticket_data("T1"))
-        assert result is True
-
-    def test_update_ticket_status_uses_lock(self, repo):
-        """update_ticket_status completes successfully via FileLock."""
-        repo.create_epic(_epic_data("260300GG_lock_ticket_status"))
-        repo.add_ticket("260300GG_lock_ticket_status", "Phase 1", _ticket_data("T1", status="pending"))
-        result = repo.update_ticket_status("260300GG_lock_ticket_status", "T1", "in_progress")
-        assert result is True

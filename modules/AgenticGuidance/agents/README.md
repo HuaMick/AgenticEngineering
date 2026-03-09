@@ -26,12 +26,12 @@ High-level orchestration agents that coordinate planning and execution workflows
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
 | orchestration-planning | 2.0 | Planning-only workflows - human-in-the-loop epic creation and approval | Complete |
-| orchestration-executor | 2.0 | Generic MMD-driven execution - dynamic agent routing from Plan-MMD metadata | Complete |
+| orchestration-executor | 2.0 | TinyDB-driven execution - dynamic agent routing from phase.agent field | Complete |
 | orchestration-friction | 1.0 | LangSmith trace friction analysis - detects patterns and recommends resolutions | Complete |
 
 **Routing Logic:**
-- `orchestration-planning`: Planning-only workflows, produces approved epics for downstream use. **Also generates orchestration_*.mmd** for executor consumption.
-- `orchestration-executor`: Generic MMD-driven execution (dynamic agent routing from Plan-MMD metadata). **Use this for all execution workflows.**
+- `orchestration-planning`: Planning-only workflows, produces approved epics with TinyDB phase records for downstream use.
+- `orchestration-executor`: TinyDB-driven execution (dynamic agent routing from phase.agent field). **Use this for all execution workflows.**
 - `orchestration-friction`: Friction analysis from LangSmith traces. Detects FP-001 through FP-006 patterns, classifies severity, and recommends GUIDANCE_UPDATE, CLI_OFFLOAD, or ASSET_UPDATE resolutions.
 
 ---

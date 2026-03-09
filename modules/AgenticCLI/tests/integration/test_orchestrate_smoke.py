@@ -11,6 +11,7 @@ import pytest
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.tmux,
+    pytest.mark.xdist_group("tmux"),
     pytest.mark.skipif(
         not subprocess.run(["which", "tmux"], capture_output=True).returncode == 0,
         reason="tmux not available",

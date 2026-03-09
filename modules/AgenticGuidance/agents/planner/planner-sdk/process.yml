@@ -15,26 +15,31 @@ process:
 
   invocation_context:
     caller_chain:
-      - "_plan_build.yml entrypoint"
-      - "orchestration-planning"
+      - "orchestration-planning (planning_intent: build, SDK keywords detected)"
       - "planner-sdk"
     note: |
       planner-sdk is spawned by orchestration-planning when the objective involves
       Claude Agent SDK integration or migration from subprocess-based patterns.
       It produces plans with SDK-specific guidance and API references baked in.
+      NOTE: Legacy _plan_build.yml entrypoint files are superseded by planning_intent parameter.
 
   inputs:
     - location: "modules/AgenticGuidance/agents/planner/planner-sdk/inputs.yml"
       description: "SDK planner inputs including Claude Agent SDK documentation references"
 
   outputs:
-    - name: "ticket_build.yml"
-      path_template: "docs/epics/live/{epic_folder_name}/ticket_build.yml"
-      description: "SDK integration ticket with phases, tasks, and success criteria"
-      required_fields:
-        - "name"
-        - "status"
-        - "phases"
+    # FENCE: Output must match declared schema before marking complete
+    - name: "TinyDB tickets"
+      description: "SDK integration plan with phases and tasks stored in TinyDB"
+      creation_method: |
+        Use CLI to create phases and tickets:
+          agentic epic phase add --epic {epic_folder_name} --name '<phase_name>'
+          agentic epic ticket add --epic {epic_folder_name} --phase '<phase_name>' --id '<id>' --name '<name>'
+        Do NOT create plan_build.yml or ticket_build.yml files on disk. TinyDB is the sole data store.
+
+    # NOTE: TinyDB phase records with routing are created by planner-orchestration, NOT by planners.
+    # Planners create tickets in TinyDB only. The handover model is:
+    # Planner (TinyDB tickets) -> planner-orchestration (creates phase records) -> Reviewer (validates complete package)
 
   steps:
     - |

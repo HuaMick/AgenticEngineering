@@ -16,8 +16,10 @@ required_inputs:
   - name: "epic_folder_path"
     type: "string"
     description: |
-      Path to the epic folder containing approved ticket_*.yml files.
-      The agent reads <epic_folder>/ticket_*.yml to extract phases and tasks.
+      Path to the epic folder. Tickets are loaded from TinyDB via:
+      `agentic -j epic ticket list --epic <epic_folder_name>`
+      Phase records are created in TinyDB via:
+      `agentic epic phase add --epic <epic_folder_name> --name <phase> --agent <agent-type>`
     required: true
     example: "docs/epics/live/260207PO_planner_orchestration_refactor"
 
@@ -31,17 +33,12 @@ required_inputs:
 # INPUTS (Guidelines, Definitions, Specifications)
 # ==============================================
 inputs:
-  # MMD Schema - the primary specification for output
-  - location: "modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml"
-    description: "Schema for orchestration MMD files: headers, nodes, edges, subgraphs, metadata requirements"
-    required: true
-
   # Executor specification - understand what the consumer needs
   - location: "modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml"
-    description: "Runtime behavior spec: AGENT_ROUTING format, FEEDBACK_TRIGGERS patterns, STATUS management"
+    description: "Runtime behavior spec: phase.agent routing field, phase.feedback_triggers patterns, phase status management"
     required: true
 
-  # Loop definitions - for generating loop subgraphs
+  # Loop definitions - for assigning loop structures to phases
   - location: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
     description: "Loop type definitions, max iterations, escalation paths"
     required: true
@@ -51,22 +48,10 @@ inputs:
     description: "Agent category definitions for routing resolution"
     required: true
 
-  # Ticket YAML schema reference
+  # Plan example - reference for ticket and phase structure
   - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"
-    description: "Ticket YAML structure reference for phase and task parsing"
+    description: "Plan structure reference for understanding phase and ticket fields in TinyDB"
     required: true
-
-  # MMD phase templates
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/teach_phase.mmd"
-    description: "MMD component for teach phase orchestration pattern"
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/build_phase.mmd"
-    description: "MMD component for build phase orchestration pattern"
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/test_phase.mmd"
-    description: "MMD component for test phase orchestration pattern"
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/cleanup_phase.mmd"
-    description: "MMD component for cleanup phase orchestration pattern"
-  - location: "modules/AgenticGuidance/assets/examples/orchestration/phase_templates/uat_phase.mmd"
-    description: "MMD component for UAT phase orchestration pattern"
 
   # Guidelines
   - location: "modules/AgenticGuidance/assets/guidelines/context-minimisation.yml"
@@ -75,25 +60,31 @@ inputs:
     description: "Fix root causes instead of symptoms"
 
 # ==============================================
-# MMD NODE GRANULARITY FENCE
+# PHASE RECORD CREATION FENCE
 # ==============================================
 # This fence is the PRIMARY quality gate for planner-orchestration output.
-# Duplicated from orchestration-planning inputs.yml for agent independence.
+# All phase records MUST be created via CLI, never by editing TinyDB files directly.
 # ==============================================
-mmd_node_granularity:
+phase_record_creation:
   principle: |
-    MMD diagrams represent orchestration flow at the phase, loop, and agent
-    spawn level. They do NOT represent individual task IDs or file operations.
-    Task-level details belong in plan YAML files, not MMD orchestration diagrams.
+    TinyDB phase records represent orchestration routing at the phase level.
+    Each phase record must have: name, agent, status, execution fields.
+    Task-level details belong in TinyDB ticket records, not phase records.
 
   fence: |
-    STOP and regenerate if ANY of these patterns appear in generated MMD:
-    - Task ID nodes: deploy_\d+, build_\d+, test_\d+, teach_\d+, cleanup_\d+
-    - Execute labels: [Execute: ...]
-    - Individual file operations: [Edit ...], [Create ...], [Delete ...]
+    STOP and recreate if ANY phase record is missing required fields:
+    - Missing agent field: executor cannot route without it
+    - Missing status field: executor cannot determine resume point
+    - Missing execution field: executor cannot determine parallel vs sequential
 
-    REQUIRED patterns for valid MMD:
-    - Phase nodes: [Enter X Phase], ((X Phase))
-    - Spawn nodes: [Spawn X Agent]
-    - Loop nodes: {X Loop}, subgraph X_Loop_SG
-    - Decision nodes: {X?}
+    REQUIRED fields for valid phase record:
+    - name: Phase identifier (e.g., "Build", "Test", "Cleanup", "UAT")
+    - agent: Agent type (e.g., "build-python", "test-runner", "test-user-simulator")
+    - status: "pending" (initial value for new phases)
+    - execution: "sequential" or "parallel"
+
+  cli_commands:
+    create_phase: "agentic epic phase add --epic <folder> --name <phase> --agent <agent-type> --execution sequential"
+    create_ticket: "agentic epic ticket add --epic <folder> --phase <phase> --id <id> --name <name>"
+    list_phases: "agentic -j epic ticket list --epic <folder>"
+    validate_epic: "agentic agent epic validate --epic <folder>"

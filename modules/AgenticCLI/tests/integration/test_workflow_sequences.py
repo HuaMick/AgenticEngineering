@@ -100,14 +100,10 @@ class TestPlanWorkflowSequence:
         """Test: scaffold plan -> check status -> validate."""
         stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "test-feature")
         assert code == 0
-        assert "Created planning folder" in stdout
+        assert "Created planning folder" in stdout or "Created epic" in stdout
 
-        plan_path = integration_repo / "docs" / "epics" / "live" / "test-feature"
-        assert plan_path.exists()
-        plan_files = list(plan_path.glob("plan_*.yml"))
-        assert len(plan_files) >= 1, "Expected at least one plan_*.yml file"
-
-        stdout, stderr, code = cli_in_repo("epic", "status")
+        # Epic is registered in TinyDB (no folder created on disk)
+        stdout, stderr, code = cli_in_repo("epic", "status", "--epic", "test-feature")
         assert code == 0
 
         stdout, stderr, code = cli_in_repo("agent", "epic", "validate")
@@ -117,41 +113,21 @@ class TestPlanWorkflowSequence:
         """Test plan commands with JSON output mode."""
         cli_in_repo("agent", "epic", "scaffold", "json-test")
 
-        plan_path = integration_repo / "docs" / "epics" / "live" / "json-test"
-        plan_content = {
-            "plan": {
-                "name": "JSON Test Plan",
-                "status": "in_progress",
-                "phases": [
-                    {
-                        "id": "phase-1",
-                        "name": "Phase 1",
-                        "status": "in_progress",
-                        "tickets": [
-                            {"id": "task-1", "name": "Task 1", "status": "pending"},
-                            {"id": "task-2", "name": "Task 2", "status": "completed"},
-                        ],
-                    }
-                ],
-            }
-        }
-        with open(plan_path / "plan_test.yml", "w") as f:
-            yaml.dump(plan_content, f)
-
-        stdout, stderr, code = cli_in_repo("--json", "epic", "status")
+        # Epic data is in TinyDB only — no YAML files needed
+        stdout, stderr, code = cli_in_repo("--json", "epic", "status", "--epic", "json-test")
         assert code == 0
         data = json.loads(stdout)
         assert isinstance(data, dict)
         assert len(data) > 0
 
     def test_plan_scaffold_already_exists(self, cli_in_repo, integration_repo):
-        """Test scaffolding a plan that already exists."""
+        """Test scaffolding a plan that already exists (idempotent with TinyDB)."""
         stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "duplicate-test")
         assert code == 0
 
+        # Scaffold is deprecated and idempotent — duplicate calls succeed silently
         stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "duplicate-test")
-        assert code == 1
-        assert "already exists" in stdout or "already exists" in stderr
+        assert code == 0
 
 
 class TestConfigWorkflowSequence:

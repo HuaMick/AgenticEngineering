@@ -116,8 +116,7 @@ class MainFirstEpicResolver:
     def resolve_active_epic(self, branch: Optional[str] = None) -> Optional[dict]:
         """Find the active epic for a branch.
 
-        Uses TinyDB to look up epic data. Falls back to folder-name matching
-        when TinyDB branch data is unavailable.
+        Uses TinyDB exclusively to look up epic data.
 
         Args:
             branch: Branch name to find epic for, defaults to current branch.
@@ -186,37 +185,7 @@ class MainFirstEpicResolver:
             except Exception:
                 logger.debug("TinyDB lookup failed in resolve_active_epic", exc_info=True)
 
-        # Strategy 3: Folder-name matching on disk (fallback if TinyDB missed)
-        if not matching_epic and plans_live.exists():
-            branch_lower = branch.lower().replace("-", "").replace("_", "")
-            for folder in sorted(plans_live.iterdir(), key=lambda x: x.name, reverse=True):
-                if not folder.is_dir():
-                    continue
-                if "_" in folder.name and len(folder.name) > 9:
-                    folder_desc = folder.name[9:].lower().replace("-", "").replace("_", "")
-                    if branch_lower in folder_desc or folder_desc in branch_lower:
-                        matching_folder = folder
-                        # Try to get epic data from TinyDB for this folder
-                        if self._repository:
-                            try:
-                                matching_epic = self._repository.get_epic(folder.name)
-                            except Exception:
-                                pass
-                        break
-
-            # On main/master, return most recent folder
-            if not matching_folder and branch in ("main", "master"):
-                for folder in sorted(plans_live.iterdir(), key=lambda x: x.name, reverse=True):
-                    if folder.is_dir():
-                        matching_folder = folder
-                        if self._repository:
-                            try:
-                                matching_epic = self._repository.get_epic(folder.name)
-                            except Exception:
-                                pass
-                        break
-
-        if not matching_folder:
+        if not matching_epic and not matching_folder:
             return None
 
         # Build plan info from TinyDB data or defaults

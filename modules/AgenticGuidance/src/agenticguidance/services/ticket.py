@@ -1,10 +1,8 @@
-"""Ticket Service - CRUD operations for tickets in epic YAML files.
+"""Ticket Service - CRUD operations for tickets via TinyDB.
 
-Provides programmatic access to ticket data within epic files, supporting both
-modern (phases[].tasks[]) and legacy (tasks[]) structures.
+Provides programmatic access to ticket data stored in TinyDB.
 """
 
-import yaml
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -17,9 +15,16 @@ from .state import FileLock
 class TicketStatus(Enum):
     """Status of a ticket."""
 
-    PENDING = "pending"
+    PROPOSED = "proposed"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
+
+    @classmethod
+    def _missing_(cls, value):
+        """Handle backward compat: 'pending' -> PROPOSED."""
+        if value == "pending":
+            return cls.PROPOSED
+        return None
 
 
 @dataclass
@@ -38,38 +43,36 @@ class Ticket:
 
 
 class TicketService:
-    """Service for managing tickets in epic YAML files.
+    """Service for managing tickets via TinyDB.
 
-    Handles both modern (phases[].tasks[]) and legacy (tasks[]) plan structures
-    with atomic file operations using FileLock.
+    TinyDB is the sole data store for ticket operations.
     """
 
-    def __init__(self, epic_path: Path, yaml_sync_enabled: bool = False):
+    def __init__(self, epic_path: Path, *, repository=None):
         """Initialize TicketService.
 
         TinyDB is the sole data store.
 
         Args:
             epic_path: Path to epic folder.
-            yaml_sync_enabled: Deprecated, ignored. Kept for API compatibility.
+            repository: Optional EpicRepository instance (for testing).
         """
         self.epic_path = epic_path
-        self.ticket_file = epic_path / "ticket_build.yml"
-        self._yaml_sync_enabled = False  # YAML sync permanently disabled
         self._epic_folder_name = epic_path.name  # For TinyDB lookups
-        self._repository = None
-        try:
-            from .epic_repository import EpicRepository
-            # Derive db_path from epic_path's repo root for test isolation
-            repo_root = epic_path
-            while repo_root != repo_root.parent:
-                if (repo_root / ".git").exists():
-                    break
-                repo_root = repo_root.parent
-            db_path = repo_root / ".agentic" / "epics.db"
-            self._repository = EpicRepository(db_path=db_path)
-        except Exception:
-            pass  # Emergency: fall back to pure YAML
+        self._repository = repository
+        if self._repository is None:
+            try:
+                from .epic_repository import EpicRepository
+                # Derive db_path from epic_path's repo root for test isolation
+                repo_root = epic_path
+                while repo_root != repo_root.parent:
+                    if (repo_root / ".git").exists():
+                        break
+                    repo_root = repo_root.parent
+                db_path = repo_root / ".agentic" / "epics.db"
+                self._repository = EpicRepository(db_path=db_path)
+            except Exception:
+                pass
 
     @staticmethod
     def _get_ticket_id(ticket_data: dict) -> str:
@@ -91,7 +94,7 @@ class TicketService:
             status = TicketStatus(status_str)
         except ValueError:
             # Default to pending if status is invalid
-            status = TicketStatus.PENDING
+            status = TicketStatus.PROPOSED
 
         return Ticket(
             id=self._get_ticket_id(ticket_data),
@@ -117,9 +120,9 @@ class TicketService:
         if td is None:
             return None
         try:
-            status = TicketStatus(td.status) if td.status else TicketStatus.PENDING
+            status = TicketStatus(td.status) if td.status else TicketStatus.PROPOSED
         except ValueError:
-            status = TicketStatus.PENDING
+            status = TicketStatus.PROPOSED
         return Ticket(
             id=td.id,
             name=td.name,

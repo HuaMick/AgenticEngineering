@@ -4,6 +4,8 @@
 
 CCI (CLI Context Injection) Context is a Pull-based architecture for agent context retrieval. Instead of pre-loading large static markdown files (Push model), agents fetch exactly what they need via CLI commands (Pull model).
 
+> **See also:** [JIT Context Architecture](JIT_CONTEXT_ARCHITECTURE.md) for the comprehensive architecture document with mermaid diagrams, Main-First resolution flow, and task lifecycle.
+
 ## Push vs Pull Model
 
 ### Push Model (Legacy)

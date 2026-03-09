@@ -18,6 +18,18 @@ def pytest_configure(config):
     )
 
 
+def pytest_collection_modifyitems(items):
+    """Serialize all integration tests into a single xdist group.
+
+    Tmux-based integration tests conflict when run in parallel (session name
+    collisions, pane ID races).  Grouping them ensures a single worker runs
+    them sequentially while the remaining workers handle unit tests.
+    """
+    for item in items:
+        if "integration" in str(item.fspath):
+            item.add_marker(pytest.mark.xdist_group("integration"))
+
+
 @pytest.fixture(scope="session", autouse=True)
 def verify_cli_installed():
     if not shutil.which("agentic"):

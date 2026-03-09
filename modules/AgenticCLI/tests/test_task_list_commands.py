@@ -16,11 +16,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import yaml
+
+from tests.conftest import populate_tinydb_from_yaml
 
 
 @pytest.fixture
-def task_repo(temp_dir):
+def task_repo(temp_dir, _isolate_tinydb):
     """Create a repository with a plan containing tasks."""
     repo_dir = temp_dir / "task_repo"
     repo_dir.mkdir()
@@ -51,8 +52,7 @@ def task_repo(temp_dir):
 """
     )
 
-    # Create plan with multiple tasks in different statuses (flattened: directly in plan_folder)
-    plan_file = plan_folder / "plan_build.yml"
+    # Populate TinyDB with plan data
     plan_content = {
         "name": "task-test-plan",
         "status": "active",
@@ -101,8 +101,7 @@ def task_repo(temp_dir):
             },
         ],
     }
-    with open(plan_file, "w") as f:
-        yaml.dump(plan_content, f)
+    populate_tinydb_from_yaml(_isolate_tinydb, "260123CL_task_test", plan_folder, plan_content)
 
     # Initial commit
     (repo_dir / "README.md").write_text("# Task Test Repo\n")

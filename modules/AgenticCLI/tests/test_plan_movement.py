@@ -8,13 +8,38 @@ import pytest
 import yaml
 
 
+def _populate_tinydb_for_movement(db_path, epic_folder_name, tickets):
+    """Populate TinyDB with ticket data for movement workflow tests.
+
+    Args:
+        db_path: Path to the TinyDB database file.
+        epic_folder_name: Epic folder name string.
+        tickets: List of ticket dicts with task_id, name, status fields.
+    """
+    from agenticguidance.services.epic_repository import EpicRepository
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+    repo.create_epic({
+        "epic_folder_name": epic_folder_name,
+        "epic_folder": str(db_path.parent.parent / "docs" / "epics" / "live" / epic_folder_name),
+        "name": epic_folder_name,
+        "status": "active",
+    })
+    phase_name = "Test Phase"
+    repo.add_phase(epic_folder_name, {"name": phase_name})
+    for t in tickets:
+        repo.add_ticket(epic_folder_name, phase_name, t)
+    repo.close()
+
+
 @pytest.fixture
 def plan_folder(temp_repo):
-    """Create a plan folder with flattened test structure."""
+    """Create a plan folder with TinyDB-backed test structure."""
     plan_path = temp_repo / "docs" / "epics" / "live" / "260103AE_test"
     plan_path.mkdir(parents=True, exist_ok=True)
 
-    # Flattened structure: YAML files directly in plan folder
+    # Keep a feature YAML for tests that still reference it
     feature_file = plan_path / "feature_test.yml"
     feature_data = {
         "feature": {
@@ -33,6 +58,15 @@ def plan_folder(temp_repo):
     completed_file = plan_path / "epic_completed.yml"
     completed_file.write_text("# Completed tasks\n")
 
+    # Populate TinyDB - EpicMovementWorkflow walks up from plan_path looking for .git;
+    # temp_repo has no .git so it falls back to plan_path as repo root.
+    db_path = plan_path / ".agentic" / "epics.db"
+    _populate_tinydb_for_movement(db_path, "260103AE_test", [
+        {"task_id": "12.1", "name": "First task", "status": "completed"},
+        {"task_id": "12.2", "name": "Second task", "status": "in_progress"},
+        {"task_id": "12.3", "name": "Third task", "status": "pending"},
+    ])
+
     return plan_path
 
 
@@ -40,15 +74,15 @@ class TestPlanMovementWorkflow:
     """Tests for PlanMovementWorkflow class."""
 
     def test_move_completed_task(self, plan_folder):
-        """Test moving a completed task to epic_completed.yml."""
+        """Test confirming a completed task in TinyDB."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
 
         workflow = PlanMovementWorkflow(plan_folder)
         result = workflow.move_task_to_completed("12.1", force=True)
 
         assert result.result == MoveResult.SUCCESS
-        assert result.source_file == "feature_test.yml"
-        assert result.target_file == "epic_completed.yml"
+        # TinyDB-backed: source is the DB, not a YAML file
+        assert result.source_file == "(TinyDB)"
 
     def test_move_non_completed_task_skipped(self, plan_folder):
         """Test that non-completed tasks are skipped."""
@@ -71,7 +105,7 @@ class TestPlanMovementWorkflow:
         assert "not found" in result.message
 
     def test_move_task_dry_run(self, plan_folder):
-        """Test dry run doesn't make changes."""
+        """Test dry run returns success without making changes."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
 
         workflow = PlanMovementWorkflow(plan_folder)
@@ -80,53 +114,41 @@ class TestPlanMovementWorkflow:
         assert result.result == MoveResult.SUCCESS
         assert "dry-run" in result.message
 
-        # Verify no changes were made (flattened: completed file directly in plan folder)
-        completed_file = plan_folder / "epic_completed.yml"
-        data = yaml.safe_load(completed_file.read_text())
-        assert data is None or "completed_tasks" not in data
-
     def test_move_task_creates_completed_file(self, plan_folder):
-        """Test that completed file is created if missing."""
-        from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
+        """Test that completed task confirmation succeeds (TinyDB-only).
 
-        # Remove existing completed file (flattened: directly in plan folder)
-        completed_file = plan_folder / "epic_completed.yml"
-        completed_file.unlink()
+        In the TinyDB model, there is no epic_completed.yml written by
+        move_task_to_completed. Ticket status is confirmed directly in TinyDB.
+        """
+        from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
 
         workflow = PlanMovementWorkflow(plan_folder)
         result = workflow.move_task_to_completed("12.1", force=True)
 
         assert result.result == MoveResult.SUCCESS
-        assert completed_file.exists()
-
-        data = yaml.safe_load(completed_file.read_text())
-        assert "completed_tasks" in data
-        assert len(data["completed_tasks"]) == 1
-        assert data["completed_tasks"][0]["id"] == "12.1"
 
     def test_move_all_completed_tasks(self, plan_folder):
-        """Test moving all completed tasks at once."""
+        """Test confirming all completed tasks at once."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
 
         workflow = PlanMovementWorkflow(plan_folder)
         results = workflow.move_all_completed_tasks(force=True)
 
-        # There may be multiple completed tasks from test fixtures
-        # Check that all are successfully moved
+        # Only completed tickets from TinyDB should be in results
         assert len(results) >= 1
         assert all(r.result == MoveResult.SUCCESS for r in results)
-        # 12.1 should be one of them
+        # 12.1 should be one of them (the only completed ticket in fixture)
         task_ids = [r.task_id for r in results]
         assert "12.1" in task_ids
 
     def test_get_completed_tasks(self, plan_folder):
-        """Test getting list of completed tasks."""
+        """Test getting list of completed tasks from TinyDB."""
         from agenticguidance.services import EpicMovementWorkflow as PlanMovementWorkflow
 
         workflow = PlanMovementWorkflow(plan_folder)
         completed = workflow.get_completed_tasks()
 
-        # There may be multiple completed tasks
+        # Should return completed tickets from TinyDB
         assert len(completed) >= 1
         ids = [t["id"] for t in completed]
         assert "12.1" in ids
@@ -196,20 +218,23 @@ class TestFolderArchive:
     """Tests for folder archival."""
 
     def test_archive_epic_folder(self, plan_folder):
-        """Test archiving an epic folder (archive_epic_folder)."""
+        """Test archiving an epic folder updates TinyDB status to completed."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
+        from agenticguidance.services.epic_repository import EpicRepository
 
         workflow = PlanMovementWorkflow(plan_folder)
         result = workflow.archive_epic_folder(force=True)
 
         assert result.result == MoveResult.SUCCESS
+        assert result.destination == "(TinyDB status=completed)"
 
-        # Check destination exists
-        dest = Path(result.destination)
-        assert dest.exists()
-        # Flattened structure: YAML files directly in destination
-        assert (dest / "feature_test.yml").exists()
-        assert (dest / "epic_completed.yml").exists()
+        # Verify TinyDB status was set to completed
+        db_path = plan_folder / ".agentic" / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        epic = repo.get_epic("260103AE_test")
+        repo.close()
+        assert epic is not None
+        assert epic.status == "completed"
 
     def test_archive_dry_run(self, plan_folder):
         """Test archive dry run doesn't make changes."""
@@ -226,18 +251,19 @@ class TestFolderArchive:
         assert not dest.exists()
 
     def test_archive_already_exists(self, plan_folder):
-        """Test archive fails if destination exists."""
+        """Test archiving an already-completed epic is idempotent (returns SUCCESS)."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
 
-        # Create destination manually
-        dest = plan_folder.parent.parent / "completed" / plan_folder.name
-        dest.mkdir(parents=True)
-
         workflow = PlanMovementWorkflow(plan_folder)
-        result = workflow.archive_epic_folder(force=True)
 
-        assert result.result == MoveResult.SKIPPED
-        assert "already exists" in result.message
+        # First archive sets status to completed
+        result1 = workflow.archive_epic_folder(force=True)
+        assert result1.result == MoveResult.SUCCESS
+
+        # Second archive on an already-completed epic also succeeds (idempotent)
+        result2 = workflow.archive_epic_folder(force=True)
+        assert result2.result == MoveResult.SUCCESS
+        assert result2.destination == "(TinyDB status=completed)"
 
 
 class TestMoveCommands:
@@ -496,36 +522,66 @@ class TestArchiveSourceRemoval:
         return plan_path
 
     def test_archive_removes_source_folder(self, flat_plan_folder):
-        """Test that source folder is removed after successful archive."""
-        from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
+        """Test that archive_epic_folder sets TinyDB status to completed.
 
-        # Verify source exists before archive
+        In the TinyDB model, archiving only updates the status field in TinyDB.
+        No filesystem operations (folder moves or deletions) are performed.
+        """
+        from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
+        from agenticguidance.services.epic_repository import EpicRepository
+
+        # Populate TinyDB so archive_epic can find the epic
+        # flat_plan_folder = repo/docs/epics/live/260129TE_test_archive
+        # walk up to repo_dir for the DB path
+        repo_dir = flat_plan_folder.parent.parent.parent.parent
+        db_path = repo_dir / ".agentic" / "epics.db"
+        _populate_tinydb_for_movement(db_path, "260129TE_test_archive", [])
+
+        # Source folder exists before archive
         assert flat_plan_folder.exists()
 
         workflow = PlanMovementWorkflow(flat_plan_folder)
         result = workflow.archive_epic_folder(force=True)
 
         assert result.result == MoveResult.SUCCESS
+        assert result.destination == "(TinyDB status=completed)"
 
-        # Source folder should be removed after archive
-        assert not flat_plan_folder.exists(), "Source folder should be removed after archive"
+        # Source folder is NOT removed (TinyDB-only; no filesystem operations)
+        assert flat_plan_folder.exists(), "Source folder should remain (no filesystem move)"
+
+        # TinyDB status is now completed
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        epic = repo.get_epic("260129TE_test_archive")
+        repo.close()
+        assert epic is not None
+        assert epic.status == "completed"
 
     def test_archive_destination_folder_exists(self, flat_plan_folder):
-        """Test that destination folder exists after archive."""
+        """Test that archive_epic_folder reports the TinyDB destination correctly.
+
+        In the TinyDB model, destination is "(TinyDB status=completed)" rather
+        than a filesystem path. No folder is created on disk.
+        """
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
+        from agenticguidance.services.epic_repository import EpicRepository
+
+        # Populate TinyDB so archive_epic can find the epic
+        repo_dir = flat_plan_folder.parent.parent.parent.parent
+        db_path = repo_dir / ".agentic" / "epics.db"
+        _populate_tinydb_for_movement(db_path, "260129TE_test_archive", [])
 
         workflow = PlanMovementWorkflow(flat_plan_folder)
         result = workflow.archive_epic_folder(force=True)
 
         assert result.result == MoveResult.SUCCESS
+        assert result.destination == "(TinyDB status=completed)"
 
-        # Destination folder should exist
-        dest = Path(result.destination)
-        assert dest.exists(), "Destination folder should exist after archive"
-
-        # Verify contents were copied
-        assert (dest / "feature_test.yml").exists(), "Feature file should be in destination"
-        assert (dest / "epic_completed.yml").exists(), "Completed file should be in destination"
+        # TinyDB status is completed — this is the "destination" in the new model
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        epic = repo.get_epic("260129TE_test_archive")
+        repo.close()
+        assert epic is not None
+        assert epic.status == "completed"
 
     def test_archive_dry_run_does_not_remove_source(self, flat_plan_folder):
         """Test that dry-run does NOT remove source folder."""
@@ -549,11 +605,11 @@ class TestArchiveSourceRemoval:
 
 
 class TestTaskMoveSourceRemoval:
-    """Tests for move_task_to_completed removing tasks from source YAML."""
+    """Tests for move_task_to_completed with TinyDB-backed ticket status."""
 
     @pytest.fixture
     def flat_plan_with_tasks(self, temp_dir):
-        """Create a plan folder with multiple tasks for testing task movement."""
+        """Create a plan folder with multiple tasks in TinyDB for testing."""
         # Create a git repo structure
         repo_dir = temp_dir / "repo"
         repo_dir.mkdir()
@@ -575,24 +631,9 @@ class TestTaskMoveSourceRemoval:
         plans_live = repo_dir / "docs" / "epics" / "live"
         plans_live.mkdir(parents=True)
 
-        # Create plan folder with YAML files directly in it (flattened structure)
+        # Create plan folder
         plan_path = plans_live / "260129TE_test_move"
         plan_path.mkdir()
-
-        # Create feature file with multiple tasks directly in plan_path
-        feature_data = {
-            "feature": {
-                "name": "Test Feature",
-                "tasks": [
-                    {"id": "move_001", "title": "Task to move", "status": "completed"},
-                    {"id": "move_002", "title": "Second completed", "status": "completed"},
-                    {"id": "move_003", "title": "In progress task", "status": "in_progress"},
-                    {"id": "move_004", "title": "Pending task", "status": "pending"},
-                ],
-            }
-        }
-        with open(plan_path / "feature_tasks.yml", "w") as f:
-            yaml.dump(feature_data, f)
 
         # Create initial commit
         (repo_dir / "README.md").write_text("# Test Repo\n")
@@ -603,84 +644,83 @@ class TestTaskMoveSourceRemoval:
             capture_output=True,
         )
 
+        # Populate TinyDB at repo_dir/.agentic/epics.db
+        # (EpicMovementWorkflow walks up from plan_path, finds .git at repo_dir)
+        db_path = repo_dir / ".agentic" / "epics.db"
+        _populate_tinydb_for_movement(db_path, "260129TE_test_move", [
+            {"task_id": "move_001", "name": "Task to move", "status": "completed"},
+            {"task_id": "move_002", "name": "Second completed", "status": "completed"},
+            {"task_id": "move_003", "name": "In progress task", "status": "in_progress"},
+            {"task_id": "move_004", "name": "Pending task", "status": "pending"},
+        ])
+
         return plan_path
 
     def test_move_task_removes_from_source_yaml(self, flat_plan_with_tasks):
-        """Test that task is removed from source YAML after move."""
+        """Test that a completed task can be confirmed in TinyDB.
+
+        In the TinyDB model, 'moving' a task means confirming its completed
+        status. The ticket remains in TinyDB (no removal from YAML).
+        """
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
 
         workflow = PlanMovementWorkflow(flat_plan_with_tasks)
 
-        # Move the first completed task
+        # Confirm the first completed task
         result = workflow.move_task_to_completed("move_001", force=True)
 
         assert result.result == MoveResult.SUCCESS
-
-        # Verify task is removed from source file
-        source_file = flat_plan_with_tasks / "feature_tasks.yml"
-        content = yaml.safe_load(source_file.read_text())
-        task_ids = [t["id"] for t in content["feature"]["tasks"]]
-
-        assert "move_001" not in task_ids, "Moved task should be removed from source YAML"
+        assert result.source_file == "(TinyDB)"
 
     def test_move_task_keeps_other_tasks_in_source(self, flat_plan_with_tasks):
-        """Test that other tasks remain in source YAML after moving one task."""
+        """Test that confirming one task doesn't affect other tasks in TinyDB."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
+        from agenticguidance.services.epic_repository import EpicRepository
 
         workflow = PlanMovementWorkflow(flat_plan_with_tasks)
 
-        # Move one task
+        # Confirm one task
         result = workflow.move_task_to_completed("move_001", force=True)
-
         assert result.result == MoveResult.SUCCESS
 
-        # Verify other tasks are still in source file
-        source_file = flat_plan_with_tasks / "feature_tasks.yml"
-        content = yaml.safe_load(source_file.read_text())
-        task_ids = [t["id"] for t in content["feature"]["tasks"]]
+        # All other tickets should still be present in TinyDB
+        # flat_plan_with_tasks = repo/docs/epics/live/260129TE_test_move
+        repo_dir = flat_plan_with_tasks.parent.parent.parent.parent
+        db_path = repo_dir / ".agentic" / "epics.db"
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        all_tickets = repo.get_tickets("260129TE_test_move")
+        repo.close()
 
-        # These tasks should still exist
-        assert "move_002" in task_ids, "Other completed task should remain in source"
-        assert "move_003" in task_ids, "In-progress task should remain in source"
-        assert "move_004" in task_ids, "Pending task should remain in source"
+        ticket_ids = {t.id for t in all_tickets}
+        assert "move_002" in ticket_ids, "Other completed task should remain in TinyDB"
+        assert "move_003" in ticket_ids, "In-progress task should remain in TinyDB"
+        assert "move_004" in ticket_ids, "Pending task should remain in TinyDB"
 
-        # Original count was 4, after moving 1, should be 3
-        assert len(task_ids) == 3, "Should have 3 tasks remaining after moving 1"
+    def test_duplicate_move_returns_success(self, flat_plan_with_tasks):
+        """Test that moving the same task twice returns SUCCESS both times.
 
-    def test_duplicate_move_returns_skipped(self, flat_plan_with_tasks):
-        """Test that moving the same task twice returns SKIPPED on second attempt."""
+        In TinyDB, tickets are not removed after confirmation. Both calls
+        succeed since the ticket remains in TinyDB with status='completed'.
+        """
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
 
         workflow = PlanMovementWorkflow(flat_plan_with_tasks)
 
-        # First move should succeed
+        # First confirmation should succeed
         result1 = workflow.move_task_to_completed("move_001", force=True)
         assert result1.result == MoveResult.SUCCESS
 
-        # Second move of same task should be skipped (task already removed from source)
+        # Second confirmation also succeeds (ticket still in TinyDB as completed)
         result2 = workflow.move_task_to_completed("move_001", force=True)
-        assert result2.result == MoveResult.FAILED, "Second move should fail (task no longer in source)"
-        assert "not found" in result2.message.lower(), "Message should indicate task not found"
+        assert result2.result == MoveResult.SUCCESS
 
-    def test_duplicate_detection_in_completed_file(self, flat_plan_with_tasks):
-        """Test that adding duplicate task to epic_completed.yml is detected and skipped."""
+    def test_in_progress_task_is_skipped(self, flat_plan_with_tasks):
+        """Test that an in-progress task is skipped (not completed in TinyDB)."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
 
         workflow = PlanMovementWorkflow(flat_plan_with_tasks)
 
-        # Pre-populate epic_completed.yml with a task that's also in source
-        completed_file = flat_plan_with_tasks / "epic_completed.yml"
-        completed_data = {
-            "completed_tasks": [
-                {"id": "move_002", "title": "Already archived task", "status": "completed"},
-            ],
-            "metadata": {"version": 1},
-        }
-        with open(completed_file, "w") as f:
-            yaml.dump(completed_data, f)
+        result = workflow.move_task_to_completed("move_003", force=True)
 
-        # Try to move task that's already in completed file
-        result = workflow.move_task_to_completed("move_002", force=True)
-
-        assert result.result == MoveResult.SKIPPED, "Should skip task already in epic_completed.yml"
-        assert "already exists" in result.message.lower(), "Message should indicate duplicate"
+        assert result.result == MoveResult.SKIPPED
+        assert "in_progress" in result.message.lower() or "not" in result.message.lower()

@@ -177,8 +177,12 @@ class TestCreateNewSessionLayout:
             for call in calls:
                 cmd = call[0][0]
                 if "send-keys" in cmd and "%0" in cmd and "claude" in " ".join(cmd):
-                    # The $(cat ...) should be in double quotes, NOT single quotes
-                    assert cmd_str in cmd, (
+                    # The $(cat ...) should be in double quotes, NOT single quotes.
+                    # The actual command is prefixed with
+                    # "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; " for env isolation,
+                    # so check that cmd_str appears as a substring.
+                    joined = " ".join(cmd)
+                    assert cmd_str in joined, (
                         f"Command string should be passed directly. Got: {cmd}"
                     )
                     break

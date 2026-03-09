@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import typer
@@ -26,6 +27,13 @@ from rich.table import Table
 # Import from AgenticGuidance
 from agenticguidance.services.ralph import EpicAction, EpicInfo, RalphLoopService
 from agenticguidance.services.question import QuestionQueue
+from agenticcli.utils.session_id import generate_session_id
+from agenticcli.utils.session_state import mark_failed
+from agenticcli.utils.state_store import StateStore
+
+# StateStore for tracking Ralph-spawned sessions alongside regular sessions
+# so they appear in `agentic session list` and get structured diagnostics (P6_002).
+_session_store = StateStore("sessions", id_key="session_id")
 
 app = typer.Typer(
     name="ralph",
@@ -103,6 +111,29 @@ def get_default_ralph_prompt() -> Path:
     return None
 
 
+def _update_ralph_session_store(loop_id: str, final_status: str) -> None:
+    """Update the StateStore session record for a Ralph loop.
+
+    Finds the session record by ralph_loop_id and marks it with the final
+    status and end timestamp.  Best-effort — failures are logged but do
+    not interrupt the caller.
+
+    Args:
+        loop_id: The Ralph loop_id used to locate the session record.
+        final_status: Final session status (e.g., 'stopped', 'completed', 'failed').
+    """
+    try:
+        records = _session_store.list_all(
+            filter_fn=lambda r: r.get("ralph_loop_id") == loop_id
+        )
+        for record in records:
+            record["status"] = final_status
+            record["ended_at"] = datetime.now().isoformat()
+            _session_store.save(record)
+    except Exception:
+        pass  # Best-effort; don't mask the caller's operation
+
+
 @app.command()
 def start(
     prompt_file: str = typer.Option(None, "--prompt-file", "-p", help="Custom prompt file"),
@@ -168,6 +199,7 @@ def start(
             )
 
         from agenticcli.utils.sdk_runner import run_agent_sync as _ralph_sdk_run
+        from agenticcli.utils.transport import SDK_DIRECT as _RALPH_TRANSPORT
         try:
             from claude_agent_sdk import ClaudeAgentOptions as _RalphOptions
             from agenticcli.utils.subprocess_utils import get_clean_env
@@ -175,8 +207,27 @@ def start(
         except ImportError:
             sdk_options = None
 
-        state.transport = "sdk"
+        state.transport = _RALPH_TRANSPORT
         service._save_state(state)
+
+        # Create StateStore session record so Ralph SDK sessions appear in
+        # `agentic session list` and get structured failure tracking (P6_002).
+        ralph_session_id = generate_session_id()
+        session_data = {
+            "session_id": ralph_session_id,
+            "type": "ralph",
+            "pid": None,
+            "prompt": prompt_content[:500],
+            "status": "running",
+            "started_at": datetime.now().isoformat(),
+            "ended_at": None,
+            "background": True,
+            "working_dir": str(Path.cwd()),
+            "transport": _RALPH_TRANSPORT,
+            "ralph_loop_id": state.loop_id,
+            "max_iterations": max_iterations,
+        }
+        _session_store.save(session_data)
 
         console.print("[green]Ralph loop started (SDK)[/green]")
         console.print(f"[cyan]Loop ID:[/cyan] {state.loop_id}")
@@ -187,7 +238,21 @@ def start(
 
         # Run agent synchronously (blocks until loop completes or fails)
         sdk_result = _ralph_sdk_run(prompt_content, sdk_options, timeout_seconds=3600)
-        service.stop_loop("completed" if sdk_result.status == "completed" else "failed")
+        final_status = "completed" if sdk_result.status == "completed" else "failed"
+        service.stop_loop(final_status)
+
+        # Update StateStore session record with completion info (P6_002)
+        session_data["status"] = final_status
+        session_data["ended_at"] = datetime.now().isoformat()
+        if final_status == "failed":
+            mark_failed(
+                session_data,
+                error_code="sdk_failure",
+                error_type="unknown",
+                detail=getattr(sdk_result, "result", "Ralph SDK run failed"),
+                retryable=False,
+            )
+        _session_store.save(session_data)
         return
 
     # tmux path: required for foreground (interactive) mode and SDK-unavailable fallback
@@ -217,18 +282,51 @@ def start(
         claude_cmd = 'claude --dangerously-skip-permissions -p "Run: agentic session orchestrate ralph next -j and execute the returned action"'
 
     # Spawn tmux session
-    from agenticcli.utils.subprocess_utils import get_clean_env
+    # Must unset CLAUDECODE vars inside the tmux session because the tmux
+    # server inherits its env from the parent (Claude Code) process.
+    # Passing env= to subprocess.run only cleans the tmux client env,
+    # not the server env that new sessions inherit from.
+    wrapped_cmd = f"unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; {claude_cmd}"
 
     result = subprocess.run(
-        ["tmux", "new-session", "-d", "-s", session_name, claude_cmd],
+        ["tmux", "new-session", "-d", "-s", session_name,
+         "bash", "-c", wrapped_cmd],
         capture_output=True,
         text=True,
-        env=get_clean_env(),
     )
+
+    # Create StateStore session record for tmux-spawned Ralph session so it
+    # appears in `agentic session list` and gets structured diagnostics (P6_002).
+    ralph_session_id = generate_session_id()
+    session_data = {
+        "session_id": ralph_session_id,
+        "type": "ralph",
+        "pid": None,
+        "prompt": claude_cmd[:500],
+        "status": "starting",
+        "started_at": datetime.now().isoformat(),
+        "ended_at": None,
+        "background": background,
+        "working_dir": str(Path.cwd()),
+        "transport": "tmux",
+        "tmux_session": session_name,
+        "ralph_loop_id": state.loop_id,
+        "max_iterations": max_iterations,
+    }
+    _session_store.save(session_data)
 
     if result.returncode != 0:
         console.print("[red]Error:[/red] Failed to create tmux session")
         console.print(f"[dim]{result.stderr}[/dim]")
+        # Update StateStore with failure info (P6_002)
+        mark_failed(
+            session_data,
+            error_code="tmux_spawn_failed",
+            error_type="unknown",
+            detail=f"tmux new-session failed: {result.stderr[:300]}",
+            retryable=True,
+        )
+        _session_store.save(session_data)
         service.stop_loop("failed")
         raise typer.Exit(1)
 
@@ -242,12 +340,26 @@ def start(
         console.print("[red]Error:[/red] tmux session exited immediately")
         console.print("[dim]This usually means the claude command failed to start.[/dim]")
         console.print("[dim]Check that 'claude' CLI is properly installed and configured.[/dim]")
+        # Update StateStore with failure info (P6_002)
+        mark_failed(
+            session_data,
+            error_code="tmux_exit_immediate",
+            error_type="unknown",
+            detail="tmux session exited immediately after creation — likely claude startup failure",
+            retryable=True,
+            suggested_action="retry_clean_env",
+        )
+        _session_store.save(session_data)
         service.stop_loop("failed")
         raise typer.Exit(1)
 
     # Update state with tmux session
     state.tmux_session = session_name
     service._save_state(state)
+
+    # Mark session as running now that tmux is verified alive
+    session_data["status"] = "running"
+    _session_store.save(session_data)
 
     console.print("[green]Ralph loop started[/green]")
     console.print(f"[cyan]Loop ID:[/cyan] {state.loop_id}")
@@ -313,6 +425,10 @@ def stop(
 
     # Update state
     service.stop_loop("user_requested")
+
+    # Update StateStore session record for the Ralph session (P6_002)
+    _update_ralph_session_store(state.loop_id, "stopped")
+
     console.print("[green]Ralph loop stopped[/green]")
 
 

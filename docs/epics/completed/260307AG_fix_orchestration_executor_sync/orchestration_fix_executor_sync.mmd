@@ -1,0 +1,55 @@
+%% =============================================================================
+%% GOAL: Fix orchestration executor so it correctly syncs MMD phase status with
+%% actual ticket completion state, parses PHASES metadata correctly, and handles
+%% stuck "in_progress" phases. These bugs caused the executor to report "All
+%% phases finished" with 0 phases completed while 16 tickets remained pending.
+%%
+%% ROOT CAUSE ANALYSIS:
+%%   Bug 1: MMD STATUS out of sync — ExecutionRunner marks phases "completed"
+%%          in the MMD without verifying all tickets in that phase are done.
+%%          Prior run marked P2-P7 as completed despite 16 tickets still proposed.
+%%   Bug 2: PHASES parsing fails — MMD uses "%%   P1: Description" format but
+%%          parser regex expects "%% 1. phase_id - Description". routing["phases"]
+%%          is always empty, falling back to STATUS key order.
+%%   Bug 3: No reconciliation — No mechanism to detect a stuck "in_progress"
+%%          phase or reconcile MMD status with ticket reality on startup.
+%%
+%% =============================================================================
+%% PROFILE: Orchestration-fix_executor_sync
+%% INPUT_SOURCE: TinyDB epic=260307AG_fix_orchestration_executor_sync
+%%
+%% PHASES:
+%%   P1: Fix PHASES Parsing and MMD-Ticket Reconciliation
+%%   P2: Testing
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> test-builder
+%% STATUS: P1=completed, P2=completed
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> Phase1
+
+    subgraph P1_SG ["Fix PHASES Parsing and MMD-Ticket Reconciliation"]
+        Phase1[Enter Fix Phase] --> Task_P1_1[T1_1: Fix PHASES regex to match P1 colon format]
+        Task_P1_1 --> Task_P1_2[T1_2: Add reconcile_mmd_status that cross-checks tickets]
+        Task_P1_2 --> Task_P1_3[T1_3: Call reconciliation at start of _execute_plan]
+        Task_P1_3 --> Task_P1_4[T1_4: Fix 260305AG MMD STATUS to match ticket reality]
+        Task_P1_4 --> Phase1Complete[Fix Phase Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    subgraph P2_SG ["Testing"]
+        Phase2[Enter Testing] --> Task_P2_1[T2_1: Unit tests for PHASES parsing formats]
+        Task_P2_1 --> Task_P2_2[T2_2: Unit tests for reconcile_mmd_status]
+        Task_P2_2 --> Task_P2_3[T2_3: Integration test executor with out-of-sync MMD]
+        Task_P2_3 --> Phase2Complete[Testing Complete]
+    end
+
+    Phase2Complete --> End((End))
+
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    class Start entrypoint
+    class End exitpoint

@@ -1,41 +1,44 @@
 # Plan Schema Definition
-# Defines the formal structure for planning YAML files used by planner agents.
+# Defines the formal structure for ticket and phase data used by planner agents.
 #
-# SCOPE: Schema definitions for ticket_build.yml, ticket_teach.yml, and related ticket files.
-# For MMD schemas, see: assets/specifications/plan-mmd-schema.yml
+# IMPORTANT: All ticket/phase data is stored in TinyDB, NOT as on-disk YAML files.
+# Agents MUST use CLI commands to create tickets and phases:
+#   agentic epic phase add --epic <folder> --name <phase> --agent <agent-type>
+#   agentic epic ticket add --epic <folder> --phase <phase> --id <id> --name <name>
+# Do NOT create ticket_*.yml, plan_*.yml, or orchestration_*.mmd files on disk.
+#
+# SCOPE: Schema definitions for TinyDB ticket/phase records.
 # For epic definitions, see: assets/definitions/plans.yml
 
-deprecation_note: |
-  TERMINOLOGY RENAME (2026-03-01): "plan files" (plan_*.yml) are now called "ticket files"
-  (ticket_*.yml). The containing folder is now called an "epic folder" (docs/epics/).
-  The schema structure itself is unchanged - only naming conventions have been updated.
-  Legacy plan_*.yml filenames are retained for backward compatibility during migration.
+storage_note: |
+  DATA STORE: TinyDB (sole authoritative store for all ticket/phase data).
+  LEGACY: ticket_build.yml, ticket_teach.yml, plan_*.yml files are DEPRECATED.
+  These on-disk YAML files are no longer created by agents. All data flows through
+  TinyDB via CLI commands. This schema defines the logical structure of records
+  regardless of storage backend.
 
 plan_schema:
   definition: |
-    A ticket file defines the scope, phases, tickets, and success criteria for an
-    implementation or teaching objective. Ticket files are YAML documents stored inside
-    epic folders (docs/epics/) that follow this schema to ensure consistency and enable
-    orchestration agents to parse and execute epics.
+    Ticket and phase records define the scope, phases, tickets, and success criteria for an
+    implementation or teaching objective. Records are stored in TinyDB and accessed via CLI
+    commands. This schema ensures consistency and enables orchestration agents to parse and
+    execute epics.
 
-  file_types:
-    ticket_build:
+  record_types:
+    build_tickets:
       description: "Implementation tickets for code changes, features, or bug fixes"
-      filename_pattern: "ticket_build.yml"
       primary_use: "build-python, build-flutter agents"
-      legacy_name: "plan_build.yml"
+      cli_command: "agentic epic ticket add --epic <folder> --phase Build --id <id> --name <name>"
 
-    ticket_teach:
+    teach_tickets:
       description: "Teaching tickets for guidance updates, process improvements"
-      filename_pattern: "ticket_teach.yml"
       primary_use: "teacher-update-guidance, teacher-update-assets agents"
-      legacy_name: "plan_teach.yml"
+      cli_command: "agentic epic ticket add --epic <folder> --phase Teach --id <id> --name <name>"
 
-    ticket_test:
+    test_tickets:
       description: "Test strategy tickets for validation and coverage"
-      filename_pattern: "ticket_test.yml"
       primary_use: "test-builder, test-runner agents"
-      legacy_name: "plan_test.yml"
+      cli_command: "agentic epic ticket add --epic <folder> --phase Test --id <id> --name <name>"
 
 # =============================================================================
 # CORE PLAN STRUCTURE

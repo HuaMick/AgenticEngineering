@@ -1,8 +1,9 @@
 name: orchestration-loop
 description: |
   Full-lifecycle orchestration loop. Discovers all live epics, runs planning
-  for epics missing orchestration MMDs, executes epics that have MMDs, and
-  archives completed epics. Loops until all live epics are completed or blocked.
+  for epics missing TinyDB phase records, executes epics that have phases
+  with agent routing, and archives completed epics. Loops until all live
+  epics are completed or blocked.
 version: "1.0"
 
 purpose: |
@@ -11,8 +12,8 @@ purpose: |
   or orchestration-executor (execute only), this agent runs the full lifecycle:
 
   1. Discover all live epics
-  2. For epics without MMDs: spawn orchestration-planning
-  3. For epics with MMDs: spawn orchestration-executor
+  2. For epics without TinyDB phases: spawn orchestration-planning
+  3. For epics with TinyDB phases and agent routing: spawn orchestration-executor
   4. Archive completed epics
   5. Repeat until all epics are completed or blocked
 
@@ -21,12 +22,12 @@ purpose: |
 
 spawns:
   - agent: "orchestration-planning"
-    purpose: "Plan creation and approval for epics missing orchestration MMDs"
-    when: "Epic has no orchestration_*.mmd file"
+    purpose: "Plan creation and approval for epics missing TinyDB phase records with agent routing"
+    when: "Epic has no TinyDB phases or phases lack agent routing"
 
   - agent: "orchestration-executor"
-    purpose: "Execute approved epics that have orchestration MMDs"
-    when: "Epic has orchestration_*.mmd file and is not 100% complete"
+    purpose: "Execute approved epics that have TinyDB phases with agent routing"
+    when: "Epic has TinyDB phases with agent routing and is not 100% complete"
 
 inputs:
   - type: "file"

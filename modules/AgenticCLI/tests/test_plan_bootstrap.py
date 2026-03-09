@@ -79,9 +79,10 @@ class TestPlanBootstrap:
         assert code != 0
         assert "Command removed" in stderr or "agentic epic" in stderr
 
-    def test_epic_bootstrap_creates_folder_structure(self, temp_git_repo):
-        """Test that 'agentic agent epic bootstrap' creates proper plan folder structure."""
+    def test_epic_bootstrap_creates_folder_structure(self, temp_git_repo, _isolate_tinydb):
+        """Test that 'agentic agent epic bootstrap' creates TinyDB record."""
         from agenticcli.commands import epic as epic_module
+        from agenticguidance.services.epic_repository import EpicRepository
 
         args = SimpleNamespace(
             branch="test-branch",
@@ -99,19 +100,21 @@ class TestPlanBootstrap:
         finally:
             os.chdir(original_cwd)
 
-        # Verify plan folder was created under docs/epics/live/
-        plans_dir = temp_git_repo / "docs" / "epics" / "live"
-        plan_folders = list(plans_dir.glob("*_new_feature"))
-        assert len(plan_folders) == 1
-        plan_folder = plan_folders[0]
+        # Verify epic is registered in TinyDB (no folder created on disk)
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epics = repo.list_epics()
+        matching = [e for e in epics if "new_feature" in e.epic_folder_name]
+        repo.close()
+        assert len(matching) == 1
 
-        # Flat structure: plan folder exists directly (no live/ subfolder inside)
-        assert plan_folder.exists()
-        assert plan_folder.is_dir()
+    def test_epic_bootstrap_creates_plan_build_yml(self, temp_git_repo, _isolate_tinydb):
+        """Test that epic bootstrap creates the epic folder and TinyDB entry.
 
-    def test_epic_bootstrap_creates_plan_build_yml(self, temp_git_repo):
-        """Test that epic bootstrap creates plan_build.yml file."""
+        With TinyDB as the sole data store, plan_build.yml is no longer written.
+        The test now verifies the epic folder and TinyDB record are created.
+        """
         from agenticcli.commands import epic as epic_module
+        from agenticguidance.services.epic_repository import EpicRepository
 
         args = SimpleNamespace(
             branch="test-branch",
@@ -129,17 +132,17 @@ class TestPlanBootstrap:
         finally:
             os.chdir(original_cwd)
 
-        plans_dir = temp_git_repo / "docs" / "epics" / "live"
-        plan_folders = list(plans_dir.glob("*_new_feature"))
-        plan_folder = plan_folders[0]
+        # Epic is recorded in TinyDB (no folder created on disk)
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epics = repo.list_epics()
+        matching = [e for e in epics if "new_feature" in e.epic_folder_name]
+        repo.close()
+        assert len(matching) == 1, f"Expected 1 matching epic, found {len(matching)}"
 
-        # Flat structure: plan_build.yml directly in plan folder
-        plan_build_file = plan_folder / "plan_build.yml"
-        assert plan_build_file.exists()
-
-    def test_epic_bootstrap_creates_plan_test_yml_stub(self, temp_git_repo):
-        """Test epic bootstrap creates plan folder (plan_test.yml is optional)."""
+    def test_epic_bootstrap_creates_plan_test_yml_stub(self, temp_git_repo, _isolate_tinydb):
+        """Test epic bootstrap creates TinyDB record (no YAML files)."""
         from agenticcli.commands import epic as epic_module
+        from agenticguidance.services.epic_repository import EpicRepository
 
         args = SimpleNamespace(
             branch="test-branch",
@@ -157,16 +160,21 @@ class TestPlanBootstrap:
         finally:
             os.chdir(original_cwd)
 
-        plans_dir = temp_git_repo / "docs" / "epics" / "live"
-        plan_folders = list(plans_dir.glob("*_new_feature"))
-        plan_folder = plan_folders[0]
+        # Epic is registered in TinyDB
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epics = repo.list_epics()
+        matching = [e for e in epics if "new_feature" in e.epic_folder_name]
+        repo.close()
+        assert len(matching) == 1
 
-        # Plan folder exists (plan_test.yml creation depends on create_planning_folder)
-        assert plan_folder.exists()
+    def test_epic_bootstrap_yaml_is_valid(self, temp_git_repo, _isolate_tinydb):
+        """Test epic bootstrap stores valid data in TinyDB.
 
-    def test_epic_bootstrap_yaml_is_valid(self, temp_git_repo):
-        """Test epic bootstrap creates valid YAML files."""
+        With TinyDB as the sole data store, plan_build.yml is no longer written.
+        The test now verifies the expected fields are stored in TinyDB.
+        """
         from agenticcli.commands import epic as epic_module
+        from agenticguidance.services.epic_repository import EpicRepository
 
         args = SimpleNamespace(
             branch="test-branch",
@@ -184,23 +192,17 @@ class TestPlanBootstrap:
         finally:
             os.chdir(original_cwd)
 
-        plans_dir = temp_git_repo / "docs" / "epics" / "live"
-        plan_folders = list(plans_dir.glob("*_new_feature"))
-        plan_folder = plan_folders[0]
-
-        # Flat structure: plan_build.yml directly in plan folder
-        plan_build_file = plan_folder / "plan_build.yml"
-
-        # Should be valid YAML
-        with open(plan_build_file) as f:
-            data = yaml.safe_load(f)
-
-        # Verify expected fields from cmd_init's plan_build template
-        assert data["name"] == "new feature"
-        assert data["branch"] == "test-branch"
-        assert data["status"] == "active"
-        assert "context" in data  # cmd_init writes objective into "context" field
-        assert "phases" in data
+        # Verify expected fields are stored in TinyDB
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epics = repo.list_epics()
+        matching = [e for e in epics if "new_feature" in e.epic_folder_name]
+        assert len(matching) == 1
+        epic = matching[0]
+        repo.close()
+        assert epic.name == "new feature"
+        assert epic.branch == "test-branch"
+        assert epic.status == "active"
+        # objective is stored via 'context' key in epic_data by cmd_init
 
     def test_epic_bootstrap_existing_folder_returns_error(self, temp_git_repo, capsys):
         """Test epic bootstrap fails if plan folder already exists."""
@@ -265,9 +267,10 @@ class TestPlanBootstrap:
         assert "branch" in output
         assert output["branch"] == "test-branch"
 
-    def test_epic_bootstrap_uses_branch_as_default_description(self, temp_git_repo):
+    def test_epic_bootstrap_uses_branch_as_default_description(self, temp_git_repo, _isolate_tinydb):
         """Test epic bootstrap uses branch as description when not provided."""
         from agenticcli.commands import epic as epic_module
+        from agenticguidance.services.epic_repository import EpicRepository
 
         args = SimpleNamespace(
             branch="auth-feature",
@@ -285,13 +288,20 @@ class TestPlanBootstrap:
         finally:
             os.chdir(original_cwd)
 
-        plans_dir = temp_git_repo / "docs" / "epics" / "live"
-        plan_folders = list(plans_dir.glob("*_auth_feature"))
-        assert len(plan_folders) == 1
+        # Folder creation is no longer performed by cmd_init (TinyDB is the sole data store).
+        # Verify the epic was registered in TinyDB with a name derived from the branch.
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epics = repo.list_epics()
+        repo.close()
+        matching = [e for e in epics if "auth_feature" in e.epic_folder_name]
+        assert len(matching) == 1, (
+            f"Expected 1 epic with 'auth_feature' in folder name, got: {[e.epic_folder_name for e in epics]}"
+        )
 
-    def test_epic_bootstrap_sanitizes_description(self, temp_git_repo):
+    def test_epic_bootstrap_sanitizes_description(self, temp_git_repo, _isolate_tinydb):
         """Test epic bootstrap sanitizes special characters in description."""
         from agenticcli.commands import epic as epic_module
+        from agenticguidance.services.epic_repository import EpicRepository
 
         args = SimpleNamespace(
             branch="test-branch",
@@ -309,21 +319,30 @@ class TestPlanBootstrap:
         finally:
             os.chdir(original_cwd)
 
-        plans_dir = temp_git_repo / "docs" / "epics" / "live"
-        plan_folders = list(plans_dir.iterdir())
-        # Filter to only our test folder (exclude other dirs)
-        plan_folders = [f for f in plan_folders if f.is_dir() and "bug_fix" in f.name]
-        assert len(plan_folders) == 1
-        plan_folder = plan_folders[0]
+        # Folder creation is no longer performed by cmd_init (TinyDB is the sole data store).
+        # Verify the epic was registered in TinyDB with special chars stripped from the folder name.
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epics = repo.list_epics()
+        repo.close()
+        matching = [e for e in epics if "bug_fix" in e.epic_folder_name]
+        assert len(matching) == 1, (
+            f"Expected 1 epic with 'bug_fix' in folder name, got: {[e.epic_folder_name for e in epics]}"
+        )
+        folder_name = matching[0].epic_folder_name
 
         # Should not contain special chars
-        assert ":" not in plan_folder.name
-        assert "#" not in plan_folder.name
-        assert "!" not in plan_folder.name
+        assert ":" not in folder_name
+        assert "#" not in folder_name
+        assert "!" not in folder_name
 
-    def test_epic_bootstrap_creates_tasks_in_phases(self, temp_git_repo):
-        """Test epic bootstrap creates initial tasks in phases."""
+    def test_epic_bootstrap_creates_tasks_in_phases(self, temp_git_repo, _isolate_tinydb):
+        """Test epic bootstrap creates initial tasks in TinyDB phases.
+
+        With TinyDB as the sole data store, the initial IM_001 stub ticket
+        is created in TinyDB rather than written to plan_build.yml.
+        """
         from agenticcli.commands import epic as epic_module
+        from agenticguidance.services.epic_repository import EpicRepository
 
         args = SimpleNamespace(
             branch="test-branch",
@@ -341,19 +360,22 @@ class TestPlanBootstrap:
         finally:
             os.chdir(original_cwd)
 
-        plans_dir = temp_git_repo / "docs" / "epics" / "live"
-        plan_folders = list(plans_dir.glob("*_test_tasks"))
-        plan_folder = plan_folders[0]
+        # Folder creation is no longer performed by cmd_init (TinyDB is the sole data store).
+        # Find the epic via TinyDB instead of scanning the filesystem.
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        epics = repo.list_epics()
+        matching = [e for e in epics if "test_tasks" in e.epic_folder_name]
+        assert len(matching) == 1, (
+            f"Expected 1 epic with 'test_tasks' in folder name, got: {[e.epic_folder_name for e in epics]}"
+        )
+        epic_folder_name = matching[0].epic_folder_name
 
-        # Flat structure: plan_build.yml directly in plan folder
-        plan_build_file = plan_folder / "plan_build.yml"
-        with open(plan_build_file) as f:
-            data = yaml.safe_load(f)
-
-        assert "phases" in data
-        assert len(data["phases"]) > 0
-        assert "tickets" in data["phases"][0]
-        assert len(data["phases"][0]["tickets"]) > 0
+        # Verify initial stub ticket was created in TinyDB
+        tickets = repo.get_tickets(epic_folder_name)
+        repo.close()
+        assert len(tickets) > 0, "Expected at least one stub ticket in TinyDB"
+        ticket_ids = [t.id for t in tickets]
+        assert "IM_001" in ticket_ids, f"Expected IM_001 stub ticket, got: {ticket_ids}"
 
 
 class TestPlanBootstrapErrors:

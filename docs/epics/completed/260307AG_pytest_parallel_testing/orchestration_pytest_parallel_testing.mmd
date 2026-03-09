@@ -1,0 +1,152 @@
+%% =============================================================================
+%% GOAL: Execute plan tasks
+%% =============================================================================
+%% PROFILE: Orchestration-pytest-parallel-testing
+%% INPUT_SOURCE: TinyDB epic=260307AG_pytest_parallel_testing
+%%
+%% PHASES:
+%%   P1: Initial Research and Planning
+%%   P2: Baseline & Dependencies
+%%   P3: AgenticCLI Parallel Configuration
+%%   P4: AgenticGuidance Parallel Configuration
+%%   P5: Makefile & Developer Ergonomics
+%%   P6: UAT
+%%
+%% AGENT_ROUTING: P1 -> build-python, P2 -> build-python, P3 -> build-python, P4 -> build-python, P5 -> build-python, P6 -> build-python
+%% STATUS: P1=in_progress, P2=pending, P3=pending, P4=pending, P5=pending, P6=pending
+%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
+%% =============================================================================
+
+flowchart LR
+    Start((Start)) --> LoadInputs[Load Context Inputs]
+
+    %% ========================================
+    %% INPUT VALIDATION PHASE
+    %% ========================================
+    LoadInputs --> ReviewInputs[Review All Listed Inputs]
+    ReviewInputs --> CheckInputs{All Inputs Found?}
+
+    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]
+    SearchInputs --> Found{Found?}
+    Found -- "Yes: Update paths" --> UpdateRefs[Update References]
+    UpdateRefs --> ReviewInputs
+    Found -- "No: Stop" --> AskUser((Ask User for Clarification))
+
+    CheckInputs -- "Yes: Verified" --> Phase1
+
+    %% ========================================
+    %% PHASE 1: INITIAL RESEARCH AND PLANNING
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: IM_001
+
+    subgraph P1_SG ["Initial Research and Planning"]
+        Phase1[Enter Initial Research and Planning] --> SpawnAgent1[Spawn build-python Agent]
+        SpawnAgent1 --> Task_P1_1[IM_001: Research existing implementation]
+        Task_P1_1 --> Phase1Complete[Initial Research and Planning Complete]
+    end
+
+    Phase1Complete --> Phase2
+
+    %% ========================================
+    %% PHASE 2: BASELINE & DEPENDENCIES
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: BL-001, BL-002, BL-003
+
+    subgraph P2_SG ["Baseline & Dependencies"]
+        Phase2[Enter Baseline & Dependencies] --> SpawnAgent2[Spawn build-python Agent]
+        SpawnAgent2 --> Task_P2_1[BL-001: Capture sequential baseline test execution times for both AgenticCLI and AgenticGuidance modules. Run full suites 3x each, record wall-clock averages. Store results in epic folder as baseline_metrics.md for comparison.]
+        Task_P2_1 --> Task_P2_2[BL-002: Add pytest-xdist>=3.0 to dev dependencies in both modules pyproject.toml. AgenticCLI: add to [project.optional-dependencies].dev and [dependency-groups].dev. AgenticGuidance: add to [project.optional-dependencies].dev. Run uv sync in both modules to install.]
+        Task_P2_2 --> Task_P2_3[BL-003: Add pytest-testmon>=2.0 to AgenticGuidance dev dependencies in pyproject.toml. Currently only AgenticCLI has testmon. Run uv sync to install. Verify testmon can run standalone in AgenticGuidance before xdist integration.]
+        Task_P2_3 --> Phase2Complete[Baseline & Dependencies Complete]
+    end
+
+    Phase2Complete --> Phase3
+
+    %% ========================================
+    %% PHASE 3: AGENTICCLI PARALLEL CONFIGURATION
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: CP-001, CP-002, CP-003, CP-004, CP-005
+
+    subgraph P3_SG ["AgenticCLI Parallel Configuration"]
+        Phase3[Enter AgenticCLI Parallel Configuration] --> SpawnAgent3[Spawn build-python Agent]
+        SpawnAgent3 --> Task_P3_1[CP-001: Add -n auto to AgenticCLI pytest addopts in pyproject.toml for parallel execution. Current addopts: "-m not uat --testmon". New: "-m not uat --testmon -n auto". Run full test suite and verify all tests pass. Target files: modules/AgenticCLI/pyproject.toml. Inputs: modules/AgenticCLI/tests/conftest.py, modules/AgenticCLI/pyproject.toml.]
+        Task_P3_1 --> Task_P3_2[CP-002: Audit and fix TinyDB isolation under xdist workers. The _isolate_tinydb autouse fixture in conftest.py uses tmp_path which is per-test — verify each xdist worker gets independent tmp_path directories. Test with -n 4 and check no DB file conflicts. Target files: modules/AgenticCLI/tests/conftest.py. Inputs: modules/AgenticCLI/tests/conftest.py.]
+        Task_P3_2 --> Task_P3_3[CP-003: Handle integration tests under xdist. The 18 integration tests in tests/integration/ use real CLI binary and tmux sessions which may conflict when parallel. Options: (a) mark with @pytest.mark.xdist_group("integration") to serialize them, or (b) use unique tmux session names per worker. Evaluate and implement safest approach. Target files: modules/AgenticCLI/tests/integration/conftest.py, modules/AgenticCLI/tests/integration/test_*.py. Inputs: modules/AgenticCLI/tests/integration/conftest.py.]
+        Task_P3_3 --> Task_P3_4[CP-004: Audit mock_cwd fixture and any os.chdir calls for xdist safety. The mock_cwd fixture changes working directory which is process-global. With xdist forking, each worker is a separate process so this should be safe, but verify no tests rely on shared CWD state. Also check _block_real_ntfy autouse fixture. Target files: modules/AgenticCLI/tests/conftest.py. Inputs: modules/AgenticCLI/tests/conftest.py.]
+        Task_P3_4 --> Task_P3_5[CP-005: Run full AgenticCLI test suite with -n auto and fix any failures. This is the test-fix-loop: run tests, identify failures caused by parallelization (not pre-existing), fix root cause, re-run. Loop max 5 iterations. All 1568 tests (minus UAT) must pass. Target files: modules/AgenticCLI/tests/. Inputs: modules/AgenticCLI/pyproject.toml, modules/AgenticCLI/tests/conftest.py.]
+        Task_P3_5 --> Phase3Complete[AgenticCLI Parallel Configuration Complete]
+    end
+
+    Phase3Complete --> Phase4
+
+    %% ========================================
+    %% PHASE 4: AGENTICGUIDANCE PARALLEL CONFIGURATION
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: GP-001, GP-002, GP-003
+
+    subgraph P4_SG ["AgenticGuidance Parallel Configuration"]
+        Phase4[Enter AgenticGuidance Parallel Configuration] --> SpawnAgent4[Spawn build-python Agent]
+        SpawnAgent4 --> Task_P4_1[GP-001: Configure xdist and testmon in AgenticGuidance pyproject.toml. Add to addopts: "--testmon -n auto". Current addopts: "-v --tb=short". New: "-v --tb=short --testmon -n auto". Target files: modules/AgenticGuidance/pyproject.toml. Inputs: modules/AgenticGuidance/pyproject.toml, modules/AgenticGuidance/tests/conftest.py.]
+        Task_P4_1 --> Task_P4_2[GP-002: Audit AgenticGuidance _isolate_tinydb and isolated_repo fixtures for xdist worker isolation. Verify each worker gets independent tmp_path and TinyDB instances. The isolated_repo fixture provides a pre-configured EpicRepository — confirm it is per-test scoped, not session-scoped. Target files: modules/AgenticGuidance/tests/conftest.py. Inputs: modules/AgenticGuidance/tests/conftest.py.]
+        Task_P4_2 --> Task_P4_3[GP-003: Run full AgenticGuidance test suite with -n auto and fix any failures. Test-fix-loop: run tests, identify parallelization failures, fix, re-run. Loop max 5 iterations. All 648 tests must pass. Target files: modules/AgenticGuidance/tests/. Inputs: modules/AgenticGuidance/pyproject.toml, modules/AgenticGuidance/tests/conftest.py.]
+        Task_P4_3 --> Phase4Complete[AgenticGuidance Parallel Configuration Complete]
+    end
+
+    Phase4Complete --> Phase5
+
+    %% ========================================
+    %% PHASE 5: MAKEFILE & DEVELOPER ERGONOMICS
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: ME-001, ME-002, ME-003, ME-004
+
+    subgraph P5_SG ["Makefile & Developer Ergonomics"]
+        Phase5[Enter Makefile & Developer Ergonomics] --> SpawnAgent5[Spawn build-python Agent]
+        SpawnAgent5 --> Task_P5_1[ME-001: Update AgenticCLI Makefile test targets for parallel-aware execution. Add new targets: test-fast (parallel with testmon), test-seq (sequential fallback for debugging). Update existing test target to use -n auto. Keep test-all target for coverage (coverage + xdist needs special handling). Target files: modules/AgenticCLI/Makefile. Inputs: modules/AgenticCLI/Makefile, modules/AgenticCLI/pyproject.toml.]
+        Task_P5_1 --> Task_P5_2[ME-002: Create AgenticGuidance Makefile with standard targets matching AgenticCLI pattern: test, test-all, test-fast, test-seq, lint, format, clean. Use UV_CACHE_DIR=/tmp/uv-cache uv run pattern. Target files: modules/AgenticGuidance/Makefile. Inputs: modules/AgenticCLI/Makefile, modules/AgenticGuidance/pyproject.toml.]
+        Task_P5_2 --> Task_P5_3[ME-003: Update AgenticCLI tests/README.md to document parallel testing: new make targets, how to run sequential for debugging (-p no:xdist), testmon usage, worker count override (-n 4 vs -n auto). Target files: modules/AgenticCLI/tests/README.md. Inputs: modules/AgenticCLI/tests/README.md.]
+        Task_P5_3 --> Task_P5_4[ME-004: Add clean targets for testmon and xdist artifacts. Update AgenticCLI clean target to include .testmondata removal. Add same to AgenticGuidance Makefile. Ensure .testmondata is in .gitignore if not already. Target files: modules/AgenticCLI/Makefile, modules/AgenticGuidance/Makefile, .gitignore. Inputs: modules/AgenticCLI/Makefile.]
+        Task_P5_4 --> Phase5Complete[Makefile & Developer Ergonomics Complete]
+    end
+
+    Phase5Complete --> Phase6
+
+    %% ========================================
+    %% PHASE 6: UAT
+    %% ========================================
+    %% AGENT_ROUTING: build-python agent
+    %% Tasks: UAT-001, UAT-002, UAT-003, UAT-004, UAT-005
+
+    subgraph P6_SG ["UAT"]
+        Phase6[Enter UAT] --> SpawnAgent6[Spawn build-python Agent]
+        SpawnAgent6 --> Task_P6_1[UAT-001: UAT: Full parallel suite execution for AgenticCLI. Run make test with -n auto. ALL tests must pass (zero regressions from baseline). Anchored to US-GD-060 (Execute Python Tests) and US-DEV-010 (Run Tests via Agent). Acceptance: all tests green, no test pollution, exit code 0. Strategy: test-user-simulator. Target files: modules/AgenticCLI/. Inputs: docs/epics/live/260307AG_pytest_parallel_testing/README.md.]
+        Task_P6_1 --> Task_P6_2[UAT-002: UAT: Full parallel suite execution for AgenticGuidance. Run pytest with -n auto. ALL tests must pass (zero regressions from baseline). Anchored to US-GD-060 (Execute Python Tests). Acceptance: all tests green, no test pollution, exit code 0. Strategy: test-user-simulator. Target files: modules/AgenticGuidance/. Inputs: docs/epics/live/260307AG_pytest_parallel_testing/README.md.]
+        Task_P6_2 --> Task_P6_3[UAT-003: UAT: Measure parallel speedup vs baseline. Run full suites 3x each in parallel mode, compute average wall-clock times. Compare against baseline_metrics.md from BL-001. Success: >=30%% wall-clock reduction in at least one module. Anchored to US-GD-061 (Smoke Test Strategy — fast feedback). Record final metrics in epic README. Strategy: test-user-simulator. Target files: docs/epics/live/260307AG_pytest_parallel_testing/README.md. Inputs: docs/epics/live/260307AG_pytest_parallel_testing/baseline_metrics.md.]
+        Task_P6_3 --> Task_P6_4[UAT-004: UAT: Validate testmon selective re-run under xdist. Modify a single source file in each module, run tests with --testmon -n auto, verify only affected tests execute (not full suite). Anchored to US-DEV-010 (Run Tests via Agent — fast feedback loop). Acceptance: testmon selects subset of tests, parallel execution works on subset. Strategy: test-user-simulator. Target files: modules/AgenticCLI/, modules/AgenticGuidance/. Inputs: modules/AgenticCLI/pyproject.toml, modules/AgenticGuidance/pyproject.toml.]
+        Task_P6_4 --> Task_P6_5[UAT-005: UAT: Verify developer ergonomics — Makefile targets. Run each new make target (test, test-fast, test-seq, test-all) in both modules and verify they work correctly. test-seq must run sequentially, test-fast must use parallel+testmon. Anchored to US-DEV-010, US-GD-062 (Test Execution Report). Strategy: test-user-simulator. Target files: modules/AgenticCLI/Makefile, modules/AgenticGuidance/Makefile. Inputs: modules/AgenticCLI/Makefile, modules/AgenticGuidance/Makefile.]
+        Task_P6_5 --> Phase6Complete[UAT Complete]
+    end
+
+
+    %% ========================================
+    %% FINALIZATION
+    %% ========================================
+    Phase6Complete --> UpdatePlanStatus[Update Plan Status: completed]
+    %% agentic epic move folder --plan <path>
+    UpdatePlanStatus --> ArchivePlan[Archive to docs/epics/completed/]
+    ArchivePlan --> End((End: Plan Complete))
+
+    %% ========================================
+    %% STYLING
+    %% ========================================
+    classDef entrypoint fill:#90EE90,stroke:#228B22
+    classDef exitpoint fill:#FFB6C1,stroke:#DC143C
+    classDef userpoint fill:#87CEEB,stroke:#4682B4
+    classDef keyaction fill:#FFD700,stroke:#DAA520
+    class Start entrypoint
+    class End exitpoint
+    class AskUser userpoint

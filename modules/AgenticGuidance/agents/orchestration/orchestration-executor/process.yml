@@ -1,7 +1,7 @@
 process:
   goal: |
-    Execute pre-approved plans by reading Plan-MMD flowcharts and dynamically
-    routing to appropriate agents based on AGENT_ROUTING metadata.
+    Execute pre-approved plans by reading TinyDB phase records and dynamically
+    routing to appropriate agents based on the phase.agent field.
 
   profile: "orchestrator"
 
@@ -20,7 +20,7 @@ process:
     - name: "phase_report"
       description: "Status of each phase with timestamps"
     - name: "state_updates"
-      description: "Updated STATUS in MMD header and plan YAML files"
+      description: "Updated phase status records in TinyDB"
     - name: "remediation_plans_spawned"
       description: "List of new planning folders created for out-of-scope errors discovered during execution"
       schema:
@@ -106,7 +106,7 @@ process:
       description: |
         REQUIRED INPUTS (from inputs.yml):
         1. epic_folder_path (string, required)
-           - Path to epic folder with YAML and MMD files
+           - Path to epic folder (phases and tickets stored in TinyDB)
            - ERROR if missing: "STOP: No epic_folder_path provided."
 
         2. target_project_path (string, required)
@@ -115,64 +115,126 @@ process:
 
         If ANY required input is missing, report error and STOP.
 
-    - id: "startup_load_mmd"
-      name: "Discover and Load Plan-MMD File"
+    - id: "startup_load_phases"
+      name: "Load Phase Index from TinyDB (JIT)"
       description: |
-        PATH SEMANTICS:
-        - Input: epic_folder_path = the epic folder (e.g., "docs/epics/live/260110Repo_feature")
-        - Files are located directly in the epic folder root: <epic_folder_path>/orchestration_*.mmd
+        JUST-IN-TIME MANIFEST LOADING:
+        Load ONLY the phase index at startup — NOT full ticket descriptions.
+        Full ticket details are loaded per-phase when spawning agents.
 
-        MMD DISCOVERY PROCESS:
-        1. Search for orchestration_*.mmd file in {epic_folder_path}/
-        2. If multiple .mmd files found, use the one matching epic_id pattern
-        3. If NO .mmd file found: ERROR "No orchestration MMD found in {epic_folder_path}/"
+        STARTUP LOAD (compact, ~10 KB):
+        - Extract the epic folder name from the epic_folder_path
+          (e.g., "docs/epics/live/260110Repo_feature" -> "260110Repo_feature")
+        - Load phase index: `agentic -j epic ticket list --epic {epic_folder_name}`
+        - From the JSON response, extract ONLY:
+          - Phase names and their execution order
+          - Per-phase agent routing (phase.agent field)
+          - Per-phase status (phase.status field)
+          - Feedback triggers (phase.feedback_triggers field)
+          - Max iterations (phase.max_iterations field)
+        - Do NOT read full ticket descriptions, success_criteria, or inputs yet
 
-        MMD PARSING:
-        5. Parse Mermaid flowchart structure
-        6. Extract metadata comments:
-           - GOAL: Plan objective
-           - PROFILE: Should be "orchestrator"
-           - PHASES: List of phase names
-           - AGENT_ROUTING: Phase-to-agent mappings (e.g., "Build -> builder")
-           - FEEDBACK_TRIGGER: Trigger-to-target mappings
-           - STATUS: Current phase statuses
-           - LOOP_DEFINITION: Reference to agent-loops.yml
-           - MAX_ITERATIONS: Retry limit
+        PER-PHASE LOAD (on demand, ~15 KB per phase):
+        When the executor is about to spawn agents for a specific phase:
+        1. Load that phase's ticket details (description, success_criteria, inputs)
+        2. Pass ticket context to the spawned agent
+        3. After agent completes: DISCARD the loaded ticket content from context
+        4. Write outcome summary to execution_state.yml instead
 
-        ERROR if MMD file not found or malformed.
+        CONTEXT IMPACT:
+        - Old approach: ~100 KB loaded at startup (all 6 plan files)
+        - New approach: ~10 KB at startup + ~15 KB per active phase
+        - Savings: 75-85 KB reduction in initial context load
 
-    - id: "startup_load_yaml"
-      name: "Load Plan YAML File"
+        FENCE: JIT LOADING CONSTRAINT
+        Do NOT load all ticket YAML files or full ticket descriptions during
+        the startup sequence. Load ticket details only when needed for the
+        current phase, then discard after summarisation.
+
+        ERROR if TinyDB returns no phases or the epic does not exist.
+
+    - id: "startup_validate_phases"
+      name: "Validate Phase Data"
       description: |
-        1. Locate ticket_*.yml in {epic_folder_path}/ (same directory as MMD)
-        2. Parse phases and tickets
-        3. Extract success criteria
-        4. Verify alignment with MMD phases
+        Validate loaded phase records from TinyDB:
+        1. All phases have an agent field with a valid agent type
+        2. Routed agent types exist in the manifest spawns fence
+        3. Feedback trigger targets reference valid phase names
+        4. Loop definitions reference valid loop types from agent-loops.yml
 
-        ERROR if YAML not found or phases don't match MMD.
-
-    - id: "startup_validate_mmd"
-      name: "Validate MMD Structure"
-      description: |
-        Validate against plan-mmd-schema.yml:
-        1. All required metadata present
-        2. AGENT_ROUTING format valid (Phase -> agent_type)
-        3. Routed agent types in manifest spawns fence
-        4. FEEDBACK_TRIGGER targets exist in flowchart
-        5. LOOP_DEFINITION references valid loops
+        FALLBACK if agent field is missing from a phase:
+        - Attempt inference from phase name (Build* -> builder, Test* -> tester)
+        - If inference fails, transition to blocked and ask user
 
         ERROR with specific validation failures if invalid.
 
     - id: "startup_determine_resume"
       name: "Determine Resume Point"
       description: |
-        Parse STATUS metadata to find execution state:
+        Inspect phase status records from TinyDB to find execution state:
         1. Find first phase with status != completed
-        2. If all completed, execution is done
-        3. If in_progress found, resume that phase
-        4. If failed found, check for re-planning flag
+        2. If all phases completed, execution is done
+        3. If in_progress phase found, resume that phase
+        4. If failed phase found, check for re-planning flag
 
         Output: resume_phase (name of phase to start/resume)
+
+    - id: "startup_init_state_file"
+      name: "Initialise Execution State File"
+      description: |
+        MANDATE: Write all running execution state to a persistent YAML file
+        rather than maintaining it purely in the executor's context.
+
+        STATE FILE LOCATION:
+        {epic_folder_path}/execution_state.yml
+
+        INITIAL STATE FILE STRUCTURE:
+        ```yaml
+        # Execution State - written by orchestration-executor
+        # Read at start of each reasoning turn for context recovery
+        executor_session_id: "<session_id>"
+        epic_folder: "<epic_folder_name>"
+        started_at: "<ISO timestamp>"
+        poll_cycle: 0
+        current_phase: "<phase_name>"
+        current_phase_status: "in_progress"
+
+        active_sessions: {}
+          # ticket_id:
+          #   session_id: "<session_id>"
+          #   status: "running | completed | failed"
+          #   summary: "<1-line outcome>"
+
+        completed_sessions: []
+          # - ticket_id: "<id>"
+          #   outcome: "success | failure"
+          #   key_artifacts: [...]
+          #   completed_at: "<ISO timestamp>"
+
+        blocked_tickets: []
+          # - ticket_id: "<id>"
+          #   reason: "<why blocked>"
+
+        context_budget:
+          max_concurrent_agents: 8
+          poll_batch_size: 5
+        ```
+
+        PURPOSE:
+        At the start of each reasoning turn, the executor reads ONLY this
+        compact state file (~2-5 KB) instead of relying on accumulated context
+        from prior turns. This enables context compaction to clear prior turn
+        details while preserving execution continuity.
+
+        STATE FILE UPDATE PROTOCOL:
+        - Update after EVERY state change (agent spawn, poll result, phase transition)
+        - Use Write tool to overwrite the file atomically
+        - Include a last_updated timestamp on each write
+        - Keep completed_sessions entries as summaries only (<100 chars each)
+
+        FENCE: STATE FILE IS SOURCE OF TRUTH
+        If context compaction occurs, the executor MUST be able to reconstruct
+        its execution state entirely from this file plus TinyDB phase records.
 
     # =========================================================================
     # PHASE 2: PHASE EXECUTION LOOP
@@ -183,26 +245,32 @@ process:
         For each phase from resume_point to end:
           1. Transition phase to in_progress
           2. Resolve agent routing
-          3. Spawn agent with context
-          4. Collect agent output
-          5. Evaluate feedback triggers
-          6. Complete or handle failure
+          3. Spawn agents with context (batched by MAX_CONCURRENT_AGENTS)
+          4. Poll agents in batches of POLL_BATCH_SIZE
+          5. Summarise and offload output to state file
+          6. Evaluate feedback triggers
+          7. Complete or handle failure
+
+        CONTEXT MANAGEMENT DEFAULTS:
+          MAX_CONCURRENT_AGENTS: 8  (max agents running simultaneously)
+          POLL_BATCH_SIZE: 5        (max agents polled per turn)
+
+        These values can be overridden in TinyDB epic metadata or phase records.
 
     - id: "loop_transition_status"
       name: "Transition Phase Status"
       description: |
         Update status from pending -> in_progress:
-        1. Update MMD STATUS header
-        2. Update epic YAML phase status
-        3. Record started_at timestamp
+        1. Update TinyDB phase status: `agentic agent epic ticket start <phase_id> --epic <folder>`
+        2. Record started_at timestamp
 
         CONSTRAINT: Only ONE phase may be in_progress at a time.
 
     - id: "loop_resolve_routing"
       name: "Resolve Agent Routing"
       description: |
-        Parse AGENT_ROUTING to find agent for current phase:
-        1. Extract routing: "Phase_Name -> agent_type"
+        Read the agent field from the TinyDB phase record to find the agent for the current phase:
+        1. Read phase.agent from TinyDB phase record (loaded in startup_load_phases)
         2. Resolve agent_type to specific agent:
            - builder -> build-python (default) or build-flutter (Flutter projects)
            - tester -> test-runner (execution) or test-guidance-simulator (guidance)
@@ -214,22 +282,50 @@ process:
 
         3. Validate resolved agent is in manifest spawns fence
 
-        FALLBACK if routing missing:
+        FALLBACK if phase.agent field is missing or unrecognized:
           - Check phase name for hints (Test* -> tester, Build* -> builder)
           - If still unknown, transition to blocked and ask user
 
     - id: "loop_spawn_agent"
-      name: "Spawn Routed Agent"
+      name: "Spawn Routed Agent (Concurrency-Limited)"
       description: |
-        Invoke the resolved agent with context using CLI session commands:
+        Invoke the resolved agent with context using CLI session commands,
+        respecting the MAX_CONCURRENT_AGENTS limit.
+
+        CONCURRENCY LIMIT PROTOCOL:
+        MAX_CONCURRENT_AGENTS = 8 (default, configurable via epic metadata)
+
+        When a phase has more tickets than MAX_CONCURRENT_AGENTS:
+        1. Divide tickets into sub-waves of MAX_CONCURRENT_AGENTS each
+        2. Spawn wave 1 (up to 8 agents)
+        3. Poll wave 1 using batched polling until all complete
+        4. Spawn wave 2 (next batch of up to 8 agents)
+        5. Repeat until all tickets in the phase are processed
+
+        CONTEXT IMPACT:
+        At 8 concurrent agents with ~35 KB raw output each:
+        - Max raw injection per poll cycle: 280 KB (vs 770 KB with 22 agents)
+        - After output summarisation: 8 × 1 KB = 8 KB per poll cycle
+        - Combined with POLL_BATCH_SIZE=5: max 5 KB per reasoning turn
+
+        SUB-WAVE TRACKING:
+        Track sub-wave state in execution_state.yml:
+        ```yaml
+        current_wave: 2
+        total_waves: 3
+        wave_tickets:
+          wave_1: [T_001, T_002, T_003, T_004, T_005, T_006, T_007, T_008]
+          wave_2: [T_009, T_010, T_011, T_012, T_013, T_014, T_015, T_016]
+          wave_3: [T_017, T_018, T_019, T_020, T_021, T_022]
+        ```
 
         CLI SESSION SPAWN (preferred for deterministic management):
         ```bash
         agentic session spawn --role <resolved-agent> --epic <epic_folder_path> -j
         ```
 
-        Context provided automatically via CCI:
-        1. Phase-specific context from plan YAML
+        Context provided automatically via CCI (JIT-loaded per phase):
+        1. Phase-specific context from TinyDB (loaded on demand)
         2. Success criteria for phase
         3. Relevant input files
         4. Timeout based on phase complexity
@@ -276,14 +372,78 @@ process:
         This ensures proper CCI bootstrap and state tracking.
         Agent is spawned as session, execution waits for completion.
 
-    - id: "loop_collect_output"
-      name: "Collect Agent Output"
+    - id: "loop_batched_polling"
+      name: "Batched Agent Polling"
       description: |
-        Receive output from spawned agent:
-        1. Parse execution result (success/failure)
-        2. Capture any artifacts produced
-        3. Note any warnings or issues
-        4. Check for feedback trigger conditions
+        MANDATE: Do NOT poll all agents in a single turn.
+
+        When multiple agents are running concurrently, poll them in batches
+        to prevent context overflow from accumulated retrieval payloads.
+
+        BATCHED POLLING PROTOCOL:
+        1. Set POLL_BATCH_SIZE = 5 (default, configurable via epic metadata)
+        2. Maintain a list of waiting_agents (agents spawned but not yet complete)
+        3. Each poll turn:
+           a. Select next POLL_BATCH_SIZE agents from waiting_agents (round-robin)
+           b. Poll selected agents for status/output
+           c. For each agent response, apply output summarisation (loop_collect_output)
+           d. Write summarised outcomes to execution_state.yml (state file)
+           e. Remove completed agents from waiting_agents
+        4. On next poll turn:
+           a. Read execution_state.yml summary (compact, <5 KB)
+           b. Do NOT re-read raw outputs from previous poll turns
+           c. Select next batch from remaining waiting_agents
+        5. Repeat until waiting_agents is empty
+
+        CONTEXT IMPACT:
+        With POLL_BATCH_SIZE=5 and ~35 KB raw output per agent:
+        - Per-turn raw injection: 5 × 35 KB = 175 KB (before summarisation)
+        - After summarisation: 5 × 1 KB = 5 KB retained in context
+        - Compared to polling all 22 agents: 770 KB → 5 KB per turn (154× reduction)
+
+        FENCE: POLL BATCH SIZE CONSTRAINT
+        Never poll more than POLL_BATCH_SIZE agents in a single reasoning turn.
+        This is the primary mechanism preventing context overflow during execution.
+
+    - id: "loop_collect_output"
+      name: "Collect and Summarise Agent Output"
+      description: |
+        Receive output from spawned agent and IMMEDIATELY summarise to a fixed-size
+        outcome record. Do NOT retain full agent output text in context.
+
+        CONTEXT MANAGEMENT MANDATE:
+        Raw agent outputs can be ~35 KB each. With multiple concurrent agents, retaining
+        full outputs causes context overflow. Summarise BEFORE any further reasoning.
+
+        SUMMARISATION PROTOCOL:
+        1. Parse execution result (success/failure) from agent output
+        2. Extract key artifacts and ticket completions
+        3. Produce a compact outcome record (target: <1 KB per agent):
+
+           ```yaml
+           outcome: success | failure | in_progress
+           key_artifacts:
+             - "path/to/file1.py"
+             - "path/to/file2.py"
+           ticket_ids_completed:
+             - "teach_01"
+             - "teach_02"
+           errors: "truncated error message (max 500 chars)"
+           agent_id: "<session_id>"
+           phase_id: "<phase_name>"
+           poll_cycle: <integer>
+           ```
+
+        4. DISCARD the full agent output after summarisation
+        5. Write the outcome record to the execution state file
+           (see state_offload step for file location)
+        6. Check for feedback trigger conditions using the SUMMARY only
+
+        FENCE: CONTEXT SIZE CONSTRAINT
+        After summarisation, the outcome record MUST be ≤1 KB.
+        Full agent output text MUST NOT persist in executor context.
+        If the agent output cannot be parsed, capture the first 500 chars
+        as the error field and set outcome: failure.
 
     - id: "loop_evaluate_triggers"
       name: "Evaluate Feedback Triggers"
@@ -338,10 +498,10 @@ process:
       name: "Complete Phase"
       description: |
         On successful agent completion with no triggers:
-        1. Update MMD STATUS: Phase_Name=completed
-        2. Update epic YAML: phase.status = "completed"
-        3. Record completed_at timestamp
-        4. Record agent_used
+        1. Update TinyDB phase status to completed:
+           `agentic agent epic ticket complete <phase_id> --epic <folder>`
+        2. Record completed_at timestamp
+        3. Record agent_used
 
         Proceed to next phase in loop.
 
@@ -364,29 +524,30 @@ process:
         FENCE: Before proceeding to shutdown, verify ALL validation phases have executed.
 
         This gate ensures validation phases cannot be bypassed even if they
-        are missing from AGENT_ROUTING (which would be a schema violation).
+        are missing from TinyDB phase records (which would be a planning gap).
 
         VALIDATION GATE PROCESS:
-        1. Scan MMD for subgraphs containing "Validation" or "Audit" in name
-        2. For each validation subgraph, verify it was executed (status != pending)
-        3. For each executed validation, verify result = PASS
-        4. If ANY validation subgraph was skipped → BLOCK shutdown
+        1. Query TinyDB for phases whose name contains "Validation" or "Audit":
+           `agentic -j epic ticket list --epic {epic_folder_name}`
+        2. For each validation phase, verify it was executed (status != pending)
+        3. For each executed validation phase, verify result = PASS
+        4. If ANY validation phase was skipped → BLOCK shutdown
         5. If ANY validation result != PASS → Return to fix phase
 
         STORY VALIDATION CHECK (references planning-standard.yml#escape_hatch_rules):
-        6. If plan has affected_stories metadata:
+        6. If plan has affected_stories metadata (from TinyDB epic metadata):
            a. Verify UAT phase validated those specific stories
            b. Check story test results are captured (test_status field)
            c. FENCE: Cannot proceed to shutdown if affected stories have test_status=failed
         7. If plan has no affected_stories and no no_stories_rationale:
-           a. Determine plan type from MMD metadata or plan YAML
+           a. Determine plan type from TinyDB epic metadata
            b. If plan type in blocked_plan_types (build, test) → BLOCK (not WARN)
            c. If plan type in allowed_plan_types (infrastructure, guidance, internal_tooling) → WARN (non-blocking)
            d. If plan type unknown → BLOCK (fail-safe)
-        8. UAT SUBGRAPH CHECK:
-           a. If affected_stories present in plan metadata, scan MMD for UAT subgraph
-           b. If no UAT subgraph found but affected_stories exist → BLOCK
-              Error: "BLOCKED: Plan has affected_stories but no UAT subgraph in MMD."
+        8. UAT PHASE CHECK:
+           a. If affected_stories present in TinyDB epic metadata, check TinyDB for UAT phase
+           b. If no UAT phase found but affected_stories exist → BLOCK
+              Error: "BLOCKED: Plan has affected_stories but no UAT phase in TinyDB."
         9. STORY COVERAGE CHECK:
            a. For each story ID in affected_stories, read test_status from story YAML
            b. If ANY story has test_status=untested → BLOCK
@@ -405,14 +566,15 @@ process:
         - Any validation status = failed → Return to fix phase, do NOT proceed
 
         ERROR MESSAGES:
-        - "BLOCKED: Validation phase 'Validation_SG' was not executed. Add AGENT_ROUTING entry."
-        - "BLOCKED: Audit phase 'Audit_SG' was skipped. Cannot commit without audit."
+        - "BLOCKED: Validation phase was not executed. Add phase with agent routing to TinyDB."
+        - "BLOCKED: Audit phase was skipped. Cannot commit without audit."
         - "FAILED: Validation phase returned FAIL. Cannot proceed to commit."
 
       fence: |
         FENCE: NO SHUTDOWN WITHOUT VALIDATION
         This gate MUST run before any shutdown sequence step.
         Skipping this gate is a fence violation.
+        Validation phases are identified by querying TinyDB, not by scanning MMD files.
 
     # =========================================================================
     # PHASE 2.6: INTEGRATION SMOKE TEST GATE (CLI command verification)
@@ -531,9 +693,15 @@ process:
       name: "Persist Final State"
       description: |
         Ensure state is durably stored:
-        1. Final MMD STATUS header update
-        2. Final epic YAML updates
-        3. Archive completed phases if configured
+        1. Final TinyDB phase status updates (all phases marked completed, failed, or blocked)
+        2. Update execution_state.yml with final status and summary
+        3. Archive completed epic if all phases are done:
+           `agentic agent epic move folder --epic <folder> --force`
+
+        STATE FILE CLEANUP:
+        The execution_state.yml file remains in the epic folder as an execution
+        audit trail. It is NOT deleted on shutdown. Archived epics retain their
+        state files for post-mortem analysis.
 
     - id: "shutdown_return"
       name: "Return Execution Result"
@@ -548,10 +716,11 @@ process:
   # =============================================================================
   fallbacks:
     missing_agent_routing: |
-      If AGENT_ROUTING metadata is missing:
+      If phase.agent field is missing from a TinyDB phase record:
       1. Attempt inference from phase names (Build* -> builder, Test* -> tester)
       2. If inference fails, transition to blocked
-      3. Ask user to provide routing or update MMD
+      3. Ask user to add agent routing to the phase:
+         `agentic epic phase add --epic <folder> --name <phase> --agent <agent-type>`
 
     agent_spawn_failure: |
       If routed agent fails to start:
@@ -560,12 +729,13 @@ process:
       3. If no fallback, transition to blocked
       4. Ask user for resolution
 
-    yaml_mmd_desync: |
-      If epic YAML and MMD phases don't align:
-      1. Log discrepancy
-      2. Use epic YAML as source of truth for ticket details
-      3. Use MMD for routing and flow
-      4. If critical mismatch, transition to blocked
+    phase_data_incomplete: |
+      If TinyDB phase records are missing required fields:
+      1. Log which fields are missing
+      2. Use TinyDB as the authoritative source of truth for all phase data
+      3. If critical fields absent (agent, status), transition to blocked
+      4. Ask user to update phase records via CLI:
+         `agentic epic phase add --epic <folder> --name <phase> --agent <agent-type>`
 
   # =============================================================================
   # GUIDELINES
@@ -575,7 +745,7 @@ process:
     - "CLI-First Context: Always use agentic CLI commands for initial context. Agents should not need Read/Glob/Grep tools during bootstrap phase."
     - "All context retrieval should flow through CCI (CLI Context Injection) commands before any file exploration"
     # CLI MANDATE FOR TICKET MANAGEMENT
-    - "NEVER use Edit tool to change ticket status in epic YAML files"
+    - "NEVER use Edit tool to change ticket status in TinyDB epic files"
     - "ALWAYS use `agentic agent epic ticket start <ticket_id> --epic <folder>` when beginning a ticket"
     - "ALWAYS use `agentic agent epic ticket complete <ticket_id> --epic <folder>` when finishing a ticket"
     - "CLI auto-archives epic when completing the last ticket - do NOT manually archive"
@@ -591,15 +761,21 @@ process:
     - "This ensures agent-created questions trigger phone notifications and replies are auto-resolved"
     - "After execution completes (shutdown), stop the watcher: `agentic agent question watch-stop`"
     # EXECUTION RULES
-    - "Execute phases in order defined by MMD flowchart"
+    - "Execute phases in order defined by TinyDB phase records (ordered by phase sequence)"
     - "Only spawn agents listed in manifest spawns fence"
     - "Persist state after every phase transition"
     - "Honor MAX_ITERATIONS before escalation"
     - "Never skip failed phases without user approval"
     - "Document all feedback trigger firings"
-    - "FENCE: Execute ALL validation/audit subgraphs BEFORE any commit"
+    # CONTEXT MANAGEMENT RULES
+    - "FENCE: MAX_CONCURRENT_AGENTS=8 — never spawn more than 8 agents simultaneously"
+    - "FENCE: POLL_BATCH_SIZE=5 — never poll more than 5 agents per reasoning turn"
+    - "FENCE: Output summarisation — summarise agent output to ≤1 KB before retaining in context"
+    - "FENCE: State offload — write execution state to execution_state.yml, not accumulated context"
+    - "FENCE: JIT loading — load ticket details per-phase, not all at startup"
+    - "FENCE: Execute ALL validation/audit phases BEFORE any commit"
     - "FENCE: Do NOT commit if any validation phase was skipped or failed"
-    - "FENCE: Validation subgraphs without AGENT_ROUTING = blocked workflow, ask user"
+    - "FENCE: Validation phases without agent routing in TinyDB = blocked workflow, ask user"
     - "FENCE: Complete ALL tasks (including LOW priority) before shutdown per orchestration-policy.yml"
     # CLI ERROR RECOVERY (DOGFOOD RULE)
     - "DOGFOOD RULE: If ANY agentic command exits non-zero, follow modules/AgenticGuidance/assets/guidelines/cli-error-recovery.yml"

@@ -239,21 +239,6 @@ def find_plan_folder(path: str | None = None) -> Path:
         print(f"Error: Plan folder '{path}' not found.", file=sys.stderr)
         sys.exit(1)
 
-    # Auto-detect: look for docs/epics/live/ in current directory tree
-    cwd = Path.cwd()
-
-    # Check if we're in a plan folder (flattened structure: plan_*.yml directly in cwd)
-    if list(cwd.glob("plan_*.yml")):
-        return cwd
-
-    # Check if we're in a repo with plans
-    plans_dir = cwd / "docs" / "plans" / "live"
-    if plans_dir.exists():
-        # Return first plan folder found (flattened: has plan_*.yml files)
-        for item in plans_dir.iterdir():
-            if item.is_dir() and list(item.glob("plan_*.yml")):
-                return item
-
     print("Error: Could not find a plan folder. Specify path explicitly.", file=sys.stderr)
     sys.exit(1)
 

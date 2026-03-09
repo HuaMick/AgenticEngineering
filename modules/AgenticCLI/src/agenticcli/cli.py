@@ -574,8 +574,10 @@ def session_spawn(
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option(
         "--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts (default: enabled)")] = True,
-    no_sdk: Annotated[bool, typer.Option(
-        "--no-sdk", help="Force subprocess mode (skip SDK)")] = False,
+    tmux: Annotated[bool, typer.Option(
+        "--tmux", help="Spawn session in a tmux pane")] = False,
+    dry_run: Annotated[bool, typer.Option(
+        "--dry-run", help="Report spawn diagnostics without actually spawning")] = False,
 ):
     """Spawn a new Claude Code session with a prompt."""
     # Mutual exclusion check (--role and --task cannot both be set)
@@ -594,7 +596,8 @@ def session_spawn(
         max_turns=max_turns, background=background,
         directory=directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
-        no_sdk=no_sdk,
+        tmux=tmux,
+        dry_run=dry_run,
     ))
 
 
@@ -661,7 +664,9 @@ orchestrate_app.add_typer(ralph_app, name="ralph")
 
 @orchestrate_app.command("planning")
 def session_orchestrate_planning(
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Scope to a specific plan folder")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder name or short ID (e.g. '260305AG')")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="[Deprecated: use --epic] Epic folder name")] = None,
+    prompt: Annotated[Optional[str], typer.Option("--prompt", help="Additional prompt/instructions appended to each spawned agent")] = None,
     background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
     max_iterations: Annotated[int, typer.Option("--max-iterations", "-n", help="Max iterations")] = 10,
     completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
@@ -671,11 +676,12 @@ def session_orchestrate_planning(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Create tmux layout, verify panes, print JSON, then exit")] = False,
 ):
     """Run automated orchestration planning for all plans that need it."""
+    resolved_epic = epic or plan
     from agenticcli.commands.orchestrate import cmd_orchestrate
     cmd_orchestrate(_ns(
         command="orchestrate",
         json=_global["json"], debug=_global["debug"],
-        action="planning", plan=plan, background=background,
+        action="planning", plan=resolved_epic, prompt=prompt, background=background,
         max_iterations=max_iterations, completion_promise=completion_promise,
         project=project, directory=directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
@@ -685,7 +691,8 @@ def session_orchestrate_planning(
 
 @orchestrate_app.command("executing")
 def session_orchestrate_executing(
-    plan: Annotated[Optional[str], typer.Option("--plan", help="Scope to a specific plan folder")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder name or short ID (e.g. '260305AG')")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="[Deprecated: use --epic] Epic folder name")] = None,
     background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
     max_iterations: Annotated[int, typer.Option("--max-iterations", "-n", help="Max phase executions")] = 10,
     completion_promise: Annotated[Optional[str], typer.Option("--completion-promise", "-c", help="Completion text")] = None,
@@ -694,11 +701,12 @@ def session_orchestrate_executing(
     dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts for spawned agents (default: enabled)")] = True,
 ):
     """Run automated orchestration execution for plans with completed MMDs."""
+    resolved_epic = epic or plan
     from agenticcli.commands.orchestrate import cmd_orchestrate
     cmd_orchestrate(_ns(
         command="orchestrate",
         json=_global["json"], debug=_global["debug"],
-        action="executing", plan=plan, background=background,
+        action="executing", plan=resolved_epic, background=background,
         max_iterations=max_iterations, completion_promise=completion_promise,
         project=project, directory=directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
@@ -1391,7 +1399,7 @@ def plan_phase_add(
     description: Annotated[Optional[str], typer.Option("--description", help="Phase description")] = None,
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
 ):
-    """Add a new phase to plan_build.yml."""
+    """Add a new phase to the epic in TinyDB."""
     _plan_handle(_ns(
         command="plan", plan_command="phase", phase_action="add",
         json=_global["json"], debug=_global["debug"],
@@ -1418,7 +1426,7 @@ def plan_phase_update(
     name: Annotated[Optional[str], typer.Option("--name", "-n", help="New name")] = None,
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
 ):
-    """Update a phase in plan_build.yml."""
+    """Update a phase in TinyDB."""
     _plan_handle(_ns(
         command="plan", plan_command="phase", phase_action="update",
         json=_global["json"], debug=_global["debug"],
@@ -1468,11 +1476,9 @@ plan_app.add_typer(plan_db_app, name="db", hidden=True)
 
 
 @plan_db_app.command("sync")
-def plan_db_sync(
-    export: Annotated[bool, typer.Option("--export", help="Write TinyDB state to YAML (reverse sync)")] = False,
-):
-    """Rebuild TinyDB from YAML files or export TinyDB to YAML."""
-    _plan_handle(_ns(command="plan", plan_command="db", db_action="sync", json=_global["json"], debug=_global["debug"], export=export))
+def plan_db_sync():
+    """[DISABLED] db sync is no longer available. TinyDB is the sole data store."""
+    _plan_handle(_ns(command="plan", plan_command="db", db_action="sync", json=_global["json"], debug=_global["debug"]))
 
 
 @plan_db_app.command("status")
@@ -1560,15 +1566,24 @@ def plan_question_dashboard(
 # EPIC (new primary vocabulary: epic list, epic ticket start, etc.)
 # ===========================================================================
 
-epic_app = typer.Typer(help="Manage epic folders and track ticket status", no_args_is_help=True)
+epic_app = typer.Typer(
+    help="Manage epic folders and track ticket status.\n\nStatuses: proposed (new/planned), in_progress (active work), completed (done).",
+    no_args_is_help=True,
+)
 app.add_typer(epic_app, name="epic")
 
 
 # --- epic list ---
 @epic_app.command("list")
-def epic_list():
-    """List all epics in the repository."""
-    _epic_handle(_ns(command="epic", epic_command="list", json=_global["json"], debug=_global["debug"]))
+def epic_list(
+    all_epics: Annotated[bool, typer.Option("--all", "-a", help="Include completed epics (hidden by default)")] = False,
+):
+    """List epics in the repository.
+
+    Statuses: proposed (new), in_progress (active work), completed (done).
+    Completed epics are hidden by default; use --all to show them.
+    """
+    _epic_handle(_ns(command="epic", epic_command="list", json=_global["json"], debug=_global["debug"], all=all_epics))
 
 
 # --- epic status ---
@@ -1577,7 +1592,10 @@ def epic_status(
     path: Optional[str] = typer.Argument(None, help="Path to epic folder"),
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
 ):
-    """Show epic status and ticket summary."""
+    """Show epic status and ticket summary.
+
+    Statuses: proposed (new), in_progress (active), completed (done).
+    """
     resolved = epic or path
     _epic_handle(_ns(command="epic", epic_command="status", json=_global["json"], debug=_global["debug"], path=resolved))
 
@@ -1677,27 +1695,75 @@ def epic_ticket_add(
     phase: Annotated[Optional[str], typer.Option("--phase", "-ph", help="Phase ID")] = None,
     id: Annotated[Optional[str], typer.Option("--id", help="Custom ticket ID")] = None,
     priority: Annotated[str, typer.Option("--priority", help="Ticket priority", callback=_validate_priority)] = "medium",
+    agent: Annotated[Optional[str], typer.Option("--agent", help="Agent type responsible for this ticket")] = None,
+    target_files: Annotated[Optional[str], typer.Option("--target-files", help="Comma-separated list of target files")] = None,
+    success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated success criteria")] = None,
+    guidance: Annotated[Optional[str], typer.Option("--guidance", help="Implementation guidance")] = None,
+    inputs: Annotated[Optional[str], typer.Option("--inputs", help="Comma-separated input files/context")] = None,
 ):
     """Add new ticket to epic."""
     _epic_handle(_ns(
         command="epic", epic_command="ticket", ticket_action="add",
         json=_global["json"], debug=_global["debug"],
         description=description, plan=epic, phase=phase, id=id, priority=priority,
+        agent=agent, target_files=target_files, success_criteria=success_criteria,
+        guidance=guidance, inputs=inputs,
     ))
 
 
 @epic_ticket_app.command("update")
 def epic_ticket_update(
     task_id: str = typer.Argument(..., help="Ticket ID"),
-    status: Annotated[str, typer.Option("--status", "-s", help="New status")] = ...,
+    status: Annotated[Optional[str], typer.Option("--status", "-s", help="New status")] = None,
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
     note: Annotated[Optional[str], typer.Option("--note", "-n", help="Completion note")] = None,
+    description: Annotated[Optional[str], typer.Option("--description", help="New ticket description")] = None,
+    name: Annotated[Optional[str], typer.Option("--name", help="New ticket name")] = None,
+    agent: Annotated[Optional[str], typer.Option("--agent", help="Agent type")] = None,
+    target_files: Annotated[Optional[str], typer.Option("--target-files", help="Comma-separated target files")] = None,
+    success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated success criteria")] = None,
+    guidance: Annotated[Optional[str], typer.Option("--guidance", help="Implementation guidance")] = None,
+    inputs: Annotated[Optional[str], typer.Option("--inputs", help="Comma-separated inputs")] = None,
 ):
-    """Update ticket status in epic file."""
+    """Update ticket fields in epic (status, description, agent, etc.)."""
     _epic_handle(_ns(
         command="epic", epic_command="ticket", ticket_action="update",
         json=_global["json"], debug=_global["debug"],
         task_id=task_id, status=status, plan=epic, note=note,
+        description=description, name=name, agent=agent,
+        target_files=target_files, success_criteria=success_criteria,
+        guidance=guidance, inputs=inputs,
+    ))
+
+
+@epic_ticket_app.command("remove")
+def epic_ticket_remove(
+    task_id: str = typer.Argument(..., help="Ticket ID to remove"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
+):
+    """Permanently remove a ticket from the epic."""
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="remove",
+        json=_global["json"], debug=_global["debug"],
+        task_id=task_id, plan=epic, force=force,
+    ))
+
+
+@epic_ticket_app.command("batch")
+def epic_ticket_batch(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    file: Annotated[Optional[str], typer.Option("--file", "-f", help="JSON file path (defaults to stdin)")] = None,
+):
+    """Bulk import phases and tickets from JSON.
+
+    Reads JSON from --file or stdin. Expected format:
+    {"phases": [...], "tickets": [...]}
+    """
+    _epic_handle(_ns(
+        command="epic", epic_command="ticket", ticket_action="batch",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, file=file,
     ))
 
 
@@ -1724,12 +1790,22 @@ def epic_phase_add(
     name: Annotated[str, typer.Option("--name", help="Phase name")] = ...,
     description: Annotated[Optional[str], typer.Option("--description", help="Phase description")] = None,
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    agent: Annotated[Optional[str], typer.Option("--agent", "-a", help="Agent type (e.g. build-python, test-runner)")] = None,
+    execution: Annotated[Optional[str], typer.Option("--execution", "-e", help="Execution mode: sequential or parallel")] = None,
+    loop_type: Annotated[Optional[str], typer.Option("--loop-type", help="Loop type override")] = None,
+    loop_max_iterations: Annotated[Optional[int], typer.Option("--loop-max-iterations", help="Max iterations for the phase")] = None,
+    feedback_triggers: Annotated[Optional[str], typer.Option("--feedback-triggers", help="Comma-separated KEY=VALUE pairs (e.g. TEST_FAILURE=Build)")] = None,
+    max_turns: Annotated[Optional[int], typer.Option("--max-turns", help="Maximum agentic turns for this phase (overrides default 200)")] = None,
+    timeout: Annotated[Optional[int], typer.Option("--timeout", help="Per-phase timeout in seconds (overrides default 1800s/30min)")] = None,
 ):
-    """Add a new phase to plan_build.yml."""
+    """Add a new phase to the epic in TinyDB."""
     _epic_handle(_ns(
         command="epic", epic_command="phase", phase_action="add",
         json=_global["json"], debug=_global["debug"],
         id=id, name=name, description=description, plan=epic,
+        agent=agent, execution=execution, loop_type=loop_type,
+        loop_max_iterations=loop_max_iterations, feedback_triggers=feedback_triggers,
+        max_turns=max_turns, timeout=timeout,
     ))
 
 
@@ -1751,12 +1827,40 @@ def epic_phase_update(
     status: Annotated[Optional[str], typer.Option("--status", "-s", help="New status")] = None,
     name: Annotated[Optional[str], typer.Option("--name", "-n", help="New name")] = None,
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    agent: Annotated[Optional[str], typer.Option("--agent", "-a", help="Agent type (e.g. build-python, test-runner)")] = None,
+    execution: Annotated[Optional[str], typer.Option("--execution", "-e", help="Execution mode: sequential or parallel")] = None,
+    loop_type: Annotated[Optional[str], typer.Option("--loop-type", help="Loop type override")] = None,
+    loop_max_iterations: Annotated[Optional[int], typer.Option("--loop-max-iterations", help="Max iterations for the phase")] = None,
+    feedback_triggers: Annotated[Optional[str], typer.Option("--feedback-triggers", help="Comma-separated KEY=VALUE pairs (e.g. TEST_FAILURE=Build)")] = None,
+    max_turns: Annotated[Optional[int], typer.Option("--max-turns", help="Maximum agentic turns for this phase (overrides default 200)")] = None,
+    timeout: Annotated[Optional[int], typer.Option("--timeout", help="Per-phase timeout in seconds (overrides default 1800s/30min)")] = None,
 ):
-    """Update a phase in plan_build.yml."""
+    """Update a phase in TinyDB."""
     _epic_handle(_ns(
         command="epic", epic_command="phase", phase_action="update",
         json=_global["json"], debug=_global["debug"],
         phase_id=phase_id, status=status, name=name, plan=epic,
+        agent=agent, execution=execution, loop_type=loop_type,
+        loop_max_iterations=loop_max_iterations, feedback_triggers=feedback_triggers,
+        max_turns=max_turns, timeout=timeout,
+    ))
+
+
+@epic_phase_app.command("remove")
+def epic_phase_remove(
+    phase_id: str = typer.Argument(..., help="Phase ID to remove"),
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    cascade: Annotated[bool, typer.Option("--cascade", help="Also remove all tickets in this phase")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
+):
+    """Remove a phase from the epic.
+
+    Fails if the phase has tickets unless --cascade is used.
+    """
+    _epic_handle(_ns(
+        command="epic", epic_command="phase", phase_action="remove",
+        json=_global["json"], debug=_global["debug"],
+        phase_id=phase_id, plan=epic, cascade=cascade, force=force,
     ))
 
 
@@ -1877,17 +1981,33 @@ epic_app.add_typer(epic_db_app, name="db", hidden=True)
 
 
 @epic_db_app.command("sync")
-def epic_db_sync(
-    export: Annotated[bool, typer.Option("--export", help="Write TinyDB state to YAML (reverse sync)")] = False,
-):
-    """Rebuild TinyDB from YAML files or export TinyDB to YAML."""
-    _epic_handle(_ns(command="epic", epic_command="db", db_action="sync", json=_global["json"], debug=_global["debug"], export=export))
+def epic_db_sync():
+    """[DISABLED] db sync is no longer available. TinyDB is the sole data store."""
+    _epic_handle(_ns(command="epic", epic_command="db", db_action="sync", json=_global["json"], debug=_global["debug"]))
 
 
 @epic_db_app.command("status")
 def epic_db_status():
     """Show TinyDB database statistics."""
     _epic_handle(_ns(command="epic", epic_command="db", db_action="status", json=_global["json"], debug=_global["debug"]))
+
+
+# --- epic replan ---
+@epic_app.command("replan")
+def epic_replan(
+    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation")] = False,
+):
+    """Prepare an epic for new planning.
+
+    Resets all ticket statuses back to 'proposed' and removes
+    the orchestration MMD file for a fresh planning cycle.
+    """
+    _epic_handle(_ns(
+        command="epic", epic_command="replan",
+        json=_global["json"], debug=_global["debug"],
+        plan=epic, force=force,
+    ))
 
 
 # ===========================================================================
@@ -2028,7 +2148,7 @@ def agent_plan_phase_add(
     description: Annotated[Optional[str], typer.Option("--description", help="Phase description")] = None,
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
 ):
-    """Add a new phase to plan_build.yml."""
+    """Add a new phase to the epic in TinyDB."""
     _plan_handle(_ns(
         command="plan", plan_command="phase", phase_action="add",
         json=_global["json"], debug=_global["debug"],
@@ -2055,7 +2175,7 @@ def agent_plan_phase_update(
     name: Annotated[Optional[str], typer.Option("--name", "-n", help="New name")] = None,
     plan: Annotated[Optional[str], typer.Option("--plan", "-p", help="Plan folder path")] = None,
 ):
-    """Update a phase in plan_build.yml."""
+    """Update a phase in TinyDB."""
     _plan_handle(_ns(
         command="plan", plan_command="phase", phase_action="update",
         json=_global["json"], debug=_global["debug"],
@@ -2180,11 +2300,9 @@ agent_plan_app.add_typer(agent_plan_db_app, name="db")
 
 
 @agent_plan_db_app.command("sync")
-def agent_plan_db_sync(
-    export: Annotated[bool, typer.Option("--export", help="Write TinyDB state to YAML (reverse sync)")] = False,
-):
-    """Rebuild TinyDB from YAML files or export TinyDB to YAML."""
-    _plan_handle(_ns(command="plan", plan_command="db", db_action="sync", json=_global["json"], debug=_global["debug"], export=export))
+def agent_plan_db_sync():
+    """[DISABLED] db sync is no longer available. TinyDB is the sole data store."""
+    _plan_handle(_ns(command="plan", plan_command="db", db_action="sync", json=_global["json"], debug=_global["debug"]))
 
 
 @agent_plan_db_app.command("status")
@@ -2391,27 +2509,44 @@ def agent_epic_ticket_add(
     phase: Annotated[Optional[str], typer.Option("--phase", "-ph", help="Phase ID")] = None,
     id: Annotated[Optional[str], typer.Option("--id", help="Custom ticket ID")] = None,
     priority: Annotated[str, typer.Option("--priority", help="Ticket priority", callback=_validate_priority)] = "medium",
+    agent: Annotated[Optional[str], typer.Option("--agent", help="Agent type responsible for this ticket")] = None,
+    target_files: Annotated[Optional[str], typer.Option("--target-files", help="Comma-separated list of target files")] = None,
+    success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated success criteria")] = None,
+    guidance: Annotated[Optional[str], typer.Option("--guidance", help="Implementation guidance")] = None,
+    inputs: Annotated[Optional[str], typer.Option("--inputs", help="Comma-separated input files/context")] = None,
 ):
     """Add new ticket to epic."""
     _epic_handle(_ns(
         command="epic", epic_command="ticket", ticket_action="add",
         json=_global["json"], debug=_global["debug"],
         description=description, plan=epic, phase=phase, id=id, priority=priority,
+        agent=agent, target_files=target_files, success_criteria=success_criteria,
+        guidance=guidance, inputs=inputs,
     ))
 
 
 @agent_epic_ticket_app.command("update")
 def agent_epic_ticket_update(
     task_id: str = typer.Argument(..., help="Ticket ID"),
-    status: Annotated[str, typer.Option("--status", "-s", help="New status")] = ...,
+    status: Annotated[Optional[str], typer.Option("--status", "-s", help="New status")] = None,
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
     note: Annotated[Optional[str], typer.Option("--note", "-n", help="Completion note")] = None,
+    description: Annotated[Optional[str], typer.Option("--description", help="New ticket description")] = None,
+    name: Annotated[Optional[str], typer.Option("--name", help="New ticket name")] = None,
+    agent: Annotated[Optional[str], typer.Option("--agent", help="Agent type")] = None,
+    target_files: Annotated[Optional[str], typer.Option("--target-files", help="Comma-separated target files")] = None,
+    success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated success criteria")] = None,
+    guidance: Annotated[Optional[str], typer.Option("--guidance", help="Implementation guidance")] = None,
+    inputs: Annotated[Optional[str], typer.Option("--inputs", help="Comma-separated inputs")] = None,
 ):
-    """Update ticket status in epic file."""
+    """Update ticket fields in epic (status, description, agent, etc.)."""
     _epic_handle(_ns(
         command="epic", epic_command="ticket", ticket_action="update",
         json=_global["json"], debug=_global["debug"],
         task_id=task_id, status=status, plan=epic, note=note,
+        description=description, name=name, agent=agent,
+        target_files=target_files, success_criteria=success_criteria,
+        guidance=guidance, inputs=inputs,
     ))
 
 
@@ -2438,12 +2573,21 @@ def agent_epic_phase_add(
     name: Annotated[str, typer.Option("--name", help="Phase name")] = ...,
     description: Annotated[Optional[str], typer.Option("--description", help="Phase description")] = None,
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    agent: Annotated[Optional[str], typer.Option("--agent", "-a", help="Agent type (e.g. build-python, test-runner)")] = None,
+    execution: Annotated[Optional[str], typer.Option("--execution", "-e", help="Execution mode: sequential or parallel")] = None,
+    loop_type: Annotated[Optional[str], typer.Option("--loop-type", help="Loop type override")] = None,
+    loop_max_iterations: Annotated[Optional[int], typer.Option("--loop-max-iterations", help="Max iterations for the phase")] = None,
+    feedback_triggers: Annotated[Optional[str], typer.Option("--feedback-triggers", help="Comma-separated KEY=VALUE pairs (e.g. TEST_FAILURE=Build)")] = None,
+    max_turns: Annotated[Optional[int], typer.Option("--max-turns", help="Maximum agentic turns for this phase (overrides default 200)")] = None,
 ):
-    """Add a new phase to plan_build.yml."""
+    """Add a new phase to the epic in TinyDB."""
     _epic_handle(_ns(
         command="epic", epic_command="phase", phase_action="add",
         json=_global["json"], debug=_global["debug"],
         id=id, name=name, description=description, plan=epic,
+        agent=agent, execution=execution, loop_type=loop_type,
+        loop_max_iterations=loop_max_iterations, feedback_triggers=feedback_triggers,
+        max_turns=max_turns,
     ))
 
 
@@ -2465,12 +2609,21 @@ def agent_epic_phase_update(
     status: Annotated[Optional[str], typer.Option("--status", "-s", help="New status")] = None,
     name: Annotated[Optional[str], typer.Option("--name", "-n", help="New name")] = None,
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    agent: Annotated[Optional[str], typer.Option("--agent", "-a", help="Agent type (e.g. build-python, test-runner)")] = None,
+    execution: Annotated[Optional[str], typer.Option("--execution", "-e", help="Execution mode: sequential or parallel")] = None,
+    loop_type: Annotated[Optional[str], typer.Option("--loop-type", help="Loop type override")] = None,
+    loop_max_iterations: Annotated[Optional[int], typer.Option("--loop-max-iterations", help="Max iterations for the phase")] = None,
+    feedback_triggers: Annotated[Optional[str], typer.Option("--feedback-triggers", help="Comma-separated KEY=VALUE pairs (e.g. TEST_FAILURE=Build)")] = None,
+    max_turns: Annotated[Optional[int], typer.Option("--max-turns", help="Maximum agentic turns for this phase (overrides default 200)")] = None,
 ):
-    """Update a phase in plan_build.yml."""
+    """Update a phase in TinyDB."""
     _epic_handle(_ns(
         command="epic", epic_command="phase", phase_action="update",
         json=_global["json"], debug=_global["debug"],
         phase_id=phase_id, status=status, name=name, plan=epic,
+        agent=agent, execution=execution, loop_type=loop_type,
+        loop_max_iterations=loop_max_iterations, feedback_triggers=feedback_triggers,
+        max_turns=max_turns,
     ))
 
 
@@ -2591,11 +2744,9 @@ agent_epic_app.add_typer(agent_epic_db_app, name="db")
 
 
 @agent_epic_db_app.command("sync")
-def agent_epic_db_sync(
-    export: Annotated[bool, typer.Option("--export", help="Write TinyDB state to YAML (reverse sync)")] = False,
-):
-    """Rebuild TinyDB from YAML files or export TinyDB to YAML."""
-    _epic_handle(_ns(command="epic", epic_command="db", db_action="sync", json=_global["json"], debug=_global["debug"], export=export))
+def agent_epic_db_sync():
+    """[DISABLED] db sync is no longer available. TinyDB is the sole data store."""
+    _epic_handle(_ns(command="epic", epic_command="db", db_action="sync", json=_global["json"], debug=_global["debug"]))
 
 
 @agent_epic_db_app.command("status")

@@ -5,19 +5,19 @@ epics, analyzing their state, and building a priority queue of actions to take.
 
 The RalphLoopService handles:
 - Discovery of all epics in docs/epics/live/
-- Analysis of epic state (orchestration MMD, pending tasks, etc.)
+- Analysis of epic state (orchestration phases, pending tasks, etc.)
 - Priority queue building for action execution
 - Tracking completion state across all epics
 
 Epic State Detection:
-- has_orchestration: True if orchestration_*.mmd file exists
+- has_orchestration: True if orchestration phases exist in TinyDB
 - action_required: 'execute', 'needs_planning', 'blocked', or 'completed'
 - pending_tasks: Count of tasks not yet completed
 - current_task: The next task to execute (if any)
 
 Priority Order:
-1. Epics with action_required='execute' (has MMD, ready to run)
-2. Epics with action_required='needs_planning' (needs MMD created)
+1. Epics with action_required='execute' (has phases with agent routing, ready to run)
+2. Epics with action_required='needs_planning' (needs phases/planning)
 3. Blocked epics (dependencies not met) - skipped
 4. Completed epics - no action needed
 """
@@ -41,7 +41,7 @@ class EpicInfo:
     name: str
     path: Path
     status: str  # active, completed, deferred
-    has_orchestration: bool  # True if has orchestration_*.mmd file
+    has_orchestration: bool  # True if has orchestration phases in TinyDB (or legacy MMD)
     action_required: str  # execute, needs_planning, blocked, completed
     dependencies: list[str] = field(default_factory=list)
     pending_tasks: int = 0
@@ -222,15 +222,28 @@ class RalphLoopService:
             logger.warning("Failed to initialize EpicRepository for RalphService")
 
     def _has_orchestration_file(self, plan_path: Path) -> bool:
-        """Check if plan has orchestration MMD file.
+        """Check if epic has orchestration phases in TinyDB.
+
+        An epic "has orchestration" when it has at least one phase with an
+        agent field set in TinyDB. The legacy MMD file fallback has been
+        removed as part of the epic folder elimination work (T3_3).
 
         Args:
-            plan_path: Path to plan folder.
+            plan_path: Path to epic folder (used for epic_folder_name lookup).
 
         Returns:
-            True if orchestration_*.mmd file exists.
+            True if orchestration phases with an agent exist in TinyDB.
         """
-        return len(list(plan_path.glob("orchestration_*.mmd"))) > 0
+        epic_folder_name = plan_path.name
+        if self._repository:
+            try:
+                phases = self._repository.list_phases(epic_folder_name)
+                if phases and any(phase.agent for phase in phases):
+                    return True
+            except Exception:
+                pass
+
+        return False
 
     def _has_blocking_questions(self, plan_path: Path) -> tuple[bool, int]:
         """Check whether a plan has pending blocking questions.
@@ -457,11 +470,10 @@ class RalphLoopService:
                 continue
 
             if not tickets:
-                # No tickets - check orchestration for needs_planning vs completed
-                epic_path = Path(epic_data.epic_folder) if epic_data.epic_folder else None
-                if epic_path and epic_path.exists():
-                    has_orchestration = self._has_orchestration_file(epic_path)
-                    if not has_orchestration:
+                # No tickets - check if phases exist for needs_planning vs completed
+                if self._repository:
+                    phases = self._repository.list_phases(epic_name)
+                    if not phases:
                         continue  # needs_planning
                 completed.add(epic_name)
                 continue
@@ -481,10 +493,10 @@ class RalphLoopService:
         pending_tasks: int,
         completed_tasks: int,
     ) -> str:
-        """Determine what action is required for a plan.
+        """Determine what action is required for an epic.
 
         Args:
-            has_orchestration: Whether plan has orchestration MMD file.
+            has_orchestration: Whether epic has orchestration phases in TinyDB (or legacy MMD).
             pending_tasks: Number of pending tasks.
             completed_tasks: Number of completed tasks.
 
@@ -595,8 +607,8 @@ class RalphLoopService:
         """Build prioritized queue of actions.
 
         Priority order:
-        1. Epics with action_required='execute' (has MMD, ready to run)
-        2. Epics with action_required='needs_planning' (needs MMD created)
+        1. Epics with action_required='execute' (has phases, ready to run)
+        2. Epics with action_required='needs_planning' (needs phases/planning)
         3. Blocked epics (dependencies not met) - skip
 
         Returns:
@@ -614,7 +626,7 @@ class RalphLoopService:
                         plan_name=epic.name,
                         plan_path=epic.path,
                         task_id=epic.current_task,
-                        reason=f"Epic has orchestration and {epic.pending_tasks} pending task(s)",
+                        reason=f"Epic has phases and {epic.pending_tasks} pending task(s)",
                     )
                 )
 
@@ -627,7 +639,7 @@ class RalphLoopService:
                         plan_name=epic.name,
                         plan_path=epic.path,
                         task_id=None,
-                        reason="Epic needs orchestration MMD file",
+                        reason="Epic needs planning (no phases defined)",
                     )
                 )
 

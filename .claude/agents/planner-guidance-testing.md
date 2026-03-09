@@ -65,7 +65,7 @@ CRITICAL: Test tasks must follow minimal context principles.
    - target_project_path: Absolute path to target project root
    - epic_folder_name: Epic folder name in YYMMDDXX_description format
 
-3. Read all phase .yml files in live/ to understand what agents were created/modified
+3. Query TinyDB for phase data via `agentic epic ticket list --epic <folder> -j` to understand what agents were created/modified
 
 4. Identify target agents that need guidance validation
 
@@ -75,8 +75,8 @@ CRITICAL: Test tasks must follow minimal context principles.
 
 ## Outputs
 
-- **ticket_live_test_guidance.yml**: Guidance walkthrough validation plan
-- Location: docs/epics/live/{epic_folder_name}/live/
+- **TinyDB tickets**: Guidance walkthrough validation plan created via `agentic epic ticket add` and `agentic epic phase add` CLI commands
+- Do NOT create ticket_*.yml files on disk.
 
 ## Boundaries
 

@@ -37,6 +37,10 @@ class TestMainFirstEpicResolver:
         )
 
         resolver = MainFirstEpicResolver()
+        # __init__ calls subprocess.run once (git rev-parse for DB path).
+        # Reset count so we only measure calls from find_main_worktree.
+        mock_run.reset_mock()
+
         result1 = resolver.find_main_worktree()
         result2 = resolver.find_main_worktree()
 
@@ -108,6 +112,10 @@ class TestMainFirstEpicResolver:
         mock_run.return_value = MagicMock(stdout="main\n", returncode=0)
 
         resolver = MainFirstEpicResolver()
+        # __init__ calls subprocess.run once (git rev-parse for DB path).
+        # Reset count so we only measure calls from get_current_branch.
+        mock_run.reset_mock()
+
         result1 = resolver.get_current_branch()
         result2 = resolver.get_current_branch()
 
@@ -132,22 +140,33 @@ class TestMainFirstEpicResolver:
         assert result == []
 
     def test_extract_all_tickets_parses_plan_file(self, tmp_path):
-        """Test extracts tasks from plan YAML files (flattened structure)."""
-        # Flattened: plan files directly in tmp_path
-        plan_content = """
-phases:
-  - name: "Build Phase"
-    id: "phase_1"
-    tickets:
-      - id: "task_001"
-        name: "First task"
-        description: "Do something"
-        status: "pending"
-"""
-        (tmp_path / "plan_build.yml").write_text(plan_content)
+        """Test extracts tasks from TinyDB for a given plan folder."""
+        from agenticguidance.services.epic_repository import EpicRepository
+
+        # Create an isolated TinyDB and populate it
+        db_path = tmp_path / ".agentic" / "epics.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        epic_dir = tmp_path / "my_epic"
+        epic_dir.mkdir()
+
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.create_epic({
+            "epic_folder_name": "my_epic",
+            "epic_folder": str(epic_dir),
+            "name": "My Epic",
+            "status": "active",
+        })
+        repo.add_ticket("my_epic", "Build Phase", {
+            "id": "task_001",
+            "name": "First task",
+            "description": "Do something",
+            "status": "pending",
+        })
 
         resolver = MainFirstEpicResolver()
-        tasks = resolver.extract_all_tickets(tmp_path)
+        resolver._repository = repo  # Inject isolated repo
+
+        tasks = resolver.extract_all_tickets(epic_dir)
 
         assert len(tasks) == 1
         assert tasks[0]["id"] == "task_001"
@@ -155,48 +174,80 @@ phases:
         assert tasks[0]["status"] == "pending"
         assert tasks[0]["phase"] == "Build Phase"
 
+        repo.close()
+
     def test_extract_current_ticket_returns_in_progress_first(self, tmp_path):
-        """Test returns in_progress task over pending (flattened structure)."""
-        # Flattened: plan files directly in tmp_path
-        plan_content = """
-phases:
-  - name: "Build"
-    tickets:
-      - id: "task_001"
-        name: "Pending task"
-        status: "pending"
-      - id: "task_002"
-        name: "In progress task"
-        status: "in_progress"
-"""
-        (tmp_path / "plan_build.yml").write_text(plan_content)
+        """Test returns in_progress task over pending (via TinyDB)."""
+        from agenticguidance.services.epic_repository import EpicRepository
+
+        db_path = tmp_path / ".agentic" / "epics.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        epic_dir = tmp_path / "my_epic"
+        epic_dir.mkdir()
+
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.create_epic({
+            "epic_folder_name": "my_epic",
+            "epic_folder": str(epic_dir),
+            "name": "My Epic",
+            "status": "active",
+        })
+        repo.add_ticket("my_epic", "Build", {
+            "id": "task_001",
+            "name": "Pending task",
+            "status": "pending",
+        })
+        repo.add_ticket("my_epic", "Build", {
+            "id": "task_002",
+            "name": "In progress task",
+            "status": "in_progress",
+        })
 
         resolver = MainFirstEpicResolver()
-        task = resolver.extract_current_ticket(tmp_path)
+        resolver._repository = repo  # Inject isolated repo
+
+        task = resolver.extract_current_ticket(epic_dir)
 
         assert task["id"] == "task_002"
         assert task["status"] == "in_progress"
 
+        repo.close()
+
     def test_extract_current_ticket_returns_first_pending(self, tmp_path):
-        """Test returns first pending when no in_progress (flattened structure)."""
-        # Flattened: plan files directly in tmp_path
-        plan_content = """
-phases:
-  - name: "Build"
-    tickets:
-      - id: "task_001"
-        name: "First pending"
-        status: "pending"
-      - id: "task_002"
-        name: "Second pending"
-        status: "pending"
-"""
-        (tmp_path / "plan_build.yml").write_text(plan_content)
+        """Test returns first pending when no in_progress (via TinyDB)."""
+        from agenticguidance.services.epic_repository import EpicRepository
+
+        db_path = tmp_path / ".agentic" / "epics.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        epic_dir = tmp_path / "my_epic"
+        epic_dir.mkdir()
+
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.create_epic({
+            "epic_folder_name": "my_epic",
+            "epic_folder": str(epic_dir),
+            "name": "My Epic",
+            "status": "active",
+        })
+        repo.add_ticket("my_epic", "Build", {
+            "id": "task_001",
+            "name": "First pending",
+            "status": "pending",
+        })
+        repo.add_ticket("my_epic", "Build", {
+            "id": "task_002",
+            "name": "Second pending",
+            "status": "pending",
+        })
 
         resolver = MainFirstEpicResolver()
-        task = resolver.extract_current_ticket(tmp_path)
+        resolver._repository = repo  # Inject isolated repo
+
+        task = resolver.extract_current_ticket(epic_dir)
 
         assert task["id"] == "task_001"
+
+        repo.close()
 
 
 class TestGetRoleProcess:
@@ -219,6 +270,65 @@ class TestGetRoleProcess:
         result = get_role_process("nonexistent-agent")
 
         assert result is None
+
+    @patch("agenticguidance.services.context._find_agents_directory")
+    def test_returns_process_data_for_valid_role(self, mock_find, tmp_path):
+        """Test returns parsed process and manifest data for a valid role."""
+        import yaml as _yaml
+
+        # Create agent directory structure: category/role-id/
+        agent_dir = tmp_path / "build" / "build-python"
+        agent_dir.mkdir(parents=True)
+
+        # Write process.yml
+        process_data = {
+            "name": "Build Python",
+            "description": "Build and test Python projects",
+            "steps": ["analyze", "implement", "test"],
+        }
+        (agent_dir / "process.yml").write_text(_yaml.dump(process_data))
+
+        # Write manifest.yml
+        manifest_data = {
+            "agent": {
+                "name": "Build Python Agent",
+                "invocation_context": "python-build",
+            }
+        }
+        (agent_dir / "manifest.yml").write_text(_yaml.dump(manifest_data))
+
+        mock_find.return_value = tmp_path
+
+        result = get_role_process("build-python")
+
+        assert result is not None, "Should return data for a valid role"
+        assert result["role_id"] == "build-python"
+        assert result["category"] == "build"
+        assert result["process"] is not None
+        assert result["process"]["name"] == "Build Python"
+        assert result["process"]["steps"] == ["analyze", "implement", "test"]
+        assert result["manifest"] is not None
+        assert result["manifest"]["agent"]["name"] == "Build Python Agent"
+        assert result["invocation_context"] == "python-build"
+
+    @patch("agenticguidance.services.context._find_agents_directory")
+    def test_returns_data_with_process_only(self, mock_find, tmp_path):
+        """Test returns data when only process.yml exists (no manifest)."""
+        import yaml as _yaml
+
+        agent_dir = tmp_path / "build" / "build-go"
+        agent_dir.mkdir(parents=True)
+
+        process_data = {"name": "Build Go", "steps": ["build", "test"]}
+        (agent_dir / "process.yml").write_text(_yaml.dump(process_data))
+
+        mock_find.return_value = tmp_path
+
+        result = get_role_process("build-go")
+
+        assert result is not None
+        assert result["process"]["name"] == "Build Go"
+        assert result["manifest"] is None
 
 
 class TestGetRoleInputsManifest:
@@ -243,3 +353,120 @@ class TestGetRoleInputsManifest:
         result = get_role_inputs_manifest("planner-build")
 
         assert result == {"role": "planner-build", "inputs": [], "missing": []}
+
+    @patch("subprocess.run")
+    @patch("agenticguidance.services.context._find_agents_directory")
+    def test_returns_manifest_with_path_resolution(self, mock_find, mock_subprocess, tmp_path):
+        """Test returns manifest with resolved paths and existence flags."""
+        import yaml as _yaml
+
+        # Set up agent directory with inputs.yml
+        agent_dir = tmp_path / "build" / "build-python"
+        agent_dir.mkdir(parents=True)
+
+        # Create some files that the inputs reference
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("# main")
+
+        inputs_data = {
+            "inputs": [
+                {"location": "src/main.py", "description": "Main entry point"},
+                {"location": "src/missing.py", "description": "Missing module"},
+            ],
+            "layers": [
+                {"type": "layer", "path": "assets/inputs/core.yml", "required": True},
+            ],
+        }
+        (agent_dir / "inputs.yml").write_text(_yaml.dump(inputs_data))
+
+        mock_find.return_value = tmp_path
+        # Mock git rev-parse to return tmp_path as project root
+        mock_subprocess.return_value = MagicMock(
+            stdout=str(tmp_path) + "\n",
+            returncode=0,
+        )
+
+        result = get_role_inputs_manifest("build-python")
+
+        assert result is not None
+        assert result["role"] == "build-python"
+        assert len(result["inputs"]) == 2
+
+        # First input should exist
+        main_input = result["inputs"][0]
+        assert main_input["relative_path"] == "src/main.py"
+        assert main_input["exists"] is True
+        assert main_input["path"] == str(tmp_path / "src" / "main.py")
+
+        # Second input should be missing
+        missing_input = result["inputs"][1]
+        assert missing_input["relative_path"] == "src/missing.py"
+        assert missing_input["exists"] is False
+
+        # Missing list should contain the missing file
+        assert len(result["missing"]) == 1
+        assert "src/missing.py" in result["missing"]
+
+        # Layers should be present
+        assert len(result["layers"]) == 1
+
+
+class TestGenerateAgentBootstrap:
+    """Tests for generate_agent_bootstrap function."""
+
+    @patch("agenticguidance.services.context._load_bootstrap_template")
+    @patch("agenticguidance.services.context.get_role_process")
+    def test_generates_content_from_template(self, mock_process, mock_template):
+        """Test generates content with proper template substitution."""
+        mock_process.return_value = {
+            "role_id": "test-role",
+            "category": "build",
+            "process": {"name": "Test", "steps": ["do"]},
+            "manifest": {
+                "agent": {
+                    "name": "Test Agent",
+                    "bootstrap_notes": "Special test notes",
+                }
+            },
+            "invocation_context": None,
+        }
+        mock_template.return_value = (
+            "# {{ROLE_NAME}} Agent\n"
+            "Role: {{ROLE_ID}}\n"
+            "Notes: {{ROLE_SPECIFIC_NOTES}}"
+        )
+
+        result = generate_agent_bootstrap("test-role")
+
+        assert result is not None
+        assert "test-role" in result, "Should substitute ROLE_ID"
+        assert "Test Agent" in result, "Should substitute ROLE_NAME from manifest"
+        assert "Special test notes" in result, "Should substitute ROLE_SPECIFIC_NOTES"
+
+    @patch("agenticguidance.services.context._load_bootstrap_template")
+    @patch("agenticguidance.services.context.get_role_process")
+    def test_uses_fallback_template_when_no_file(self, mock_process, mock_template):
+        """Test uses inline fallback when template file not found."""
+        mock_process.return_value = {
+            "role_id": "fallback-role",
+            "category": "build",
+            "process": {"name": "Fallback"},
+            "manifest": None,
+            "invocation_context": None,
+        }
+        mock_template.return_value = None  # No template file
+
+        result = generate_agent_bootstrap("fallback-role")
+
+        assert result is not None
+        assert "fallback-role" in result
+        assert "agentic context bootstrap --role fallback-role" in result
+
+    @patch("agenticguidance.services.context.get_role_process")
+    def test_returns_none_when_role_not_found(self, mock_process):
+        """Test returns None when role process not found."""
+        mock_process.return_value = None
+
+        result = generate_agent_bootstrap("nonexistent-role")
+
+        assert result is None

@@ -10,7 +10,7 @@ process:
     - Reads from all .yml files in `live/` to understand completed work
     - SYNCS completed items from `live/` files to copies in `completed/` (copy-and-sync)
     - DELETES files from `live/` only when ALL items are completed
-    - Updates `completed/plan_completed.yml` with summary entries
+    - Marks tickets as completed in TinyDB via `agentic agent epic ticket complete`
     - Use `agentic agent epic move folder --epic <epic_folder>` when phases complete (folder-level archive)
 
   loop_context:
@@ -39,12 +39,15 @@ process:
       description: "The live epic folder containing phase .yml files"
 
   outputs:
-    - location: "docs/epics/live/YYMMDDXX_description/ticket_*.yml"
-      description: "Finalization phases (cleanup, audit, user-story-validation, documentation)"
-    - location: "docs/epics/live/YYMMDDXX_description/completed/"
-      description: "Completed .yml files moved from live/ (file-level moves)"
-    - location: "docs/epics/live/YYMMDDXX_description/completed/ticket_completed.yml"
-      description: "Summary index of completed items"
+    - name: "TinyDB finalization phase tickets"
+      description: "Finalization phases (cleanup, audit, user-story-validation, documentation) stored in TinyDB"
+      creation_method: |
+        Use CLI to create phases and tickets:
+          agentic epic phase add --epic {epic_folder_name} --name '<phase_name>' --agent <agent-type>
+          agentic epic ticket add --epic {epic_folder_name} --phase '<phase_name>' --id '<id>' --name '<name>'
+        Do NOT create ticket_*.yml files on disk.
+    - name: "TinyDB ticket completion"
+      description: "Completed tickets marked via CLI: `agentic agent epic ticket complete <id> --epic <folder>`"
     - location: "docs/epics/live/YYMMDDXX_description/analysis/"
       description: "Iteration logs and analysis artifacts"
     - location: "docs/epics/completed/YYMMDDXX_description/"
@@ -154,8 +157,10 @@ process:
       - File-level inputs for context routing
 
       OUTPUT LOCATION:
-      - Create finalization phases in: docs/epics/live/YYMMDDXX_description/
-      - Use descriptive file names based on phase content (e.g., ticket_finalization.yml)
+      - Create finalization phases in TinyDB using CLI:
+          agentic epic phase add --epic {epic_folder_name} --name '<phase>' --agent <agent-type>
+          agentic epic ticket add --epic {epic_folder_name} --phase '<phase>' --id '<id>' --name '<name>'
+      - Do NOT create ticket_*.yml files on disk
       - Use `agentic agent epic move tickets --epic <epic_folder>` to archive completed tickets
 
       DUMPING GROUND: Use additional subfolders (e.g., audit-results/, analysis/) to store agent artifacts.

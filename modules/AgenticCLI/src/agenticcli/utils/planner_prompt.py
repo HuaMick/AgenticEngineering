@@ -16,21 +16,20 @@ def build_planner_prompt(objective: str, epic_folder: Path, context: str | None 
 
     Args:
         objective: The planning objective description.
-        epic_folder: Path to the epic folder where planner will write files.
+        epic_folder: Epic folder name or Path; only the name (ID) is used, not
+            the filesystem path.
         context: Optional additional context to include in the prompt.
 
     Returns:
         Formatted prompt string instructing the planner agent.
     """
-    epic_folder_str = str(epic_folder)
-    epic_folder_name = epic_folder.name
+    epic_folder_name = Path(epic_folder).name
 
     prompt_parts = [
         "You are a planner agent. Your task is to create a comprehensive implementation plan.",
         "",
         f"OBJECTIVE: {objective}",
         "",
-        f"EPIC FOLDER: {epic_folder_str}",
         f"EPIC NAME: {epic_folder_name}",
         "",
         "INSTRUCTIONS:",
@@ -78,7 +77,7 @@ def build_planner_prompt(objective: str, epic_folder: Path, context: str | None 
         "   - FENCE: UAT USER STORY ANCHORING - UAT phases must trace back to user story IDs",
         "",
         "REQUIRED OUTPUTS:",
-        f"- {epic_folder_str}/README.md",
+        f"- README.md in the epic folder",
         f"- Tickets created in TinyDB for epic '{epic_folder_name}'",
         "",
         "PLANNING GUIDELINES:",

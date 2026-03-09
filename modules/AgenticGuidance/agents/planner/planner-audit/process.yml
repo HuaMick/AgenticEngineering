@@ -54,34 +54,26 @@ process:
     - |
       AUDIT EPIC STRUCTURE HIERARCHY (CRITICAL - must pass before other checks):
 
-      For each ticket file (ticket_*.yml) in the epic folder:
-      1. Parse the YAML and inspect the ROOT-LEVEL keys
-      2. Check for a `tasks:` key at root level (i.e., NOT nested under `phases:`)
-      3. Check for a `phases:` key at root level
+      Query TinyDB for all tickets in the epic:
+      ```bash
+      agentic -j epic ticket list --epic {epic_folder_name}
+      ```
 
-      REQUIRED STRUCTURE (phases -> tasks):
-        phases:
-          - name: "Phase Name"
-            tasks:
-              - id: "task_001"
-                ...
-
-      VIOLATION - tasks at root level (MUST FAIL):
-        tasks:
-          - id: "task_001"
-            ...
+      For each phase returned from TinyDB:
+      1. Verify the phase has an `agent` field set
+      2. Verify the phase has at least one ticket
+      3. Check that tickets have required fields (id, name, status)
 
       RULES:
-      - If `tasks:` exists at root level, FLAG as HIGH severity:
-        "STRUCTURE VIOLATION: 'tasks' found at root level. Tasks MUST be nested
-         under 'phases' entries. Root-level tasks break downstream parser loops
-         that iterate phases[].tasks[]."
-      - If `phases:` is missing entirely AND `tasks:` is at root, this is a
-        BLOCKING failure - the audit MUST report FAIL for this ticket.
-      - If `phases:` exists but individual phases lack a `tasks:` key, FLAG as
-        MEDIUM severity: "Phase '{name}' has no tasks defined."
-      - Each phase entry MUST contain a `tasks:` list. Phases without tasks
-        are empty shells that waste orchestration cycles.
+      - If a phase has no `agent` field, FLAG as HIGH severity:
+        "STRUCTURE VIOLATION: Phase '{name}' has no agent routing. The executor
+         cannot dispatch work without an agent field."
+      - If a phase has no tickets, FLAG as MEDIUM severity:
+        "Phase '{name}' has no tickets defined."
+      - If tickets lack required fields, FLAG as HIGH severity with specifics.
+
+      NOTE: Do NOT audit on-disk YAML files (ticket_*.yml). All ticket/phase data
+      is stored in TinyDB. Use CLI commands to query the authoritative data source.
 
       Add findings to the compliance report under a new `structure_hierarchy` section.
 
@@ -89,19 +81,18 @@ process:
       AUDIT FILE PLACEMENT (for each file ask: "Does this file belong here?"):
 
       For files in live/:
-      - Is this a ticket file (ticket_*.yml)? Check if ANY items are still pending/in-progress.
-        If ALL items are completed, FLAG: "Should be removed from live/ (exists in completed/)"
       - Is this an audit report (audit_*.yml)? FLAG: "Should be in audit/ subfolder"
       - Is this a review decision (review_*.yml)? FLAG: "Should be in analysis/ subfolder"
-      - Is this a remediation ticket (ticket_*_remediation*.yml)? Check if it was merged.
-        If merged, FLAG: "Should be deleted (tasks merged into phase ticket)"
       - Is this analysis content? FLAG: "Should be in analysis/ subfolder"
+      - Are there stale YAML ticket files (ticket_*.yml, plan_*.yml)?
+        FLAG: "Legacy YAML ticket file found. All ticket data should be in TinyDB."
 
       For files in completed/:
-      - Does this file have a corresponding live/ version with pending items?
-        If yes, this is normal (Copy-and-Sync pattern).
-        If the live/ version has ALL items completed, FLAG the live/ version for removal.
-      - Is ticket_completed.yml present? If not, FLAG: "Missing ticket_completed.yml summary"
+      - Is there documentation or analysis that belongs in analysis/ subfolder?
+
+      NOTE: Ticket/phase data is stored in TinyDB, not on-disk YAML files.
+      Query TinyDB for ticket status: `agentic -j epic ticket list --epic {epic_folder_name}`
+      Check TinyDB for completed status rather than looking for ticket_completed.yml files.
 
       For files in audit/:
       - These are generally correct placement (audit reports belong here after processing)
@@ -112,18 +103,19 @@ process:
     - |
       AUDIT FOR COMPLETED FILES STILL IN LIVE:
 
-      For each ticket file in live/ (ticket_*.yml):
-      1. Read the file and examine all tasks/items
-      2. Check the status field of each item
-      3. If ALL items have status: completed:
-         - FLAG: "All items completed - file should be removed from live/"
-         - Verify completed/ has the synced copy
-         - Recommend: "Delete live/{filename} - all items are in completed/{filename}"
+      Query TinyDB for ticket completion status:
+      ```bash
+      agentic -j epic ticket list --epic {epic_folder_name}
+      ```
 
-      IMPORTANT: This is the Copy-and-Sync pattern:
-      - Files stay in live/ while ANY items are pending/in-progress
-      - When ALL items are completed, the live/ copy should be deleted
-      - The completed/ copy becomes the authoritative version
+      1. Check each ticket's status field in TinyDB
+      2. If ALL tickets have status: completed:
+         - FLAG: "All tickets completed - epic should be archived"
+         - Recommend: Run `agentic agent epic move folder --epic {epic_folder_name}` to archive
+
+      NOTE: Do NOT look for on-disk ticket_*.yml files for completion status.
+      TinyDB is the authoritative source for all ticket/phase status data.
+      Legacy YAML files on disk should be flagged for removal.
 
     - |
       AUDIT FOR STALE ANALYSIS/AUDIT OUTPUTS:
@@ -175,7 +167,7 @@ process:
     - |
       GENERATE COMPLIANCE REPORT:
 
-      Create audit_plan_compliance.yml with:
+      Create audit report (audit_plan_compliance.yml in audit/ subfolder) with:
       ```yaml
       audit:
         epic_folder: "{epic_folder_path}"

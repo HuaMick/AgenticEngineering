@@ -29,6 +29,13 @@ from .epic import (
 logger = logging.getLogger(__name__)
 
 
+# DB status values that correspond to a "live" (active/in-progress) epic.
+# "completed", "deferred", and "cancelled" are their own direct status values.
+_LIVE_STATUSES: frozenset[str] = frozenset(
+    {"proposed", "in_progress", "active", "planning", "approved", "pending", "blocked"}
+)
+
+
 class EpicRepository:
     """TinyDB-backed repository for epic data access.
 
@@ -53,8 +60,8 @@ class EpicRepository:
         Args:
             db_path: Path to TinyDB JSON file.
                      Defaults to ~/.agentic/epics.db.
-            epics_base: Path to docs/epics folder for auto-bootstrap.
-            auto_bootstrap: If True, populate empty DB with existing YAML epics.
+            epics_base: Deprecated, ignored.
+            auto_bootstrap: Deprecated, ignored. TinyDB is the sole data store.
         """
         if db_path is None:
             db_path = Path.home() / ".agentic" / "epics.db"
@@ -210,7 +217,7 @@ class EpicRepository:
                 "name": epic_data.get("name", epic_folder_name),
                 "worktree_path": epic_data.get("worktree_path", ""),
                 "branch": epic_data.get("branch", ""),
-                "status": epic_data.get("status", "pending"),
+                "status": epic_data.get("status", "proposed"),
                 "priority": epic_data.get("priority", "medium"),
                 "objective": epic_data.get("objective", ""),
                 "created": epic_data.get("created", datetime.now().strftime("%Y-%m-%d")),
@@ -279,6 +286,12 @@ class EpicRepository:
                     execution=pd.get("execution"),
                     status=pd.get("status"),
                     tasks=tickets_by_phase.get(phase_name, []),
+                    agent=pd.get("agent"),
+                    loop_type=pd.get("loop_type"),
+                    loop_max_iterations=pd.get("loop_max_iterations"),
+                    max_turns=pd.get("max_turns"),
+                    feedback_triggers=pd.get("feedback_triggers") or {},
+                    phase_id=pd.get("phase_id"),
                 )
             )
 
@@ -303,19 +316,31 @@ class EpicRepository:
         """List epics, optionally filtered by status.
 
         Args:
-            status: If provided, filter to epics whose folder lives
-                    under this status directory (e.g. 'live', 'completed').
-                    Also matches the epic's own status field.
+            status: 'live' to return all active/in-progress epics (any status
+                    in _LIVE_STATUSES), or a direct DB status value such as
+                    'completed', 'deferred', 'cancelled', 'in_progress', etc.
+                    The status field in TinyDB is the sole source of truth.
 
         Returns:
             List of EpicMetadata sorted newest-first by folder name.
         """
         if status:
             Epic = Query()
-            docs = self._epics.search(
-                (Epic.status == status)
-                | Epic.epic_folder.test(lambda ef: f"/epics/{status}/" in ef)
-            )
+            if status.lower() == "live":
+                live_lower = {s.lower() for s in _LIVE_STATUSES}
+                docs = self._epics.search(
+                    Epic.status.test(lambda s: (s or "").lower() in live_lower)
+                )
+            elif status.lower() == "completed":
+                # Normalise legacy capitalisation variants
+                docs = self._epics.search(
+                    Epic.status.test(
+                        lambda s: (s or "").lower() in {"completed", "fully_completed"}
+                    )
+                )
+            else:
+                # Direct DB status match (e.g. "in_progress", "deferred", "cancelled")
+                docs = self._epics.search(Epic.status == status)
         else:
             docs = self._epics.all()
 
@@ -402,8 +427,9 @@ class EpicRepository:
     ) -> EpicUpdateResult:
         """Archive an epic by marking it completed in the database.
 
-        Updates the epic status to "completed", adjusts the epic_folder path
-        from live/ to completed/, and records the completed_date.
+        Sets status to "completed" and records completed_date.
+        Does NOT rewrite the epic_folder path — the status field is the
+        sole source of truth for lifecycle state.
 
         Note: Filesystem operations (copying/moving folders) are the caller's
         responsibility. This method only updates the database record.
@@ -425,12 +451,8 @@ class EpicRepository:
                 message=f"Epic not found in DB: {epic_folder_name}",
             )
 
-        current_folder = doc.get("epic_folder", "")
-        new_folder = current_folder.replace("/epics/live/", "/epics/completed/")
-
         updates = {
             "status": "completed",
-            "epic_folder": new_folder,
             "completed_date": completed_date,
         }
         return self.update_epic(doc["epic_folder_name"], updates)
@@ -438,8 +460,9 @@ class EpicRepository:
     def unarchive_epic(self, epic_folder_name: str) -> EpicUpdateResult:
         """Unarchive an epic by restoring it to active status.
 
-        Updates the epic status from "completed" back to "active", adjusts the
-        epic_folder path from completed/ to live/, and clears completed_date.
+        Sets status to "in_progress" and clears completed_date.
+        Does NOT rewrite the epic_folder path — the status field is the
+        sole source of truth for lifecycle state.
 
         Note: Filesystem operations (moving folders) are the caller's
         responsibility. This method only updates the database record.
@@ -457,12 +480,8 @@ class EpicRepository:
                 message=f"Epic not found in DB: {epic_folder_name}",
             )
 
-        current_folder = doc.get("epic_folder", "")
-        new_folder = current_folder.replace("/epics/completed/", "/epics/live/")
-
         updates = {
-            "status": "active",
-            "epic_folder": new_folder,
+            "status": "in_progress",
             "completed_date": "",
         }
         return self.update_epic(doc["epic_folder_name"], updates)
@@ -548,10 +567,17 @@ class EpicRepository:
         """
         Ticket = Query()
         if status_filter:
-            docs = self._tickets.search(
-                (Ticket.epic_folder_name == epic_folder_name)
-                & (Ticket.status == status_filter)
-            )
+            # Handle backward compat: "proposed" also matches legacy "pending"
+            if status_filter == "proposed":
+                docs = self._tickets.search(
+                    (Ticket.epic_folder_name == epic_folder_name)
+                    & (Ticket.status.test(lambda s: s in ("proposed", "pending")))
+                )
+            else:
+                docs = self._tickets.search(
+                    (Ticket.epic_folder_name == epic_folder_name)
+                    & (Ticket.status == status_filter)
+                )
         else:
             docs = self._tickets.search(Ticket.epic_folder_name == epic_folder_name)
 
@@ -665,7 +691,7 @@ class EpicRepository:
                 "task_id": task_id,
                 "name": ticket_data.get("name", ""),
                 "description": ticket_data.get("description", ""),
-                "status": ticket_data.get("status", "pending"),
+                "status": ticket_data.get("status", "proposed"),
                 "agent": ticket_data.get("agent"),
                 "inputs": ticket_data.get("inputs", []),
                 "target_files": ticket_data.get("target_files", []),
@@ -675,6 +701,46 @@ class EpicRepository:
             }
             self._tickets.insert(doc)
         return True
+
+    def delete_ticket(self, epic_folder_name: str, task_id: str) -> bool:
+        """Remove a ticket from the database.
+
+        Args:
+            epic_folder_name: Epic folder name.
+            task_id: Ticket identifier.
+
+        Returns:
+            True if the ticket was found and removed, False otherwise.
+        """
+        with self._lock:
+            Ticket = Query()
+            removed = self._tickets.remove(
+                (Ticket.epic_folder_name == epic_folder_name)
+                & (Ticket.task_id == task_id)
+            )
+        return len(removed) > 0
+
+    def update_ticket(
+        self, epic_folder_name: str, task_id: str, updates: dict
+    ) -> bool:
+        """Update arbitrary fields on a ticket.
+
+        Args:
+            epic_folder_name: Epic folder name.
+            task_id: Ticket identifier.
+            updates: Dictionary of fields to update.
+
+        Returns:
+            True if the ticket was found and updated.
+        """
+        with self._lock:
+            Ticket = Query()
+            updated = self._tickets.update(
+                updates,
+                (Ticket.epic_folder_name == epic_folder_name)
+                & (Ticket.task_id == task_id),
+            )
+        return len(updated) > 0
 
     def get_current_ticket(self, epic_folder_name: str) -> Optional[TicketData]:
         """Get the current actionable ticket for an epic.
@@ -711,10 +777,10 @@ class EpicRepository:
                 success_criteria=d.get("success_criteria"),
             )
 
-        # Fall back to first pending
+        # Fall back to first proposed (or legacy pending)
         pending = self._tickets.search(
             (Ticket.epic_folder_name == epic_folder_name)
-            & (Ticket.status == "pending")
+            & (Ticket.status.test(lambda s: s in ("proposed", "pending")))
         )
         if pending:
             d = pending[0]
@@ -784,9 +850,12 @@ class EpicRepository:
         Ticket = Query()
         all_tickets = self._tickets.search(Ticket.epic_folder_name == epic_folder_name)
 
-        counts = {"pending": 0, "in_progress": 0, "completed": 0, "total": 0}
+        counts = {"proposed": 0, "in_progress": 0, "completed": 0, "total": 0}
         for t in all_tickets:
-            status = t.get("status", "pending")
+            status = t.get("status", "proposed")
+            # Normalize legacy "pending" to "proposed"
+            if status == "pending":
+                status = "proposed"
             if status in counts:
                 counts[status] += 1
             counts["total"] += 1
@@ -825,9 +894,16 @@ class EpicRepository:
             self._phases.insert({
                 "epic_folder_name": epic_folder_name,
                 "phase_name": phase_name,
+                "phase_id": phase_data.get("phase_id", ""),
                 "execution": phase_data.get("execution", "sequential"),
                 "description": phase_data.get("description", ""),
                 "status": phase_data.get("status", "pending"),
+                "agent": phase_data.get("agent"),
+                "loop_type": phase_data.get("loop_type"),
+                "loop_max_iterations": phase_data.get("loop_max_iterations"),
+                "max_turns": phase_data.get("max_turns"),
+                "timeout": phase_data.get("timeout"),
+                "feedback_triggers": phase_data.get("feedback_triggers") or {},
                 "_order": max_order + 1,
             })
         return True
@@ -854,6 +930,63 @@ class EpicRepository:
             )
         return len(updated) > 0
 
+    def delete_phase(self, epic_folder_name: str, phase_name: str) -> bool:
+        """Remove a phase from the database.
+
+        Args:
+            epic_folder_name: Epic folder name.
+            phase_name: Phase name or phase_id to remove.
+
+        Returns:
+            True if the phase was found and removed, False otherwise.
+        """
+        # Resolve to actual phase_name field (may be passed as phase_id)
+        phase_obj = self.get_phase(epic_folder_name, phase_name)
+        if phase_obj is None:
+            return False
+        actual_name = phase_obj.name
+        with self._lock:
+            Phase = Query()
+            removed = self._phases.remove(
+                (Phase.epic_folder_name == epic_folder_name)
+                & (Phase.phase_name == actual_name)
+            )
+        return len(removed) > 0
+
+    def get_tickets_for_phase(
+        self, epic_folder_name: str, phase_name: str
+    ) -> list[TicketData]:
+        """Get all tickets belonging to a specific phase.
+
+        Args:
+            epic_folder_name: Epic folder name.
+            phase_name: Phase name.
+
+        Returns:
+            List of TicketData objects for that phase.
+        """
+        Ticket = Query()
+        docs = self._tickets.search(
+            (Ticket.epic_folder_name == epic_folder_name)
+            & (Ticket.phase_name == phase_name)
+        )
+        return [
+            TicketData(
+                id=d.get("task_id", ""),
+                name=d.get("name", ""),
+                description=d.get("description"),
+                status=d.get("status"),
+                agent=d.get("agent"),
+                phase_name=d.get("phase_name"),
+                inputs=d.get("inputs", []),
+                target_files=d.get("target_files", []),
+                guidance=d.get("guidance"),
+                completed_date=d.get("completed_date"),
+                success_criteria=d.get("success_criteria"),
+            )
+            for d in docs
+        ]
+
     def list_phases(self, epic_folder_name: str) -> list[PhaseData]:
         """Return all phases for an epic, sorted by _order.
 
@@ -873,6 +1006,13 @@ class EpicRepository:
                 description=d.get("description"),
                 execution=d.get("execution"),
                 status=d.get("status"),
+                agent=d.get("agent"),
+                loop_type=d.get("loop_type"),
+                loop_max_iterations=d.get("loop_max_iterations"),
+                max_turns=d.get("max_turns"),
+                timeout=d.get("timeout"),
+                feedback_triggers=d.get("feedback_triggers") or {},
+                phase_id=d.get("phase_id"),
             )
             for d in docs
         ]
@@ -880,11 +1020,11 @@ class EpicRepository:
     def get_phase(
         self, epic_folder_name: str, phase_name: str
     ) -> Optional[PhaseData]:
-        """Get a single phase by name.
+        """Get a single phase by name or phase_id.
 
         Args:
             epic_folder_name: Epic folder name.
-            phase_name: Phase name to look up.
+            phase_name: Phase name or phase_id to look up.
 
         Returns:
             PhaseData if found, None otherwise.
@@ -895,6 +1035,12 @@ class EpicRepository:
             & (Phase.phase_name == phase_name)
         )
         if not docs:
+            # Fall back to searching by phase_id
+            docs = self._phases.search(
+                (Phase.epic_folder_name == epic_folder_name)
+                & (Phase.phase_id == phase_name)
+            )
+        if not docs:
             return None
 
         d = docs[0]
@@ -903,7 +1049,30 @@ class EpicRepository:
             description=d.get("description"),
             execution=d.get("execution"),
             status=d.get("status"),
+            agent=d.get("agent"),
+            loop_type=d.get("loop_type"),
+            loop_max_iterations=d.get("loop_max_iterations"),
+            max_turns=d.get("max_turns"),
+            timeout=d.get("timeout"),
+            feedback_triggers=d.get("feedback_triggers") or {},
+            phase_id=d.get("phase_id"),
         )
+
+    def has_pending_phases(self, epic_folder_name: str) -> bool:
+        """Check if an epic has any phases with pending or in_progress status.
+
+        Args:
+            epic_folder_name: Epic folder name.
+
+        Returns:
+            True if any phase is pending or in_progress.
+        """
+        Phase = Query()
+        docs = self._phases.search(
+            (Phase.epic_folder_name == epic_folder_name)
+            & (Phase.status.test(lambda s: s in ("pending", "in_progress")))
+        )
+        return len(docs) > 0
 
     # ------------------------------------------------------------------
     # Internal helpers

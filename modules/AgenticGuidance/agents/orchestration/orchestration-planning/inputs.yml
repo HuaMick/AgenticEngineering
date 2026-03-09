@@ -44,15 +44,16 @@ runtime_inputs:
       Intent signaled by the entrypoint that invoked this orchestrator.
       Influences which planner agent is prioritized during phase determination.
     examples:
-      - entrypoint: "_plan_build.yml"
-        planning_intent: "build"
+      - planning_intent: "build"
         effect: "Prioritize planner-build, assume implementation-focused objective"
-      - entrypoint: "_plan_teach.yml"
-        planning_intent: "teach"
+      - planning_intent: "teach"
         effect: "Prioritize planner-guidance, assume guidance improvement objective"
-      - entrypoint: "_plan_test.yml"
-        planning_intent: "test"
+      - planning_intent: "test"
         effect: "Prioritize planner-test, assume test strategy objective"
+    note: |
+      Planning intent was formerly signaled by _plan_build.yml, _plan_teach.yml, _plan_test.yml
+      entrypoint files. These are now superseded by the planning_intent runtime parameter.
+      Do NOT create _plan_*.yml entrypoint files on disk.
 
 # ==============================================
 # STORY DISCOVERY INPUTS
@@ -84,18 +85,18 @@ story_discovery:
   fence_reference: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml#Story-First Planning"
 
 # ##############################################
-# MMD NODE GRANULARITY (DELEGATED)
+# PHASE RECORD CREATION (DELEGATED)
 # ##############################################
-# MMD generation is now handled by planner-orchestration agent.
-# The mmd_node_granularity fence and detailed patterns live in:
-# modules/AgenticGuidance/agents/planner/planner-orchestration/inputs.yml
-#
+# TinyDB phase record creation is handled by planner-orchestration agent.
 # This orchestrator spawns planner-orchestration after all phase plans are approved.
 # ==============================================
-mmd_generation_delegation:
+phase_record_creation_delegation:
   agent: "planner-orchestration"
   reference: "modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml"
-  note: "All MMD generation logic, node granularity fences, and schema validation are owned by planner-orchestration."
+  note: "All phase record creation logic, agent routing assignment, and validation are owned by planner-orchestration."
+  cli_commands:
+    - "agentic epic phase add --epic <folder> --name <phase> --agent <agent-type> --execution sequential"
+    - "agentic epic ticket add --epic <folder> --phase <phase> --id <id> --name <name>"
 
 # ##############################################
 # ##############################################
@@ -226,7 +227,7 @@ sub_agent_orchestration_workflow:
   description: |
     Standard workflow for spawning and managing sub-agents during plan execution.
     CLI commands handle all state transitions - agents should NEVER use Edit tool
-    on plan YAML files or rm/mv commands on plan folders.
+    on TinyDB ticket data files or rm/mv commands on plan folders.
 
   workflow_steps:
     1_get_ticket:
@@ -263,13 +264,12 @@ sub_agent_orchestration_workflow:
 # ==============================================
 # PHASE FILE STRATEGY
 # ==============================================
-phase_file_strategy: |
-  For multi-phase epics, create SEPARATE phase files:
-  - One ticket_<phase>.yml per phase type (teach, build, test, cleanup)
-  - This enables Context Minimisation: agents read only their phase file
-  - Do NOT attempt to consolidate all phases into a single "unified" file
-
-  The ticket_example.yml is a STRUCTURE reference, not a file organization template.
+phase_strategy: |
+  All phases and tickets are stored in TinyDB, not YAML files.
+  Use CLI commands to create phases and tickets:
+    agentic epic phase add --epic <folder> --name '<phase_name>'
+    agentic epic ticket add --epic <folder> --phase '<phase_name>' --id '<id>' --name '<name>'
+  Context Minimisation: agents query TinyDB for only their relevant tickets.
 # ==============================================
 
 # ==============================================
@@ -349,7 +349,7 @@ inputs:
 
   # Orchestration executor specification for agent routing patterns
   - location: "modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml"
-    description: "Runtime behavior spec: AGENT_ROUTING format, FEEDBACK_TRIGGERS patterns, STATUS management"
+    description: "Runtime behavior spec: phase.agent routing field, phase.feedback_triggers patterns, phase status management"
 
   # Planner manifest for routing decisions
   - location: "modules/AgenticGuidance/agents/planner/manifest.yml"
@@ -381,6 +381,6 @@ inputs:
   - location: "modules/AgenticGuidance/assets/examples/planner/teaching-plan-example.yml"
     description: "Teaching plan example for guidance improvements with phases and tasks."
 
-  # Planner-orchestration agent reference (for MMD generation delegation)
+  # Planner-orchestration agent reference (for phase record creation delegation)
   - location: "modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml"
-    description: "Process for generating orchestration MMD files from approved plan YAMLs."
+    description: "Process for creating TinyDB phase records with agent routing from approved ticket data."
