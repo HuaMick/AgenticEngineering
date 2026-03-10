@@ -18,27 +18,32 @@ logger = logging.getLogger(__name__)
 
 
 class EpicStatus(Enum):
-    """Canonical epic statuses."""
+    """Canonical epic statuses (6 lifecycle values)."""
 
-    PROPOSED = "proposed"
+    ACTIVE = "active"
+    PLANNING = "planning"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
+    DEFERRED = "deferred"
+    BLOCKED = "blocked"
 
 
-# Maps all legacy status strings to the 3 canonical values
+# Maps all legacy status strings to the 6 canonical values
 EPIC_STATUS_MIGRATION: dict[str, str] = {
-    "proposed": "proposed",
-    "pending": "proposed",
-    "planning": "proposed",
-    "approved": "in_progress",
-    "active": "in_progress",
+    # Canonical values (identity)
+    "active": "active",
+    "planning": "planning",
     "in_progress": "in_progress",
-    "partially_completed": "in_progress",
-    "blocked": "in_progress",
     "completed": "completed",
+    "deferred": "deferred",
+    "blocked": "blocked",
+    # Legacy mappings
+    "proposed": "active",
+    "pending": "active",
+    "approved": "in_progress",
+    "partially_completed": "in_progress",
     "fully_completed": "completed",
     "cancelled": "completed",
-    "deferred": "proposed",
 }
 
 
@@ -49,9 +54,9 @@ def normalize_epic_status(status: str) -> str:
         status: Any status string (old or new).
 
     Returns:
-        One of 'proposed', 'in_progress', 'completed'.
+        One of 'active', 'planning', 'in_progress', 'completed', 'deferred', 'blocked'.
     """
-    return EPIC_STATUS_MIGRATION.get(status.lower().strip(), "proposed")
+    return EPIC_STATUS_MIGRATION.get(status.lower().strip(), "active")
 
 
 class MoveResult(Enum):

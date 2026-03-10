@@ -290,6 +290,13 @@ class ExecutionRunner:
         all_success = True
         for plan in plans_to_process:
             logger.info("Starting execution for plan: %s", plan)
+            # Mark epic as in_progress when execution begins
+            try:
+                repo_exec = self.workflow._get_repository()
+                if repo_exec:
+                    repo_exec.update_epic(plan, {"status": "in_progress"})
+            except Exception:
+                pass  # Non-fatal — status update is best-effort
             try:
                 success = self._execute_plan(plan, max_iterations)
             except Exception as e:
@@ -348,6 +355,12 @@ class ExecutionRunner:
 
             if not next_phase:
                 logger.info("All phases complete for %s", plan_folder)
+                # Mark the epic as completed in TinyDB
+                try:
+                    repo.update_epic(plan_folder, {"status": "completed"})
+                    logger.info("Epic %s marked as completed", plan_folder)
+                except Exception as e:
+                    logger.warning("Failed to mark epic %s as completed: %s", plan_folder, e)
                 return True
 
             agent_type = next_phase.agent

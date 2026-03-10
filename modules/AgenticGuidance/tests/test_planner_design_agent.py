@@ -62,15 +62,31 @@ class TestPlannerDesignManifest:
         return yaml.safe_load((PLANNER_DESIGN_DIR / "manifest.yml").read_text())
 
     def test_manifest_has_name(self, manifest):
-        """Verify manifest has a name field."""
-        # Manifest should identify the agent
-        assert "manifest" in manifest or "name" in manifest or "agent" in manifest
+        """Verify manifest has name field set to 'planner-design'."""
+        assert "name" in manifest, "manifest.yml must have a 'name' field"
+        assert manifest["name"] == "planner-design"
+
+    def test_manifest_has_version(self, manifest):
+        """Verify manifest has a version field."""
+        assert "version" in manifest, "manifest.yml must have a 'version' field"
+
+    def test_manifest_has_description(self, manifest):
+        """Verify manifest has a description field."""
+        assert "description" in manifest, "manifest.yml must have a 'description' field"
+        assert len(manifest["description"]) > 20, "Description should be substantive"
 
     def test_manifest_has_design_principles(self, manifest):
-        """Verify manifest defines design principles."""
-        # The manifest should contain design principles for architecture
-        content_str = str(manifest)
-        assert "design" in content_str.lower() or "principle" in content_str.lower()
+        """Verify manifest defines design_principles field with story-first architecture."""
+        assert "design_principles" in manifest, "manifest.yml must have 'design_principles'"
+        principles = manifest["design_principles"]
+        assert "Story-First" in principles, "design_principles should include Story-First"
+        assert "Traceability" in principles, "design_principles should include Traceability"
+
+    def test_manifest_has_outputs(self, manifest):
+        """Verify manifest defines outputs."""
+        assert "outputs" in manifest, "manifest.yml must define outputs"
+        assert isinstance(manifest["outputs"], list)
+        assert len(manifest["outputs"]) >= 2, "At least 2 output types expected"
 
 
 # ---------------------------------------------------------------------------
@@ -138,19 +154,32 @@ class TestPlannerDesignInputs:
         return yaml.safe_load((PLANNER_DESIGN_DIR / "inputs.yml").read_text())
 
     def test_inputs_has_required_inputs(self, inputs):
-        """Verify inputs defines required inputs."""
-        inputs_str = str(inputs)
-        assert "required" in inputs_str.lower() or "objective" in inputs_str
+        """Verify inputs defines required_inputs with objective and affected_stories."""
+        assert "required_inputs" in inputs, "inputs.yml must define 'required_inputs'"
+        required = inputs["required_inputs"]
+        assert isinstance(required, list), "required_inputs should be a list"
+        names = [ri.get("name") for ri in required if isinstance(ri, dict)]
+        assert "objective" in names, "objective should be a required input"
 
     def test_inputs_requires_affected_stories(self, inputs):
-        """Verify affected_stories is listed as a required input."""
-        inputs_str = str(inputs)
-        assert "affected_stories" in inputs_str
+        """Verify affected_stories is listed as a required input with required=true."""
+        required = inputs.get("required_inputs", [])
+        stories_input = [
+            ri for ri in required
+            if isinstance(ri, dict) and ri.get("name") == "affected_stories"
+        ]
+        assert len(stories_input) == 1, "affected_stories must be in required_inputs"
+        assert stories_input[0].get("required") is True, \
+            "affected_stories must be marked required: true"
 
     def test_inputs_has_reference_layers(self, inputs):
         """Verify inputs defines reference layers for transitive loading."""
-        inputs_str = str(inputs)
-        assert "reference" in inputs_str.lower() or "layers" in inputs_str.lower()
+        assert "inputs" in inputs, "inputs.yml must have top-level 'inputs' key"
+        agent_inputs = inputs["inputs"]
+        assert "layers" in agent_inputs, "inputs should define reference layers"
+        layers = agent_inputs["layers"]
+        assert isinstance(layers, list), "layers should be a list"
+        assert len(layers) >= 1, "At least one reference layer expected"
 
 
 # ---------------------------------------------------------------------------
@@ -161,18 +190,13 @@ class TestPlannerDesignRegistration:
     """Test planner-design is registered in planner manifest."""
 
     def test_planner_design_in_planner_roster(self):
-        """Verify planner-design is registered in agent manifests."""
-        # Check the planner manifest (agents/planner/manifest.yml)
+        """Verify planner-design is registered in planner manifest.yml."""
         planner_manifest = AGENTS_DIR / "planner" / "manifest.yml"
-        if planner_manifest.exists():
-            content_str = planner_manifest.read_text()
-            assert "planner-design" in content_str
-        else:
-            # Fall back to checking top-level manifest
-            top_manifest = AGENTS_DIR / "manifest.yml"
-            if top_manifest.exists():
-                content_str = top_manifest.read_text()
-                assert "planner-design" in content_str
+        assert planner_manifest.exists(), \
+            f"Planner manifest should exist at {planner_manifest}"
+        content_str = planner_manifest.read_text()
+        assert "planner-design" in content_str, \
+            "planner-design must be registered in agents/planner/manifest.yml"
 
     def test_planner_design_dir_in_agent_tree(self):
         """Verify planner-design directory is in the planner agent tree."""

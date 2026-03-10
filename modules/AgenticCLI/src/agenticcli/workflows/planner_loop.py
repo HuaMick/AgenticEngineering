@@ -1323,6 +1323,14 @@ class PlannerLoopRunner:
             })
             return False
 
+        # Mark epic as 'planning' now that the planner loop is actively processing it
+        try:
+            repo = self.workflow._get_repository()
+            if repo:
+                repo.update_epic(epic_folder, {"status": "planning"})
+        except Exception:
+            pass  # Non-fatal — status update is best-effort
+
         # 1. Explore: run explore agent to analyze codebase
         explore_result = self.workflow.spawn_explore_agent(epic_folder)
         self.workflow._validate_result(explore_result, "explore")

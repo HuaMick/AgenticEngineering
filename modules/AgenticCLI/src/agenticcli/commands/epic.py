@@ -1216,7 +1216,7 @@ def cmd_scaffold(args):
             "epic_folder_name": name,
             "epic_folder": str(plan_path),
             "name": name,
-            "status": "planning",
+            "status": "active",
         })
         repo.close()
     except Exception:
@@ -1231,12 +1231,9 @@ def cmd_scaffold(args):
 
 
 def cmd_status(args):
-    """Show plan status and task summary.
+    """Show epic status and task summary.
 
-    Enhanced with orchestration status (EN-003, EN-004, EN-005):
-    - Shows orchestration MMD path or MISSING status
-    - Shows deferred reason if plan is deferred
-    - Shows next action guidance for agents
+    Shows unified status with next_action derived from the status field.
     """
     from agenticcli.console import (
         console,
@@ -1274,9 +1271,6 @@ def cmd_status(args):
 
     # EN-003: Check for orchestration phases in TinyDB only (T3_1: no MMD fallback)
     has_orchestration = _check_has_orchestration(epic_folder_name)
-    # orchestration_file kept as None (MMD files no longer used)
-    orchestration_file = None
-
     total_pending = 0
     total_completed = 0
     file_stats = []
@@ -1321,31 +1315,16 @@ def cmd_status(args):
     total = total_pending + total_completed
     pct = (total_completed / total) * 100 if total > 0 else 0
 
-    # EN-005: Determine next action and command
-    if plan_status == "deferred":
-        action_required = "blocked"
-        next_action = "Resolve blockers"
-        next_command = None
-    elif not has_orchestration:
-        action_required = "needs_planning"
-        next_action = "Spawn orchestration-planning agent"
-        next_command = "agentic entrypoint execute _plan_build --compile"
-    elif not has_tasks or total == 0:
-        action_required = "needs_planning"
-        next_action = "Define tasks in plan"
-        next_command = "agentic entrypoint execute _plan_build --compile"
-    elif total_pending > 0:
-        action_required = "execute"
-        next_action = "Execute current task"
-        next_command = f"agentic epic ticket current --plan {plan_path}"
-    elif total_completed == total and total > 0:
-        action_required = "archive"
-        next_action = "Archive completed plan"
-        next_command = f"agentic epic move folder --plan {plan_path}"
-    else:
-        action_required = "blocked"
-        next_action = "Check plan state"
-        next_command = None
+    # Derive next_action and next_command from the unified status field
+    _status_actions = {
+        "active": ("Spawn planning agent", f"agentic session orchestrate planning --epic {epic_folder_name}"),
+        "planning": ("Planning in progress", None),
+        "in_progress": ("Execute current ticket", f"agentic epic ticket current --epic {epic_folder_name}"),
+        "completed": ("Archive epic", f"agentic epic move folder --epic {epic_folder_name}"),
+        "deferred": ("Resolve blockers", None),
+        "blocked": ("Resolve blockers", None),
+    }
+    next_action, next_command = _status_actions.get(plan_status, ("Check epic state", None))
 
     if is_json_output():
         print_json(
@@ -1353,9 +1332,6 @@ def cmd_status(args):
                 "plan": plan_path.name,
                 "status": plan_status,
                 "has_orchestration": has_orchestration,
-                "orchestration_file": orchestration_file,
-                "has_tasks": has_tasks,
-                "action_required": action_required,
                 "next_action": next_action,
                 "next_command": next_command,
                 "deferred_reason": deferred_reason,
@@ -1383,7 +1359,9 @@ def cmd_status(args):
         if deferred_reason:
             console.print(f"[bold]Deferred Reason:[/bold] [yellow]{deferred_reason}[/yellow]")
 
-        console.print(f"[bold]Action Required:[/bold] {action_required}")
+        console.print(f"[bold]Next Action:[/bold] {next_action}")
+        if next_command:
+            console.print(f"  Run: {next_command}")
         console.print()
 
         rows = []
@@ -2401,15 +2379,10 @@ def cmd_cancel(args, ctx=None):
 
 
 def cmd_list(args):
-    """List all plans in the repository.
+    """List all epics in the repository.
 
-    Enhanced with orchestration status fields (EN-001, EN-002):
-    - has_orchestration: Whether plan has orchestration_*.mmd file
-    - action_required: What action the orchestration agent should take
-      - blocked: Plan is deferred or has dependencies
-      - needs_planning: No MMD file or no tasks defined
-      - execute: Has pending tasks ready for execution
-      - archive: All tasks completed, ready to archive
+    Shows a simplified table with columns: Epic, Status, Proposed, Completed.
+    Completed epics are hidden by default; use --all to show them.
     """
     from agenticcli.console import (
         console,
@@ -2445,36 +2418,12 @@ def cmd_list(args):
         # Treat in_progress as proposed for display (tickets are either proposed or done)
         total_proposed = sum(1 for t in tasks if t.status in ("pending", "in_progress", "proposed"))
         total_completed = sum(1 for t in tasks if t.status == "completed")
-        has_tasks = len(tasks) > 0
         plan_status = meta.status or "unknown"
-
-        # EN-001: Check orchestration via TinyDB phases only (T3_1: no MMD fallback)
-        has_orchestration = _check_has_orchestration(plan_folder.name)
-
-        total = total_proposed + total_completed
-
-        # EN-002: Determine action_required based on plan state
-        # Priority order matters - check from most blocking to least
-        if plan_status == "deferred":
-            action_required = "blocked"
-        elif not has_orchestration:
-            action_required = "needs_planning"
-        elif not has_tasks or total == 0:
-            action_required = "needs_planning"
-        elif total_proposed > 0:
-            action_required = "execute"
-        elif total_completed == total and total > 0:
-            action_required = "archive"
-        else:
-            action_required = "blocked"
 
         plans_data.append(
             {
                 "name": plan_folder.name,
                 "status": plan_status,
-                "has_orchestration": has_orchestration,
-                "has_tasks": has_tasks,
-                "action_required": action_required,
                 "proposed": total_proposed,
                 "completed": total_completed,
             }
@@ -2483,7 +2432,7 @@ def cmd_list(args):
     # Filter completed epics unless --all is passed
     show_all = getattr(args, "all", False)
     if not show_all:
-        plans_data = [p for p in plans_data if p["action_required"] != "archive" or p["status"] != "completed"]
+        plans_data = [p for p in plans_data if p["status"] != "completed"]
 
     if is_json_output():
         print_json({"plans": plans_data})
@@ -2496,33 +2445,16 @@ def cmd_list(args):
 
         rows = []
         for plan in plans_data:
-            # Format orchestration status
-            orch = "[green]Yes[/green]" if plan["has_orchestration"] else "[red]No[/red]"
-            # Format action_required with color coding
-            action = plan["action_required"]
-            if action == "blocked":
-                action_fmt = "[dim]blocked[/dim]"
-            elif action == "needs_planning":
-                action_fmt = "[yellow]needs_planning[/yellow]"
-            elif action == "execute":
-                action_fmt = "[green]execute[/green]"
-            elif action == "archive":
-                action_fmt = "[cyan]archive[/cyan]"
-            else:
-                action_fmt = action
-
             rows.append(
                 [
                     f"[bold]{plan['name']}[/bold]",
                     format_status(plan["status"]),
-                    orch,
-                    action_fmt,
                     f"[dim]{plan['proposed']}[/dim]",
                     f"[green]{plan['completed']}[/green]",
                 ]
             )
 
-        print_table("", ["Epic", "Status", "Orch", "Action", "Proposed", "Completed"], rows)
+        print_table("", ["Epic", "Status", "Proposed", "Completed"], rows)
 
 
 def cmd_move(args, ctx=None):

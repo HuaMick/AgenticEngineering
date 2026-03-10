@@ -790,10 +790,10 @@ class TestUS_GD_206_YamlSyncDisabled:
 
         service.update_epic_status(epic_name, "active")
 
-        # TinyDB must be updated (status normalized: "active" -> "in_progress")
+        # TinyDB must be updated ("active" is now a canonical status)
         db_entry = service._repository.get_epic(epic_name)
         assert db_entry is not None
-        assert db_entry.status == "in_progress", (
+        assert db_entry.status == "active", (
             "TinyDB should reflect normalized status update even when YAML is not written"
         )
 

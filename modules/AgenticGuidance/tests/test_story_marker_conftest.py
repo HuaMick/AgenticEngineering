@@ -40,9 +40,10 @@ class TestFindRepoRoot:
         """Verify found root is an ancestor of the tests directory."""
         mod = _load_conftest_module()
         root = mod._find_repo_root_from_tests()
-        if root:
-            tests_dir = Path(__file__).resolve().parent
-            assert str(tests_dir).startswith(str(root))
+        assert root is not None, "Expected to find repo root with .git directory"
+        tests_dir = Path(__file__).resolve().parent
+        assert str(tests_dir).startswith(str(root)), \
+            f"Tests dir {tests_dir} should be under repo root {root}"
 
 
 # ---------------------------------------------------------------------------
@@ -67,11 +68,26 @@ class TestLoadValidStoryIds:
                 assert isinstance(story_id, str)
                 assert story_id.startswith("US-")
 
-    def test_skips_metadata_file(self):
+    def test_skips_metadata_file(self, tmp_path):
         """Verify 00_metadata.yml is excluded from scanning."""
         mod = _load_conftest_module()
-        result = mod._load_valid_story_ids()
-        assert isinstance(result, frozenset)
+
+        userstories_dir = tmp_path / "docs" / "userstories" / "TestProject"
+        userstories_dir.mkdir(parents=True)
+        # Create metadata file with stories — should be ignored
+        (userstories_dir / "00_metadata.yml").write_text(yaml.dump({
+            "stories": [{"id": "US-META-001", "title": "From metadata"}]
+        }))
+        # Create non-metadata file — should be loaded
+        (userstories_dir / "01_features.yml").write_text(yaml.dump({
+            "stories": [{"id": "US-FEAT-001", "title": "From features"}]
+        }))
+
+        with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
+            result = mod._load_valid_story_ids()
+            assert isinstance(result, frozenset)
+            assert "US-META-001" not in result, "00_metadata.yml stories should be excluded"
+            assert "US-FEAT-001" in result, "Non-metadata stories should be loaded"
 
 
 # ---------------------------------------------------------------------------
@@ -101,16 +117,220 @@ class TestCollectionValidation:
     """Test that the collection plugin validates story markers."""
 
     def test_marker_validation_warns_on_unknown_id(self):
-        """Verify unknown story IDs generate warnings, not errors."""
+        """Verify unknown story IDs generate warnings via collection plugin."""
         mod = _load_conftest_module()
-        valid = mod._load_valid_story_ids()
-        if valid:
-            fake_id = "US-FAKE-99999"
-            assert fake_id not in valid
+
+        mock_item = MagicMock()
+        mock_marker = MagicMock()
+        mock_marker.args = ("US-FAKE-99999",)
+        mock_item.iter_markers.return_value = [mock_marker]
+        mock_item.nodeid = "test_example.py::test_unknown_id"
+
+        mock_config = MagicMock()
+        valid_ids = frozenset({"US-CLI-110", "US-CLI-111"})
+
+        with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
+            mod.pytest_collection_modifyitems(mock_config, [mock_item])
+            mock_item.warn.assert_called_once()
+            warn_arg = str(mock_item.warn.call_args[0][0])
+            assert "US-FAKE-99999" in warn_arg
 
     def test_marker_validation_does_not_block(self):
-        """Verify tests with unknown story IDs still run."""
-        pass
+        """Verify tests with unknown story IDs still run (warnings only)."""
+        # The conftest plugin issues warnings, NOT errors.
+        # The fact that test_story_marker_does_not_block_execution below
+        # uses a fake story ID and still runs proves this.
+        mod = _load_conftest_module()
+        # Confirm the function does not raise on unknown IDs
+        mock_item = MagicMock()
+        mock_marker = MagicMock()
+        mock_marker.args = ("US-NONEXISTENT-99999",)
+        mock_item.iter_markers.return_value = [mock_marker]
+        mock_item.nodeid = "test_example.py::test_something"
+
+        mock_config = MagicMock()
+        valid = frozenset({"US-CLI-110"})
+        with patch.object(mod, "_VALID_STORY_IDS", valid):
+            # Should warn but not raise
+            mod.pytest_collection_modifyitems(mock_config, [mock_item])
+            mock_item.warn.assert_called_once()
+
+    def test_collection_modifyitems_no_warn_for_valid_id(self):
+        """Verify no warning issued for known/valid story IDs."""
+        mod = _load_conftest_module()
+
+        mock_item = MagicMock()
+        mock_marker = MagicMock()
+        mock_marker.args = ("US-CLI-110",)
+        mock_item.iter_markers.return_value = [mock_marker]
+
+        mock_config = MagicMock()
+        valid = frozenset({"US-CLI-110", "US-CLI-111"})
+        with patch.object(mod, "_VALID_STORY_IDS", valid):
+            mod.pytest_collection_modifyitems(mock_config, [mock_item])
+            mock_item.warn.assert_not_called()
+
+    def test_collection_modifyitems_warns_empty_marker_args(self):
+        """Verify warning when @pytest.mark.story() has no story IDs."""
+        mod = _load_conftest_module()
+
+        mock_item = MagicMock()
+        mock_marker = MagicMock()
+        mock_marker.args = ()  # no story IDs
+        mock_item.iter_markers.return_value = [mock_marker]
+        mock_item.nodeid = "test_example.py::test_no_ids"
+
+        mock_config = MagicMock()
+        mod.pytest_collection_modifyitems(mock_config, [mock_item])
+        mock_item.warn.assert_called_once()
+
+    def test_load_valid_story_ids_handles_missing_dir(self, tmp_path):
+        """Verify empty frozenset returned when userstories dir is missing."""
+        mod = _load_conftest_module()
+        with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
+            result = mod._load_valid_story_ids()
+            assert result == frozenset()
+
+    def test_load_valid_story_ids_handles_no_git_root(self):
+        """Verify empty frozenset returned when no .git root found."""
+        mod = _load_conftest_module()
+        with patch.object(mod, "_find_repo_root_from_tests", return_value=None):
+            result = mod._load_valid_story_ids()
+            assert result == frozenset()
+
+    def test_load_valid_story_ids_from_stories_key(self, tmp_path):
+        """Verify IDs loaded from YAML 'stories' key."""
+        mod = _load_conftest_module()
+
+        userstories_dir = tmp_path / "docs" / "userstories" / "TestProject"
+        userstories_dir.mkdir(parents=True)
+        (userstories_dir / "01_features.yml").write_text(yaml.dump({
+            "stories": [
+                {"id": "US-TEST-001", "title": "Story 1"},
+                {"id": "US-TEST-002", "title": "Story 2"},
+            ]
+        }))
+
+        with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
+            result = mod._load_valid_story_ids()
+            assert "US-TEST-001" in result
+            assert "US-TEST-002" in result
+
+    def test_load_valid_story_ids_skips_malformed_yaml(self, tmp_path):
+        """Verify malformed YAML files are skipped without error."""
+        mod = _load_conftest_module()
+
+        userstories_dir = tmp_path / "docs" / "userstories" / "TestProject"
+        userstories_dir.mkdir(parents=True)
+        (userstories_dir / "bad.yml").write_text("{{invalid yaml::")
+        (userstories_dir / "good.yml").write_text(yaml.dump({
+            "stories": [{"id": "US-TEST-100", "title": "Good Story"}]
+        }))
+
+        with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
+            result = mod._load_valid_story_ids()
+            assert "US-TEST-100" in result
+
+    def test_load_valid_story_ids_skips_entries_without_id(self, tmp_path):
+        """Verify story entries missing 'id' key are skipped."""
+        mod = _load_conftest_module()
+
+        userstories_dir = tmp_path / "docs" / "userstories" / "TestProject"
+        userstories_dir.mkdir(parents=True)
+        (userstories_dir / "01_features.yml").write_text(yaml.dump({
+            "stories": [
+                {"title": "No ID"},
+                {"id": "US-TEST-200", "title": "Has ID"},
+            ]
+        }))
+
+        with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
+            result = mod._load_valid_story_ids()
+            assert "US-TEST-200" in result
+            assert len(result) == 1
+
+
+    def test_loads_from_user_stories_key(self, tmp_path):
+        """Verify IDs are loaded from YAML files with 'user_stories' key."""
+        mod = _load_conftest_module()
+
+        userstories_dir = tmp_path / "docs" / "userstories" / "TestProject"
+        userstories_dir.mkdir(parents=True)
+        (userstories_dir / "01_features.yml").write_text(yaml.dump({
+            "user_stories": [
+                {"id": "US-ALT-001", "title": "Alt Story"},
+            ]
+        }))
+
+        with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
+            result = mod._load_valid_story_ids()
+            assert "US-ALT-001" in result
+
+    def test_skips_non_list_stories(self, tmp_path):
+        """Verify non-list stories values are skipped."""
+        mod = _load_conftest_module()
+
+        userstories_dir = tmp_path / "docs" / "userstories" / "TestProject"
+        userstories_dir.mkdir(parents=True)
+        (userstories_dir / "01_features.yml").write_text(yaml.dump({
+            "stories": "not a list"
+        }))
+
+        with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
+            result = mod._load_valid_story_ids()
+            assert result == frozenset()
+
+    def test_skips_non_dict_content(self, tmp_path):
+        """Verify files with non-dict top-level content are skipped."""
+        mod = _load_conftest_module()
+
+        userstories_dir = tmp_path / "docs" / "userstories" / "TestProject"
+        userstories_dir.mkdir(parents=True)
+        (userstories_dir / "01_features.yml").write_text("just a string")
+
+        with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
+            result = mod._load_valid_story_ids()
+            assert result == frozenset()
+
+    def test_collection_modifyitems_handles_empty_valid_ids(self):
+        """Verify plugin handles empty valid IDs set gracefully (returns early)."""
+        mod = _load_conftest_module()
+
+        mock_item = MagicMock()
+        mock_marker = MagicMock()
+        mock_marker.args = ("US-TEST-001",)
+        mock_item.iter_markers.return_value = [mock_marker]
+
+        mock_config = MagicMock()
+
+        # Patch _VALID_STORY_IDS to None (not yet loaded) and return empty
+        with patch.object(mod, "_VALID_STORY_IDS", None):
+            with patch.object(mod, "_load_valid_story_ids", return_value=frozenset()):
+                # Should not crash; returns early when valid IDs is empty
+                mod.pytest_collection_modifyitems(mock_config, [mock_item])
+                # No warning should be issued (short-circuit on empty valid IDs)
+                mock_item.warn.assert_not_called()
+
+    def test_lazy_loading_of_valid_ids(self):
+        """Verify _VALID_STORY_IDS is lazy-loaded on first marker encounter."""
+        mod = _load_conftest_module()
+
+        mock_item = MagicMock()
+        mock_marker = MagicMock()
+        mock_marker.args = ("US-TEST-001",)
+        mock_item.iter_markers.return_value = [mock_marker]
+
+        mock_config = MagicMock()
+
+        with patch.object(mod, "_VALID_STORY_IDS", None):
+            with patch.object(mod, "_load_valid_story_ids", return_value=frozenset({"US-TEST-001"})) as mock_load:
+                mod.pytest_collection_modifyitems(mock_config, [mock_item])
+                mock_load.assert_called_once()
+
+    def test_story_marker_with_no_ids(self):
+        """Verify marker can be created with no IDs (validation happens at collection)."""
+        marker = pytest.mark.story()
+        assert marker.args == ()
 
 
 # ---------------------------------------------------------------------------

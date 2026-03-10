@@ -171,28 +171,29 @@ def _add_tree_items(tree: Tree, items: dict):
 def format_status(status: str) -> str:
     """Format a status string with appropriate color.
 
-    Normalizes old status strings to canonical values before coloring.
+    Supports 6 lifecycle statuses: active, planning, in_progress, completed,
+    deferred, blocked.  Legacy values (proposed, pending, approved) are mapped
+    for backward compatibility.
     """
-    # Normalize old status strings
-    _normalize = {
-        "pending": "proposed",
-        "active": "in_progress",
+    _colors = {
+        "active": "[blue]active[/blue]",
+        "planning": "[cyan]planning[/cyan]",
+        "in_progress": "[yellow]in_progress[/yellow]",
+        "completed": "[green]completed[/green]",
+        "deferred": "[dim]deferred[/dim]",
+        "blocked": "[red]blocked[/red]",
+        # Backward compat for legacy values
+        "proposed": "[dim]active[/dim]",
+        "failed": "[red]failed[/red]",
+    }
+    # Legacy aliases — map to canonical status before lookup
+    _legacy = {
+        "pending": "active",
         "approved": "in_progress",
-        "planning": "proposed",
     }
     status_lower = status.lower()
-    normalized = _normalize.get(status_lower, status_lower)
-
-    if normalized == "completed":
-        return "[green]completed[/green]"
-    elif normalized == "in_progress":
-        return "[yellow]in_progress[/yellow]"
-    elif normalized == "proposed":
-        return "[dim]proposed[/dim]"
-    elif normalized == "failed":
-        return "[red]failed[/red]"
-    else:
-        return status
+    normalized = _legacy.get(status_lower, status_lower)
+    return _colors.get(normalized, status)
 
 
 def print_stability_banner(command: str):

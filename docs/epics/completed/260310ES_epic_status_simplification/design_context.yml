@@ -1,0 +1,369 @@
+design_version: "1.0"
+epic: 260310ES_epic_status_simplification
+objective: >
+  Remove the redundant "Action" column from `agentic epic list` and unify epic lifecycle
+  status into a single "Status" column with 6 canonical values: active, planning,
+  in_progress, completed, deferred, blocked.
+
+no_stories_rationale: >
+  This epic is an internal refactoring of CLI output formatting and status normalization.
+  No user-facing feature stories exist. The README objectives serve as the functional
+  requirements. The work traces directly to README acceptance criteria.
+
+# =============================================================================
+# OBJECTIVE-TO-PHASE TRACEABILITY
+# =============================================================================
+# Since no formal user stories exist, we use README objectives as traceable requirements.
+
+objectives:
+  OBJ-1:
+    title: "Remove Action column from epic list"
+    description: "cmd_list() should not derive action_required; table shows Epic, Status, Proposed, Completed only"
+  OBJ-2:
+    title: "Remove action_required from epic status"
+    description: "cmd_status() derives next_action from status field, not action_required"
+  OBJ-3:
+    title: "Expand status enum to 6 lifecycle values"
+    description: "EpicStatus: active, planning, in_progress, completed, deferred, blocked"
+  OBJ-4:
+    title: "Update status transitions in planner and executor"
+    description: "Creation→active, planner→planning, executor→in_progress→completed"
+  OBJ-5:
+    title: "Test and verify all changes"
+    description: "All test suites pass, end-to-end CLI output matches spec"
+
+objective_to_phase_map:
+  forward:
+    OBJ-1: ["P1: Remove Action Column from CLI"]
+    OBJ-2: ["P1: Remove Action Column from CLI"]
+    OBJ-3: ["P2: Align Status Values and Transitions"]
+    OBJ-4: ["P2: Align Status Values and Transitions"]
+    OBJ-5: ["P3: Test Updates", "P4: UAT Verification"]
+  reverse:
+    "P1: Remove Action Column from CLI": [OBJ-1, OBJ-2]
+    "P2: Align Status Values and Transitions": [OBJ-3, OBJ-4]
+    "P3: Test Updates": [OBJ-5]
+    "P4: UAT Verification": [OBJ-5]
+
+# =============================================================================
+# PHASE SKELETON
+# =============================================================================
+
+phase_skeleton:
+  - name: "P1: Remove Action Column from CLI"
+    purpose: >
+      Remove the action_required derivation logic and related columns (Action, Orch)
+      from cmd_list() and cmd_status(). Replace action-based guidance in cmd_status()
+      with status-based next_action mapping.
+    tickets: [T01, T02]
+    suggested_agent: build-python
+    estimated_complexity: medium
+    contracts:
+      requires: []
+      produces:
+        - "cmd_list() outputs only: Epic, Status, Proposed, Completed columns"
+        - "cmd_list() JSON keys: name, status, proposed, completed (no action_required, has_orchestration, has_tasks)"
+        - "cmd_status() derives next_action from status field, not action_required"
+        - "cmd_status() JSON has next_action and next_command instead of action_required"
+        - "_check_has_orchestration() function preserved (used by other code paths)"
+    affected_files:
+      - modules/AgenticCLI/src/agenticcli/commands/epic.py
+
+  - name: "P2: Align Status Values and Transitions"
+    purpose: >
+      Expand the canonical epic status set from 3 (proposed, in_progress, completed)
+      to 6 (active, planning, in_progress, completed, deferred, blocked). Update
+      normalization, formatting, and lifecycle transitions so the system uses the
+      new status values consistently.
+    tickets: [T03, T04]
+    suggested_agent: build-python
+    estimated_complexity: medium
+    contracts:
+      requires:
+        - "P1 completed: action_required removed from CLI output (prevents conflicting semantics)"
+      produces:
+        - "EpicStatus enum: ACTIVE, PLANNING, IN_PROGRESS, COMPLETED, DEFERRED, BLOCKED"
+        - "EPIC_STATUS_MIGRATION: active→active, planning→planning, deferred→deferred, blocked→blocked"
+        - "EPIC_STATUS_MIGRATION backward compat: pending→active, proposed→active, approved→in_progress"
+        - "format_status() renders all 6 statuses with distinct colors"
+        - "normalize_epic_status() default fallback: 'active'"
+        - "Epic creation sets status='active' (not 'planning')"
+        - "Planner loop sets status='planning' when processing begins"
+        - "Executor transitions verified: in_progress on start, completed on finish"
+    affected_files:
+      - modules/AgenticCLI/src/agenticcli/console.py
+      - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+      - modules/AgenticCLI/src/agenticcli/commands/epic.py
+      - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+      - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py  # audit only
+
+  - name: "P3: Test Updates"
+    purpose: >
+      Update test assertions to match the new status model and removed action_required
+      field. Fix any regressions across both AgenticCLI and AgenticGuidance test suites.
+    tickets: [T05, T06, T07]
+    suggested_agent: build-python
+    estimated_complexity: medium
+    contracts:
+      requires:
+        - "P1 completed: action_required removed from CLI output"
+        - "P2 completed: status enum expanded, normalization updated"
+      produces:
+        - "AgenticCLI test suite: 0 failures"
+        - "AgenticGuidance test suite: 0 failures"
+        - "No skipped tests without valid justification"
+    affected_files:
+      - modules/AgenticCLI/tests/test_ralph_commands.py
+      - modules/AgenticCLI/tests/test_planner_loop.py
+      - modules/AgenticCLI/tests/test_console.py
+      - modules/AgenticGuidance/tests/test_status_migration.py
+      - modules/AgenticGuidance/tests/test_services_ralph.py  # if regressions from EPIC_STATUS_MIGRATION
+      - modules/AgenticGuidance/tests/test_integration_ralph_loop.py  # if regressions
+
+  - name: "P4: UAT Verification"
+    purpose: >
+      End-to-end manual verification that CLI output matches the specification.
+      No code changes — validation only.
+    tickets: [T08]
+    suggested_agent: build-python
+    estimated_complexity: low
+    contracts:
+      requires:
+        - "P3 completed: all test suites pass"
+      produces:
+        - "UAT verification report confirming CLI output correctness"
+    affected_files: []
+
+# =============================================================================
+# CROSS-PHASE CONTRACTS
+# =============================================================================
+
+cross_phase_contracts:
+  - from_phase: "P1: Remove Action Column from CLI"
+    to_phase: "P2: Align Status Values and Transitions"
+    contract:
+      outputs:
+        - "action_required derivation removed from cmd_list() and cmd_status()"
+        - "cmd_status() uses status field for next_action mapping"
+      inputs:
+        - "P2 needs action_required gone before expanding status values (avoids conflicting semantics)"
+      validation: |
+        # Verify action_required is gone from JSON output:
+        agentic -j epic list | python3 -c "import sys,json; data=json.load(sys.stdin); assert all('action_required' not in e for e in data.get('plans',data.get('epics',[])))"
+
+  - from_phase: "P2: Align Status Values and Transitions"
+    to_phase: "P3: Test Updates"
+    contract:
+      outputs:
+        - "EpicStatus enum has 6 values"
+        - "EPIC_STATUS_MIGRATION maps to new canonical values"
+        - "format_status() handles all 6 statuses"
+        - "Lifecycle transitions: active→planning→in_progress→completed"
+      inputs:
+        - "P3 needs the final status enum values to know what test assertions to write"
+      validation: |
+        # Verify enum has all values:
+        python3 -c "from agenticguidance.services.epic import EpicStatus; assert len(EpicStatus) == 6"
+        # Verify format_status handles all:
+        python3 -c "from agenticcli.console import format_status; [format_status(s) for s in ['active','planning','in_progress','completed','deferred','blocked']]"
+
+  - from_phase: "P3: Test Updates"
+    to_phase: "P4: UAT Verification"
+    contract:
+      outputs:
+        - "All test suites pass with 0 failures in both modules"
+      inputs:
+        - "P4 needs passing tests before manual verification makes sense"
+      validation: |
+        cd modules/AgenticCLI && python3 -m pytest tests/ --tb=line -q 2>&1 | tail -5
+        cd modules/AgenticGuidance && python3 -m pytest tests/ --tb=line -q 2>&1 | tail -5
+
+# =============================================================================
+# ARCHITECTURE DECISIONS
+# =============================================================================
+
+architecture_decisions:
+  - id: AD-1
+    title: "6 canonical epic statuses replace 3 + derived action"
+    rationale: >
+      The current 3-status model (proposed, in_progress, completed) loses information
+      and requires runtime derivation of "action_required" to compensate. Expanding to
+      6 statuses (active, planning, in_progress, completed, deferred, blocked) makes
+      the stored status self-describing and eliminates the derived column.
+    status_lifecycle: |
+      creation → active
+      planner picks up → planning
+      executor starts → in_progress
+      all phases done → completed
+      user defers → deferred
+      blockers found → blocked
+
+  - id: AD-2
+    title: "Ralph service action_required is OUT OF SCOPE"
+    rationale: >
+      The Ralph service (agenticguidance/services/ralph.py) derives its own action_required
+      on EpicInfo objects. Changing that service requires updating all Ralph loop consumers.
+      This epic only addresses CLI output. Ralph service may break if EPIC_STATUS_MIGRATION
+      changes feed different values — T07 catches and fixes test regressions.
+    risk: >
+      If normalize_epic_status() returns 'active' instead of 'proposed' for legacy statuses,
+      Ralph's action_required derivation may produce different results. T07 must verify
+      and fix AgenticGuidance tests accordingly.
+
+  - id: AD-3
+    title: "Backward compatibility via EPIC_STATUS_MIGRATION"
+    rationale: >
+      Legacy status strings (pending, approved, proposed) continue to be normalized
+      to their canonical equivalents. The migration map is the single source of truth
+      for status normalization. No data migration needed — normalization happens at read time.
+    mappings: |
+      pending → active      (was: proposed)
+      proposed → active     (was: proposed — "proposed" disappears as canonical epic status)
+      approved → in_progress (unchanged)
+      active → active       (was: in_progress — now a distinct canonical value)
+      planning → planning   (was: proposed — now a distinct canonical value)
+      deferred → deferred   (was: proposed — now a distinct canonical value)
+      blocked → blocked     (was: in_progress — now a distinct canonical value)
+      in_progress → in_progress (unchanged)
+      completed → completed (unchanged)
+      fully_completed → completed (unchanged)
+      cancelled → completed (unchanged)
+
+  - id: AD-4
+    title: "_check_has_orchestration() preserved"
+    rationale: >
+      The function is used by cmd_status() and potentially other code paths (Ralph service,
+      planner loop). It must NOT be removed even though the Orch column is removed from
+      cmd_list(). cmd_status() keeps it as informational metadata.
+
+# =============================================================================
+# RISKS AND MITIGATIONS
+# =============================================================================
+
+risks:
+  - id: RISK-1
+    description: >
+      EPIC_STATUS_MIGRATION changes (T03) will cascade into AgenticGuidance tests
+      that directly test normalize_epic_status(). Specifically:
+      test_status_migration.py (8+ tests), test_services_ralph.py (9+ tests),
+      test_integration_ralph_loop.py (1 test).
+    mitigation: "T07 explicitly covers running both test suites and fixing regressions"
+    severity: medium
+
+  - id: RISK-2
+    description: >
+      Changing 'proposed' from a canonical epic status to a legacy alias may break
+      code that creates epics with status='proposed' (e.g., discover_plans_needing_orchestration
+      promotes proposed→pending). The new canonical value is 'active'.
+    mitigation: >
+      EPIC_STATUS_MIGRATION maps proposed→active, so any existing 'proposed' epics
+      normalize correctly. New epics use 'active' from creation (T04).
+    severity: low
+
+  - id: RISK-3
+    description: >
+      _LIVE_STATUSES in epic_repository.py may need updating to include all 6 canonical
+      statuses as live. Currently includes: proposed, in_progress, active, planning,
+      approved, pending, blocked. May need 'deferred' added.
+    mitigation: >
+      T03 or T07 should verify _LIVE_STATUSES includes deferred status or that deferred
+      epics are correctly excluded from live queries.
+    severity: low
+
+# =============================================================================
+# PLANNER CONTEXT BLOCKS
+# =============================================================================
+
+planner_context_blocks:
+  planner-build:
+    description: "Context for the build agent executing P1 and P2"
+    relevant_objectives: [OBJ-1, OBJ-2, OBJ-3, OBJ-4]
+    phase_dependencies:
+      P1: []
+      P2: [P1]
+    target_files:
+      - modules/AgenticCLI/src/agenticcli/commands/epic.py
+      - modules/AgenticCLI/src/agenticcli/console.py
+      - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+      - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+      - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
+    success_criteria:
+      - "cmd_list() table columns: Epic, Status, Proposed, Completed"
+      - "cmd_list() JSON keys per epic: name, status, proposed, completed"
+      - "cmd_status() JSON has next_action/next_command instead of action_required"
+      - "EpicStatus enum has 6 values: ACTIVE, PLANNING, IN_PROGRESS, COMPLETED, DEFERRED, BLOCKED"
+      - "EPIC_STATUS_MIGRATION preserves distinct status values"
+      - "format_status() handles all 6 statuses with colors"
+      - "Epic creation status is 'active'"
+      - "Planner loop sets 'planning' on process start"
+    key_architecture_decisions: [AD-1, AD-2, AD-3, AD-4]
+    risks_to_watch: [RISK-1, RISK-2, RISK-3]
+
+  planner-test:
+    description: "Context for the test/build agent executing P3"
+    relevant_objectives: [OBJ-5]
+    phase_dependencies:
+      P3: [P1, P2]
+    target_files:
+      - modules/AgenticCLI/tests/test_ralph_commands.py
+      - modules/AgenticCLI/tests/test_planner_loop.py
+      - modules/AgenticCLI/tests/test_console.py
+      - modules/AgenticGuidance/tests/test_status_migration.py
+      - modules/AgenticGuidance/tests/test_services_ralph.py
+      - modules/AgenticGuidance/tests/test_integration_ralph_loop.py
+    success_criteria:
+      - "AgenticCLI full test suite: 0 failures"
+      - "AgenticGuidance full test suite: 0 failures"
+      - "All action_required assertions removed from CLI test files"
+      - "Status migration tests updated for new canonical values"
+    test_impact_summary:
+      high_priority:
+        - "test_status_migration.py: 8+ tests expect old normalization (active→in_progress becomes active→active)"
+        - "test_services_ralph.py: 9+ tests assert action_required field on EpicInfo"
+        - "test_integration_ralph_loop.py: 4 assertions on action_required"
+      medium_priority:
+        - "test_ralph_commands.py: JSON output key assertions (ready_to_execute, needs_epic_planning)"
+        - "test_console.py: format_status() handling of new status values"
+      low_priority:
+        - "test_planner_loop.py: 1 indirect reference, likely unaffected"
+
+  planner-uat:
+    description: "Context for UAT verification in P4"
+    relevant_objectives: [OBJ-5]
+    phase_dependencies:
+      P4: [P3]
+    verification_commands:
+      - "agentic epic list"
+      - "agentic -j epic list"
+      - "agentic epic status --epic 260310ES_epic_status_simplification"
+      - "agentic -j epic status --epic 260310ES_epic_status_simplification"
+      - "agentic epic list --all"
+    expected_outputs:
+      table_columns: ["Epic", "Status", "Proposed", "Completed"]
+      json_keys_per_epic: ["name", "status", "proposed", "completed"]
+      removed_from_output: ["action_required", "has_orchestration", "has_tasks", "Action", "Orch"]
+      status_colors:
+        active: blue
+        planning: cyan
+        in_progress: yellow
+        completed: green
+        deferred: dim
+        blocked: red
+
+# =============================================================================
+# EXECUTION STATUS
+# =============================================================================
+
+execution_status:
+  P1:
+    T01: completed
+    T02: in_progress
+  P2:
+    T03: proposed
+    T04: proposed
+  P3:
+    T05: proposed
+    T06: proposed
+    T07: proposed
+  P4:
+    T08: proposed

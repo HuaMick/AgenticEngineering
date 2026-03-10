@@ -148,20 +148,20 @@ class TestFormatStatus:
         assert "in_progress" in result
         assert "yellow" in result
 
-    def test_format_pending_normalizes_to_proposed(self):
-        """Test formatting pending status normalizes to proposed."""
+    def test_format_pending_normalizes_to_active(self):
+        """Test formatting pending status normalizes to active."""
         from agenticcli.console import format_status
 
         result = format_status("pending")
-        assert "proposed" in result
-        assert "dim" in result
+        assert "active" in result
+        assert "blue" in result
 
     def test_format_proposed(self):
-        """Test formatting proposed status."""
+        """Test formatting proposed status maps to dim active."""
         from agenticcli.console import format_status
 
         result = format_status("proposed")
-        assert "proposed" in result
+        assert "active" in result
         assert "dim" in result
 
     def test_format_failed(self):
@@ -171,6 +171,46 @@ class TestFormatStatus:
         result = format_status("failed")
         assert "failed" in result
         assert "red" in result
+
+    def test_format_active(self):
+        """Test formatting active status (canonical)."""
+        from agenticcli.console import format_status
+
+        result = format_status("active")
+        assert "active" in result
+        assert "blue" in result
+
+    def test_format_planning(self):
+        """Test formatting planning status."""
+        from agenticcli.console import format_status
+
+        result = format_status("planning")
+        assert "planning" in result
+        assert "cyan" in result
+
+    def test_format_deferred(self):
+        """Test formatting deferred status."""
+        from agenticcli.console import format_status
+
+        result = format_status("deferred")
+        assert "deferred" in result
+        assert "dim" in result
+
+    def test_format_blocked(self):
+        """Test formatting blocked status."""
+        from agenticcli.console import format_status
+
+        result = format_status("blocked")
+        assert "blocked" in result
+        assert "red" in result
+
+    def test_format_approved_normalizes_to_in_progress(self):
+        """Test formatting approved legacy status normalizes to in_progress."""
+        from agenticcli.console import format_status
+
+        result = format_status("approved")
+        assert "in_progress" in result
+        assert "yellow" in result
 
     def test_format_unknown(self):
         """Test formatting unknown status."""

@@ -1,0 +1,195 @@
+# Guidance Recommendations - teacher-update-guidance
+# Epic: 260308PD_planner_design_agent_story_alignment
+# Date: 2026-03-10
+# Agent: teacher-update-guidance
+
+target_agent: "cross-agent (planner-design, planner-test, planner-audit, orchestration-executor)"
+
+analysis_summary:
+  friction_patterns_found: 10
+  improvement_opportunities: 12
+  files_analyzed: 6
+  agents_affected: 4
+  passes: 2  # Two guidance review passes applied
+
+recommendations:
+  - id: "REC-001"
+    priority: CRITICAL
+    type: path_clarity
+    target_file: "modules/AgenticGuidance/agents/planner/planner-design/process.yml"
+    target_section: "steps[0] (CCI Bootstrap)"
+    current_state: "Used `agentic -j context bootstrap` (old format, missing `agent` subcommand)"
+    proposed_change: "Fixed to `agentic -j agent context bootstrap --role planner-design`"
+    rationale: "Old command exits with error: 'Command agentic context has moved. Use agentic agent context instead.'"
+    evidence: "Hit this error directly when bootstrapping as teacher-update-guidance agent"
+    status: applied
+
+  - id: "REC-002"
+    priority: CRITICAL
+    type: path_clarity
+    target_file: "modules/AgenticGuidance/agents/planner/planner-design/process.yml"
+    target_section: "steps[2] (Load story content)"
+    current_state: "Used `agentic stories cat <story_id>` (missing `agent` subcommand)"
+    proposed_change: "Fixed to `agentic agent stories cat <story_id>`"
+    rationale: "Missing `agent` prefix causes CLI routing error. Same pattern as REC-001."
+    evidence: "Verified `agentic stories` is not a valid top-level command"
+    status: applied
+
+  - id: "REC-003"
+    priority: HIGH
+    type: path_clarity
+    target_file: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+    target_section: "steps[3] (STORY CONTENT MUST EXIST)"
+    current_state: "Referenced `agentic agent stories show <story_id>` - non-existent subcommand"
+    proposed_change: "Fixed to `agentic agent stories cat <story_id>`"
+    rationale: "No `show` subcommand exists in stories CLI. Only `cat`, `status`, `find`, etc."
+    evidence: "CLI exits with 'No such command show' when invoked"
+    status: applied
+
+  - id: "REC-004"
+    priority: HIGH
+    type: path_clarity
+    target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+    target_section: "validation_gate - STORY COVERAGE CHECK"
+    current_state: "Used `grep -rh '@pytest.mark.story' tests/` - no root tests/ directory exists"
+    proposed_change: "Fixed to `grep -rh '@pytest.mark.story' modules/*/tests/`"
+    rationale: "Project uses modules/AgenticCLI/tests/ and modules/AgenticGuidance/tests/, not root tests/"
+    evidence: "Verified with ls - no tests/ at root, only under modules/*/"
+    status: applied
+
+  - id: "REC-005"
+    priority: HIGH
+    type: path_clarity
+    target_file: "modules/AgenticGuidance/agents/planner/planner-audit/process.yml"
+    target_section: "AUDIT STORY TRACEABILITY - STORY to TICKET (line 184)"
+    current_state: "Used `grep ... tests/` for one instance while correctly using `modules/*/tests/` for another"
+    proposed_change: "Fixed line 184 to use `modules/*/tests/` for consistency with line 192"
+    rationale: "Internal inconsistency within same step - first grep uses wrong path, second uses correct path"
+    evidence: "Line 184 had tests/, line 192 already had modules/*/tests/"
+    status: applied
+
+  - id: "REC-006"
+    priority: MEDIUM
+    type: signpost_addition
+    target_file: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+    target_section: "uat_task_generation.task_template"
+    current_state: "story_marker_required: true fence exists but no cross-reference to enforcement mechanism"
+    proposed_change: "Added comment linking to orchestration-executor STORY_COVERAGE_INCOMPLETE trigger"
+    rationale: "Agent may set the flag without understanding HOW it gets enforced downstream"
+    evidence: "No prior connection between the flag and the trigger that checks it"
+    status: applied
+
+  - id: "REC-007"
+    priority: MEDIUM
+    type: signpost_addition
+    target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+    target_section: "STORY_COVERAGE_INCOMPLETE trigger action"
+    current_state: "Re-spawn instruction was prose-only, no CLI example"
+    proposed_change: "Added concrete CLI spawn example for re-spawning test-builder"
+    rationale: "Concrete CLI examples reduce ambiguity in executor action steps"
+    evidence: "All other trigger actions reference CLI commands; this was the exception"
+    status: applied
+
+  - id: "REC-008"
+    priority: MEDIUM
+    type: signpost_addition
+    target_file: "modules/AgenticGuidance/agents/planner/planner-design/process.yml"
+    target_section: "steps[0] (CCI Bootstrap)"
+    current_state: "Bootstrap step was minimal - missing ticket current command and usage guidance"
+    proposed_change: "Expanded to include `agentic -j agent epic ticket current` and usage notes, matching pattern from other agents"
+    rationale: "Consistency across agents reduces friction for planner-design operator"
+    evidence: "All other agent CCI Bootstrap steps include both bootstrap and ticket current commands"
+    status: applied
+
+  # ============================
+  # PASS 2: Additional friction patterns found during deep review
+  # ============================
+
+  - id: "REC-009"
+    priority: HIGH
+    type: path_clarity
+    target_file: "modules/AgenticGuidance/agents/planner/planner-audit/process.yml"
+    target_section: "AUDIT STORY TRACEABILITY - step 2 (STORY → TICKET)"
+    current_state: "Said 'Query affected_stories from the epic record in TinyDB' but no CLI command or method specified. affected_stories is not surfaced by `agentic epic list` CLI output."
+    proposed_change: "Added 3 concrete methods in priority order: (a) read design_context.yml, (b) agentic agent stories find, (c) agentic agent stories report --coverage"
+    rationale: "Agent cannot discover affected_stories without knowing WHERE to look. CLI doesn't expose this field directly, so alternative paths are needed."
+    evidence: "Verified `agentic -j epic list` output has no affected_stories field. Only fields: name, status, has_orchestration, has_tasks, action_required, proposed, completed."
+    status: applied
+
+  - id: "REC-010"
+    priority: MEDIUM
+    type: signpost_addition
+    target_file: "modules/AgenticGuidance/agents/planner/planner-design/process.yml"
+    target_section: "steps[3] (Analyze story clusters)"
+    current_state: "Step describes clustering criteria but has no example output. All other design steps (e.g., step 9 design_context.yml) have inline examples."
+    proposed_change: "Added concrete clustering output example showing grouped stories by shared agents/commands and unclustered stories"
+    rationale: "Without example, agent must invent output format. Inline example reduces format ambiguity and shows expected handling of unclustered stories."
+    evidence: "Step 4 was the only step in planner-design without an inline example"
+    status: applied
+
+  - id: "REC-011"
+    priority: MEDIUM
+    type: path_clarity
+    target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+    target_section: "STORY_COVERAGE_INCOMPLETE trigger - Detection"
+    current_state: "Detection section described scan steps in prose but lacked the concrete grep command. The validation_gate section (line 589) had the command, creating inconsistency."
+    proposed_change: "Added same grep command pattern and stories report CLI reference to the trigger detection section"
+    rationale: "Trigger detection and validation_gate both need to scan for pytest markers - using different approaches creates confusion about the canonical method"
+    evidence: "Validation_gate section had `grep -rh '@pytest.mark.story' modules/*/tests/` but trigger section had only prose description"
+    status: applied
+
+  - id: "REC-012"
+    priority: LOW
+    type: fence_strengthening
+    target_file: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+    target_section: "uat_task_generation.task_template - story_marker_required field"
+    current_state: "Template field `story_marker_required: true` was marked as FENCE but is a guidance directive, not a TinyDB-persisted field. Could confuse planner-test about what's structural vs advisory."
+    proposed_change: "Clarified as GUIDANCE DIRECTIVE (not persisted in TinyDB). Added cross-reference to --story-ids CLI flag for actual TinyDB persistence. Also added CLI flag hint to story_id field."
+    rationale: "Distinguishing between template directives and persisted data prevents agents from trying to persist non-existent fields"
+    evidence: "`agentic epic ticket add --help` has --story-ids flag but no --story-marker-required flag"
+    status: applied
+
+  - id: "REC-013"
+    priority: MEDIUM
+    type: path_clarity
+    target_file: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+    target_section: "validation_gate - STORY VALIDATION CHECK (step 6)"
+    current_state: "Referenced 'affected_stories metadata (from TinyDB epic metadata)' but this field is not in TinyDB CLI output"
+    proposed_change: "Updated to reference design_context.yml and stories report CLI as sources for affected_stories"
+    rationale: "Same root cause as REC-009 - affected_stories is not directly available from TinyDB CLI output"
+    evidence: "Consistent with REC-009 finding that `agentic -j epic list` doesn't expose affected_stories"
+    status: applied
+
+files_modified:
+  # Pass 1
+  - path: "modules/AgenticGuidance/agents/planner/planner-design/process.yml"
+    change_type: modified
+    summary: "Pass 1: Fixed CCI bootstrap (REC-001), stories cat (REC-002), expanded bootstrap (REC-008). Pass 2: Added clustering example (REC-010)."
+
+  - path: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
+    change_type: modified
+    summary: "Pass 1: Fixed stories show→cat (REC-003), added STORY_COVERAGE cross-ref (REC-006). Pass 2: Clarified template vs TinyDB fields (REC-012)."
+
+  - path: "modules/AgenticGuidance/agents/planner/planner-audit/process.yml"
+    change_type: modified
+    summary: "Pass 1: Fixed test directory path (REC-005). Pass 2: Added affected_stories query methods (REC-009)."
+
+  - path: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
+    change_type: modified
+    summary: "Pass 1: Fixed grep path (REC-004), added CLI re-spawn (REC-007). Pass 2: Added trigger grep command (REC-011), fixed affected_stories source (REC-013)."
+
+overall_quality_assessment:
+  strengths:
+    - "planner-design agent is well-structured with clear fences (no TinyDB creation, architecture only)"
+    - "Story-to-phase traceability is comprehensive (bidirectional mapping)"
+    - "STORY_COVERAGE_INCOMPLETE trigger in orchestration-executor is thorough with own iteration counter"
+    - "test-builder story marker guidance has excellent 'when to add' classification"
+    - "orchestration-planning MMD correctly positions planner-design between StoryContextReady and PhaseDetermination"
+    - "Validation gate dual-signal approach (pytest markers PRIMARY, YAML secondary) is well-reasoned"
+    - "Cross-agent consistency improved: all grep commands now use modules/*/tests/ path"
+
+  remaining_concerns:
+    - "P4 test coverage tickets remain pending - critical for validating these guidance changes actually work"
+    - "affected_stories has no CLI-native source — relies on design_context.yml or stories find/report. Future CLI enhancement could expose this on epic records."
+    - "orchestration-executor grep command uses -oP flag which requires PCRE support (may not be available on all systems)"
+    - "planner-design outputs design_context.yml on disk — consider whether TinyDB metadata storage would be more consistent with the epic data model"

@@ -40,9 +40,17 @@ steps:
     name: "CCI Bootstrap"
     description: |
       Run CLI Context Injection to load structured context before any exploration.
+
+      ```bash
+      # Get seed context (objective, process summary, inputs)
+      agentic -j agent context bootstrap --role planner-design
+
+      # Get current ticket if working from an epic
+      agentic -j agent epic ticket current
       ```
-      agentic -j context bootstrap --role planner-design
-      ```
+
+      CLI output provides your objective, process summary, input file paths.
+      ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
     required: true
 
   - id: 2
@@ -63,7 +71,7 @@ steps:
     name: "Load story content"
     description: |
       For each story ID in affected_stories:
-      1. Run: `agentic stories cat <story_id>` to get full story content
+      1. Run: `agentic agent stories cat <story_id>` to get full story content
       2. Extract: acceptance_criteria, related_commands, related_agents
       3. Build a story context map: {story_id -> {title, criteria, agents, commands}}
 
@@ -80,6 +88,20 @@ steps:
 
       Each cluster becomes a candidate implementation phase.
       Flag stories that don't cluster (may need their own phase or may be out of scope).
+
+      Example clustering output:
+      ```
+      Cluster A (shared agent: test-builder, shared commands: stories, conftest):
+        - US-CLI-110: Find User Stories
+        - US-CLI-111: Story-Test Alignment
+
+      Cluster B (shared agent: build-python, shared commands: epic ticket):
+        - US-CLI-112: Story Coverage Reporting
+        - US-CLI-113: Ticket Story Linking
+
+      Unclustered:
+        - US-GD-050: Planner Design Output Format (guidance-only, no shared agents)
+      ```
     required: true
 
   - id: 5

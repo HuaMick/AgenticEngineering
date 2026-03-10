@@ -498,8 +498,12 @@ process:
             any story in affected_stories has no corresponding @pytest.mark.story("<story_id>")
             marker in the test files produced by the phase.
           - Detection:
-            1. Read affected_stories from TinyDB epic metadata
-            2. Scan test files created/modified by the phase for @pytest.mark.story markers
+            1. Read affected_stories from design_context.yml in the epic folder,
+               or use: `agentic agent stories report --project <project> --coverage`
+            2. Scan test files for @pytest.mark.story markers:
+               ```bash
+               grep -rh '@pytest.mark.story' modules/*/tests/ | grep -oP '"(US-[A-Z]+-\d+)"' | sort -u
+               ```
             3. Collect the set of story IDs referenced by markers
             4. Compare against affected_stories: uncovered = affected_stories - marked_stories
             5. If uncovered is non-empty, this trigger fires
@@ -510,6 +514,11 @@ process:
               - instruction: "Add @pytest.mark.story('<story_id>') markers to tests
                 validating these stories. Create new tests if no existing test covers
                 the story's acceptance criteria."
+              Example CLI re-spawn:
+              ```bash
+              agentic session spawn --role test-builder --epic <epic_folder> -j
+              # Pass uncovered story IDs and acceptance criteria as session context
+              ```
             - If >= MAX_ITERATIONS: Transition to blocked with coverage report:
               "STORY COVERAGE INCOMPLETE after {iterations} attempts.
                Uncovered stories: [IDs]
@@ -562,7 +571,8 @@ process:
         5. If ANY validation result != PASS → Return to fix phase
 
         STORY VALIDATION CHECK (references planning-standard.yml#escape_hatch_rules):
-        6. If plan has affected_stories metadata (from TinyDB epic metadata):
+        6. If plan has affected_stories (from design_context.yml in epic folder,
+           or via `agentic agent stories report --project <project> --coverage`):
            a. Verify UAT phase validated those specific stories
            b. Check story test results are captured (test_status field in story YAML
               AND @pytest.mark.story markers in test files — markers are PRIMARY)
@@ -581,7 +591,7 @@ process:
               markers. Use grep/ripgrep to collect the set of story IDs referenced
               by markers across all test files:
               ```bash
-              grep -rh '@pytest.mark.story' tests/ | grep -oP '"(US-[A-Z]+-\d+)"' | sort -u
+              grep -rh '@pytest.mark.story' modules/*/tests/ | grep -oP '"(US-[A-Z]+-\d+)"' | sort -u
               ```
            b. For each story ID in affected_stories, check if it appears in the
               collected marker set

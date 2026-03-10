@@ -675,11 +675,11 @@ class TestUpdateEpicStatus:
 
         assert result.success is True
         assert result.old_status == "pending"
-        assert result.new_status == "in_progress"  # "active" normalized to "in_progress"
+        assert result.new_status == "active"  # "active" is now a canonical status
 
         # Verify TinyDB was updated
         updated_epic = service._repository.get_epic("260203PS_test_plan")
-        assert updated_epic.status == "in_progress"
+        assert updated_epic.status == "active"
 
     def test_update_epic_status_invalid_status(self, tmp_path):
         """Test update_epic_status rejects invalid status values."""
@@ -736,7 +736,7 @@ class TestUpdateEpicStatus:
         assert result.success is True
         assert "[dry-run]" in result.message
         assert result.old_status == "pending"
-        assert result.new_status == "in_progress"  # "active" normalized
+        assert result.new_status == "active"
 
         # Verify TinyDB was NOT updated (dry-run)
         unchanged_epic = service._repository.get_epic("260203PS_test_plan")
@@ -770,11 +770,11 @@ class TestUpdateEpicStatus:
 
         assert result.success is True
         assert result.old_status == "pending"
-        assert result.new_status == "in_progress"  # "active" normalized
+        assert result.new_status == "active"
 
         # Verify TinyDB was updated (YAML sync is permanently disabled)
         updated_epic = service._repository.get_epic("260203PS_test_plan")
-        assert updated_epic.status == "in_progress"
+        assert updated_epic.status == "active"
 
 
 class TestGetEpicTickets:

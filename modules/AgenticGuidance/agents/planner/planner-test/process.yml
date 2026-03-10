@@ -88,7 +88,7 @@ process:
       1. Read affected_stories from plan metadata (from build plan)
       2. For each story ID, check if story file exists:
          - Story location: docs/userstories/<project>/NN_<category>.yml
-         - CLI helper: agentic agent stories show <story_id>
+         - CLI helper: agentic agent stories cat <story_id>
       3. If story files missing, STOP with this error:
 
          "FENCE VIOLATION: Story content missing for UAT planning
@@ -374,13 +374,17 @@ process:
             @pytest.mark.story("<story_id>")
           This enables persistent test-to-story traceability via pytest markers.
         status: "pending"
-        story_id: "<story_id>"  # MANDATORY: Links UAT task to user story (FENCE)
+        story_id: "<story_id>"  # MANDATORY: Links UAT task to user story (CLI: --story-ids flag)
         acceptance_criteria:
           - "<criteria 1 from story>"
           - "<criteria 2 from story>"
         verification_method: "test-user-simulator"  # or guidance-blind-test, manual, etc.
         target_files: []  # UAT tasks don't modify files, they validate behavior
-        story_marker_required: true  # FENCE: Tests MUST include @pytest.mark.story("<story_id>")
+        story_marker_required: true  # GUIDANCE DIRECTIVE (not persisted in TinyDB)
+        # This flag tells test-builder to include @pytest.mark.story("<story_id>") markers.
+        # Use --story-ids flag when creating tickets: agentic epic ticket add ... --story-ids "US-CLI-110"
+        # Enforcement: orchestration-executor evaluates STORY_COVERAGE_INCOMPLETE trigger
+        # after test phase completion. Missing markers trigger re-spawn of test-builder.
 
     mapping_rules:
       - "One UAT task per user story"

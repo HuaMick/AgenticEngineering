@@ -986,6 +986,51 @@ class TestGetPlanStatus:
         assert workflow.get_plan_status("empty_plan") == "pending"
 
 
+class TestProcessPlanPlanningTransition:
+    """Verify _process_plan sets status=planning at the start."""
+
+    def test_process_plan_sets_planning_status(self, tmp_path, monkeypatch):
+        """_process_plan updates epic status to 'planning' before running agents."""
+        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
+
+        epics_dir = tmp_path / "epics"
+        (epics_dir / "test_epic").mkdir(parents=True)
+
+        _setup_tinydb_for_workflow(
+            tmp_path, "test_epic",
+            status="active",
+            tickets=[{"task_id": "t1", "name": "task1", "status": "pending"}],
+        )
+
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
+
+        # Track status updates to the repository
+        status_updates = []
+        real_repo = workflow._get_repository()
+
+        original_update = real_repo.update_epic
+
+        def tracking_update(folder, data):
+            if "status" in data:
+                status_updates.append(data["status"])
+            return original_update(folder, data)
+
+        monkeypatch.setattr(real_repo, "update_epic", tracking_update)
+        monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "active")
+        monkeypatch.setattr(workflow, "run_health_check", lambda: None)
+        monkeypatch.setattr(workflow, "compile_bootstrap_context", lambda role="orchestration-planning": {})
+
+        # Make explore agent fail so _process_plan returns early after setting planning
+        monkeypatch.setattr(workflow, "spawn_explore_agent", lambda pf: _fail_result(duration_ms=100))
+
+        runner = PlannerLoopRunner(workflow=workflow)
+        runner._process_plan("test_epic")
+
+        assert "planning" in status_updates, (
+            f"Expected 'planning' in status_updates, got: {status_updates}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # SDK Resilience tests (SDK_010, SDK_011)
 # ---------------------------------------------------------------------------
