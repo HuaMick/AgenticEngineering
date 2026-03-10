@@ -188,7 +188,13 @@ class PlannerLoopWorkflow:
         logger.info("Health check passed")
 
     def discover_plans_needing_orchestration(self) -> list[str]:
-        """Find live epics that need planning (no phases in TinyDB).
+        """Find live epics that need planning.
+
+        An epic needs orchestration when:
+        - It has no phases in TinyDB, OR
+        - Not all phases have an agent routing set, OR
+        - All phases are still in 'proposed' status (skeleton created but
+          real planning hasn't happened yet).
 
         Returns:
             List of epic folder names needing orchestration.
@@ -204,6 +210,18 @@ class PlannerLoopWorkflow:
             phases = self._repository.list_phases(epic.epic_folder_name)
             if not phases or not all(p.agent for p in phases):
                 needs_work.append(epic.epic_folder_name)
+            else:
+                # Phases are routed — check if all tickets are still "proposed".
+                # "proposed" = skeleton only (pre-planning); "pending" = planning completed.
+                # Planning promotes proposed→pending on success, so only proposed triggers re-plan.
+                epic_data = self._repository.get_epic(epic.epic_folder_name)
+                tickets = epic_data.tasks if epic_data else []
+                if tickets and all(t.status == "proposed" for t in tickets):
+                    logger.info(
+                        "Epic %s has routed phases but all %d tickets are 'proposed' — needs planning",
+                        epic.epic_folder_name, len(tickets),
+                    )
+                    needs_work.append(epic.epic_folder_name)
 
         logger.info("Found %d epics needing orchestration: %s", len(needs_work), needs_work)
         return needs_work
@@ -664,6 +682,20 @@ class PlannerLoopWorkflow:
             SessionResult with completion status.
         """
         return self._run_role_agent("story-generator", epic_folder)
+
+    def spawn_design_agent(self, epic_folder: str) -> SessionResult:
+        """Run a planner-design agent for solution architecture scaffolding.
+
+        Maps user stories to phases, defines cross-phase contracts, and outputs
+        structured design_context.yml for downstream planners.
+
+        Args:
+            epic_folder: Epic folder name.
+
+        Returns:
+            SessionResult with completion status.
+        """
+        return self._run_role_agent("planner-design", epic_folder)
 
     def spawn_planner(self, epic_folder: str, plan_type: str) -> SessionResult:
         """Run appropriate planner agent for an epic.
@@ -1160,13 +1192,28 @@ class PlannerLoopRunner:
                     return True
 
             if self.epic_folder:
-                # Single-epic mode: check if epic already has fully-routed phases in TinyDB
+                # Single-epic mode: check if epic already has fully-routed phases in TinyDB.
+                # Also require that at least one ticket has moved beyond "proposed" status —
+                # all-proposed tickets means the skeleton was created but planning hasn't
+                # run yet (planning promotes proposed→pending on success).
+                # "pending" means planning completed; "proposed" means skeleton-only.
                 if self.workflow._repository:
                     phases = self.workflow._repository.list_phases(self.epic_folder)
-                    if phases and all(p.agent for p in phases):
-                        logger.info("Epic %s already has routed phases in TinyDB. %s", self.epic_folder, promise)
-                        print(promise)
-                        return True
+                    all_routed = phases and all(p.agent for p in phases)
+                    if all_routed:
+                        epic_data = self.workflow._repository.get_epic(self.epic_folder)
+                        tickets = epic_data.tasks if epic_data else []
+                        all_tickets_proposed = tickets and all(
+                            t.status == "proposed" for t in tickets
+                        )
+                        if not all_tickets_proposed:
+                            logger.info("Epic %s already has routed phases in TinyDB. %s", self.epic_folder, promise)
+                            print(promise)
+                            return True
+                        logger.info(
+                            "Epic %s has routed phases but all %d tickets are still 'proposed' — "
+                            "re-planning to update tickets.", self.epic_folder, len(tickets),
+                        )
                 plans = [self.epic_folder]
             else:
                 plans = self.workflow.discover_plans_needing_orchestration()
@@ -1268,6 +1315,22 @@ class PlannerLoopRunner:
             })
             return False
 
+        # 2.5. Design: run planner-design agent for solution architecture
+        design_result = self.workflow.spawn_design_agent(epic_folder)
+        self.workflow._validate_result(design_result, "planner-design")
+        if design_result.status != "completed":
+            # Design agent failure is non-fatal — log warning and continue
+            # Downstream planners can still work without design_context.yml
+            logger.warning(
+                "planner-design agent failed for %s: %s — continuing without design context",
+                epic_folder, design_result.result[:200],
+            )
+            self.state["errors"].append({
+                "plan": epic_folder,
+                "error": f"Design agent failed (non-fatal): {design_result.result[:200]}",
+                "phase": "design",
+            })
+
         # 3. Determine plan type
         plan_type = self.workflow.determine_plan_type(epic_folder)
         if not plan_type:
@@ -1314,6 +1377,25 @@ class PlannerLoopRunner:
                 "phase": "orchestration",
             })
             return False
+
+        # 7. Promote all "proposed" tickets to "pending" to signal planning is done.
+        # Without this, the loop's termination check (all tickets proposed → re-plan)
+        # would rediscover this epic and create an infinite re-planning loop.
+        if self.workflow._repository:
+            epic_data = self.workflow._repository.get_epic(epic_folder)
+            if epic_data:
+                promoted = 0
+                for ticket in epic_data.tasks:
+                    if ticket.status == "proposed":
+                        self.workflow._repository.update_ticket(
+                            epic_folder, ticket.id, {"status": "pending"}
+                        )
+                        promoted += 1
+                if promoted:
+                    logger.info(
+                        "Promoted %d tickets from 'proposed' to 'pending' for %s",
+                        promoted, epic_folder,
+                    )
 
         logger.info("Epic %s processed successfully (with orchestration phases)", epic_folder)
         return True

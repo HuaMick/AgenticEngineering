@@ -446,9 +446,10 @@ def stories_update(
 @stories_app.command("report")
 def stories_report(
     project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
+    coverage: Annotated[bool, typer.Option("--coverage", help="Cross-reference pytest @pytest.mark.story markers against story inventory")] = False,
 ):
     """Show pass/fail/untested summary."""
-    _stories_handle(_ns(command="stories", stories_command="report", json=_global["json"], debug=_global["debug"], project=project))
+    _stories_handle(_ns(command="stories", stories_command="report", json=_global["json"], debug=_global["debug"], project=project, coverage=coverage))
 
 
 @stories_app.command("untested")
@@ -1700,6 +1701,7 @@ def epic_ticket_add(
     success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated success criteria")] = None,
     guidance: Annotated[Optional[str], typer.Option("--guidance", help="Implementation guidance")] = None,
     inputs: Annotated[Optional[str], typer.Option("--inputs", help="Comma-separated input files/context")] = None,
+    story_ids: Annotated[Optional[str], typer.Option("--story-ids", help="Comma-separated user story IDs (e.g. US-CLI-110,US-CLI-111)")] = None,
 ):
     """Add new ticket to epic."""
     _epic_handle(_ns(
@@ -1707,7 +1709,7 @@ def epic_ticket_add(
         json=_global["json"], debug=_global["debug"],
         description=description, plan=epic, phase=phase, id=id, priority=priority,
         agent=agent, target_files=target_files, success_criteria=success_criteria,
-        guidance=guidance, inputs=inputs,
+        guidance=guidance, inputs=inputs, story_ids=story_ids,
     ))
 
 
@@ -1724,6 +1726,7 @@ def epic_ticket_update(
     success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated success criteria")] = None,
     guidance: Annotated[Optional[str], typer.Option("--guidance", help="Implementation guidance")] = None,
     inputs: Annotated[Optional[str], typer.Option("--inputs", help="Comma-separated inputs")] = None,
+    story_ids: Annotated[Optional[str], typer.Option("--story-ids", help="Comma-separated user story IDs (e.g. US-CLI-110,US-CLI-111)")] = None,
 ):
     """Update ticket fields in epic (status, description, agent, etc.)."""
     _epic_handle(_ns(
@@ -1732,7 +1735,7 @@ def epic_ticket_update(
         task_id=task_id, status=status, plan=epic, note=note,
         description=description, name=name, agent=agent,
         target_files=target_files, success_criteria=success_criteria,
-        guidance=guidance, inputs=inputs,
+        guidance=guidance, inputs=inputs, story_ids=story_ids,
     ))
 
 
@@ -2514,6 +2517,7 @@ def agent_epic_ticket_add(
     success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated success criteria")] = None,
     guidance: Annotated[Optional[str], typer.Option("--guidance", help="Implementation guidance")] = None,
     inputs: Annotated[Optional[str], typer.Option("--inputs", help="Comma-separated input files/context")] = None,
+    story_ids: Annotated[Optional[str], typer.Option("--story-ids", help="Comma-separated user story IDs (e.g. US-CLI-110,US-CLI-111)")] = None,
 ):
     """Add new ticket to epic."""
     _epic_handle(_ns(
@@ -2521,7 +2525,7 @@ def agent_epic_ticket_add(
         json=_global["json"], debug=_global["debug"],
         description=description, plan=epic, phase=phase, id=id, priority=priority,
         agent=agent, target_files=target_files, success_criteria=success_criteria,
-        guidance=guidance, inputs=inputs,
+        guidance=guidance, inputs=inputs, story_ids=story_ids,
     ))
 
 
@@ -2538,6 +2542,7 @@ def agent_epic_ticket_update(
     success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated success criteria")] = None,
     guidance: Annotated[Optional[str], typer.Option("--guidance", help="Implementation guidance")] = None,
     inputs: Annotated[Optional[str], typer.Option("--inputs", help="Comma-separated inputs")] = None,
+    story_ids: Annotated[Optional[str], typer.Option("--story-ids", help="Comma-separated user story IDs (e.g. US-CLI-110,US-CLI-111)")] = None,
 ):
     """Update ticket fields in epic (status, description, agent, etc.)."""
     _epic_handle(_ns(
@@ -2546,7 +2551,7 @@ def agent_epic_ticket_update(
         task_id=task_id, status=status, plan=epic, note=note,
         description=description, name=name, agent=agent,
         target_files=target_files, success_criteria=success_criteria,
-        guidance=guidance, inputs=inputs,
+        guidance=guidance, inputs=inputs, story_ids=story_ids,
     ))
 
 
@@ -3059,9 +3064,10 @@ def agent_stories_update(
 @agent_stories_app.command("report")
 def agent_stories_report(
     project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
+    coverage: Annotated[bool, typer.Option("--coverage", help="Cross-reference pytest @pytest.mark.story markers against story inventory")] = False,
 ):
     """Show pass/fail/untested summary."""
-    _stories_handle(_ns(command="stories", stories_command="report", json=_global["json"], debug=_global["debug"], project=project))
+    _stories_handle(_ns(command="stories", stories_command="report", json=_global["json"], debug=_global["debug"], project=project, coverage=coverage))
 
 
 @agent_stories_app.command("untested")

@@ -582,11 +582,57 @@ def cmd_update(args):
         print_success(f"Updated {story_id}: test_status={args.status}")
 
 
+def _scan_pytest_story_markers() -> set[str]:
+    """Scan test files for @pytest.mark.story markers and return referenced story IDs.
+
+    Searches for pytest.mark.story markers in both AgenticCLI and AgenticGuidance
+    test directories (relative to the repo root).
+
+    Returns:
+        Set of story IDs found in @pytest.mark.story markers across test files.
+    """
+    import subprocess
+
+    marker_ids: set[str] = set()
+
+    # Find the repo root
+    cwd = Path.cwd()
+    repo_root = cwd
+    while repo_root != repo_root.parent:
+        if (repo_root / ".git").exists():
+            break
+        repo_root = repo_root.parent
+
+    # Search test directories for @pytest.mark.story markers
+    test_dirs = [
+        repo_root / "modules" / "AgenticCLI" / "tests",
+        repo_root / "modules" / "AgenticGuidance" / "tests",
+    ]
+
+    for test_dir in test_dirs:
+        if not test_dir.exists():
+            continue
+        try:
+            result = subprocess.run(
+                ["grep", "-rh", r"@pytest.mark.story", str(test_dir)],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.stdout:
+                # Extract story IDs from markers like @pytest.mark.story("US-CLI-110")
+                for match in re.findall(r'["\']([A-Z]{2}-[A-Z]+-\d+)["\']', result.stdout):
+                    marker_ids.add(match)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    return marker_ids
+
+
 def cmd_report(args):
     """Show test status summary across stories."""
     from agenticcli.console import console, is_json_output, print_header, print_json
 
     project_filter = getattr(args, "project", None)
+    coverage_mode = getattr(args, "coverage", False)
     stories = _collect_all_stories(project_filter=project_filter)
 
     # Tally
@@ -600,8 +646,25 @@ def cmd_report(args):
 
     total = len(stories)
 
+    # Pytest marker coverage analysis
+    marker_coverage = None
+    if coverage_mode:
+        marker_ids = _scan_pytest_story_markers()
+        all_story_ids = {s["id"] for s in stories}
+        covered = all_story_ids & marker_ids
+        uncovered = all_story_ids - marker_ids
+        orphan_markers = marker_ids - all_story_ids  # Markers referencing non-existent stories
+
+        marker_coverage = {
+            "total_stories": len(all_story_ids),
+            "covered_by_markers": len(covered),
+            "uncovered": sorted(uncovered),
+            "orphan_markers": sorted(orphan_markers),
+            "coverage_pct": (len(covered) / len(all_story_ids) * 100) if all_story_ids else 0,
+        }
+
     if is_json_output():
-        print_json({
+        result = {
             "total": total,
             "pass": counts["pass"],
             "fail": counts["fail"],
@@ -609,7 +672,10 @@ def cmd_report(args):
             "regression": counts["regression"],
             "untested": counts["untested"],
             "project_filter": project_filter,
-        })
+        }
+        if marker_coverage is not None:
+            result["marker_coverage"] = marker_coverage
+        print_json(result)
         return
 
     title = "Story Test Report"
@@ -627,6 +693,23 @@ def cmd_report(args):
     if total > 0:
         pct = (counts["pass"] / total) * 100
         console.print(f"\n  [bold]Coverage:[/bold] {pct:.0f}% passing")
+
+    if marker_coverage is not None:
+        console.print(f"\n  [bold cyan]Pytest Marker Coverage:[/bold cyan]")
+        mc = marker_coverage
+        console.print(f"  [green]Covered:[/green]    {mc['covered_by_markers']}/{mc['total_stories']} ({mc['coverage_pct']:.0f}%)")
+        if mc["uncovered"]:
+            console.print(f"  [red]Uncovered:[/red]  {len(mc['uncovered'])} stories without @pytest.mark.story markers")
+            for sid in mc["uncovered"][:20]:  # Show first 20
+                console.print(f"    [dim]- {sid}[/dim]")
+            if len(mc["uncovered"]) > 20:
+                console.print(f"    [dim]... and {len(mc['uncovered']) - 20} more[/dim]")
+        else:
+            console.print(f"  [green]All stories have @pytest.mark.story markers![/green]")
+        if mc["orphan_markers"]:
+            console.print(f"  [yellow]Orphan markers:[/yellow] {len(mc['orphan_markers'])} markers reference non-existent story IDs")
+            for sid in mc["orphan_markers"]:
+                console.print(f"    [dim]- {sid}[/dim]")
 
 
 def cmd_untested(args):

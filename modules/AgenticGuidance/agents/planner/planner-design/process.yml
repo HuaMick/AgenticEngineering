@@ -1,0 +1,221 @@
+goal: |
+  Create a high-level solution architecture that maps affected user stories to
+  implementation phases, defines cross-phase contracts, and produces structured
+  inputs for downstream domain-specific planners.
+
+loop_context:
+  participates_in: planner-loop
+  role: "designer"
+  max_iterations: 3
+  description: |
+    Invoked after story discovery (story-generator) and before domain-specific
+    planners. Produces the architecture skeleton that guides all downstream planning.
+
+invocation_context:
+  called_by: "orchestration-planning"
+  when: "After StoryContextReady, before domain planner spawning"
+  receives:
+    - affected_stories (list of story IDs from story-generator)
+    - objective (epic objective string)
+    - epic_folder_name
+    - target_project_path
+
+inputs:
+  reference: "planner-design/inputs.yml"
+
+outputs:
+  primary: "design_context.yml in epic folder"
+  description: |
+    A structured YAML file containing:
+    - story_to_phase_map: Bidirectional mapping of stories to proposed phases
+    - phase_skeleton: Ordered list of phases with purpose, stories, and contracts
+    - cross_phase_contracts: Input/output schemas between phases
+    - planner_context_blocks: Per-planner structured context for downstream consumption
+
+# FENCE: planner-design MUST NOT create TinyDB phases or tickets.
+# It outputs architecture context that domain planners and planner-orchestration consume.
+
+steps:
+  - id: 1
+    name: "CCI Bootstrap"
+    description: |
+      Run CLI Context Injection to load structured context before any exploration.
+      ```
+      agentic -j context bootstrap --role planner-design
+      ```
+    required: true
+
+  - id: 2
+    name: "Validate required inputs"
+    description: |
+      Verify all required inputs are available:
+      - affected_stories: Non-empty list of story IDs (FENCE: required for design)
+      - objective: Epic objective string
+      - epic_folder_name: Valid YYMMDDXX_description format
+      - target_project_path: Absolute path that exists on disk
+
+      If affected_stories is empty, check for no_stories_rationale on the epic record.
+      If neither exists, STOP and raise an error — planner-design cannot proceed
+      without story context.
+    required: true
+
+  - id: 3
+    name: "Load story content"
+    description: |
+      For each story ID in affected_stories:
+      1. Run: `agentic stories cat <story_id>` to get full story content
+      2. Extract: acceptance_criteria, related_commands, related_agents
+      3. Build a story context map: {story_id -> {title, criteria, agents, commands}}
+
+      This provides the raw material for architecture decisions.
+    required: true
+
+  - id: 4
+    name: "Analyze story clusters"
+    description: |
+      Group stories by natural implementation boundaries:
+      - Stories sharing the same related_agents cluster together
+      - Stories sharing related_commands cluster together
+      - Stories with overlapping acceptance_criteria cluster together
+
+      Each cluster becomes a candidate implementation phase.
+      Flag stories that don't cluster (may need their own phase or may be out of scope).
+    required: true
+
+  - id: 5
+    name: "Define phase skeleton"
+    description: |
+      For each story cluster, define a proposed implementation phase:
+      - phase_name: Descriptive name (e.g., "Story marker infrastructure")
+      - purpose: What this phase accomplishes
+      - story_ids: Which stories this phase addresses
+      - suggested_agent: Which agent type should execute (build-python, teacher-update-guidance, etc.)
+      - estimated_complexity: low/medium/high based on acceptance criteria count
+
+      Apply ordering constraints:
+      - Infrastructure phases before feature phases
+      - Data model changes before API changes
+      - API changes before UI changes
+      - Test phases follow their corresponding build phases
+    required: true
+
+  - id: 6
+    name: "Define cross-phase contracts"
+    description: |
+      For each pair of sequential phases, define explicit contracts:
+      - What the earlier phase produces (output files, TinyDB state, API endpoints)
+      - What the later phase expects as input
+      - Validation criteria: How to verify the contract is satisfied
+
+      Contracts prevent implicit coupling and enable parallel planning.
+    required: true
+
+  - id: 7
+    name: "Build story-to-phase traceability matrix"
+    description: |
+      Create a bidirectional mapping:
+      - Forward: story_id -> [phase_names] (which phases address this story)
+      - Reverse: phase_name -> [story_ids] (which stories this phase addresses)
+
+      Validate completeness:
+      - Every affected story must map to at least one phase (no orphans)
+      - Every phase must map to at least one story (no scope creep)
+
+      Flag violations as design issues to resolve before proceeding.
+    required: true
+
+  - id: 8
+    name: "Generate per-planner context blocks"
+    description: |
+      For each downstream planner that will be spawned, create a structured
+      context block containing:
+      - relevant_stories: Story IDs and their acceptance criteria
+      - phase_dependencies: What earlier phases produce that this phase consumes
+      - target_files: Known files from story related_commands/related_agents analysis
+      - success_criteria: Derived from story acceptance_criteria
+      - story_coverage_requirements: Which @pytest.mark.story markers must exist after testing
+
+      These blocks become the structured input for domain planners.
+    required: true
+
+  - id: 9
+    name: "Write design_context.yml"
+    description: |
+      Write the complete design output to the epic folder:
+      ```
+      {epic_folder}/design_context.yml
+      ```
+
+      Structure:
+      ```yaml
+      design_version: "1.0"
+      epic: {epic_folder_name}
+      objective: {objective}
+
+      story_to_phase_map:
+        forward:
+          US-CLI-110: ["Phase 1: Story infrastructure"]
+          US-CLI-111: ["Phase 1: Story infrastructure", "Phase 2: Coverage reporting"]
+        reverse:
+          "Phase 1: Story infrastructure": [US-CLI-110, US-CLI-111]
+          "Phase 2: Coverage reporting": [US-CLI-111, US-CLI-112]
+
+      phase_skeleton:
+        - name: "Phase 1: Story infrastructure"
+          purpose: "..."
+          story_ids: [US-CLI-110, US-CLI-111]
+          suggested_agent: build-python
+          estimated_complexity: medium
+          contracts:
+            produces: ["conftest.py story markers", "pyproject.toml marker registration"]
+            requires: []
+
+      cross_phase_contracts:
+        - from_phase: "Phase 1"
+          to_phase: "Phase 2"
+          contract:
+            outputs: ["pytest story markers registered"]
+            inputs: ["story marker infrastructure available"]
+            validation: "pytest --markers | grep story"
+
+      planner_context_blocks:
+        planner-build:
+          relevant_stories: [...]
+          phase_dependencies: [...]
+          target_files: [...]
+        planner-test:
+          relevant_stories: [...]
+          story_coverage_requirements: [...]
+      ```
+    required: true
+
+  - id: 10
+    name: "Verify design completeness"
+    description: |
+      Before completing, verify:
+      1. All affected_stories appear in story_to_phase_map
+      2. All phases have at least one story
+      3. All sequential phase pairs have contracts defined
+      4. All downstream planners have context blocks
+      5. design_context.yml is valid YAML and parseable
+
+      If any check fails, iterate (up to max_iterations) to fix gaps.
+    required: true
+
+guidelines:
+  - name: "No premature detail"
+    description: |
+      planner-design produces ARCHITECTURE, not implementation details.
+      Do not specify individual functions, class names, or test cases.
+      Those decisions belong to domain planners (planner-build, planner-test).
+
+  - name: "Story IDs are immutable references"
+    description: |
+      Never modify story content or create new stories. Stories are authored
+      reference documents. planner-design only REFERENCES them via ID.
+
+  - name: "Phases are suggestions, not commands"
+    description: |
+      The phase skeleton is a recommendation. Downstream planners may split,
+      merge, or reorder phases based on implementation realities. The contracts
+      and story mappings are the binding output, not the phase boundaries.

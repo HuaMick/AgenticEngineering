@@ -1299,8 +1299,8 @@ def cmd_status(args):
 
     plan_status = plan_data_obj.status or "unknown"
     tasks = plan_data_obj.tasks or []
-    # Treat in_progress as pending for display (tickets are either pending or done)
-    total_pending = sum(1 for t in tasks if t.status in ("pending", "in_progress"))
+    # Treat proposed and in_progress as pending for display (tickets are either pending or done)
+    total_pending = sum(1 for t in tasks if t.status in ("proposed", "pending", "in_progress"))
     total_completed = sum(1 for t in tasks if t.status == "completed")
     has_tasks = len(tasks) > 0
 
@@ -1483,10 +1483,11 @@ def _parse_mmd_tasks(mmd_content: str) -> list[str]:
 def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
     """Run UAT fence validation checks on a plan folder.
 
-    Three fences are checked:
+    Four fences are checked:
     1. Story Discovery: plan has affected_stories or no_stories_rationale
     2. UAT Existence: MMD has UAT subgraph
     3. Story Coverage: all affected stories have test_status != untested
+    4. Marker Coverage: all affected stories have @pytest.mark.story markers in test files
 
     Args:
         plan_path: Path to the plan folder.
@@ -1599,6 +1600,64 @@ def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
             results["Fence 3 (Story Coverage)"] = {
                 "status": "PASS",
                 "message": f"All {total} stories tested",
+            }
+
+    # --- Fence 4: Pytest Story Marker Coverage ---
+    if not affected_stories:
+        results["Fence 4 (Marker Coverage)"] = {
+            "status": "WARN",
+            "message": "No affected stories to check marker coverage for",
+        }
+    else:
+        import subprocess
+
+        # Find repo root from plan_path
+        repo_root = plan_path
+        while repo_root != repo_root.parent:
+            if (repo_root / ".git").exists():
+                break
+            repo_root = repo_root.parent
+
+        # Scan test files for @pytest.mark.story markers
+        marker_ids: set[str] = set()
+        test_dirs = [
+            repo_root / "modules" / "AgenticCLI" / "tests",
+            repo_root / "modules" / "AgenticGuidance" / "tests",
+        ]
+        for test_dir in test_dirs:
+            if not test_dir.exists():
+                continue
+            try:
+                result = subprocess.run(
+                    ["grep", "-rh", r"@pytest.mark.story", str(test_dir)],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if result.stdout:
+                    for match in re.findall(r'["\']([A-Z]{2}-[A-Z]+-\d+)["\']', result.stdout):
+                        marker_ids.add(match)
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+
+        # Check which affected stories have markers
+        stories_with_markers = [sid for sid in affected_stories if sid in marker_ids]
+        stories_without_markers = [sid for sid in affected_stories if sid not in marker_ids]
+
+        total_affected = len(affected_stories)
+        marked = len(stories_with_markers)
+
+        if stories_without_markers:
+            pct = (marked / total_affected) * 100 if total_affected > 0 else 0
+            results["Fence 4 (Marker Coverage)"] = {
+                "status": "WARN",
+                "message": (
+                    f"Marker coverage: {marked}/{total_affected} ({pct:.0f}%). "
+                    f"Stories without @pytest.mark.story markers: {', '.join(stories_without_markers)}"
+                ),
+            }
+        else:
+            results["Fence 4 (Marker Coverage)"] = {
+                "status": "PASS",
+                "message": f"All {total_affected} affected stories have @pytest.mark.story markers",
             }
 
     return results
@@ -2086,11 +2145,13 @@ def cmd_task_add(args, ctx=None):
     success_criteria_raw = getattr(args, "success_criteria", None)
     guidance = getattr(args, "guidance", None)
     inputs_raw = getattr(args, "inputs", None)
+    story_ids_raw = getattr(args, "story_ids", None)
 
     # Parse comma-separated list fields
     target_files = [f.strip() for f in target_files_raw.split(",")] if target_files_raw else []
     success_criteria = [s.strip() for s in success_criteria_raw.split(",")] if success_criteria_raw else []
     inputs = [i.strip() for i in inputs_raw.split(",")] if inputs_raw else []
+    story_ids = [s.strip() for s in story_ids_raw.split(",")] if story_ids_raw else []
 
     # TinyDB-first: try to add task via PlanRepository
     tinydb_done = False
@@ -2154,6 +2215,8 @@ def cmd_task_add(args, ctx=None):
                 ticket_doc["guidance"] = guidance
             if inputs:
                 ticket_doc["inputs"] = inputs
+            if story_ids:
+                ticket_doc["story_ids"] = story_ids
 
             added = repo.add_ticket(plan_path.name, phase_name_used, ticket_doc)
             if added:
@@ -2175,6 +2238,7 @@ def cmd_task_add(args, ctx=None):
             "success_criteria": success_criteria,
             "guidance": guidance,
             "inputs": inputs,
+            "story_ids": story_ids,
             "source": "TinyDB",
         })
     else:
@@ -2595,19 +2659,22 @@ def cmd_task_update(args, ctx=None):
     success_criteria_raw = getattr(args, "success_criteria", None)
     new_guidance = getattr(args, "guidance", None)
     inputs_raw = getattr(args, "inputs", None)
+    story_ids_raw = getattr(args, "story_ids", None)
 
     # Parse comma-separated list fields
     new_target_files = [f.strip() for f in target_files_raw.split(",")] if target_files_raw else None
     new_success_criteria = [s.strip() for s in success_criteria_raw.split(",")] if success_criteria_raw else None
     new_inputs = [i.strip() for i in inputs_raw.split(",")] if inputs_raw else None
+    new_story_ids = [s.strip() for s in story_ids_raw.split(",")] if story_ids_raw else None
 
     # Validate: at least one field to update
     has_updates = any([
         new_status, new_description, new_name, new_agent,
         new_target_files, new_success_criteria, new_guidance, new_inputs,
+        new_story_ids,
     ])
     if not has_updates:
-        print_error("At least one field to update must be provided (--status, --description, --name, --agent, --target-files, --success-criteria, --guidance, --inputs)")
+        print_error("At least one field to update must be provided (--status, --description, --name, --agent, --target-files, --success-criteria, --guidance, --inputs, --story-ids)")
         sys.exit(1)
 
     # TinyDB-first: update task via EpicRepository
@@ -2666,6 +2733,8 @@ def cmd_task_update(args, ctx=None):
                     field_updates["guidance"] = new_guidance
                 if new_inputs is not None:
                     field_updates["inputs"] = new_inputs
+                if new_story_ids is not None:
+                    field_updates["story_ids"] = new_story_ids
 
                 if field_updates:
                     repo.update_ticket(plan_path.name, task_id, field_updates)
@@ -2705,6 +2774,8 @@ def cmd_task_update(args, ctx=None):
             result["guidance"] = new_guidance
         if new_inputs:
             result["inputs"] = new_inputs
+        if new_story_ids:
+            result["story_ids"] = new_story_ids
         print_json(result)
     else:
         changes = []
@@ -2724,6 +2795,8 @@ def cmd_task_update(args, ctx=None):
             changes.append("guidance updated")
         if new_inputs:
             changes.append(f"inputs={len(new_inputs)} items")
+        if new_story_ids:
+            changes.append(f"story_ids={len(new_story_ids)} items")
         print_success(f"Updated task {task_id}: {', '.join(changes)}")
 
 

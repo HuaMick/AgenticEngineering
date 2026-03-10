@@ -271,6 +271,7 @@ class EpicRepository:
                 guidance=td.get("guidance"),
                 completed_date=td.get("completed_date"),
                 success_criteria=td.get("success_criteria"),
+                story_ids=td.get("story_ids", []),
             )
             all_tickets.append(ticket_obj)
             phase_key = td.get("phase_name", "")
@@ -594,6 +595,7 @@ class EpicRepository:
                 guidance=d.get("guidance"),
                 completed_date=d.get("completed_date"),
                 success_criteria=d.get("success_criteria"),
+                story_ids=d.get("story_ids", []),
             )
             for d in docs
         ]
@@ -631,6 +633,7 @@ class EpicRepository:
             guidance=d.get("guidance"),
             completed_date=d.get("completed_date"),
             success_criteria=d.get("success_criteria"),
+            story_ids=d.get("story_ids", []),
         )
 
     def update_ticket_status(
@@ -698,6 +701,7 @@ class EpicRepository:
                 "guidance": ticket_data.get("guidance"),
                 "completed_date": ticket_data.get("completed_date"),
                 "success_criteria": ticket_data.get("success_criteria"),
+                "story_ids": ticket_data.get("story_ids", []),
             }
             self._tickets.insert(doc)
         return True
@@ -775,6 +779,7 @@ class EpicRepository:
                 guidance=d.get("guidance"),
                 completed_date=d.get("completed_date"),
                 success_criteria=d.get("success_criteria"),
+                story_ids=d.get("story_ids", []),
             )
 
         # Fall back to first proposed (or legacy pending)
@@ -796,6 +801,7 @@ class EpicRepository:
                 guidance=d.get("guidance"),
                 completed_date=d.get("completed_date"),
                 success_criteria=d.get("success_criteria"),
+                story_ids=d.get("story_ids", []),
             )
 
         return None
@@ -983,6 +989,7 @@ class EpicRepository:
                 guidance=d.get("guidance"),
                 completed_date=d.get("completed_date"),
                 success_criteria=d.get("success_criteria"),
+                story_ids=d.get("story_ids", []),
             )
             for d in docs
         ]

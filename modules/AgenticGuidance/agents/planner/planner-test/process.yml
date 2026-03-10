@@ -209,10 +209,14 @@ process:
         - audit-test-fix-loop: MANDATORY - Must be included after any test creation/modification
           to catch reward hacking and validate test quality
         - user-story-validation-loop: For UAT phases to iterate until user stories pass
+        - story-coverage-loop: For post-test phases to verify @pytest.mark.story marker
+          coverage against affected_stories. Re-runs test-builder with uncovered story IDs
+          until all affected stories have corresponding markers in test files.
+          Triggers STORY_COVERAGE_INCOMPLETE feedback in orchestration-executor.
 
       Include loop_structure section in plan output:
         - Each phase with iterative work must specify its loop type
-        - Include maximum_iterations (standard: 5 for test-fix, 3 for audit)
+        - Include maximum_iterations (standard: 5 for test-fix, 3 for audit, 3 for story-coverage)
         - Define explicit exit_conditions (PASS criteria and max_iterations action)
         - Specify participant agents and their roles
 
@@ -227,6 +231,25 @@ process:
             max_iterations:
               action: "escalate"
               reason: "Test failures persist"
+
+      Example story-coverage-loop in UAT phase:
+        loop:
+          type: "story-coverage-loop"
+          maximum_iterations: 3
+          trigger: "STORY_COVERAGE_INCOMPLETE"
+          exit_conditions:
+            success:
+              condition: "COVERAGE_COMPLETE"
+              criteria: "All affected stories have @pytest.mark.story markers in test files"
+            max_iterations:
+              action: "escalate"
+              reason: "Story coverage incomplete after max iterations"
+          participants:
+            - agent: "test-builder"
+              role: "Create/update tests with @pytest.mark.story markers for uncovered stories"
+          context_provided:
+            - uncovered_story_ids: "List of story IDs without pytest markers"
+            - story_content: "Acceptance criteria for uncovered stories"
     - |
       TEST EXPECTATION QUESTION GUIDANCE (HITL Question Workflow):
       Reference: modules/AgenticGuidance/assets/guidelines/question-workflow.yml
@@ -345,13 +368,19 @@ process:
           - Command output showing <X>
           - Log excerpt confirming <Y>
           - Screenshot/recording of <Z>
+
+          Story Marker Requirement:
+          Tests created for this UAT task MUST include:
+            @pytest.mark.story("<story_id>")
+          This enables persistent test-to-story traceability via pytest markers.
         status: "pending"
-        story_id: "<story_id>"
+        story_id: "<story_id>"  # MANDATORY: Links UAT task to user story (FENCE)
         acceptance_criteria:
           - "<criteria 1 from story>"
           - "<criteria 2 from story>"
         verification_method: "test-user-simulator"  # or guidance-blind-test, manual, etc.
         target_files: []  # UAT tasks don't modify files, they validate behavior
+        story_marker_required: true  # FENCE: Tests MUST include @pytest.mark.story("<story_id>")
 
     mapping_rules:
       - "One UAT task per user story"

@@ -169,6 +169,27 @@ flowchart LR
     end
 
     %% ========================================
+    %% DESIGN ARCHITECTURE PHASE (planner-design)
+    %% ========================================
+    %% After story context is ready, spawn planner-design to create high-level
+    %% solution architecture. planner-design maps affected stories to implementation
+    %% phases, defines cross-phase contracts, and produces structured context blocks
+    %% for downstream planners.
+    %%
+    %% INPUT: affected_stories, objective, epic_folder_name, target_project_path
+    %% OUTPUT: design_context.yml in epic folder (story-to-phase map, phase skeleton, contracts)
+    %%
+    %% FENCE: planner-design does NOT create TinyDB phases or tickets.
+    %% It produces architecture context that domain planners consume.
+    StoryContextReady --> SpawnPlannerDesign[Spawn planner-design Agent]
+    SpawnPlannerDesign --> DesignContextReady{Design Context Generated?}
+    DesignContextReady -- "Yes: design_context.yml Created" --> PhaseDetermination[Enter Phase Determination]
+    DesignContextReady -- "No: Failed" --> RetryDesign{Design Retry Count < 3?}
+    RetryDesign -- "Yes" --> SpawnPlannerDesignRetry[Spawn planner-design Agent - Retry]
+    SpawnPlannerDesignRetry --> DesignContextReady
+    RetryDesign -- "No: Max Retries" --> EscalateDesign((Escalate: Design Context Generation Failed))
+
+    %% ========================================
     %% PHASE DETERMINATION
     %% ========================================
     %% Orchestration-planning agent analyzes objective and determines required phases.
@@ -177,7 +198,8 @@ flowchart LR
     %% Each phase gets its own TinyDB records created via:
     %%   agentic epic phase add --epic <folder> --name '<phase_name>' --agent <agent>
     %%   agentic epic ticket add --epic <folder> --phase '<phase_name>' --id '<id>' --name '<name>'
-    StoryContextReady --> PhaseDetermination[Enter Phase Determination]
+    %% NOTE: Phase determination now benefits from design_context.yml which provides
+    %% a pre-analyzed phase skeleton with story mappings and cross-phase contracts.
 
     subgraph PhaseDetermination_SG ["Phase Determination Subgraph"]
         %% Orchestration-planning determines phases based on objective type:

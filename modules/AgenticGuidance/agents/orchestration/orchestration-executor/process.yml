@@ -492,6 +492,33 @@ process:
             Out-of-scope errors do NOT consume loop iterations.
           - Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
 
+        STORY_COVERAGE_INCOMPLETE:
+          - Condition: After a test phase completes, check pytest marker coverage
+            against the epic's affected_stories list. Coverage is incomplete when
+            any story in affected_stories has no corresponding @pytest.mark.story("<story_id>")
+            marker in the test files produced by the phase.
+          - Detection:
+            1. Read affected_stories from TinyDB epic metadata
+            2. Scan test files created/modified by the phase for @pytest.mark.story markers
+            3. Collect the set of story IDs referenced by markers
+            4. Compare against affected_stories: uncovered = affected_stories - marked_stories
+            5. If uncovered is non-empty, this trigger fires
+          - Action: Check iteration count (MAX_ITERATIONS default: 3 for story coverage)
+            - If < MAX_ITERATIONS: Re-spawn test-builder with context:
+              - uncovered_story_ids: list of story IDs without pytest markers
+              - story_content: story acceptance criteria for uncovered stories
+              - instruction: "Add @pytest.mark.story('<story_id>') markers to tests
+                validating these stories. Create new tests if no existing test covers
+                the story's acceptance criteria."
+            - If >= MAX_ITERATIONS: Transition to blocked with coverage report:
+              "STORY COVERAGE INCOMPLETE after {iterations} attempts.
+               Uncovered stories: [IDs]
+               Coverage: N/M stories covered (X%)"
+          - Note: This trigger fires AFTER test phase completion, not during.
+            It is evaluated alongside TEST_FAILURE but has its own iteration counter.
+            Story coverage iterations do NOT consume TEST_FAILURE iterations.
+          - Exit condition: All affected stories have @pytest.mark.story markers in test files
+
         If NO triggers fire, proceed to phase completion.
 
     - id: "loop_complete_phase"
@@ -537,7 +564,8 @@ process:
         STORY VALIDATION CHECK (references planning-standard.yml#escape_hatch_rules):
         6. If plan has affected_stories metadata (from TinyDB epic metadata):
            a. Verify UAT phase validated those specific stories
-           b. Check story test results are captured (test_status field)
+           b. Check story test results are captured (test_status field in story YAML
+              AND @pytest.mark.story markers in test files — markers are PRIMARY)
            c. FENCE: Cannot proceed to shutdown if affected stories have test_status=failed
         7. If plan has no affected_stories and no no_stories_rationale:
            a. Determine plan type from TinyDB epic metadata
@@ -548,11 +576,31 @@ process:
            a. If affected_stories present in TinyDB epic metadata, check TinyDB for UAT phase
            b. If no UAT phase found but affected_stories exist → BLOCK
               Error: "BLOCKED: Plan has affected_stories but no UAT phase in TinyDB."
-        9. STORY COVERAGE CHECK:
-           a. For each story ID in affected_stories, read test_status from story YAML
-           b. If ANY story has test_status=untested → BLOCK
-              Error: "BLOCKED: Story coverage incomplete. N/M stories untested: [IDs]"
-           c. Report coverage percentage: "Story coverage: N/M (X%)"
+        9. STORY COVERAGE CHECK (pytest markers are PRIMARY source of truth):
+           a. Scan test files in the target project for @pytest.mark.story("<story_id>")
+              markers. Use grep/ripgrep to collect the set of story IDs referenced
+              by markers across all test files:
+              ```bash
+              grep -rh '@pytest.mark.story' tests/ | grep -oP '"(US-[A-Z]+-\d+)"' | sort -u
+              ```
+           b. For each story ID in affected_stories, check if it appears in the
+              collected marker set
+           c. ALSO read test_status from story YAML as a secondary signal
+              (markers are persistent and authoritative; YAML test_status may decay)
+           d. Classification per story:
+              - COVERED: has @pytest.mark.story marker in test files
+              - UNTESTED: no marker found AND test_status=untested in YAML
+              - FAILED: has marker but test_status=failed in YAML (tests exist but fail)
+           e. If ANY story is UNTESTED → BLOCK
+              Error: "BLOCKED: Story coverage incomplete. N/M stories have no
+              @pytest.mark.story markers in test files: [IDs]"
+           f. If ANY story is FAILED → BLOCK
+              Error: "BLOCKED: Story tests failing. N/M stories have failing tests: [IDs]"
+           g. Report coverage: "Story coverage: N/M stories covered by pytest markers (X%)
+              YAML test_status: P pass, F fail, U untested"
+           h. NOTE: A story with a pytest marker but test_status=untested in YAML
+              is considered COVERED — the marker is authoritative. The YAML field
+              may not have been updated yet.
 
         FENCE: VALIDATION GATE
         Cannot proceed to shutdown_aggregate_status until:

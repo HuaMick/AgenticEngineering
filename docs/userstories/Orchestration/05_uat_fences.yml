@@ -160,3 +160,56 @@ stories:
   test_status: untested
   test_notes: ''
   tested_by_plan: null
+- id: US-ORCH-043
+  title: STORY_COVERAGE_INCOMPLETE Feedback Trigger
+  category: uat_fences
+  priority: high
+  as_a: orchestration-executor detecting story coverage gaps
+  i_want: a STORY_COVERAGE_INCOMPLETE feedback trigger that fires when test phases leave stories uncovered
+  so_that: the system automatically detects and remediates missing story-test linkage
+  acceptance_criteria:
+  - STORY_COVERAGE_INCOMPLETE trigger defined in orchestration-executor process.yml
+  - 'Detection: read affected_stories from TinyDB, scan test files for @pytest.mark.story markers'
+  - 'Comparison: uncovered = affected_stories - marked_stories'
+  - Trigger fires when uncovered set is non-empty
+  - 'Action under max iterations (default 3): re-spawn test-builder with uncovered_story_ids and story content'
+  - After max iterations, transition to blocked state with coverage report
+  related_agents:
+  - orchestration-executor
+  - test-builder
+  related_files:
+  - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+  related_stories:
+  - US-ORCH-026
+  - US-ORCH-044
+  - US-GD-163
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260308PD_planner_design_agent_story_alignment
+- id: US-ORCH-044
+  title: Validation Gate Pytest Marker Scanning
+  category: uat_fences
+  priority: high
+  as_a: orchestration-executor completing plan execution
+  i_want: the validation gate to scan pytest markers as the PRIMARY source of truth for story coverage
+  so_that: coverage validation is based on co-located markers that cannot drift, not ephemeral YAML test_status
+  acceptance_criteria:
+  - Validation gate scans test files for @pytest.mark.story markers (PRIMARY source)
+  - YAML test_status checked as secondary signal only
+  - 'Stories classified as: COVERED (marker found), UNTESTED (no marker), FAILED (marker + test_status=fail)'
+  - Validation BLOCKS if ANY affected story is UNTESTED
+  - Block message includes list of untested story IDs and coverage percentage
+  - Marker scanning uses same regex pattern as _scan_pytest_story_markers() in CLI
+  related_agents:
+  - orchestration-executor
+  related_files:
+  - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+  related_stories:
+  - US-ORCH-041
+  - US-ORCH-043
+  - US-GD-076
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260308PD_planner_design_agent_story_alignment

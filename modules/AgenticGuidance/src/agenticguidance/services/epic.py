@@ -574,12 +574,15 @@ class TicketData:
     guidance: Optional[str] = None
     completed_date: Optional[str] = None
     success_criteria: Optional[str] = None
+    story_ids: list = None
 
     def __post_init__(self):
         if self.inputs is None:
             self.inputs = []
         if self.target_files is None:
             self.target_files = []
+        if self.story_ids is None:
+            self.story_ids = []
 
 
 class EpicService:

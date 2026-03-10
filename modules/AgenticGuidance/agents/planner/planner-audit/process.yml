@@ -165,6 +165,38 @@ process:
       - Recommend: mark as abandoned, complete remaining items, or archive
 
     - |
+      AUDIT STORY TRACEABILITY (Bidirectional Coverage Check):
+
+      This audit step verifies bidirectional linkage between tickets and user stories.
+      Two directions must be checked:
+
+      1. TICKET → STORY (Forward Traceability):
+         For each ticket in TinyDB with a story_ids field:
+         - Verify each referenced story ID exists in docs/userstories/
+         - If a story ID is invalid, FLAG as HIGH severity:
+           "Ticket '{ticket_id}' references non-existent story '{story_id}'"
+
+      2. STORY → TICKET (Reverse Traceability):
+         Query affected_stories from the epic record in TinyDB.
+         For each affected story:
+         - Check if at least one ticket references this story via story_ids
+         - Check if at least one test file has @pytest.mark.story("<story_id>")
+           by scanning test files: `grep -r "pytest.mark.story.*<story_id>" tests/`
+         - If a story has NO ticket reference AND NO pytest marker:
+           FLAG as MEDIUM severity:
+           "Story '{story_id}' is in affected_stories but has no ticket or test linkage"
+
+      3. PYTEST MARKER COVERAGE:
+         For each affected story, check if any test uses @pytest.mark.story:
+         ```bash
+         grep -r "@pytest.mark.story.*<story_id>" modules/*/tests/
+         ```
+         - If no marker found, FLAG as MEDIUM severity:
+           "Story '{story_id}' has no @pytest.mark.story marker in test files"
+
+      Add findings to compliance report under a new `story_traceability` section.
+
+    - |
       GENERATE COMPLIANCE REPORT:
 
       Create audit report (audit_plan_compliance.yml in audit/ subfolder) with:
@@ -201,6 +233,13 @@ process:
         misleading_content:
           - file: "{path}"
             risk: "{how it could mislead}"
+            recommendation: "{action}"
+
+        story_traceability:
+          - direction: "ticket_to_story|story_to_ticket|pytest_marker"
+            entity_id: "{ticket_id or story_id}"
+            issue: "{description of traceability gap}"
+            severity: "high|medium"
             recommendation: "{action}"
 
         execution_tracking:

@@ -40,6 +40,7 @@ class Ticket:
     target_files: list[str] = field(default_factory=list)
     guidance: Optional[str] = None
     completed_date: Optional[str] = None
+    story_ids: list[str] = field(default_factory=list)
 
 
 class TicketService:
@@ -106,6 +107,7 @@ class TicketService:
             target_files=ticket_data.get("target_files", []),
             guidance=ticket_data.get("guidance"),
             completed_date=ticket_data.get("completed_date"),
+            story_ids=ticket_data.get("story_ids", []),
         )
 
     def _taskdata_to_ticket(self, td) -> Optional[Ticket]:
@@ -133,6 +135,7 @@ class TicketService:
             target_files=td.target_files or [],
             guidance=td.guidance,
             completed_date=td.completed_date,
+            story_ids=getattr(td, "story_ids", None) or [],
         )
 
     def get_ticket(self, ticket_id: str) -> Optional[Ticket]:

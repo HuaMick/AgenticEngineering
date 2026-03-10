@@ -4,6 +4,103 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
+
+
+def pytest_configure(config):
+    """Register custom markers for AgenticGuidance tests."""
+    config.addinivalue_line(
+        "markers",
+        "story(*story_ids): marks tests that validate specific user stories "
+        "(format: @pytest.mark.story('US-XXX-NNN'))",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Story marker validation plugin
+# ---------------------------------------------------------------------------
+
+def _find_repo_root_from_tests():
+    """Walk up from this conftest.py to find the repo root (.git dir)."""
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current
+        current = current.parent
+    return None
+
+
+def _load_valid_story_ids():
+    """Load all valid story IDs from docs/userstories/ YAML files.
+
+    Returns a frozenset of story ID strings (e.g. 'US-CLI-110').
+    Returns an empty set if the directory doesn't exist (e.g. in CI).
+    """
+    repo_root = _find_repo_root_from_tests()
+    if not repo_root:
+        return frozenset()
+    userstories_dir = repo_root / "docs" / "userstories"
+    if not userstories_dir.exists():
+        return frozenset()
+
+    valid_ids = set()
+    for yml_file in userstories_dir.glob("**/*.yml"):
+        if yml_file.name == "00_metadata.yml":
+            continue
+        try:
+            content = yaml.safe_load(yml_file.read_text())
+        except Exception:
+            continue
+        if not content or not isinstance(content, dict):
+            continue
+        for key in ("stories", "user_stories"):
+            items = content.get(key, [])
+            if not isinstance(items, list):
+                continue
+            for story in items:
+                if isinstance(story, dict) and "id" in story:
+                    valid_ids.add(story["id"])
+    return frozenset(valid_ids)
+
+
+# Module-level cache so IDs are loaded at most once per test session.
+_VALID_STORY_IDS: frozenset | None = None
+
+
+def pytest_collection_modifyitems(config, items):
+    """Validate that @pytest.mark.story markers reference known story IDs.
+
+    Issues pytest warnings for any story ID not found in docs/userstories/.
+    Does NOT block test execution — unknown IDs are warnings, not errors.
+    """
+    global _VALID_STORY_IDS  # noqa: PLW0603
+
+    for item in items:
+        for marker in item.iter_markers("story"):
+            if not marker.args:
+                item.warn(
+                    UserWarning(
+                        f"@pytest.mark.story on {item.nodeid} has no story IDs"
+                    )
+                )
+                continue
+
+            # Lazy-load valid IDs on first encounter
+            if _VALID_STORY_IDS is None:
+                _VALID_STORY_IDS = _load_valid_story_ids()
+
+            # Skip validation if we couldn't find the stories directory
+            if not _VALID_STORY_IDS:
+                return
+
+            for story_id in marker.args:
+                if story_id not in _VALID_STORY_IDS:
+                    item.warn(
+                        UserWarning(
+                            f"@pytest.mark.story references unknown story ID "
+                            f"'{story_id}' — not found in docs/userstories/"
+                        )
+                    )
 
 
 @pytest.fixture(autouse=True)
