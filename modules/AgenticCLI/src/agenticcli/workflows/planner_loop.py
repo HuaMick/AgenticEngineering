@@ -65,6 +65,25 @@ DEFAULT_COMPLETION_PROMISE = "Planning complete. All epics have phases in TinyDB
 # that import them directly from this module.
 
 
+# Roles that participate in the planning phase — these agents must NEVER
+# implement code, write tests, or modify source files.  They only create,
+# update, or review tickets/phases/stories/architecture docs.
+_PLANNING_PHASE_ROLES = frozenset({
+    "explore",
+    "story-generator",
+    "planner-design",
+    "planner-build",
+    "planner-test",
+    "planner-guidance",
+    "planner-cleaning",
+    "planner-audit",
+    "planner-reviewer",
+    "planner-orchestration",
+    "planner-sdk",
+    "planner-guidance-testing",
+})
+
+
 def _build_agent_prompt(role: str, epic_folder: str, extra_prompt: Optional[str] = None) -> str:
     """Build a prompt for an agent with role and epic context.
 
@@ -81,8 +100,19 @@ def _build_agent_prompt(role: str, epic_folder: str, extra_prompt: Optional[str]
         f"Initialize your context by running: agentic -j agent context bootstrap --role {role}",
         f"Your active epic is: {epic_folder}",
         f"List tickets with: agentic -j epic ticket list --epic {epic_folder}",
-        "Start by loading your bootstrap context, then work through the epic tasks.",
     ]
+
+    if role in _PLANNING_PHASE_ROLES:
+        parts.append(
+            "IMPORTANT: This is a PLANNING-ONLY session. You must NOT implement code, "
+            "write tests, or modify source files. Your job is to create, update, or "
+            "review tickets, phases, stories, and architecture documents ONLY. "
+            "Read source files for context but do not edit them."
+        )
+        parts.append("Start by loading your bootstrap context, then plan the epic tasks.")
+    else:
+        parts.append("Start by loading your bootstrap context, then work through the epic tasks.")
+
     if extra_prompt:
         parts.append("")
         parts.append(f"Additional instructions from the operator:\n{extra_prompt}")
