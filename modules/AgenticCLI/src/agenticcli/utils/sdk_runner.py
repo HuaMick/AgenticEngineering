@@ -60,21 +60,24 @@ DEFAULT_TIMEOUT_SECONDS = 1800  # 30 minutes
 # These restrict what tools each agent role can invoke, reducing blast radius.
 # If a role is not listed here, all tools are allowed (backwards-compatible default).
 ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
+    # ── Planning phase: Read + Bash only (use `agentic` CLI for tickets/phases) ──
     "explore": ["Read", "Glob", "Grep", "Bash"],
-    "planner-build": ["Read", "Glob", "Grep", "Write", "Bash"],
-    "planner-test": ["Read", "Glob", "Grep", "Write", "Bash"],
-    "planner-guidance": ["Read", "Glob", "Grep", "Write", "Bash"],
-    "planner-cleaning": ["Read", "Glob", "Grep", "Write", "Bash"],
-    "planner-guidance-testing": ["Read", "Glob", "Grep", "Write", "Bash"],
-    "planner-sdk": ["Read", "Glob", "Grep", "Write", "Bash"],
+    "planner-build": ["Read", "Glob", "Grep", "Bash"],
+    "planner-test": ["Read", "Glob", "Grep", "Bash"],
+    "planner-guidance": ["Read", "Glob", "Grep", "Bash"],
+    "planner-cleaning": ["Read", "Glob", "Grep", "Bash"],
+    "planner-guidance-testing": ["Read", "Glob", "Grep", "Bash"],
+    "planner-sdk": ["Read", "Glob", "Grep", "Bash"],
     "planner-reviewer": ["Read", "Glob", "Grep"],
-    "planner-orchestration": ["Read", "Glob", "Grep", "Write", "Bash"],
+    "planner-orchestration": ["Read", "Glob", "Grep", "Bash"],
+    "planner-audit": ["Read", "Glob", "Grep", "Bash"],
+    # ── Planning phase: Write needed for design/story artifacts ──
     "planner-design": ["Read", "Glob", "Grep", "Write", "Bash"],
-    "planner-audit": ["Read", "Glob", "Grep", "Write", "Bash"],
+    "story-generator": ["Read", "Glob", "Grep", "Write", "Bash"],
+    # ── Execution phase: full access ──
     "test-runner": ["Read", "Glob", "Grep", "Bash", "Edit"],
     "build-python": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
     "build-flutter": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
-    "story-generator": ["Read", "Glob", "Grep", "Write", "Bash"],
 }
 
 
