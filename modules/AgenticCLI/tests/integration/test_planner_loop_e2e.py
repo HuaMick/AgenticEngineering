@@ -154,14 +154,15 @@ class TestPlannerLoopE2E:
         if "discover" in overrides:
             monkeypatch.setattr(workflow, "discover_plans_needing_orchestration",
                                 overrides["discover"])
-        if "spawn_explore" in overrides:
-            monkeypatch.setattr(workflow, "spawn_explore_agent", overrides["spawn_explore"])
-        if "spawn_story" in overrides:
-            monkeypatch.setattr(workflow, "spawn_story_agent", overrides["spawn_story"])
-        if "plan_type" in overrides:
-            monkeypatch.setattr(workflow, "determine_plan_type", overrides["plan_type"])
-        if "spawn_planner" in overrides:
-            monkeypatch.setattr(workflow, "spawn_planner", overrides["spawn_planner"])
+        # Always patch spawn methods — defaults to _ok_result() unless overridden
+        monkeypatch.setattr(workflow, "spawn_epic_creator",
+                            overrides.get("spawn_epic_creator", lambda pf: _ok_result()))
+        monkeypatch.setattr(workflow, "spawn_explore_agents",
+                            overrides.get("spawn_explore", lambda pf: _ok_result()))
+        monkeypatch.setattr(workflow, "spawn_story_agent",
+                            overrides.get("spawn_story", lambda pf: _ok_result()))
+        monkeypatch.setattr(workflow, "spawn_design_agent",
+                            overrides.get("spawn_design", lambda pf: SessionResult(status="completed", result="DESIGN_STATUS: approved")))
         if "review" in overrides:
             monkeypatch.setattr(workflow, "run_review_cycle", overrides["review"])
         if "spawn_orchestration" in overrides:
@@ -177,10 +178,12 @@ class TestPlannerLoopE2E:
     def test_planning_loop_spawns_all_roles(self, tmp_path, monkeypatch):
         """Full planning loop invokes all expected agent roles.
 
-        Verifies that explore, story-generator, planner-build, planner-reviewer,
-        and planner-orchestration are each invoked exactly once for a single
-        unplanned epic.
+        Verifies that epic-creator, story-generator, planner-explore,
+        planner-design, planner-reviewer, and planner-orchestration are each
+        invoked for a single unplanned epic (epic-creator-first architecture).
         """
+        from agenticcli.utils.sdk_runner import SessionResult
+
         epic_folder = "260309AA_test_epic"
         workflow, _ = _make_workflow_with_tinydb(
             tmp_path, epic_folder, agent_type="build-python",
@@ -188,17 +191,21 @@ class TestPlannerLoopE2E:
 
         spawned_roles = []
 
+        def tracking_epic_creator(pf):
+            spawned_roles.append("epic-creator")
+            return _ok_result(session_id="creator-001")
+
         def tracking_spawn_explore(pf):
-            spawned_roles.append("explore")
+            spawned_roles.append("planner-explore")
             return _ok_result(session_id="explore-001")
 
         def tracking_spawn_story(pf):
             spawned_roles.append("story-generator")
             return _ok_result(session_id="story-001")
 
-        def tracking_spawn_planner(pf, pt):
-            spawned_roles.append(f"planner-{pt}")
-            return _ok_result(session_id="planner-001")
+        def tracking_spawn_design(pf):
+            spawned_roles.append("planner-design")
+            return SessionResult(status="completed", result="DESIGN_STATUS: approved", session_id="design-001")
 
         def tracking_spawn_reviewer(pf):
             spawned_roles.append("planner-reviewer")
@@ -209,8 +216,6 @@ class TestPlannerLoopE2E:
             return _ok_result(session_id="orchestration-001")
 
         # Patch run_review_cycle to call spawn_reviewer once then approve
-        original_review = workflow.run_review_cycle
-
         def patched_review(pf, max_reviews=3):
             result = workflow.spawn_reviewer(pf)
             if result.status == "completed":
@@ -231,20 +236,21 @@ class TestPlannerLoopE2E:
         runner = self._make_runner(
             monkeypatch, workflow,
             discover=tracking_discover,
+            spawn_epic_creator=tracking_epic_creator,
             spawn_explore=tracking_spawn_explore,
             spawn_story=tracking_spawn_story,
-            plan_type=lambda pf: "build",
-            spawn_planner=tracking_spawn_planner,
+            spawn_design=tracking_spawn_design,
             spawn_orchestration=tracking_spawn_orchestration,
         )
         result = runner.run(max_iterations=5)
 
         assert result is True
 
-        # All five roles must appear
-        assert "explore" in spawned_roles, f"explore not in {spawned_roles}"
+        # All roles must appear
+        assert "epic-creator" in spawned_roles, f"epic-creator not in {spawned_roles}"
         assert "story-generator" in spawned_roles, f"story-generator not in {spawned_roles}"
-        assert "planner-build" in spawned_roles, f"planner-build not in {spawned_roles}"
+        assert "planner-explore" in spawned_roles, f"planner-explore not in {spawned_roles}"
+        assert "planner-design" in spawned_roles, f"planner-design not in {spawned_roles}"
         assert "planner-reviewer" in spawned_roles, f"planner-reviewer not in {spawned_roles}"
         assert "planner-orchestration" in spawned_roles, f"planner-orchestration not in {spawned_roles}"
 
@@ -458,10 +464,10 @@ class TestPlannerLoopE2E:
         runner = self._make_runner(
             monkeypatch, workflow,
             discover=tracking_discover,
+            spawn_epic_creator=lambda pf: _ok_result(session_id="creator-e2e"),
             spawn_explore=lambda pf: _ok_result(session_id="explore-e2e"),
             spawn_story=lambda pf: _ok_result(session_id="story-e2e"),
-            plan_type=lambda pf: "build",
-            spawn_planner=lambda pf, pt: _ok_result(session_id="planner-e2e"),
+            spawn_design=lambda pf: SessionResult(status="completed", result="DESIGN_STATUS: approved", session_id="design-e2e"),
             review=lambda pf, **kw: (True, 1, "approved"),
             spawn_orchestration=lambda pf: _ok_result(session_id="orch-e2e"),
         )
@@ -545,7 +551,7 @@ class TestPlannerLoopE2E:
     def test_planning_loop_phase_order(self, tmp_path, monkeypatch):
         """Agents are invoked in the correct sequential order.
 
-        Order must be: explore -> story -> planner -> review -> orchestration.
+        Order must be: epic_creator -> story -> explore -> design -> review -> orchestration.
         """
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
@@ -556,6 +562,10 @@ class TestPlannerLoopE2E:
 
         invocation_log = []
 
+        def log_epic_creator(pf):
+            invocation_log.append("epic_creator")
+            return _ok_result()
+
         def log_explore(pf):
             invocation_log.append("explore")
             return _ok_result()
@@ -564,9 +574,9 @@ class TestPlannerLoopE2E:
             invocation_log.append("story")
             return _ok_result()
 
-        def log_planner(pf, pt):
-            invocation_log.append("planner")
-            return _ok_result()
+        def log_design(pf):
+            invocation_log.append("design")
+            return SessionResult(status="completed", result="DESIGN_STATUS: approved")
 
         def log_review(pf, **kw):
             invocation_log.append("review")
@@ -587,10 +597,10 @@ class TestPlannerLoopE2E:
         runner = self._make_runner(
             monkeypatch, workflow,
             discover=one_shot_discover,
+            spawn_epic_creator=log_epic_creator,
             spawn_explore=log_explore,
             spawn_story=log_story,
-            plan_type=lambda pf: "build",
-            spawn_planner=log_planner,
+            spawn_design=log_design,
             review=log_review,
             spawn_orchestration=log_orchestration,
         )
@@ -599,24 +609,24 @@ class TestPlannerLoopE2E:
 
         assert result is True
         assert invocation_log == [
-            "explore", "story", "planner", "review", "orchestration",
+            "epic_creator", "story", "explore", "design", "review", "orchestration",
         ], f"Unexpected phase order: {invocation_log}"
 
     # ------------------------------------------------------------------ #
     # Test: skips plan when explore agent fails                            #
     # ------------------------------------------------------------------ #
 
-    def test_planning_loop_skips_on_explore_failure(self, tmp_path, monkeypatch):
-        """Epic is skipped when the explore agent fails.
+    def test_planning_loop_skips_on_epic_creator_failure(self, tmp_path, monkeypatch):
+        """Epic is skipped when the epic-creator agent fails.
 
-        The runner must NOT proceed to story or planner when explore fails.
+        The runner must NOT proceed to story or explore when epic-creator fails.
         """
-        epic_folder = "260309II_explore_fail"
+        epic_folder = "260309II_creator_fail"
         workflow, _ = _make_workflow_with_tinydb(tmp_path, epic_folder)
 
         story_called = {"called": False}
 
-        def failing_explore(pf):
+        def failing_creator(pf):
             return _fail_result(result="Connection error")
 
         def should_not_be_called_story(pf):
@@ -634,11 +644,11 @@ class TestPlannerLoopE2E:
         runner = self._make_runner(
             monkeypatch, workflow,
             discover=one_shot_discover,
-            spawn_explore=failing_explore,
+            spawn_epic_creator=failing_creator,
             spawn_story=should_not_be_called_story,
         )
 
         runner.run(max_iterations=3)
 
         assert epic_folder in runner.state["plans_skipped"]
-        assert not story_called["called"], "Story agent should not be called after explore failure"
+        assert not story_called["called"], "Story agent should not be called after epic-creator failure"

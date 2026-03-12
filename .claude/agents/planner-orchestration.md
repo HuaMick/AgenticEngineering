@@ -1,7 +1,7 @@
 ---
 name: planner-orchestration
 description: Create TinyDB phase records with agent routing, execution modes, and feedback triggers for orchestration-executor consumption. Reads epic tickets from TinyDB and determines orchestration structure.
-tools: Read, Glob, Grep, Bash, Edit, Write
+tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
 

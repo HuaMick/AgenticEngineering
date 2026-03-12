@@ -61,6 +61,8 @@ DEFAULT_TIMEOUT_SECONDS = 1800  # 30 minutes
 # If a role is not listed here, all tools are allowed (backwards-compatible default).
 ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
     # ── Planning phase: Read + Bash only (use `agentic` CLI for tickets/phases) ──
+    "epic-creator": ["Read", "Glob", "Grep", "Bash"],
+    "planner-explore": ["Read", "Glob", "Grep", "Bash"],
     "explore": ["Read", "Glob", "Grep", "Bash"],
     "planner-build": ["Read", "Glob", "Grep", "Bash"],
     "planner-test": ["Read", "Glob", "Grep", "Bash"],
@@ -71,9 +73,9 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
     "planner-reviewer": ["Read", "Glob", "Grep"],
     "planner-orchestration": ["Read", "Glob", "Grep", "Bash"],
     "planner-audit": ["Read", "Glob", "Grep", "Bash"],
-    # ── Planning phase: Write needed for design/story artifacts ──
-    "planner-design": ["Read", "Glob", "Grep", "Write", "Bash"],
-    "story-generator": ["Read", "Glob", "Grep", "Write", "Bash"],
+    # ── Planning phase: design and story agents need Bash for CLI commands ──
+    "planner-design": ["Read", "Glob", "Grep", "Bash"],
+    "story-generator": ["Read", "Glob", "Grep", "Bash"],
     # ── Execution phase: full access ──
     "test-runner": ["Read", "Glob", "Grep", "Bash", "Edit"],
     "build-python": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
@@ -84,8 +86,11 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
 # Role-based timeout budgets (seconds). Used by planner_loop and sdk_pane_runner.
 # If a role is not listed, DEFAULT_TIMEOUT_SECONDS applies.
 ROLE_TIMEOUT_SECONDS: dict[str, int] = {
+    "epic-creator": 600,           # 10 min — CLI scaffolding only
+    "planner-explore": 900,        # 15 min — codebase exploration + ticket updates
     "explore": 600,               # 10 min — lightweight codebase analysis
     "story-generator": 1800,       # 30 min — story generation
+    "planner-design": 1800,
     "planner-build": 1800,
     "planner-test": 1800,
     "planner-guidance": 1800,

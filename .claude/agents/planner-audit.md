@@ -1,7 +1,7 @@
 ---
 name: planner-audit
 description: Audit epic folder compliance and identify files that should be archived, completed, or removed.
-tools: Read, Glob, Grep, Bash, Edit, Write
+tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
 

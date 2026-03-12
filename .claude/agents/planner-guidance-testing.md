@@ -1,7 +1,7 @@
 ---
 name: planner-guidance-testing
 description: Create phased guidance test plans for validating agent guidance completeness through walkthrough-based validation. Includes task completion testing, reference resolution testing, loop context testing, and gap analysis phases.
-tools: Read, Glob, Grep, Bash, Edit, Write
+tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
 

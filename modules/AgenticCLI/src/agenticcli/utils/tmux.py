@@ -119,6 +119,27 @@ def session_exists(session_name: str) -> bool:
         return False
 
 
+def kill_session(session_name: str) -> bool:
+    """Kill a named tmux session.
+
+    Args:
+        session_name: Name of the session to kill.
+
+    Returns:
+        True if session was killed, False otherwise or if tmux not available.
+    """
+    try:
+        result = subprocess.run(
+            ["tmux", "kill-session", "-t", session_name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
 def get_pane_by_title(title: str) -> Optional[str]:
     """Find a pane by its title.
 

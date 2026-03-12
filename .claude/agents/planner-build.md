@@ -1,7 +1,7 @@
 ---
 name: planner-build
 description: Create phased implementation plans for completing build/development tasks using subagents. Focuses on implementation phases with proper context routing, parallelization strategy, and architecture pattern alignment.
-tools: Read, Glob, Grep, Bash, Edit, Write
+tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
 

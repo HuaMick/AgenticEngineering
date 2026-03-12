@@ -675,6 +675,7 @@ def session_orchestrate_planning(
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts (default: enabled)")] = True,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Create tmux layout, verify panes, print JSON, then exit")] = False,
+    budget: Annotated[float, typer.Option("--budget", help="Max USD cost before halting")] = 50.0,
 ):
     """Run automated orchestration planning for all plans that need it."""
     resolved_epic = epic or plan
@@ -686,7 +687,7 @@ def session_orchestrate_planning(
         max_iterations=max_iterations, completion_promise=completion_promise,
         project=project, directory=directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
-        dry_run=dry_run,
+        dry_run=dry_run, budget_usd=budget,
     ))
 
 
@@ -700,6 +701,7 @@ def session_orchestrate_executing(
     project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter")] = None,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts for spawned agents (default: enabled)")] = True,
+    budget: Annotated[float, typer.Option("--budget", help="Max USD cost before halting")] = 50.0,
 ):
     """Run automated orchestration execution for plans with completed MMDs."""
     resolved_epic = epic or plan
@@ -711,7 +713,7 @@ def session_orchestrate_executing(
         max_iterations=max_iterations, completion_promise=completion_promise,
         project=project, directory=directory,
         dangerously_skip_permissions=dangerously_skip_permissions,
-        dry_run=False,
+        dry_run=False, budget_usd=budget,
     ))
 
 
@@ -994,12 +996,13 @@ def _context_handle(args):
 @context_app.command("bootstrap")
 def context_bootstrap(
     role: Annotated[Optional[str], typer.Option("--role", "-r", help="Role ID")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", "-e", help="Epic folder name (skip auto-resolution)")] = None,
 ):
     """Get Seed Context: Active Task + Role Guidance + Essential Inputs."""
     _context_handle(_ns(
         command="context", context_command="bootstrap",
         json=_global["json"], debug=_global["debug"],
-        role=role,
+        role=role, epic=epic,
     ))
 
 
@@ -2883,12 +2886,13 @@ agent_app.add_typer(agent_context_app, name="context")
 @agent_context_app.command("bootstrap")
 def agent_context_bootstrap(
     role: Annotated[Optional[str], typer.Option("--role", "-r", help="Role ID")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", "-e", help="Epic folder name (skip auto-resolution)")] = None,
 ):
     """Get Seed Context: Active Task + Role Guidance + Essential Inputs."""
     _context_handle(_ns(
         command="context", context_command="bootstrap",
         json=_global["json"], debug=_global["debug"],
-        role=role,
+        role=role, epic=epic,
     ))
 
 

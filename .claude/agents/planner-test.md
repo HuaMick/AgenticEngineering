@@ -1,7 +1,7 @@
 ---
 name: planner-test
 description: Create phased test plans for validating implementations. Includes component testing, user flow testing, cleanup phases, test-audit-fix loops (MANDATORY), and UAT phase planning (MANDATORY - PRIMARY SUCCESS CRITERIA).
-tools: Read, Glob, Grep, Bash, Edit, Write
+tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
 

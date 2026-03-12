@@ -1,7 +1,7 @@
 ---
 name: planner-cleaning
 description: Create cleanup, audit, and documentation phases for finalizing implementation. Handles folder lifecycle transitions.
-tools: Read, Glob, Grep, Bash, Edit, Write
+tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
 

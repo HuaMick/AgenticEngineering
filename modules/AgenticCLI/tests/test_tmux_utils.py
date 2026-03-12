@@ -14,6 +14,7 @@ from agenticcli.utils.tmux import (
     get_pane_by_title,
     get_session_info,
     is_in_tmux,
+    kill_session,
     send_to_pane,
     session_exists,
 )
@@ -314,3 +315,30 @@ class TestSendToPane:
             with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "tmux")):
                 with pytest.raises(RuntimeError, match="Failed to send content to pane"):
                     send_to_pane("%1", "Hello")
+
+
+class TestKillSession:
+    """Tests for killing tmux sessions (Bug 2 fix)."""
+
+    def test_kill_session_success(self):
+        """Returns True when tmux kill-session exits with code 0."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            assert kill_session("my-session") is True
+            mock_run.assert_called_once_with(
+                ["tmux", "kill-session", "-t", "my-session"],
+                capture_output=True, text=True, check=False,
+            )
+
+    def test_kill_session_not_found(self):
+        """Returns False when tmux reports the session does not exist (returncode 1)."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        with patch("subprocess.run", return_value=mock_result):
+            assert kill_session("nonexistent") is False
+
+    def test_kill_session_no_tmux_binary(self):
+        """Returns False when the tmux binary is not found."""
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            assert kill_session("my-session") is False

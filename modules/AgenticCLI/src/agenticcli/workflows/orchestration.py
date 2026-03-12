@@ -71,6 +71,7 @@ class PlanningRunner:
         workflow: Optional[OrchestrationWorkflow] = None,
         project: Optional[str] = None,
         plan_folder: Optional[str] = None,
+        budget_usd: float = 50.0,
     ):
         """Initialize planning runner.
 
@@ -78,10 +79,12 @@ class PlanningRunner:
             workflow: OrchestrationWorkflow instance (creates default if None).
             project: Optional project filter for plan discovery.
             plan_folder: Optional plan folder for single-plan mode.
+            budget_usd: Maximum USD cost before halting.
         """
         self.workflow = workflow or OrchestrationWorkflow()
         self.project = project
         self.plan_folder = plan_folder
+        self.budget_usd = budget_usd
         self.state = {
             "iteration": 0,
             "plans_processed": [],
@@ -147,6 +150,7 @@ class PlanningRunner:
                 workflow=self.workflow,
                 project=self.project,
                 epic_folder=plan,
+                budget_usd=self.budget_usd,
             )
 
             try:
@@ -208,6 +212,7 @@ class ExecutionRunner:
         project: Optional[str] = None,
         plan_folder: Optional[str] = None,
         dangerously_skip_permissions: bool = False,
+        budget_usd: float = 50.0,
     ):
         """Initialize execution runner.
 
@@ -216,11 +221,13 @@ class ExecutionRunner:
             project: Optional project filter for plan discovery.
             plan_folder: Optional plan folder for single-plan mode.
             dangerously_skip_permissions: Pass --dangerously-skip-permissions to spawned agents.
+            budget_usd: Maximum USD cost before halting execution.
         """
         self.workflow = workflow or OrchestrationWorkflow()
         self.project = project
         self.plan_folder = plan_folder
         self.dangerously_skip_permissions = dangerously_skip_permissions
+        self.budget_usd: float = budget_usd
         self.total_cost_usd = 0.0
         self.state = {
             "iteration": 0,
@@ -596,6 +603,12 @@ class ExecutionRunner:
             sdk_metrics = {"cost_usd": 0.0}
 
         self.total_cost_usd += sdk_metrics.get("cost_usd", 0.0)
+        if self.budget_usd and self.total_cost_usd >= self.budget_usd:
+            logger.error(
+                "Budget exhausted: $%.2f >= $%.2f limit",
+                self.total_cost_usd, self.budget_usd,
+            )
+            return False, session_id, False
 
         if status == "completed":
             return True, session_id, False

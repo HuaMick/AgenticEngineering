@@ -61,16 +61,39 @@ def cmd_bootstrap(args, ctx=None):
     )
 
     role_id = getattr(args, "role", None)
+    epic_override = getattr(args, "epic", None)
     json_output = is_json_output()
 
     resolver = MainFirstPlanResolver()
 
     # 1. Get active plan and task
-    plan_info = resolver.resolve_active_epic()
+    plan_info = None
     current_task = None
 
-    if plan_info:
+    if epic_override:
+        # Direct epic lookup — skip branch-based auto-resolution
+        from agenticguidance.services.epic_repository import EpicRepository
+        from agenticcli.commands.epic import _get_repo_db_path
+        db_path = _get_repo_db_path()
+        if db_path:
+            _repo = EpicRepository(db_path=db_path)
+            _epic = _repo.get_epic(epic_override)
+            if _epic:
+                plan_info = {
+                    "plan_folder": Path(str(_epic.epic_folder)),
+                    "plan_folder_name": _epic.epic_folder_name,
+                    "objective": getattr(_epic, "objective", None) or getattr(_epic, "context", None),
+                    "status": _epic.status,
+                }
+                current_task = resolver.extract_current_ticket(plan_info["plan_folder"])
+            _repo.close()
+    else:
+        plan_info = resolver.resolve_active_epic()
+
+    if plan_info and current_task is None:
         current_task = resolver.extract_current_ticket(plan_info["plan_folder"])
+
+    if plan_info:
         # If role not specified, try to infer from current task
         if not role_id and current_task:
             role_id = current_task.get("agent_type", "build")

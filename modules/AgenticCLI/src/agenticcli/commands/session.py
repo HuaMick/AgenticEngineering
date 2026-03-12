@@ -604,10 +604,32 @@ This ensures gaps are tracked and fixed systematically rather than patched ad-ho
 """.strip()
 
 
+# Roles that participate in the planning phase — must NEVER implement code.
+# Mirrors _PLANNING_PHASE_ROLES from planner_loop.py.
+_PLANNING_PHASE_ROLES_SESSION = frozenset({
+    "epic-creator",
+    "planner-explore",
+    "explore",
+    "story-generator",
+    "planner-design",
+    "planner-build",
+    "planner-test",
+    "planner-guidance",
+    "planner-cleaning",
+    "planner-audit",
+    "planner-reviewer",
+    "planner-orchestration",
+    "planner-sdk",
+    "planner-guidance-testing",
+})
+
+
 def _build_role_prompt(role: str, epic_folder: Path | None) -> str:
     """Build a prompt for spawning an agent by role.
 
     Constructs a prompt that tells the agent its role and provides epic context.
+    For planning-phase roles, injects a PLANNING-ONLY constraint to prevent
+    agents from implementing instead of planning.
 
     Args:
         role: Agent role identifier (e.g., 'build-python').
@@ -626,10 +648,27 @@ def _build_role_prompt(role: str, epic_folder: Path | None) -> str:
         parts.append(f"Your active epic is: {epic_name}")
         parts.append(f"Epic path: {epic_folder}")
         parts.append(f"List tickets with: agentic -j epic ticket list --epic {epic_name}")
-        parts.append("Start by loading your bootstrap context, then work through the epic tickets.")
 
-    parts.append("")
-    parts.append(_DOGFOOD_STRATEGY)
+    if role in _PLANNING_PHASE_ROLES_SESSION:
+        parts.append(
+            "IMPORTANT: This is a PLANNING-ONLY session. You must NOT implement code, "
+            "write tests, or modify source files. Your job is to create, update, or "
+            "review tickets, phases, stories, and architecture documents ONLY. "
+            "Read source files for context but do not edit them."
+        )
+        parts.append(
+            "All work products are managed through the epic/ticket system. "
+            "Use `agentic epic ticket list` to see current tickets. "
+            "Use `agentic epic ticket update` to modify tickets. "
+            "Never create files directly — use CLI commands."
+        )
+        parts.append("Start by loading your bootstrap context, then plan the epic tasks.")
+    else:
+        if epic_folder:
+            parts.append("Start by loading your bootstrap context, then work through the epic tickets.")
+        # Dogfood strategy only for execution agents, not planners
+        parts.append("")
+        parts.append(_DOGFOOD_STRATEGY)
 
     return "\n".join(parts)
 

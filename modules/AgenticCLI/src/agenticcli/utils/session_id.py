@@ -28,7 +28,7 @@ def tmux_session_name(
     """Generate a descriptive tmux session name.
 
     Naming convention:
-    - With epic + role: agentic-{epic_short}-{role_short}
+    - With epic + role: agentic-{epic_short}-{role_short}-{session_id[:6]}
     - With epic only:   agentic-{epic_short}-{session_id[:8]}
     - Without epic:     agentic-spawn-{session_id[:8]}
 
@@ -45,8 +45,9 @@ def tmux_session_name(
     if epic_folder:
         epic_short = epic_folder.name[:8] if isinstance(epic_folder, Path) else str(epic_folder)[:8]
         if role:
-            role_short = role[:12]
-            name = f"agentic-{epic_short}-{role_short}"
+            role_short = role[:8]
+            sid_short = session_id[:6]
+            name = f"agentic-{epic_short}-{role_short}-{sid_short}"
         else:
             name = f"agentic-{epic_short}-{session_id[:8]}"
     else:

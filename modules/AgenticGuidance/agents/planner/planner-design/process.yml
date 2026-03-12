@@ -15,7 +15,7 @@ invocation_context:
   called_by: "orchestration-planning"
   when: "After StoryContextReady, before domain planner spawning"
   receives:
-    - affected_stories (list of story IDs from story-generator)
+    - affected_stories (optional — list of story IDs from story-generator; may be empty for epics without stories)
     - objective (epic objective string)
     - epic_folder_name
     - target_project_path
@@ -57,30 +57,39 @@ steps:
     name: "Validate required inputs"
     description: |
       Verify all required inputs are available:
-      - affected_stories: Non-empty list of story IDs (FENCE: required for design)
+      - affected_stories: List of story IDs (may be empty — see below)
       - objective: Epic objective string
       - epic_folder_name: Valid YYMMDDXX_description format
       - target_project_path: Absolute path that exists on disk
 
-      If affected_stories is empty, check for no_stories_rationale on the epic record.
-      If neither exists, STOP and raise an error — planner-design cannot proceed
-      without story context.
+      If affected_stories is empty or missing:
+      1. Check for no_stories_rationale on the epic record
+      2. If found, proceed with ticket-only analysis (skip steps 3-4, go to step 5)
+      3. If not found, proceed anyway using epic objective and existing tickets as context
+
+      Do NOT block or loop waiting for story data that does not exist.
+      Many epics are infrastructure/bugfix work that has no user stories.
     required: true
 
   - id: 3
     name: "Load story content"
     description: |
+      If affected_stories is empty, SKIP this step and proceed to step 5.
+
       For each story ID in affected_stories:
       1. Run: `agentic agent stories cat <story_id>` to get full story content
       2. Extract: acceptance_criteria, related_commands, related_agents
       3. Build a story context map: {story_id -> {title, criteria, agents, commands}}
 
       This provides the raw material for architecture decisions.
-    required: true
+    required: false
 
   - id: 4
     name: "Analyze story clusters"
     description: |
+      If affected_stories is empty (no stories loaded in step 3), SKIP this step
+      and proceed to step 5. Use epic objective and existing ticket data instead.
+
       Group stories by natural implementation boundaries:
       - Stories sharing the same related_agents cluster together
       - Stories sharing related_commands cluster together
@@ -102,7 +111,7 @@ steps:
       Unclustered:
         - US-GD-050: Planner Design Output Format (guidance-only, no shared agents)
       ```
-    required: true
+    required: false
 
   - id: 5
     name: "Define phase skeleton"
@@ -212,7 +221,7 @@ steps:
     required: true
 
   - id: 10
-    name: "Verify design completeness"
+    name: "Verify design completeness and emit status"
     description: |
       Before completing, verify:
       1. All affected_stories appear in story_to_phase_map
@@ -222,6 +231,26 @@ steps:
       5. design_context.yml is valid YAML and parseable
 
       If any check fails, iterate (up to max_iterations) to fix gaps.
+
+      IMPORTANT: After verification, output your design status on a line by itself:
+      ```
+      DESIGN_STATUS: approved
+      ```
+      Or if gaps remain:
+      ```
+      DESIGN_STATUS: needs_explore
+      DESIGN_GAPS: Tickets missing target-files: T001, T003
+      ```
+      Or:
+      ```
+      DESIGN_STATUS: needs_stories
+      DESIGN_GAPS: Build tickets T002, T005 have no story mapping
+      ```
+
+      Valid statuses:
+      - approved: All story-to-ticket mappings are complete, proceed to review
+      - needs_explore: Tickets are missing target-files or guidance, need more exploration
+      - needs_stories: Build tickets have no story mapping, need story generation re-run
     required: true
 
 guidelines:

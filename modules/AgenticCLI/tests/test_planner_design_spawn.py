@@ -155,28 +155,26 @@ class TestSpawnDesignAgent:
 # Tests for design agent in PLAN_TYPE_TO_PLANNER mapping
 # ---------------------------------------------------------------------------
 
-class TestPlanTypeMapping:
-    """Test planner-design is NOT in PLAN_TYPE_TO_PLANNER (it's pre-planner)."""
+class TestPlanningPhaseRoles:
+    """Test that planning-phase roles are properly configured."""
 
-    def test_planner_design_not_in_plan_type_mapping(self):
-        """Verify planner-design is a pre-planner, not a plan-type planner.
+    def test_planner_design_in_planning_roles(self):
+        """Verify planner-design is in _PLANNING_PHASE_ROLES."""
+        from agenticcli.workflows.planner_loop import _PLANNING_PHASE_ROLES
 
-        planner-design runs BEFORE plan type determination, so it should
-        NOT appear in the PLAN_TYPE_TO_PLANNER mapping.
-        """
-        from agenticcli.workflows.planner_loop import PLAN_TYPE_TO_PLANNER
+        assert "planner-design" in _PLANNING_PHASE_ROLES
 
-        assert "planner-design" not in PLAN_TYPE_TO_PLANNER.values() or \
-            "design" not in PLAN_TYPE_TO_PLANNER
+    def test_epic_creator_in_planning_roles(self):
+        """Verify epic-creator is in _PLANNING_PHASE_ROLES."""
+        from agenticcli.workflows.planner_loop import _PLANNING_PHASE_ROLES
 
-    def test_plan_type_mapping_has_known_planners(self):
-        """Verify PLAN_TYPE_TO_PLANNER has the standard planners."""
-        from agenticcli.workflows.planner_loop import PLAN_TYPE_TO_PLANNER
+        assert "epic-creator" in _PLANNING_PHASE_ROLES
 
-        assert "build" in PLAN_TYPE_TO_PLANNER
-        assert "test" in PLAN_TYPE_TO_PLANNER
-        assert PLAN_TYPE_TO_PLANNER["build"] == "planner-build"
-        assert PLAN_TYPE_TO_PLANNER["test"] == "planner-test"
+    def test_planner_explore_in_planning_roles(self):
+        """Verify planner-explore is in _PLANNING_PHASE_ROLES."""
+        from agenticcli.workflows.planner_loop import _PLANNING_PHASE_ROLES
+
+        assert "planner-explore" in _PLANNING_PHASE_ROLES
 
 
 # ---------------------------------------------------------------------------
@@ -186,96 +184,86 @@ class TestPlanTypeMapping:
 class TestProcessPlanDesignStep:
     """Test that _process_plan calls spawn_design_agent in correct order."""
 
-    def test_process_plan_calls_design_after_story(self):
-        """Verify spawn_design_agent is called after spawn_story_agent in _process_plan."""
-        from agenticcli.workflows.planner_loop import PlannerLoopRunner
+    def test_process_plan_calls_design_after_explore(self):
+        """Verify spawn_design_agent is called after spawn_explore_agents in _process_plan."""
+        from agenticcli.workflows.planner_loop import PlannerLoopRunner, SessionResult
 
         # Create a minimal runner with mocked workflow
         runner = PlannerLoopRunner.__new__(PlannerLoopRunner)
         runner.state = {"errors": [], "status": "running", "iteration": 0}
+        runner.budget_usd = 50.0
+        runner.total_cost_usd = 0.0
         runner.workflow = MagicMock()
 
         # Set up all workflow methods to return success
         runner.workflow.get_plan_status.return_value = "pending"
-        runner.workflow.spawn_explore_agent.return_value = _ok_result()
+        runner.workflow.spawn_epic_creator.return_value = _ok_result()
         runner.workflow.spawn_story_agent.return_value = _ok_result()
-        runner.workflow.spawn_design_agent.return_value = _ok_result()
-        runner.workflow.determine_plan_type.return_value = "build"
-        runner.workflow.spawn_planner.return_value = _ok_result()
+        runner.workflow.spawn_explore_agents.return_value = _ok_result()
+        runner.workflow.spawn_design_agent.return_value = SessionResult(
+            status="completed", result="DESIGN_STATUS: approved"
+        )
+        runner.workflow.parse_design_status.return_value = "approved"
         runner.workflow.run_review_cycle.return_value = (True, 1, "")
         runner.workflow.spawn_orchestration_agent.return_value = _ok_result()
         runner.workflow._validate_result = MagicMock()
         runner.workflow._repository = None
+        runner._acquire_epic_lock = MagicMock(return_value=True)
+        runner._release_epic_lock = MagicMock()
 
         runner._process_plan("test_epic")
 
         # Verify spawn_design_agent was called
-        runner.workflow.spawn_design_agent.assert_called_once_with("test_epic")
+        runner.workflow.spawn_design_agent.assert_called_with("test_epic")
 
-        # Verify call order: story before design
-        story_call_idx = None
-        design_call_idx = None
+        # Verify call order: epic_creator -> story -> explore -> design
+        creator_idx = None
+        story_idx = None
+        explore_idx = None
+        design_idx = None
         for idx, c in enumerate(runner.workflow.method_calls):
+            if c[0] == "spawn_epic_creator":
+                creator_idx = idx
             if c[0] == "spawn_story_agent":
-                story_call_idx = idx
+                story_idx = idx
+            if c[0] == "spawn_explore_agents":
+                explore_idx = idx
             if c[0] == "spawn_design_agent":
-                design_call_idx = idx
+                design_idx = idx
 
-        assert story_call_idx is not None, "spawn_story_agent was not called"
-        assert design_call_idx is not None, "spawn_design_agent was not called"
-        assert story_call_idx < design_call_idx, \
-            "spawn_design_agent must be called AFTER spawn_story_agent"
+        assert creator_idx is not None, "spawn_epic_creator was not called"
+        assert story_idx is not None, "spawn_story_agent was not called"
+        assert explore_idx is not None, "spawn_explore_agents was not called"
+        assert design_idx is not None, "spawn_design_agent was not called"
+        assert creator_idx < story_idx < explore_idx < design_idx, \
+            "Expected order: epic_creator -> story -> explore -> design"
 
-    def test_design_failure_is_nonfatal(self):
-        """Verify design agent failure does not stop _process_plan."""
+    def test_design_failure_is_fatal(self):
+        """Verify design agent failure stops _process_plan (design is now a review gate)."""
         from agenticcli.workflows.planner_loop import PlannerLoopRunner
 
         runner = PlannerLoopRunner.__new__(PlannerLoopRunner)
         runner.state = {"errors": [], "status": "running", "iteration": 0}
+        runner.budget_usd = 50.0
+        runner.total_cost_usd = 0.0
         runner.workflow = MagicMock()
 
         runner.workflow.get_plan_status.return_value = "pending"
-        runner.workflow.spawn_explore_agent.return_value = _ok_result()
+        runner.workflow.spawn_epic_creator.return_value = _ok_result()
         runner.workflow.spawn_story_agent.return_value = _ok_result()
+        runner.workflow.spawn_explore_agents.return_value = _ok_result()
         runner.workflow.spawn_design_agent.return_value = _fail_result()
-        runner.workflow.determine_plan_type.return_value = "build"
-        runner.workflow.spawn_planner.return_value = _ok_result()
-        runner.workflow.run_review_cycle.return_value = (True, 1, "")
-        runner.workflow.spawn_orchestration_agent.return_value = _ok_result()
         runner.workflow._validate_result = MagicMock()
         runner.workflow._repository = None
 
         result = runner._process_plan("test_epic")
 
-        # Design failure should NOT prevent downstream processing
-        runner.workflow.determine_plan_type.assert_called_once()
-        runner.workflow.spawn_planner.assert_called_once()
+        # Design failure should now be fatal
+        assert result is False
+
+        # Review should NOT have been called
+        runner.workflow.run_review_cycle.assert_not_called()
 
         # Error should be recorded
         error_phases = [e.get("phase") for e in runner.state["errors"]]
         assert "design" in error_phases
-
-    def test_design_failure_records_nonfatal_error(self):
-        """Verify design failure error context includes 'non-fatal' marker."""
-        from agenticcli.workflows.planner_loop import PlannerLoopRunner
-
-        runner = PlannerLoopRunner.__new__(PlannerLoopRunner)
-        runner.state = {"errors": [], "status": "running", "iteration": 0}
-        runner.workflow = MagicMock()
-
-        runner.workflow.get_plan_status.return_value = "pending"
-        runner.workflow.spawn_explore_agent.return_value = _ok_result()
-        runner.workflow.spawn_story_agent.return_value = _ok_result()
-        runner.workflow.spawn_design_agent.return_value = _fail_result()
-        runner.workflow.determine_plan_type.return_value = "build"
-        runner.workflow.spawn_planner.return_value = _ok_result()
-        runner.workflow.run_review_cycle.return_value = (True, 1, "")
-        runner.workflow.spawn_orchestration_agent.return_value = _ok_result()
-        runner.workflow._validate_result = MagicMock()
-        runner.workflow._repository = None
-
-        runner._process_plan("test_epic")
-
-        design_errors = [e for e in runner.state["errors"] if e.get("phase") == "design"]
-        assert len(design_errors) == 1
-        assert "non-fatal" in design_errors[0]["error"].lower()

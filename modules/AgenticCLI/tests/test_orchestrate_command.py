@@ -325,6 +325,7 @@ class TestOrchestratePlanningAction:
                 workflow=mock_workflow,
                 project="test_project",
                 plan_folder="my_test_plan",
+                budget_usd=50.0,
             )
 
     def test_completion_promise_parameter_passed(self, tmp_path, monkeypatch):

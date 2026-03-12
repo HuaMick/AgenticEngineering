@@ -1,7 +1,7 @@
 ---
 name: planner-guidance
 description: Create guidance-focused plans to improve agent paths, fences, and signposts based on friction analysis.
-tools: Read, Glob, Grep, Bash, Edit, Write
+tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
 
