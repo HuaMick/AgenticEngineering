@@ -3072,8 +3072,11 @@ def cmd_phase_add(args, ctx=None):
                 # Check for duplicate
                 existing = repo.get_phase(plan_path.name, phase_name)
                 if existing:
-                    print_error(f"Phase with name '{phase_name}' already exists")
-                    sys.exit(1)
+                    if is_json_output():
+                        print_json({"status": "exists", "phase": phase_name, "message": f"Phase '{phase_name}' already exists"})
+                    else:
+                        print_success(f"Phase '{phase_name}' already exists (skipped)")
+                    return
 
                 phase_doc = {
                     "name": phase_name,

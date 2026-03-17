@@ -75,7 +75,7 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
     "planner-audit": ["Read", "Glob", "Grep", "Bash"],
     # ── Planning phase: design and story agents need Bash for CLI commands ──
     "planner-design": ["Read", "Glob", "Grep", "Bash"],
-    "story-generator": ["Read", "Glob", "Grep", "Bash"],
+    "story-generator": ["Read", "Glob", "Grep", "Bash", "Write"],
     # ── Execution phase: full access ──
     "test-runner": ["Read", "Glob", "Grep", "Bash", "Edit"],
     "build-python": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
@@ -89,7 +89,7 @@ ROLE_TIMEOUT_SECONDS: dict[str, int] = {
     "epic-creator": 600,           # 10 min — CLI scaffolding only
     "planner-explore": 900,        # 15 min — codebase exploration + ticket updates
     "explore": 600,               # 10 min — lightweight codebase analysis
-    "story-generator": 1800,       # 30 min — story generation
+    "story-generator": 600,        # 10 min — story generation (lightweight planning)
     "planner-design": 1800,
     "planner-build": 1800,
     "planner-test": 1800,
