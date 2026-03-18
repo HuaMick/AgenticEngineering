@@ -7,6 +7,16 @@ import pytest
 import yaml
 
 
+def pytest_addoption(parser):
+    """Register story_strict ini option."""
+    parser.addini(
+        "story_strict",
+        type="bool",
+        default=False,
+        help="When true, unknown @pytest.mark.story IDs cause test failure instead of warnings",
+    )
+
+
 def pytest_configure(config):
     """Register custom markers for AgenticGuidance tests."""
     config.addinivalue_line(
@@ -70,19 +80,21 @@ _VALID_STORY_IDS: frozenset | None = None
 def pytest_collection_modifyitems(config, items):
     """Validate that @pytest.mark.story markers reference known story IDs.
 
-    Issues pytest warnings for any story ID not found in docs/userstories/.
-    Does NOT block test execution — unknown IDs are warnings, not errors.
+    In default mode: issues pytest warnings for unknown story IDs.
+    When story_strict = true in pyproject.toml: unknown story IDs cause test failure.
     """
     global _VALID_STORY_IDS  # noqa: PLW0603
+
+    strict_mode = config.getini("story_strict")
 
     for item in items:
         for marker in item.iter_markers("story"):
             if not marker.args:
-                item.warn(
-                    UserWarning(
-                        f"@pytest.mark.story on {item.nodeid} has no story IDs"
-                    )
-                )
+                msg = f"@pytest.mark.story on {item.nodeid} has no story IDs"
+                if strict_mode:
+                    pytest.fail(msg)
+                else:
+                    item.warn(UserWarning(msg))
                 continue
 
             # Lazy-load valid IDs on first encounter
@@ -95,12 +107,31 @@ def pytest_collection_modifyitems(config, items):
 
             for story_id in marker.args:
                 if story_id not in _VALID_STORY_IDS:
-                    item.warn(
-                        UserWarning(
-                            f"@pytest.mark.story references unknown story ID "
-                            f"'{story_id}' — not found in docs/userstories/"
-                        )
+                    msg = (
+                        f"@pytest.mark.story references unknown story ID "
+                        f"'{story_id}' — not found in docs/userstories/"
                     )
+                    if strict_mode:
+                        pytest.fail(msg)
+                    else:
+                        item.warn(UserWarning(msg))
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Print story marker coverage stats at end of test session."""
+    marker_count = 0
+    total_tests = session.testscollected or 0
+    for item in (session.items or []):
+        if any(item.iter_markers("story")):
+            marker_count += 1
+    if total_tests > 0:
+        pct = marker_count / total_tests * 100
+        tr = session.config.pluginmanager.get_plugin("terminalreporter")
+        if tr:
+            tr.write_sep("=", "story marker coverage")
+            tr.write_line(
+                f"  {marker_count}/{total_tests} tests have @pytest.mark.story markers ({pct:.0f}%)"
+            )
 
 
 @pytest.fixture(autouse=True)

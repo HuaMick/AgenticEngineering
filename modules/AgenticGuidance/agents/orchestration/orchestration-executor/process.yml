@@ -498,15 +498,10 @@ process:
             any story in affected_stories has no corresponding @pytest.mark.story("<story_id>")
             marker in the test files produced by the phase.
           - Detection:
-            1. Read affected_stories from design_context.yml in the epic folder,
-               or use: `agentic agent stories report --project <project> --coverage`
-            2. Scan test files for @pytest.mark.story markers:
-               ```bash
-               grep -rh '@pytest.mark.story' modules/*/tests/ | grep -oP '"(US-[A-Z]+-\d+)"' | sort -u
-               ```
-            3. Collect the set of story IDs referenced by markers
-            4. Compare against affected_stories: uncovered = affected_stories - marked_stories
-            5. If uncovered is non-empty, this trigger fires
+            1. Sync the story-test index: `agentic stories sync`
+            2. Check coverage: `agentic stories coverage --project <project> -j`
+            3. Parse JSON output: uncovered stories are in the "uncovered" array
+            4. If uncovered is non-empty, this trigger fires
           - Action: Check iteration count (MAX_ITERATIONS default: 3 for story coverage)
             - If < MAX_ITERATIONS: Re-spawn test-builder with context:
               - uncovered_story_ids: list of story IDs without pytest markers

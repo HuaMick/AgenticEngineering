@@ -1059,6 +1059,116 @@ def epic_replan(
 
 
 # ===========================================================================
+# STORIES GROUP (top-level: stories find|sync|coverage|run|report|...)
+# ===========================================================================
+
+stories_app = typer.Typer(help="User story discovery, test tracking, and coverage", no_args_is_help=True)
+app.add_typer(stories_app, name="stories")
+
+
+def _stories_handle(args):
+    _dispatch("stories", args)
+
+
+@stories_app.command("find")
+def stories_find(
+    query: Annotated[Optional[str], typer.Argument(help="Search query (ID, title, or keyword)")] = None,
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
+    tag: Annotated[Optional[str], typer.Option("--tag", "-t", help="Filter by tag")] = None,
+):
+    """Search user stories by ID, title, or keyword."""
+    _stories_handle(_ns(
+        stories_command="find", query=query, project=project, tag=tag,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("report")
+def stories_report(
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
+    coverage: Annotated[bool, typer.Option("--coverage", help="Include pytest marker coverage analysis")] = False,
+):
+    """Show test status summary across stories."""
+    _stories_handle(_ns(
+        stories_command="report", project=project, coverage=coverage,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("sync")
+def stories_sync():
+    """Scan test files for @pytest.mark.story markers and sync to TinyDB index."""
+    _stories_handle(_ns(
+        stories_command="sync",
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("coverage")
+def stories_coverage(
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
+    min_pct: Annotated[Optional[float], typer.Option("--min-pct", help="Minimum coverage percentage")] = None,
+    exit_code: Annotated[bool, typer.Option("--exit-code", help="Exit 1 if below --min-pct")] = False,
+):
+    """Show story-to-test coverage from the TinyDB index."""
+    _stories_handle(_ns(
+        stories_command="coverage", project=project, min_pct=min_pct, exit_code=exit_code,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("run")
+def stories_run(
+    story_id: str = typer.Argument(..., help="Story ID to run tests for (e.g. US-CLI-110)"),
+    module: Annotated[Optional[str], typer.Option("--module", "-m", help="Filter to specific module")] = None,
+    testmon: Annotated[bool, typer.Option("--testmon", help="Use testmon for change detection")] = False,
+):
+    """Run tests linked to a specific story ID."""
+    _stories_handle(_ns(
+        stories_command="run", story_id=story_id, module=module, testmon=testmon,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("status")
+def stories_status(
+    story_id: str = typer.Argument(..., help="Story ID to check"),
+):
+    """Show test status for a specific story."""
+    _stories_handle(_ns(
+        stories_command="status", story_id=story_id,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("untested")
+def stories_untested(
+    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
+):
+    """List stories that have no test status or are marked untested."""
+    _stories_handle(_ns(
+        stories_command="untested", project=project,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("affected")
+def stories_affected(
+    plan: Annotated[Optional[str], typer.Argument(help="Epic/plan folder name")] = None,
+    changes: Annotated[Optional[str], typer.Option("--changes", help="Comma-separated changed files, or 'git' for git diff")] = None,
+):
+    """List affected stories for a plan or by file changes (via testmon)."""
+    if not plan and not changes:
+        from agenticcli.console import print_error
+        print_error("Provide either a plan folder name or --changes flag")
+        raise typer.Exit(1)
+    _stories_handle(_ns(
+        stories_command="affected", plan=plan, changes=changes,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+# ===========================================================================
 # COMMAND CATEGORIES (used by context/require_project checks above)
 # ===========================================================================
 
@@ -1068,7 +1178,7 @@ GLOBAL_COMMANDS = {
 }
 
 PROJECT_COMMANDS = {
-    "devops", "epic",
+    "devops", "epic", "stories",
 }
 
 

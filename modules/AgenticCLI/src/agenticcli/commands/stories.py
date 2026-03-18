@@ -31,8 +31,14 @@ def handle(args, ctx=None):
         cmd_batch_update(args)
     elif args.stories_command == "affected":
         cmd_affected(args)
+    elif args.stories_command == "sync":
+        cmd_sync(args)
+    elif args.stories_command == "coverage":
+        cmd_coverage(args)
+    elif args.stories_command == "run":
+        cmd_run(args)
     else:
-        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected]", file=sys.stderr)
+        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected|sync|coverage|run]", file=sys.stderr)
         sys.exit(1)
 
 
@@ -627,6 +633,99 @@ def _scan_pytest_story_markers() -> set[str]:
     return marker_ids
 
 
+def _scan_pytest_story_markers_detailed() -> dict[str, list[str]]:
+    """Parse test files with ast to extract story_id -> [test_nodeids] mappings.
+
+    Walks test directories for both modules, parses each test_*.py with ast,
+    and finds @pytest.mark.story(...) decorators on function/class nodes.
+
+    Returns:
+        Dict mapping story_id to list of pytest-style nodeids
+        (e.g. {"US-CLI-110": ["modules/AgenticCLI/tests/test_foo.py::test_bar"]}).
+    """
+    import ast
+
+    # Find the repo root
+    cwd = Path.cwd()
+    repo_root = cwd
+    while repo_root != repo_root.parent:
+        if (repo_root / ".git").exists():
+            break
+        repo_root = repo_root.parent
+
+    test_dirs = [
+        repo_root / "modules" / "AgenticCLI" / "tests",
+        repo_root / "modules" / "AgenticGuidance" / "tests",
+    ]
+
+    mappings: dict[str, list[str]] = {}
+
+    for test_dir in test_dirs:
+        if not test_dir.exists():
+            continue
+        for test_file in sorted(test_dir.rglob("test_*.py")):
+            try:
+                source = test_file.read_text()
+                tree = ast.parse(source, filename=str(test_file))
+            except (SyntaxError, OSError):
+                continue
+
+            rel_path = str(test_file.relative_to(repo_root))
+
+            # Process top-level functions and classes
+            for node in ast.iter_child_nodes(tree):
+                if isinstance(node, ast.FunctionDef):
+                    story_ids = _extract_story_ids_from_decorators(node)
+                    if story_ids:
+                        nodeid = f"{rel_path}::{node.name}"
+                        for sid in story_ids:
+                            mappings.setdefault(sid, []).append(nodeid)
+
+                elif isinstance(node, ast.ClassDef):
+                    # Check class-level markers (apply to all methods)
+                    class_story_ids = _extract_story_ids_from_decorators(node)
+
+                    for method in ast.iter_child_nodes(node):
+                        if isinstance(method, ast.FunctionDef) and method.name.startswith("test_"):
+                            method_story_ids = _extract_story_ids_from_decorators(method)
+                            all_ids = class_story_ids | method_story_ids
+                            if all_ids:
+                                nodeid = f"{rel_path}::{node.name}::{method.name}"
+                                for sid in all_ids:
+                                    mappings.setdefault(sid, []).append(nodeid)
+
+    return mappings
+
+
+def _extract_story_ids_from_decorators(node: "ast.FunctionDef | ast.ClassDef") -> set[str]:
+    """Extract story IDs from @pytest.mark.story(...) decorators on a node.
+
+    Returns:
+        Set of story ID strings found in story markers.
+    """
+    import ast
+
+    story_ids: set[str] = set()
+
+    for decorator in node.decorator_list:
+        # Match @pytest.mark.story("US-XXX-NNN", ...)
+        if not isinstance(decorator, ast.Call):
+            continue
+
+        func = decorator.func
+        # Check for pytest.mark.story (Attribute chain)
+        if isinstance(func, ast.Attribute) and func.attr == "story":
+            # Verify it's pytest.mark.story (at least mark.story)
+            inner = func.value
+            if isinstance(inner, ast.Attribute) and inner.attr == "mark":
+                # Extract string arguments
+                for arg in decorator.args:
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        story_ids.add(arg.value)
+
+    return story_ids
+
+
 def cmd_report(args):
     """Show test status summary across stories."""
     from agenticcli.console import console, is_json_output, print_header, print_json
@@ -872,8 +971,57 @@ def cmd_batch_update(args):
 
 
 def cmd_affected(args):
-    """List affected stories for a plan with their test status."""
+    """List affected stories for a plan with their test status.
+
+    When --changes is provided (comma-separated file paths or 'git' for git diff),
+    cross-references testmon data and story_tests TinyDB to show which stories
+    are affected by the file changes.
+    """
     from agenticcli.console import console, is_json_output, print_error, print_header, print_json
+
+    changes = getattr(args, "changes", None)
+    if changes:
+        # Testmon-based affected analysis
+        if changes == "git":
+            import subprocess
+            repo_root = Path.cwd()
+            while repo_root != repo_root.parent:
+                if (repo_root / ".git").exists():
+                    break
+                repo_root = repo_root.parent
+            result = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD"],
+                capture_output=True, text=True, cwd=str(repo_root), timeout=30,
+            )
+            changed_files = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
+        else:
+            changed_files = [f.strip() for f in changes.split(",") if f.strip()]
+
+        story_map = _get_affected_stories_from_changes(changed_files)
+
+        if is_json_output():
+            print_json({
+                "changed_files": changed_files,
+                "affected_stories": {sid: tests for sid, tests in sorted(story_map.items())},
+                "story_count": len(story_map),
+            })
+            return
+
+        print_header("Stories Affected by Changes")
+        if not story_map:
+            console.print("  [dim]No story-linked tests affected by these changes[/dim]")
+            console.print("  [dim](Ensure 'agentic stories sync' has been run and testmon data exists)[/dim]")
+        else:
+            for sid in sorted(story_map):
+                tests = story_map[sid]
+                console.print(f"  [cyan]{sid}[/cyan]: {len(tests)} affected test(s)")
+                for t in tests[:5]:
+                    console.print(f"    [dim]- {t}[/dim]")
+                if len(tests) > 5:
+                    console.print(f"    [dim]... and {len(tests) - 5} more[/dim]")
+        console.print(f"\n  Changed files: {len(changed_files)}")
+        console.print(f"  Affected stories: {len(story_map)}")
+        return
 
     plan_folder = args.plan
     story_ids = _find_affected_story_ids(plan_folder)
@@ -932,3 +1080,234 @@ def cmd_affected(args):
         console.print(f"  [cyan]{r['id']}[/cyan]: {title} [{status_str}]")
 
     console.print(f"\n  [bold]Total:[/bold] {len(results)} affected stories")
+
+
+def _testmon_affected_tests(changed_files: list[str]) -> set[str]:
+    """Query testmon's SQLite DB to find tests affected by changed source files.
+
+    Args:
+        changed_files: List of file paths (relative to repo root) that changed.
+
+    Returns:
+        Set of test nodeid strings affected by the changes. Empty if testmon
+        data is unavailable.
+    """
+    import sqlite3
+
+    # Find repo root
+    repo_root = Path.cwd()
+    while repo_root != repo_root.parent:
+        if (repo_root / ".git").exists():
+            break
+        repo_root = repo_root.parent
+
+    # Look for .testmondata in module test dirs and repo root
+    testmon_paths = [
+        repo_root / ".testmondata",
+        repo_root / "modules" / "AgenticCLI" / ".testmondata",
+        repo_root / "modules" / "AgenticGuidance" / ".testmondata",
+    ]
+
+    affected_tests: set[str] = set()
+
+    for db_path in testmon_paths:
+        if not db_path.exists():
+            continue
+        try:
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            # testmon stores file fingerprints and node dependencies
+            # node_data table: node (test nodeid), fingerprint, ...
+            # node_file table: node_id, file_fingerprint_id
+            # file_fingerprint table: id, filename, fingerprint
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = {row[0] for row in cursor.fetchall()}
+
+            if "node" not in tables:
+                conn.close()
+                continue
+
+            # Get all test nodes that depend on the changed files
+            for changed_file in changed_files:
+                # testmon stores relative paths; try matching
+                cursor.execute(
+                    "SELECT DISTINCT node FROM node WHERE "
+                    "node IN (SELECT node FROM node_file nf "
+                    "JOIN file_fingerprint ff ON nf.file_fingerprint_id = ff.id "
+                    "WHERE ff.filename LIKE ?)",
+                    (f"%{Path(changed_file).name}",),
+                )
+                for row in cursor.fetchall():
+                    affected_tests.add(row[0])
+
+            conn.close()
+        except (sqlite3.Error, OSError):
+            continue
+
+    return affected_tests
+
+
+def _get_affected_stories_from_changes(changed_files: list[str]) -> dict[str, list[str]]:
+    """Cross-reference changed files -> testmon -> story_tests TinyDB.
+
+    Args:
+        changed_files: List of changed file paths.
+
+    Returns:
+        Dict mapping story_id -> list of affected test nodeids.
+    """
+    # Get affected tests from testmon
+    affected_tests = _testmon_affected_tests(changed_files)
+
+    if not affected_tests:
+        return {}
+
+    # Cross-reference with story_tests TinyDB
+    db_path = _get_repo_db_path()
+    from agenticguidance.services.epic_repository import EpicRepository
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+
+    story_map: dict[str, list[str]] = {}
+    for test_nodeid in affected_tests:
+        story_ids = repo.get_stories_for_test(test_nodeid)
+        for sid in story_ids:
+            story_map.setdefault(sid, []).append(test_nodeid)
+
+    repo.close()
+    return story_map
+
+
+def cmd_sync(args):
+    """Scan test files for @pytest.mark.story markers and sync to TinyDB index."""
+    from agenticcli.console import console, is_json_output, print_json, print_success
+
+    mappings = _scan_pytest_story_markers_detailed()
+    all_story_ids = {s["id"] for s in _collect_all_stories()}
+
+    # Count stats
+    total_tests = sum(len(v) for v in mappings.values())
+    orphan_markers = sorted(set(mappings.keys()) - all_story_ids)
+
+    # Write to TinyDB
+    db_path = _get_repo_db_path()
+    from agenticguidance.services.epic_repository import EpicRepository
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+    repo.clear_story_tests()
+    count = repo.sync_story_tests(mappings)
+    repo.close()
+
+    if is_json_output():
+        print_json({
+            "stories_synced": count,
+            "test_functions": total_tests,
+            "stories_covered": len(mappings),
+            "orphan_markers": orphan_markers,
+        })
+        return
+
+    print_success(f"Synced {count} stories with {total_tests} test functions")
+    console.print(f"  Stories with markers: {len(mappings)}")
+    if orphan_markers:
+        console.print(f"  [yellow]Orphan markers ({len(orphan_markers)}):[/yellow] markers referencing non-existent story IDs")
+        for sid in orphan_markers[:10]:
+            console.print(f"    [dim]- {sid}[/dim]")
+        if len(orphan_markers) > 10:
+            console.print(f"    [dim]... and {len(orphan_markers) - 10} more[/dim]")
+
+
+def cmd_coverage(args):
+    """Show story-to-test coverage from the TinyDB index."""
+    from agenticcli.console import console, is_json_output, print_header, print_json
+
+    project_filter = getattr(args, "project", None)
+    min_pct = getattr(args, "min_pct", None)
+    exit_code_mode = getattr(args, "exit_code", False)
+
+    stories = _collect_all_stories(project_filter=project_filter)
+    all_story_ids = {s["id"] for s in stories}
+
+    db_path = _get_repo_db_path()
+    from agenticguidance.services.epic_repository import EpicRepository
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+    uncovered = repo.get_uncovered_stories(all_story_ids)
+    repo.close()
+
+    covered_count = len(all_story_ids) - len(uncovered)
+    total = len(all_story_ids)
+    pct = (covered_count / total * 100) if total else 0
+
+    if is_json_output():
+        print_json({
+            "total_stories": total,
+            "covered": covered_count,
+            "uncovered_count": len(uncovered),
+            "uncovered": uncovered,
+            "coverage_pct": round(pct, 1),
+            "project_filter": project_filter,
+        })
+    else:
+        title = "Story Test Coverage"
+        if project_filter:
+            title += f" (project: {project_filter})"
+        print_header(title)
+        console.print(f"  [green]Covered:[/green]   {covered_count}/{total} ({pct:.1f}%)")
+        if uncovered:
+            console.print(f"  [red]Uncovered:[/red] {len(uncovered)} stories")
+            for sid in uncovered[:20]:
+                console.print(f"    [dim]- {sid}[/dim]")
+            if len(uncovered) > 20:
+                console.print(f"    [dim]... and {len(uncovered) - 20} more[/dim]")
+        else:
+            console.print("  [green]All stories have linked tests![/green]")
+
+    if exit_code_mode and min_pct is not None and pct < min_pct:
+        sys.exit(1)
+
+
+def cmd_run(args):
+    """Run tests for a specific story ID using the TinyDB index."""
+    import subprocess
+
+    from agenticcli.console import is_json_output, print_error, print_json
+
+    story_id = args.story_id
+    module_filter = getattr(args, "module", None)
+    use_testmon = getattr(args, "testmon", False)
+
+    db_path = _get_repo_db_path()
+    from agenticguidance.services.epic_repository import EpicRepository
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+    test_nodeids = repo.get_tests_for_story(story_id)
+    repo.close()
+
+    if not test_nodeids:
+        if is_json_output():
+            print_json({"error": f"No tests found for story {story_id}. Run 'agentic stories sync' first."})
+        else:
+            print_error(f"No tests found for story {story_id}. Run 'agentic stories sync' first.")
+        sys.exit(1)
+
+    # Filter by module if requested
+    if module_filter:
+        test_nodeids = [n for n in test_nodeids if module_filter in n]
+        if not test_nodeids:
+            if is_json_output():
+                print_json({"error": f"No tests for {story_id} in module '{module_filter}'"})
+            else:
+                print_error(f"No tests for {story_id} in module '{module_filter}'")
+            sys.exit(1)
+
+    # Find repo root for running pytest
+    cwd = Path.cwd()
+    repo_root = cwd
+    while repo_root != repo_root.parent:
+        if (repo_root / ".git").exists():
+            break
+        repo_root = repo_root.parent
+
+    cmd = ["python3", "-m", "pytest", "-v"] + test_nodeids
+    if use_testmon:
+        cmd.insert(4, "--testmon")
+
+    result = subprocess.run(cmd, cwd=str(repo_root))
+    sys.exit(result.returncode)

@@ -74,6 +74,7 @@ class EpicRepository:
         self._epics = self._db.table("epics")
         self._tickets = self._db.table("tickets")
         self._phases = self._db.table("phases")
+        self._story_tests = self._db.table("story_tests")
 
         # Migrate legacy "plans" / "tasks" tables if they exist
         self._migrate_from_plans_table()
@@ -1080,6 +1081,87 @@ class EpicRepository:
             & (Phase.status.test(lambda s: s in ("pending", "in_progress")))
         )
         return len(docs) > 0
+
+    # ------------------------------------------------------------------
+    # Story-Test Index
+    # ------------------------------------------------------------------
+
+    def sync_story_tests(self, mappings: dict[str, list[str]]) -> int:
+        """Bulk upsert story-to-test mappings from a scan.
+
+        Args:
+            mappings: Dict of story_id -> list of test nodeids.
+
+        Returns:
+            Number of story records upserted.
+        """
+        now = datetime.now().isoformat()
+        count = 0
+        ST = Query()
+
+        with self._lock:
+            for story_id, test_nodeids in mappings.items():
+                test_files = sorted({nid.split("::")[0] for nid in test_nodeids})
+                doc = {
+                    "story_id": story_id,
+                    "test_functions": sorted(test_nodeids),
+                    "test_files": test_files,
+                    "last_synced": now,
+                }
+                existing = self._story_tests.search(ST.story_id == story_id)
+                if existing:
+                    self._story_tests.update(doc, ST.story_id == story_id)
+                else:
+                    self._story_tests.insert(doc)
+                count += 1
+
+        return count
+
+    def get_tests_for_story(self, story_id: str) -> list[str]:
+        """Get test nodeids for a story.
+
+        Args:
+            story_id: Story ID (e.g. 'US-CLI-110').
+
+        Returns:
+            List of test nodeid strings.
+        """
+        ST = Query()
+        docs = self._story_tests.search(ST.story_id == story_id)
+        if docs:
+            return docs[0].get("test_functions", [])
+        return []
+
+    def get_stories_for_test(self, test_nodeid: str) -> list[str]:
+        """Reverse lookup: find all story IDs linked to a test nodeid.
+
+        Args:
+            test_nodeid: Test node ID (e.g. 'tests/test_foo.py::test_bar').
+
+        Returns:
+            List of story ID strings.
+        """
+        story_ids = []
+        for doc in self._story_tests.all():
+            if test_nodeid in doc.get("test_functions", []):
+                story_ids.append(doc["story_id"])
+        return story_ids
+
+    def get_uncovered_stories(self, all_story_ids: set[str]) -> list[str]:
+        """Find stories with no linked tests.
+
+        Args:
+            all_story_ids: Complete set of known story IDs.
+
+        Returns:
+            Sorted list of story IDs that have no test mappings.
+        """
+        covered = {doc["story_id"] for doc in self._story_tests.all()}
+        return sorted(all_story_ids - covered)
+
+    def clear_story_tests(self) -> None:
+        """Wipe the story_tests table for a full resync."""
+        self._story_tests.truncate()
 
     # ------------------------------------------------------------------
     # Internal helpers

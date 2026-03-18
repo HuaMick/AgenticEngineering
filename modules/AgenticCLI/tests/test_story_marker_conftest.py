@@ -269,6 +269,7 @@ class TestCollectionValidationCLI:
         mock_item.nodeid = "test_module.py::test_example"
 
         mock_config = MagicMock()
+        mock_config.getini.return_value = False
 
         # Provide known valid IDs so the fake ID is definitely unknown
         valid_ids = frozenset({"US-CLI-110", "US-CLI-111"})
@@ -290,6 +291,7 @@ class TestCollectionValidationCLI:
         mock_item.nodeid = "test_module.py::test_example"
 
         mock_config = MagicMock()
+        mock_config.getini.return_value = False
         valid_ids = frozenset({"US-CLI-110"})
 
         # Should NOT raise — only warn
@@ -309,6 +311,7 @@ class TestCollectionValidationCLI:
         mock_item.iter_markers.return_value = [mock_marker]
 
         mock_config = MagicMock()
+        mock_config.getini.return_value = False
 
         # Patch _VALID_STORY_IDS to None (not yet loaded) and _load_valid_story_ids to return empty
         with patch.object(mod, "_VALID_STORY_IDS", None):
@@ -327,6 +330,7 @@ class TestCollectionValidationCLI:
         mock_item.nodeid = "test_module.py::test_example"
 
         mock_config = MagicMock()
+        mock_config.getini.return_value = False
 
         mod.pytest_collection_modifyitems(mock_config, [mock_item])
         mock_item.warn.assert_called_once()
@@ -342,6 +346,7 @@ class TestCollectionValidationCLI:
         mock_item.nodeid = "test_module.py::test_example"
 
         mock_config = MagicMock()
+        mock_config.getini.return_value = False
 
         valid_ids = frozenset({"US-CLI-110", "US-CLI-111"})
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
@@ -360,6 +365,7 @@ class TestCollectionValidationCLI:
         mock_item.iter_markers.return_value = [mock_marker]
 
         mock_config = MagicMock()
+        mock_config.getini.return_value = False
 
         valid_ids = frozenset({"US-CLI-110", "US-CLI-111"})
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
@@ -376,6 +382,7 @@ class TestCollectionValidationCLI:
         mock_item.iter_markers.return_value = [mock_marker]
 
         mock_config = MagicMock()
+        mock_config.getini.return_value = False
 
         # Set cache to None to force loading
         with patch.object(mod, "_VALID_STORY_IDS", None):

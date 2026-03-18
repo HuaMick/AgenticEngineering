@@ -116,6 +116,12 @@ class TestMarkerRegistration:
 class TestCollectionValidation:
     """Test that the collection plugin validates story markers."""
 
+    def _mock_config(self, strict=False):
+        """Create a mock config with story_strict ini value."""
+        config = MagicMock()
+        config.getini.return_value = strict
+        return config
+
     def test_marker_validation_warns_on_unknown_id(self):
         """Verify unknown story IDs generate warnings via collection plugin."""
         mod = _load_conftest_module()
@@ -126,33 +132,27 @@ class TestCollectionValidation:
         mock_item.iter_markers.return_value = [mock_marker]
         mock_item.nodeid = "test_example.py::test_unknown_id"
 
-        mock_config = MagicMock()
         valid_ids = frozenset({"US-CLI-110", "US-CLI-111"})
 
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
-            mod.pytest_collection_modifyitems(mock_config, [mock_item])
+            mod.pytest_collection_modifyitems(self._mock_config(), [mock_item])
             mock_item.warn.assert_called_once()
             warn_arg = str(mock_item.warn.call_args[0][0])
             assert "US-FAKE-99999" in warn_arg
 
     def test_marker_validation_does_not_block(self):
         """Verify tests with unknown story IDs still run (warnings only)."""
-        # The conftest plugin issues warnings, NOT errors.
-        # The fact that test_story_marker_does_not_block_execution below
-        # uses a fake story ID and still runs proves this.
         mod = _load_conftest_module()
-        # Confirm the function does not raise on unknown IDs
         mock_item = MagicMock()
         mock_marker = MagicMock()
         mock_marker.args = ("US-NONEXISTENT-99999",)
         mock_item.iter_markers.return_value = [mock_marker]
         mock_item.nodeid = "test_example.py::test_something"
 
-        mock_config = MagicMock()
         valid = frozenset({"US-CLI-110"})
         with patch.object(mod, "_VALID_STORY_IDS", valid):
             # Should warn but not raise
-            mod.pytest_collection_modifyitems(mock_config, [mock_item])
+            mod.pytest_collection_modifyitems(self._mock_config(), [mock_item])
             mock_item.warn.assert_called_once()
 
     def test_collection_modifyitems_no_warn_for_valid_id(self):
@@ -164,10 +164,9 @@ class TestCollectionValidation:
         mock_marker.args = ("US-CLI-110",)
         mock_item.iter_markers.return_value = [mock_marker]
 
-        mock_config = MagicMock()
         valid = frozenset({"US-CLI-110", "US-CLI-111"})
         with patch.object(mod, "_VALID_STORY_IDS", valid):
-            mod.pytest_collection_modifyitems(mock_config, [mock_item])
+            mod.pytest_collection_modifyitems(self._mock_config(), [mock_item])
             mock_item.warn.assert_not_called()
 
     def test_collection_modifyitems_warns_empty_marker_args(self):
@@ -180,8 +179,7 @@ class TestCollectionValidation:
         mock_item.iter_markers.return_value = [mock_marker]
         mock_item.nodeid = "test_example.py::test_no_ids"
 
-        mock_config = MagicMock()
-        mod.pytest_collection_modifyitems(mock_config, [mock_item])
+        mod.pytest_collection_modifyitems(self._mock_config(), [mock_item])
         mock_item.warn.assert_called_once()
 
     def test_load_valid_story_ids_handles_missing_dir(self, tmp_path):
