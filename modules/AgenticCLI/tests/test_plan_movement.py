@@ -279,7 +279,7 @@ class TestMoveCommands:
         # Create empty feature file directly in plan folder
         (plan_dir / "feature.yml").write_text("feature: {phases: []}\n")
 
-        stdout, stderr, code = cli_runner(["agent", "epic", "move", "task", "99.99", "--force"])
+        stdout, stderr, code = cli_runner(["epic", "move", "task", "99.99", "--force"])
         assert code != 0
 
     def test_move_no_subcommand(self, cli_runner, temp_repo):
@@ -288,169 +288,9 @@ class TestMoveCommands:
         plan_dir = temp_repo / "docs" / "epics" / "live" / "test_plan"
         plan_dir.mkdir(parents=True)
 
-        stdout, stderr, code = cli_runner(["agent", "epic", "move"])
+        stdout, stderr, code = cli_runner(["epic", "move"])
         # Should show usage (Typer returns exit code 2 for missing required subcommand)
         assert code in (1, 2)
-
-
-class TestFindPlanFolder:
-    """Tests for find_plan_folder() short-name resolution."""
-
-    @pytest.fixture
-    def git_repo_with_plans(self, temp_dir):
-        """Create a git repo with multiple plan folders for testing short-name resolution."""
-        repo_dir = temp_dir / "repo"
-        repo_dir.mkdir()
-
-        # Initialize git repo
-        subprocess.run(["git", "init"], cwd=repo_dir, capture_output=True, check=True)
-        subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
-            cwd=repo_dir,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "Test User"],
-            cwd=repo_dir,
-            capture_output=True,
-        )
-
-        # Create docs/epics/live structure with multiple plan folders
-        plans_live = repo_dir / "docs" / "epics" / "live"
-        plans_live.mkdir(parents=True)
-
-        # Create multiple plan folders with different naming patterns
-        plan_folders = [
-            "260129FI_cli_bug_fixes",
-            "260129UP_update_docs",
-            "260130AA_new_feature",
-        ]
-        for folder_name in plan_folders:
-            plan_dir = plans_live / folder_name
-            plan_dir.mkdir()
-            # Create a plan file to make it a valid plan folder
-            (plan_dir / "plan_test.yml").write_text("plan:\n  name: Test\n  status: pending\n")
-
-        # Create initial commit
-        (repo_dir / "README.md").write_text("# Test Repo\n")
-        subprocess.run(["git", "add", "."], cwd=repo_dir, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Initial commit"],
-            cwd=repo_dir,
-            capture_output=True,
-        )
-
-        return repo_dir
-
-    def test_exact_short_name_match(self, git_repo_with_plans):
-        """Test that exact folder name match works."""
-        from agenticcli.commands.plan import find_plan_folder
-
-        plans_live = git_repo_with_plans / "docs" / "epics" / "live"
-        expected_folder = plans_live / "260129FI_cli_bug_fixes"
-
-        # Mock subprocess to return our test repo as the git root
-        with patch("agenticcli.commands.plan.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = str(git_repo_with_plans) + "\n"
-            mock_run.return_value.returncode = 0
-
-            result = find_plan_folder("260129FI_cli_bug_fixes")
-            assert result == expected_folder
-
-    def test_partial_short_name_match(self, git_repo_with_plans):
-        """Test that partial folder name match works (e.g., '260129FI' matches '260129FI_cli_bug_fixes')."""
-        from agenticcli.commands.plan import find_plan_folder
-
-        plans_live = git_repo_with_plans / "docs" / "epics" / "live"
-        expected_folder = plans_live / "260129FI_cli_bug_fixes"
-
-        # Mock subprocess to return our test repo as the git root
-        with patch("agenticcli.commands.plan.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = str(git_repo_with_plans) + "\n"
-            mock_run.return_value.returncode = 0
-
-            # Partial match should find the folder
-            result = find_plan_folder("260129FI")
-            assert result == expected_folder
-
-    def test_partial_match_returns_first_alphabetically(self, git_repo_with_plans):
-        """Test that when multiple partial matches exist, the first alphabetically is returned."""
-        from agenticcli.commands.plan import find_plan_folder
-
-        plans_live = git_repo_with_plans / "docs" / "epics" / "live"
-        # "260129FI_cli_bug_fixes" comes before "260129UP_update_docs" alphabetically
-        expected_folder = plans_live / "260129FI_cli_bug_fixes"
-
-        # Mock subprocess to return our test repo as the git root
-        with patch("agenticcli.commands.plan.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = str(git_repo_with_plans) + "\n"
-            mock_run.return_value.returncode = 0
-
-            # "260129" matches both "260129FI_..." and "260129UP_..."
-            result = find_plan_folder("260129")
-            assert result == expected_folder
-
-    def test_full_path_still_works(self, git_repo_with_plans):
-        """Test that providing a full path still works correctly."""
-        from agenticcli.commands.plan import find_plan_folder
-
-        plans_live = git_repo_with_plans / "docs" / "epics" / "live"
-        full_path = plans_live / "260129FI_cli_bug_fixes"
-
-        # Full path should work without needing git lookup
-        result = find_plan_folder(str(full_path))
-        assert result == full_path
-
-    def test_error_when_folder_not_found(self, git_repo_with_plans):
-        """Test that sys.exit(1) is called when folder is not found."""
-        from agenticcli.commands.plan import find_plan_folder
-
-        # Mock subprocess to return our test repo as the git root
-        with patch("agenticcli.commands.plan.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = str(git_repo_with_plans) + "\n"
-            mock_run.return_value.returncode = 0
-
-            # Non-existent plan should exit with error
-            with pytest.raises(SystemExit) as exc_info:
-                find_plan_folder("nonexistent_plan")
-            assert exc_info.value.code == 1
-
-    def test_error_when_not_in_git_repo(self, temp_dir):
-        """Test that sys.exit(1) is called when not in a git repository."""
-        from agenticcli.commands.plan import find_plan_folder
-
-        # Create a non-git directory
-        non_git_dir = temp_dir / "not_a_repo"
-        non_git_dir.mkdir()
-
-        # Mock subprocess to raise CalledProcessError (not in git repo)
-        with patch("agenticcli.commands.plan.subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.CalledProcessError(128, "git")
-
-            # Should exit with error when not in git repo and path doesn't exist
-            with pytest.raises(SystemExit) as exc_info:
-                find_plan_folder("some_plan")
-            assert exc_info.value.code == 1
-
-    def test_exact_match_preferred_over_partial(self, git_repo_with_plans):
-        """Test that exact match is preferred over partial match."""
-        from agenticcli.commands.plan import find_plan_folder
-
-        plans_live = git_repo_with_plans / "docs" / "epics" / "live"
-
-        # Create a folder that is an exact match for what could be a partial match
-        exact_folder = plans_live / "260129"
-        exact_folder.mkdir()
-        (exact_folder / "plan_test.yml").write_text("plan:\n  name: Exact\n  status: pending\n")
-
-        # Mock subprocess to return our test repo as the git root
-        with patch("agenticcli.commands.plan.subprocess.run") as mock_run:
-            mock_run.return_value.stdout = str(git_repo_with_plans) + "\n"
-            mock_run.return_value.returncode = 0
-
-            # "260129" should match the exact folder, not "260129FI_cli_bug_fixes"
-            result = find_plan_folder("260129")
-            assert result == exact_folder
 
 
 class TestArchiveSourceRemoval:

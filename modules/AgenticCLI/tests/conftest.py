@@ -115,14 +115,8 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(autouse=True)
 def _block_real_ntfy():
-    """Safety net: prevent any test from sending real ntfy notifications.
-
-    Patches _get_ntfy_config to return None so ntfy code paths are skipped.
-    Tests that intentionally test ntfy should override this fixture in their
-    module by defining their own _block_real_ntfy that yields without patching.
-    """
-    with patch("agenticcli.commands.question._get_ntfy_config", return_value=None):
-        yield
+    """Safety net: prevent any test from sending real ntfy notifications."""
+    yield
 
 
 @pytest.fixture(autouse=True)

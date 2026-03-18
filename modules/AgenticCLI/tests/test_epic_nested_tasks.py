@@ -122,7 +122,7 @@ class TestUpdateTaskStatus:
     def test_finds_task_in_nested_structure(self, nested_task_plan, cli_runner, _isolate_tinydb):
         """Test that task start finds tasks in phases[].tasks[]."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "start", "TST-001", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "start", "TST-001", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "in_progress" in stdout.lower() or "started" in stdout.lower()
@@ -134,7 +134,7 @@ class TestUpdateTaskStatus:
     def test_finds_task_in_second_phase(self, nested_task_plan, cli_runner, _isolate_tinydb):
         """Test that tasks in non-first phases are found."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "start", "TST-003", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "start", "TST-003", "--plan", str(nested_task_plan)]
         )
         assert code == 0
 
@@ -145,9 +145,9 @@ class TestUpdateTaskStatus:
     def test_complete_updates_nested_task(self, nested_task_plan, cli_runner, _isolate_tinydb):
         """Test that task complete works with nested tasks."""
         # First start, then complete
-        cli_runner(["agent", "epic", "ticket", "start", "TST-002", "--plan", str(nested_task_plan)])
+        cli_runner(["epic", "ticket", "start", "TST-002", "--plan", str(nested_task_plan)])
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "complete", "TST-002", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "complete", "TST-002", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "completed" in stdout.lower()
@@ -162,7 +162,6 @@ class TestUpdateTaskStatus:
         """Test that both 'id' and 'task_id' field names are supported."""
         stdout, stderr, code = cli_runner(
             [
-                "agent",
                 "epic",
                 "ticket",
                 "start",
@@ -180,7 +179,7 @@ class TestUpdateTaskStatus:
     def test_error_when_task_not_found(self, nested_task_plan, cli_runner):
         """Test error message when task ID doesn't exist."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "start", "NONEXISTENT", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "start", "NONEXISTENT", "--plan", str(nested_task_plan)]
         )
         assert code != 0
         assert "not found" in stderr.lower()
@@ -192,7 +191,7 @@ class TestTaskList:
     def test_lists_all_nested_tasks(self, nested_task_plan, cli_runner):
         """Test that all nested tasks appear in list."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "list", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "list", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "TST-001" in stdout
@@ -202,7 +201,7 @@ class TestTaskList:
     def test_shows_phase_info(self, nested_task_plan, cli_runner):
         """Test that phase information is included."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "list", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "list", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         # Phase info should appear in some form
@@ -219,7 +218,6 @@ class TestTaskList:
         # Filter by completed
         stdout, stderr, code = cli_runner(
             [
-                "agent",
                 "epic",
                 "ticket",
                 "list",
@@ -241,7 +239,7 @@ class TestTaskStatus:
     def test_shows_nested_task_details(self, nested_task_plan, cli_runner):
         """Test that status shows details for nested task."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "status", "TST-001", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "status", "TST-001", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "TST-001" in stdout
@@ -250,7 +248,7 @@ class TestTaskStatus:
     def test_includes_phase_info(self, nested_task_plan, cli_runner):
         """Test that phase information is included in status output."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "status", "TST-001", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "status", "TST-001", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         assert "Phase" in stdout or "P1" in stdout or "Build" in stdout
@@ -258,7 +256,7 @@ class TestTaskStatus:
     def test_error_when_task_not_found(self, nested_task_plan, cli_runner):
         """Test error when querying non-existent task."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "status", "NONEXISTENT", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "status", "NONEXISTENT", "--plan", str(nested_task_plan)]
         )
         assert code != 0
         assert "not found" in stderr.lower()
@@ -270,7 +268,7 @@ class TestTaskCurrent:
     def test_finds_first_pending(self, nested_task_plan, cli_runner):
         """Test that current returns first pending nested task."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "current", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "current", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         # First pending should be TST-001
@@ -285,7 +283,7 @@ class TestTaskCurrent:
         repo.close()
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "current", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "current", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         # in_progress task should be returned
@@ -306,7 +304,7 @@ class TestTaskCurrent:
         repo.close()
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "current", "--plan", str(nested_task_plan)]
+            ["epic", "ticket", "current", "--plan", str(nested_task_plan)]
         )
         assert code == 0
         # Output should include guidance section if present
@@ -329,7 +327,7 @@ class TestEdgeCases:
         })
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "list", "--plan", str(plan_dir)]
+            ["epic", "ticket", "list", "--plan", str(plan_dir)]
         )
         # Should not crash with unhandled exception. Empty plan = no tasks.
         combined = stdout + stderr
@@ -354,7 +352,7 @@ class TestEdgeCases:
         })
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "list", "--plan", str(plan_dir)]
+            ["epic", "ticket", "list", "--plan", str(plan_dir)]
         )
         # Should not crash. May return 0 (no tasks found) or 1 (no tasks in DB)
         combined = stdout + stderr
@@ -390,7 +388,7 @@ class TestEdgeCases:
         populate_tinydb_from_yaml(_isolate_tinydb, "260127SC_special", plan_dir, yaml_data)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "ticket", "start", "TEST-TASK_001-v2", "--plan", str(plan_dir)]
+            ["epic", "ticket", "start", "TEST-TASK_001-v2", "--plan", str(plan_dir)]
         )
         assert code == 0
 

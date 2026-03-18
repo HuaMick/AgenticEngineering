@@ -186,12 +186,12 @@ class TestPlanNew:
 
     def test_new_requires_objective(self, cli_runner):
         """Test 'plan new' with no args shows error."""
-        stdout, stderr, code = cli_runner(["agent", "epic", "new"])
+        stdout, stderr, code = cli_runner(["epic", "new"])
         assert code != 0
 
     def test_new_help_shows_all_args(self, cli_runner):
         """Test 'plan new --help' lists all expected arguments."""
-        stdout, stderr, code = cli_runner(["agent", "epic", "new", "--help"])
+        stdout, stderr, code = cli_runner(["epic", "new", "--help"])
         assert code == 0
         combined = stdout + stderr
         assert "--branch" in combined or "-b" in combined
@@ -208,7 +208,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new", "Test feature", "--branch", branch]
+            ["epic", "new", "Test feature", "--branch", branch]
         )
 
         assert code == 0
@@ -229,7 +229,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new", "Add dark mode"]
+            ["epic", "new", "Add dark mode"]
         )
 
         assert code == 0
@@ -242,7 +242,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new", "Some objective", "--branch", "my-custom-branch"]
+            ["epic", "new", "Some objective", "--branch", "my-custom-branch"]
         )
 
         assert code == 0
@@ -253,7 +253,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "JSON test", "--branch", branch]
+            ["-j", "epic", "new", "JSON test", "--branch", branch]
         )
 
         assert code == 0
@@ -270,7 +270,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "Execute test", "--branch", branch, "--execute"]
+            ["-j", "epic", "new", "Execute test", "--branch", branch, "--execute"]
         )
 
         assert code == 0
@@ -283,7 +283,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "No execute test", "--branch", branch]
+            ["-j", "epic", "new", "No execute test", "--branch", branch]
         )
 
         assert code == 0
@@ -296,7 +296,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "Turns test", "--branch", branch]
+            ["-j", "epic", "new", "Turns test", "--branch", branch]
         )
 
         assert code == 0
@@ -309,7 +309,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "Turns custom", "--branch", branch, "--max-turns", "50"]
+            ["-j", "epic", "new", "Turns custom", "--branch", branch, "--max-turns", "50"]
         )
 
         assert code == 0
@@ -322,7 +322,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "Build yml test", "--branch", branch]
+            ["-j", "epic", "new", "Build yml test", "--branch", branch]
         )
 
         assert code == 0
@@ -342,7 +342,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new", "Next steps test", "--branch", branch]
+            ["epic", "new", "Next steps test", "--branch", branch]
         )
 
         assert code == 0
@@ -354,7 +354,7 @@ class TestPlanNew:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "My long objective", "--branch", branch,
+            ["-j", "epic", "new", "My long objective", "--branch", branch,
              "--description", "short desc"]
         )
 
@@ -375,13 +375,13 @@ class TestPlanNewErrorCases:
 
         # First creation
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new", "Dup test", "--branch", branch]
+            ["epic", "new", "Dup test", "--branch", branch]
         )
         assert code == 0
 
         # Second creation with same params should fail (epic already exists in TinyDB)
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new", "Dup test", "--branch", branch]
+            ["epic", "new", "Dup test", "--branch", branch]
         )
         assert code != 0  # Duplicate epic creation should fail
 
@@ -556,7 +556,7 @@ class TestPlanNewPlannerSpawn:
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
             with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
                 stdout, stderr, code = cli_runner(
-                    ["agent", "epic", "new", "Spawn test", "--branch", branch]
+                    ["epic", "new", "Spawn test", "--branch", branch]
                 )
 
         assert code == 0
@@ -585,7 +585,7 @@ class TestPlanNewPlannerSpawn:
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
             with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
                 stdout, stderr, code = cli_runner(
-                    ["agent", "epic", "new", "Validate test", "--branch", branch]
+                    ["epic", "new", "Validate test", "--branch", branch]
                 )
 
         # cmd_new should report planner failure (no TinyDB tickets created)
@@ -621,7 +621,7 @@ class TestPlanNewPlannerSpawn:
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
             with patch("agenticcli.commands.epic.subprocess.run", side_effect=capture_run):
                 stdout, stderr, code = cli_runner(
-                    ["agent", "epic", "new", "Max turns test", "--branch", branch, "--max-turns", "15"]
+                    ["epic", "new", "Max turns test", "--branch", branch, "--max-turns", "15"]
                 )
 
         assert code == 0
@@ -661,7 +661,7 @@ class TestPlanNewPlannerSpawn:
         with patch("agenticcli.utils.sdk_runner.SDK_AVAILABLE", False):
             with patch("agenticcli.commands.epic.subprocess.run", side_effect=capture_run):
                 stdout, stderr, code = cli_runner(
-                    ["agent", "epic", "new", "Skip perms test", "--branch", branch,
+                    ["epic", "new", "Skip perms test", "--branch", branch,
                      "--dangerously-skip-permissions"]
                 )
 
@@ -688,7 +688,7 @@ class TestPlanNewOrchestration:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "Orchestration test", "--branch", branch]
+            ["-j", "epic", "new", "Orchestration test", "--branch", branch]
         )
 
         assert code == 0
@@ -732,7 +732,7 @@ class TestPlanNewOrchestration:
 
         with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
             stdout, stderr, code = cli_runner(
-                ["agent", "epic", "new", "Validate orch", "--branch", branch]
+                ["epic", "new", "Validate orch", "--branch", branch]
             )
 
         # cmd_new should succeed regardless of orchestration generation outcome
@@ -764,7 +764,7 @@ class TestPlanNewOrchestration:
 
         with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
             stdout, stderr, code = cli_runner(
-                ["agent", "epic", "new", "Orch fail test", "--branch", branch]
+                ["epic", "new", "Orch fail test", "--branch", branch]
             )
 
         # Should still succeed even if orchestration fails
@@ -778,7 +778,7 @@ class TestPlanNewOrchestration:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new", "No exec test", "--branch", branch]
+            ["epic", "new", "No exec test", "--branch", branch]
         )
 
         assert code == 0
@@ -843,7 +843,7 @@ class TestPlanNewBuilderSpawning:
             with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
                 with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["agent", "epic", "new", "Exec test", "--branch", branch, "--execute"]
+                        ["epic", "new", "Exec test", "--branch", branch, "--execute"]
                     )
 
         assert code == 0
@@ -903,7 +903,7 @@ class TestPlanNewBuilderSpawning:
             with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
                 with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["agent", "epic", "new", "Sequential", "--branch", branch, "--execute"]
+                        ["epic", "new", "Sequential", "--branch", branch, "--execute"]
                     )
 
         assert code == 0
@@ -978,7 +978,7 @@ class TestPlanNewBuilderSpawning:
             with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
                 with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["agent", "epic", "new", "Skip test", "--branch", branch, "--execute"]
+                        ["epic", "new", "Skip test", "--branch", branch, "--execute"]
                     )
 
         assert code == 0
@@ -1040,7 +1040,7 @@ class TestPlanNewBuilderSpawning:
             with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
                 with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["agent", "epic", "new", "Exec orch skip", "--branch", branch, "--execute"]
+                        ["epic", "new", "Exec orch skip", "--branch", branch, "--execute"]
                     )
 
         # cmd_new should still succeed and attempt to spawn builders based on TinyDB tickets
@@ -1062,7 +1062,7 @@ class TestPlanNewIntegration:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "End to end test", "--branch", branch]
+            ["-j", "epic", "new", "End to end test", "--branch", branch]
         )
 
         assert code == 0
@@ -1123,7 +1123,7 @@ class TestPlanNewIntegration:
             with patch("agenticcli.commands.epic.subprocess.run", side_effect=mock_run):
                 with patch("agenticcli.commands.epic.subprocess.Popen", side_effect=mock_popen):
                     stdout, stderr, code = cli_runner(
-                        ["-j", "agent", "epic", "new", "E2E exec", "--branch", branch, "--execute"]
+                        ["-j", "epic", "new", "E2E exec", "--branch", branch, "--execute"]
                     )
 
         assert code == 0

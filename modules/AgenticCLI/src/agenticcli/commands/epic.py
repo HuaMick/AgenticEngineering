@@ -70,59 +70,6 @@ def get_valid_agent_types(agents_dir: Path | None = None) -> set[str]:
     return agent_types
 
 
-# Cache for loop type discovery
-_loop_types_cache: set | None = None
-
-# Fallback set used when agent-loops.yml cannot be read
-_FALLBACK_LOOP_TYPES = {
-    "test-fix-loop", "audit-test-fix-loop", "cleaner-dependency-loop",
-    "documentation-loop", "user-story-validation-loop", "exploration-loop",
-    "rlm-decomposition-loop", "rlm-context-refinement-loop", "rlm_loop_selection",
-    "planner-loop", "guidance-test-loop", "agent-self-review", "guidance-self-review-loop",
-}
-
-
-def get_valid_loop_types(loops_file: Path | None = None) -> set[str]:
-    """Read valid loop types from agent-loops.yml.
-
-    Extracts keys from the loop_types section of agent-loops.yml. Falls back
-    to a hardcoded set if the file is not found or cannot be parsed.
-
-    Args:
-        loops_file: Optional override for the agent-loops.yml file path.
-
-    Returns:
-        Set of valid loop type names (e.g., {"test-fix-loop", "planner-loop"}).
-    """
-    global _loop_types_cache
-    use_cache = loops_file is None
-    if use_cache and _loop_types_cache is not None:
-        return _loop_types_cache
-
-    if loops_file is None:
-        repo_root = Path(__file__).resolve().parents[5]
-        loops_file = repo_root / "modules" / "AgenticGuidance" / "assets" / "definitions" / "agent-loops.yml"
-
-    if not loops_file.is_file():
-        return _FALLBACK_LOOP_TYPES
-
-    try:
-        with open(loops_file) as f:
-            content = yaml.safe_load(f)
-        loop_types_section = content.get("loop_types", {})
-        if not loop_types_section or not isinstance(loop_types_section, dict):
-            return _FALLBACK_LOOP_TYPES
-        loop_types = set(loop_types_section.keys())
-    except Exception:
-        return _FALLBACK_LOOP_TYPES
-
-    if not loop_types:
-        return _FALLBACK_LOOP_TYPES
-
-    if use_cache:
-        _loop_types_cache = loop_types
-    return loop_types
-
 
 def _get_phase_id(phase: dict) -> str:
     """Get phase ID from either phase_id or id field.
@@ -244,42 +191,6 @@ def is_epic_fully_completed(plan_folder: Path) -> bool:
     return False
 
 
-def has_pending_questions(plan_path: Path) -> bool:
-    """Check if a plan has unanswered questions in its pending queue.
-
-    Args:
-        plan_path: Path to the plan folder.
-
-    Returns:
-        True if any pending question YAML files exist, False otherwise.
-    """
-    pending_dir = plan_path / "questions" / "pending"
-    if not pending_dir.is_dir():
-        return False
-    return any(pending_dir.glob("*.yml"))
-
-
-def _get_epic_branch(plan_path: Path) -> str | None:
-    """Extract the branch name associated with a plan folder.
-
-    Looks up the branch in TinyDB via EpicRepository.
-
-    Args:
-        plan_path: Path to the plan folder.
-
-    Returns:
-        Branch name string, or None if not determinable.
-    """
-    try:
-        repo = _get_repo()
-        if repo is not None:
-            branch = repo.get_epic_branch(plan_path.name)
-            if branch is not None:
-                return branch
-    except Exception:
-        pass
-
-    return None
 
 
 

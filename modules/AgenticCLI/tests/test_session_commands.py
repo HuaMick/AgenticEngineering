@@ -56,7 +56,7 @@ def mock_sessions_dir(sessions_dir, monkeypatch):
 
     context_dir = sessions_dir / "context"
     context_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
+    monkeypatch.setattr(session, "get_context_dir", lambda: context_dir)
 
     # Disable SDK path so subprocess-based tests exercise the subprocess code path.
     # SDK-specific tests should re-enable this explicitly.
@@ -87,7 +87,7 @@ def mock_context_dir(context_dir, monkeypatch):
     """Patch _get_context_dir to use temp directory."""
     from agenticcli.commands import session
 
-    monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
+    monkeypatch.setattr(session, "get_context_dir", lambda: context_dir)
     return context_dir
 
 
@@ -734,7 +734,7 @@ class TestSessionHandleRouting:
 
 
 class TestResolvePlanFolder:
-    """Tests for _resolve_plan_folder helper."""
+    """Tests for _resolve_epic_folder helper."""
 
     def test_resolve_existing_plan(self, tmp_path, monkeypatch):
         """Test resolving an existing epic folder in docs/epics/live/."""
@@ -746,7 +746,7 @@ class TestResolvePlanFolder:
 
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
 
-        result = session._resolve_plan_folder("260207TA_cli_task_spawn")
+        result = session._resolve_epic_folder("260207TA_cli_task_spawn")
         assert result == plan_dir
 
     def test_resolve_completed_plan(self, tmp_path, monkeypatch):
@@ -759,7 +759,7 @@ class TestResolvePlanFolder:
 
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
 
-        result = session._resolve_plan_folder("260203TS_task_service")
+        result = session._resolve_epic_folder("260203TS_task_service")
         assert result == plan_dir
 
     def test_resolve_nonexistent_plan(self, tmp_path, monkeypatch):
@@ -769,7 +769,7 @@ class TestResolvePlanFolder:
         (tmp_path / "docs" / "epics" / "live").mkdir(parents=True)
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
 
-        result = session._resolve_plan_folder("nonexistent_plan")
+        result = session._resolve_epic_folder("nonexistent_plan")
         assert result is None
 
 
@@ -2229,279 +2229,6 @@ class TestCaptureLangSmithTrace:
         assert "json" in cmd
 
 
-class TestEnsureWatchDaemon:
-    """WD_004: Unit tests for _ensure_watch_daemon function.
-
-    Tests the PID-file based daemon management approach where each plan's
-    watcher daemon stores its PID in a pidfile under
-    ~/.config/agenticguidance/watchers/<plan_name>.pid.
-    """
-
-    def test_starts_when_no_pidfile(self, tmp_path, monkeypatch):
-        """Test daemon starts when no existing pidfile (no prior watcher)."""
-        from agenticcli.commands import question
-
-        plan_path = tmp_path / "260210WD_test_plan"
-        plan_path.mkdir()
-
-        # Redirect pidfile to tmp_path to avoid writing to real config
-        piddir = tmp_path / "watchers"
-        piddir.mkdir()
-        monkeypatch.setattr(question, "_get_watcher_pidfile",
-                            lambda pp: piddir / f"{pp.name}.pid")
-
-        mock_process = MagicMock()
-        mock_process.pid = 54321
-        mock_popen = MagicMock(return_value=mock_process)
-        monkeypatch.setattr("subprocess.Popen", mock_popen)
-
-        started, reason = question._ensure_watch_daemon(plan_path)
-
-        assert started is True
-        assert reason == "started"
-        mock_popen.assert_called_once()
-        cmd = mock_popen.call_args[0][0]
-        assert "nohup" in cmd
-        assert "python3" in cmd
-        # Pidfile should be created with the child PID
-        pidfile = piddir / f"{plan_path.name}.pid"
-        assert pidfile.exists()
-        assert pidfile.read_text().strip() == "54321"
-
-    def test_starts_without_ntfy(self, tmp_path, monkeypatch):
-        """Test daemon starts even when ntfy is not configured (ntfy gate removed)."""
-        from agenticcli.commands import question
-
-        plan_path = tmp_path / "260210WD_test_plan"
-        plan_path.mkdir()
-
-        monkeypatch.setattr(question, "_get_ntfy_config", lambda: None)
-
-        piddir = tmp_path / "watchers"
-        piddir.mkdir()
-        monkeypatch.setattr(question, "_get_watcher_pidfile",
-                            lambda pp: piddir / f"{pp.name}.pid")
-
-        mock_process = MagicMock()
-        mock_process.pid = 12345
-        mock_popen = MagicMock(return_value=mock_process)
-        monkeypatch.setattr("subprocess.Popen", mock_popen)
-
-        started, reason = question._ensure_watch_daemon(plan_path)
-
-        assert started is True
-        assert reason == "started"
-        mock_popen.assert_called_once()
-
-    def test_skips_when_already_running(self, tmp_path, monkeypatch):
-        """Test daemon is skipped when pidfile references a live process."""
-        from agenticcli.commands import question
-
-        plan_path = tmp_path / "260210WD_test_plan"
-        plan_path.mkdir()
-
-        piddir = tmp_path / "watchers"
-        piddir.mkdir()
-        monkeypatch.setattr(question, "_get_watcher_pidfile",
-                            lambda pp: piddir / f"{pp.name}.pid")
-
-        # Write pidfile with current (alive) PID
-        alive_pid = os.getpid()
-        pidfile = piddir / f"{plan_path.name}.pid"
-        pidfile.write_text(str(alive_pid))
-
-        mock_popen = MagicMock()
-        monkeypatch.setattr("subprocess.Popen", mock_popen)
-
-        started, reason = question._ensure_watch_daemon(plan_path)
-
-        assert started is False
-        assert reason == "already_running"
-        mock_popen.assert_not_called()
-
-    def test_cleans_stale_and_starts(self, tmp_path, monkeypatch):
-        """Test daemon cleans stale pidfile and starts a new daemon."""
-        from agenticcli.commands import question
-
-        plan_path = tmp_path / "260210WD_test_plan"
-        plan_path.mkdir()
-
-        piddir = tmp_path / "watchers"
-        piddir.mkdir()
-        monkeypatch.setattr(question, "_get_watcher_pidfile",
-                            lambda pp: piddir / f"{pp.name}.pid")
-
-        # Write pidfile with a dead PID
-        dead_pid = 99999999
-        pidfile = piddir / f"{plan_path.name}.pid"
-        pidfile.write_text(str(dead_pid))
-
-        mock_process = MagicMock()
-        mock_process.pid = 11111
-        mock_popen = MagicMock(return_value=mock_process)
-        monkeypatch.setattr("subprocess.Popen", mock_popen)
-
-        started, reason = question._ensure_watch_daemon(plan_path)
-
-        assert started is True
-        assert reason == "started"
-        mock_popen.assert_called_once()
-        # Pidfile should now contain the new PID
-        assert pidfile.read_text().strip() == "11111"
-
-    def test_handles_errors_gracefully(self, tmp_path, monkeypatch):
-        """Test daemon returns error tuple on exception without propagating."""
-        from agenticcli.commands import question
-
-        plan_path = tmp_path / "260210WD_test_plan"
-        plan_path.mkdir()
-
-        piddir = tmp_path / "watchers"
-        piddir.mkdir()
-        monkeypatch.setattr(question, "_get_watcher_pidfile",
-                            lambda pp: piddir / f"{pp.name}.pid")
-
-        mock_popen = MagicMock(side_effect=OSError("spawn failed"))
-        monkeypatch.setattr("subprocess.Popen", mock_popen)
-
-        started, reason = question._ensure_watch_daemon(plan_path)
-
-        assert started is False
-        assert reason == "error"
-
-
-class TestSpawnAutoWatchDaemon:
-    """WD_005: Integration tests for cmd_spawn auto-daemon behavior."""
-
-    @patch("agenticcli.commands.session.is_process_running")
-    @patch("agenticcli.commands.session.subprocess.Popen")
-    def test_spawn_with_plan_starts_watch_daemon(
-        self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, tmp_path, monkeypatch
-    ):
-        """Test that spawn with --plan calls _ensure_watch_daemon."""
-        from agenticcli.commands import session
-
-        # Set up epic folder
-        live_dir = tmp_path / "docs" / "epics" / "live"
-        plan_dir = live_dir / "260210WD_test"
-        plan_dir.mkdir(parents=True)
-        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
-
-        mock_is_running.return_value = True
-        mock_process = MagicMock()
-        mock_process.pid = 33333
-        mock_popen.return_value = mock_process
-
-        # Track _ensure_watch_daemon calls
-        daemon_calls = []
-
-        def mock_ensure(plan_path):
-            daemon_calls.append(plan_path)
-            return (True, "started")
-
-        monkeypatch.setattr("agenticcli.commands.question._ensure_watch_daemon", mock_ensure)
-
-        args = SimpleNamespace(
-            prompt="Test with plan",
-            role=None,
-            task=None,
-            plan="260210WD_test",
-            max_turns=None,
-            background=True,
-            directory=None,
-            dangerously_skip_permissions=False,
-        )
-
-        session.cmd_spawn(args)
-
-        assert len(daemon_calls) == 1
-        assert daemon_calls[0] == plan_dir
-
-    @patch("agenticcli.commands.session.is_process_running")
-    @patch("agenticcli.commands.session.subprocess.Popen")
-    def test_spawn_without_plan_skips_watch_daemon(
-        self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, monkeypatch
-    ):
-        """Test that spawn without --plan does NOT call _ensure_watch_daemon."""
-        from agenticcli.commands import session
-
-        mock_is_running.return_value = True
-        mock_process = MagicMock()
-        mock_process.pid = 22222
-        mock_popen.return_value = mock_process
-
-        daemon_calls = []
-
-        def mock_ensure(plan_path):
-            daemon_calls.append(plan_path)
-            return (True, "started")
-
-        monkeypatch.setattr("agenticcli.commands.question._ensure_watch_daemon", mock_ensure)
-
-        args = SimpleNamespace(
-            prompt="Test without plan",
-            role=None,
-            task=None,
-            plan=None,
-            max_turns=None,
-            background=True,
-            directory=None,
-            dangerously_skip_permissions=False,
-        )
-
-        session.cmd_spawn(args)
-
-        assert len(daemon_calls) == 0
-
-    @patch("agenticcli.commands.session.is_process_running")
-    @patch("agenticcli.commands.session.subprocess.Popen")
-    def test_spawn_daemon_failure_does_not_block_spawn(
-        self, mock_popen, mock_is_running, mock_sessions_dir, mock_logs_dir, tmp_path, monkeypatch
-    ):
-        """Test that _ensure_watch_daemon failure doesn't block cmd_spawn."""
-        from agenticcli.commands import session
-
-        # Set up epic folder
-        live_dir = tmp_path / "docs" / "epics" / "live"
-        plan_dir = live_dir / "260210WD_test"
-        plan_dir.mkdir(parents=True)
-        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
-
-        mock_is_running.return_value = True
-        mock_process = MagicMock()
-        mock_process.pid = 44444
-        mock_popen.return_value = mock_process
-
-        # Make _ensure_watch_daemon raise an exception
-        def mock_ensure_boom(plan_path):
-            raise RuntimeError("daemon startup crashed")
-
-        monkeypatch.setattr("agenticcli.commands.question._ensure_watch_daemon", mock_ensure_boom)
-
-        args = SimpleNamespace(
-            prompt="Test daemon failure",
-            role=None,
-            task=None,
-            plan="260210WD_test",
-            max_turns=None,
-            background=True,
-            directory=None,
-            dangerously_skip_permissions=False,
-        )
-
-        # Should NOT raise - spawn should succeed despite daemon failure
-        session.cmd_spawn(args)
-
-        # Session should be saved as running
-        sessions = session._store.list_all()
-        assert len(sessions) == 1
-        assert sessions[0]["status"] == "running"
-        assert sessions[0]["pid"] == 44444
-
-
-# ── TT_001: Test --tmux flag parsing and propagation ──────────────────
-
-
 class TestTmuxFlagParsing:
     """TT_001: Tests for --tmux flag parsing and propagation in cmd_spawn."""
 
@@ -2974,10 +2701,10 @@ class TestTmuxFallback:
         name = _tmux_session_name("abcd1234-5678-9abc-def0-123456789abc")
         assert name == "agentic-spawn-abcd1234"
 
-        # With epic + role
+        # With epic + role: agentic-{epic_short}-{role[:8]}-{session_id[:6]}
         epic = Path("/docs/epics/live/260306AG_tmux_orch")
         name = _tmux_session_name("abcd1234-5678", epic_folder=epic, role="build-python")
-        assert name == "agentic-260306AG-build-python"
+        assert name == "agentic-260306AG-build-py-abcd12"
 
         # With epic only (no role)
         name = _tmux_session_name("abcd1234-5678", epic_folder=epic)

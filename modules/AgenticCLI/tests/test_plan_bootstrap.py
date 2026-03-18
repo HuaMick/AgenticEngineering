@@ -59,11 +59,13 @@ class TestPlanBootstrap:
     """Tests verifying plan bootstrap has been removed and replaced by epic bootstrap."""
 
     def test_cmd_bootstrap_removed_from_plan_module(self):
-        """Verify cmd_bootstrap no longer exists in plan.py."""
-        from agenticcli.commands import plan
-        assert not hasattr(plan, "cmd_bootstrap"), (
-            "cmd_bootstrap should have been removed from plan.py - use epic module instead"
-        )
+        """Verify plan module no longer exists (fully deleted)."""
+        import importlib
+        try:
+            importlib.import_module("agenticcli.commands.plan")
+            assert False, "plan module should have been deleted"
+        except ImportError:
+            pass  # Expected — plan.py was fully removed
 
     def test_plan_bootstrap_cli_returns_error(self, cli_runner, temp_git_repo):
         """Test that bare 'agentic plan' command returns command-removed error."""
@@ -77,7 +79,8 @@ class TestPlanBootstrap:
         finally:
             os.chdir(original_cwd)
         assert code != 0
-        assert "Command removed" in stderr or "agentic epic" in stderr
+        # 'plan' command is fully removed; Typer returns "No such command" error
+        assert "Command removed" in stderr or "agentic epic" in stderr or "No such command" in stderr
 
     def test_epic_bootstrap_creates_folder_structure(self, temp_git_repo, _isolate_tinydb):
         """Test that 'agentic agent epic bootstrap' creates TinyDB record."""

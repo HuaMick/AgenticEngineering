@@ -98,7 +98,7 @@ class TestPlanWorkflowSequence:
 
     def test_plan_scaffold_status_workflow(self, cli_in_repo, integration_repo):
         """Test: scaffold plan -> check status -> validate."""
-        stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "test-feature")
+        stdout, stderr, code = cli_in_repo("epic", "scaffold", "test-feature")
         assert code == 0
         assert "Created planning folder" in stdout or "Created epic" in stdout
 
@@ -106,12 +106,12 @@ class TestPlanWorkflowSequence:
         stdout, stderr, code = cli_in_repo("epic", "status", "--epic", "test-feature")
         assert code == 0
 
-        stdout, stderr, code = cli_in_repo("agent", "epic", "validate")
+        stdout, stderr, code = cli_in_repo("epic", "validate")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
     def test_plan_with_json_output(self, cli_in_repo, integration_repo):
         """Test plan commands with JSON output mode."""
-        cli_in_repo("agent", "epic", "scaffold", "json-test")
+        cli_in_repo("epic", "scaffold", "json-test")
 
         # Epic data is in TinyDB only — no YAML files needed
         stdout, stderr, code = cli_in_repo("--json", "epic", "status", "--epic", "json-test")
@@ -122,11 +122,11 @@ class TestPlanWorkflowSequence:
 
     def test_plan_scaffold_already_exists(self, cli_in_repo, integration_repo):
         """Test scaffolding a plan that already exists (idempotent with TinyDB)."""
-        stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "duplicate-test")
+        stdout, stderr, code = cli_in_repo("epic", "scaffold", "duplicate-test")
         assert code == 0
 
         # Scaffold is deprecated and idempotent — duplicate calls succeed silently
-        stdout, stderr, code = cli_in_repo("agent", "epic", "scaffold", "duplicate-test")
+        stdout, stderr, code = cli_in_repo("epic", "scaffold", "duplicate-test")
         assert code == 0
 
 
@@ -364,7 +364,7 @@ class TestErrorRecoverySequence:
 
     def test_missing_required_args(self, cli_runner):
         """Test that missing required args show usage."""
-        stdout, stderr, code = cli_runner("agent", "epic", "scaffold")
+        stdout, stderr, code = cli_runner("epic", "scaffold")
         assert code == 2
 
     def test_invalid_plan_path_handled(self, cli_runner, temp_dir):
@@ -641,7 +641,7 @@ class TestCrossCommandIntegration:
         stdout, stderr, code = full_cli("setup", "health")
 
         # Step 3: Scaffold a plan
-        stdout, stderr, code = full_cli("agent", "epic", "scaffold", "feature-integration")
+        stdout, stderr, code = full_cli("epic", "scaffold", "feature-integration")
         assert code == 0
 
         # Step 5: Check plan status
@@ -649,7 +649,7 @@ class TestCrossCommandIntegration:
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
         # Step 6: Validate plan
-        stdout, stderr, code = full_cli("agent", "epic", "validate")
+        stdout, stderr, code = full_cli("epic", "validate")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
     def test_json_mode_consistency(self, full_cli):

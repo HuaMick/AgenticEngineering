@@ -4,7 +4,7 @@ Validates:
 - spawn_design_agent method exists and calls _run_role_agent("planner-design")
 - planner-design is in _PLANNING_PHASE_ROLES frozenset
 - _build_agent_prompt includes PLANNING-ONLY instruction for planner-design
-- _process_plan calls spawn_design_agent after story-generator
+- _process_plan calls spawn_design_agent after story-writer
 - Design agent failure is handled as non-fatal (continues processing)
 """
 

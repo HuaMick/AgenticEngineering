@@ -30,7 +30,7 @@ def mock_sessions_dir(sessions_dir, monkeypatch):
     monkeypatch.setattr(session, "_get_logs_dir", lambda: logs_dir)
     context_dir = sessions_dir / "context"
     context_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
+    monkeypatch.setattr(session, "get_context_dir", lambda: context_dir)
 
     # Disable SDK path so subprocess-based tests exercise the subprocess code path
     import agenticcli.utils.sdk_runner as _sdk_mod

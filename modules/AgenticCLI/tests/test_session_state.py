@@ -3,56 +3,13 @@
 from unittest.mock import MagicMock, patch
 
 from agenticcli.utils.session_state import (
-    make_session_data,
-    mark_completed,
     mark_failed,
-    mark_running,
 )
-
-
-class TestMakeSessionData:
-    def test_minimal(self):
-        data = make_session_data("abc-123")
-        assert data["session_id"] == "abc-123"
-        assert data["status"] == "starting"
-        assert data["pid"] is None
-        assert "started_at" in data
-
-    def test_with_role_and_epic(self):
-        data = make_session_data("abc", role="explore", epic_folder="test_epic")
-        assert data["role"] == "explore"
-        assert data["epic_folder"] == "test_epic"
-
-    def test_optional_fields_omitted_when_empty(self):
-        data = make_session_data("abc")
-        assert "role" not in data
-        assert "epic_folder" not in data
-        assert "transport" not in data
-
-
-class TestMarkRunning:
-    def test_updates_status(self):
-        data = make_session_data("abc")
-        mark_running(data, pid=1234, transport="sdk-tmux", tmux_session="agent-explore")
-        assert data["status"] == "running"
-        assert data["pid"] == 1234
-        assert data["transport"] == "sdk-tmux"
-        assert data["tmux_session"] == "agent-explore"
-
-
-class TestMarkCompleted:
-    def test_basic(self):
-        data = make_session_data("abc")
-        mark_completed(data, cost_usd=0.05, duration_ms=5000)
-        assert data["status"] == "completed"
-        assert data["exit_code"] == 0
-        assert data["cost_usd"] == 0.05
-        assert "ended_at" in data
 
 
 class TestMarkFailed:
     def test_basic(self):
-        data = make_session_data("abc")
+        data = {"session_id": "abc", "status": "running"}
         mark_failed(data, error_code="timeout", detail="Timed out", retryable=True)
         assert data["status"] == "failed"
         assert data["exit_code"] == 1
@@ -61,7 +18,7 @@ class TestMarkFailed:
         assert data["failure_reason"]["suggested_action"] == "retry"
 
     def test_non_retryable(self):
-        data = make_session_data("abc")
+        data = {"session_id": "abc", "status": "running"}
         mark_failed(data, error_code="crash", retryable=False)
         assert data["failure_reason"]["suggested_action"] == "escalate"
 

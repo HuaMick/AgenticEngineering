@@ -110,8 +110,8 @@ class TestAgentHelpContent:
 
         # Should reference the agent name in bootstrap command
         assert any("build-python" in cmd for cmd in commands)
-        # Should include task commands
-        assert any("plan task" in cmd for cmd in commands)
+        # Should include task commands (new style: agent epic ticket)
+        assert any("epic ticket" in cmd for cmd in commands)
 
     def test_context_includes_role(self):
         """Test that context includes role description when available."""

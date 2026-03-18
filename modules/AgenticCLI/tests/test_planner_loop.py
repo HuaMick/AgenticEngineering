@@ -362,7 +362,7 @@ class TestPlannerLoopRunner:
         monkeypatch.setattr(workflow, "spawn_epic_creator",
                             overrides.get("spawn_epic_creator", lambda pf: _ok_result()))
         monkeypatch.setattr(workflow, "spawn_explore_agents",
-                            overrides.get("spawn_explore", lambda pf: _ok_result()))
+                            overrides.get("spawn_explore", lambda pf, **kw: _ok_result()))
         monkeypatch.setattr(workflow, "spawn_story_agent",
                             overrides.get("spawn_story", lambda pf: _ok_result()))
         monkeypatch.setattr(workflow, "spawn_design_agent",
@@ -404,7 +404,7 @@ class TestPlannerLoopRunner:
             call_log.append(("spawn_story", pf))
             return _ok_result(session_id="story-session-abc")
 
-        def tracking_spawn_explore(pf):
+        def tracking_spawn_explore(pf, **kw):
             call_log.append(("spawn_explore", pf))
             return _ok_result(session_id="explore-session-abc")
 
@@ -486,7 +486,7 @@ class TestPlannerLoopRunner:
         runner = self._make_runner(
             monkeypatch,
             discover=discover,
-            spawn_explore=lambda pf: _fail_result(),
+            spawn_explore=lambda pf, **kw: _fail_result(),
         )
         result = runner.run(max_iterations=5)
 
@@ -1122,7 +1122,7 @@ class TestValidateResult:
         result = SessionResult(status="completed", result="some output", duration_ms=0)
 
         with caplog.at_level(logging.WARNING, logger="agenticcli.workflows.planner_loop"):
-            workflow._validate_result(result, "story-generator")
+            workflow._validate_result(result, "story-writer")
 
         warning_messages = [r.message for r in caplog.records if r.levelname == "WARNING"]
         assert any("zero duration" in m.lower() or "duration" in m.lower() for m in warning_messages)
@@ -1169,7 +1169,7 @@ class TestValidateResult:
         monkeypatch.setattr(workflow, "run_health_check", lambda: None)
         monkeypatch.setattr(workflow, "compile_bootstrap_context", lambda role="orchestration-planning": {})
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda pf: _ok_result(duration_ms=100))
-        monkeypatch.setattr(workflow, "spawn_explore_agents", lambda pf: _ok_result(duration_ms=100))
+        monkeypatch.setattr(workflow, "spawn_explore_agents", lambda pf, **kw: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "spawn_story_agent", lambda pf: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "spawn_design_agent", lambda pf: SessionResult(status="completed", result="DESIGN_STATUS: approved", duration_ms=100))
         monkeypatch.setattr(workflow, "run_review_cycle", lambda pf, **kw: (True, 1, "approved"))
@@ -1192,9 +1192,9 @@ class TestValidateResult:
 
         runner.run(max_iterations=5)
 
-        # epic-creator, story-generator, planner-explore, planner-design, and planner-orchestration should all be validated
+        # epic-creator, story-writer, planner-explore, planner-design, and planner-orchestration should all be validated
         assert "epic-creator" in validated_roles
-        assert "story-generator" in validated_roles
+        assert "story-writer" in validated_roles
         assert "planner-explore" in validated_roles
         assert "planner-design" in validated_roles
         assert "planner-orchestration" in validated_roles
@@ -1587,7 +1587,7 @@ class TestTicketPromotion:
         # Mock all agent spawn steps to succeed
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "spawn_story_agent", lambda f: _ok_result())
-        monkeypatch.setattr(workflow, "spawn_explore_agents", lambda f: _ok_result())
+        monkeypatch.setattr(workflow, "spawn_explore_agents", lambda f, **kw: _ok_result())
         monkeypatch.setattr(workflow, "spawn_design_agent", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "spawn_orchestration_agent", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "_validate_result", lambda result, name: None)
@@ -1677,13 +1677,14 @@ class TestTmuxSdkSessionRecords:
             "agenticcli.workflows.planner_loop._session_store.save",
             lambda d: save_calls.append(dict(d)),
         )
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop._session_store.load",
+            lambda sid: None,
+        )
         # Mock subprocess.run to fail immediately (spawn fails)
         monkeypatch.setattr(
             "subprocess.run",
             lambda *a, **kw: MagicMock(returncode=1, stderr="fail", stdout=""),
-        )
-        monkeypatch.setattr(
-            "agenticcli.workflows.planner_loop.write_context_file", lambda sid, p: None,
         )
         monkeypatch.setattr(
             "agenticcli.workflows.planner_loop.build_spawn_command",
@@ -1709,14 +1710,15 @@ class TestTmuxSdkSessionRecords:
             "agenticcli.workflows.planner_loop._session_store.save",
             lambda d: save_calls.append(dict(d)),
         )
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop._session_store.load",
+            lambda sid: {"session_id": sid},
+        )
         # Mock spawn to succeed with a different session_id in output
         spawn_output = json.dumps({"session_id": "spawned-real-id"})
         monkeypatch.setattr(
             "subprocess.run",
             lambda *a, **kw: MagicMock(returncode=0, stdout=spawn_output, stderr=""),
-        )
-        monkeypatch.setattr(
-            "agenticcli.workflows.planner_loop.write_context_file", lambda sid, p: None,
         )
         monkeypatch.setattr(
             "agenticcli.workflows.planner_loop.build_spawn_command",
@@ -1778,8 +1780,8 @@ class TestProcessPlanAutoRegister:
         runner = PlannerLoopRunner(workflow=workflow, epic_folder=epic_name)
 
         # Mock the lock and agent spawns — we only care about auto-registration
-        monkeypatch.setattr(runner, "_acquire_epic_lock", lambda ef: True)
-        monkeypatch.setattr(runner, "_release_epic_lock", lambda ef: None)
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.acquire_epic_lock", lambda ef: True)
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.release_epic_lock", lambda ef: None)
 
         # Make spawn_epic_creator return failure so we exit early after registration
         workflow.spawn_epic_creator = MagicMock(return_value=_fail_result())
@@ -1811,8 +1813,8 @@ class TestProcessPlanAutoRegister:
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         runner = PlannerLoopRunner(workflow=workflow, epic_folder="nonexistent_epic")
 
-        monkeypatch.setattr(runner, "_acquire_epic_lock", lambda ef: True)
-        monkeypatch.setattr(runner, "_release_epic_lock", lambda ef: None)
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.acquire_epic_lock", lambda ef: True)
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.release_epic_lock", lambda ef: None)
 
         result = runner._process_plan("nonexistent_epic")
         assert result is False
@@ -1822,76 +1824,6 @@ class TestProcessPlanAutoRegister:
 # ---------------------------------------------------------------------------
 # Fix: Bootstrap --epic flag
 # ---------------------------------------------------------------------------
-
-
-class TestBootstrapEpicFlag:
-    """Test --epic flag on context bootstrap command."""
-
-    def test_bootstrap_with_epic_flag(self, tmp_path, monkeypatch, capsys):
-        """Setting args.epic returns correct epic without auto-resolution."""
-        from agenticcli.commands.context import cmd_bootstrap
-        from agenticguidance.services.epic_repository import EpicRepository
-
-        (tmp_path / ".git").mkdir(exist_ok=True)
-        db_path = tmp_path / ".agentic" / "epics.db"
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-        repo.create_epic({
-            "epic_folder_name": "260311PB_my_epic",
-            "epic_folder": str(tmp_path / "epics" / "260311PB_my_epic"),
-            "name": "My Epic",
-            "status": "active",
-            "context": "Test objective",
-        })
-        repo.close()
-
-        # Patch at the console module level (imported inside cmd_bootstrap)
-        import agenticcli.console
-        monkeypatch.setattr(agenticcli.console, "is_json_output", lambda: True)
-        import agenticcli.commands.epic as epic_mod
-        monkeypatch.setattr(epic_mod, "_get_repo_db_path", lambda: db_path)
-
-        args = SimpleNamespace(
-            role="build-python",
-            epic="260311PB_my_epic",
-        )
-        cmd_bootstrap(args)
-
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-        assert output["epic_folder"] == "260311PB_my_epic"
-        assert output["role"] == "build-python"
-
-    def test_bootstrap_without_epic_flag(self, tmp_path, monkeypatch, capsys):
-        """Without --epic, auto-resolution is used (backward compat)."""
-        from agenticcli.commands.context import cmd_bootstrap
-
-        import agenticcli.console
-        monkeypatch.setattr(agenticcli.console, "is_json_output", lambda: True)
-
-        args = SimpleNamespace(role="build-python", epic=None)
-
-        # Mock the resolver to return a known epic
-        mock_resolver_cls = MagicMock()
-        mock_resolver = mock_resolver_cls.return_value
-        mock_resolver.resolve_active_epic.return_value = {
-            "plan_folder": Path("/tmp/epics/260311XX_auto"),
-            "plan_folder_name": "260311XX_auto",
-            "objective": "Auto resolved",
-        }
-        mock_resolver.extract_current_ticket.return_value = None
-
-        import agenticguidance.services
-        monkeypatch.setattr(
-            agenticguidance.services, "MainFirstPlanResolver", mock_resolver_cls
-        )
-
-        cmd_bootstrap(args)
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-        assert output["epic_folder"] == "260311XX_auto"
-        mock_resolver.resolve_active_epic.assert_called_once()
 
 
 class TestAgentPromptIncludesEpicFlag:
@@ -1929,8 +1861,8 @@ class TestBudgetEnforcement:
             workflow=workflow, epic_folder="my_plan", budget_usd=0.01,
         )
 
-        monkeypatch.setattr(runner, "_acquire_epic_lock", lambda ef: True)
-        monkeypatch.setattr(runner, "_release_epic_lock", lambda ef: None)
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.acquire_epic_lock", lambda ef: True)
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.release_epic_lock", lambda ef: None)
 
         # Epic creator returns with high cost
         workflow.spawn_epic_creator = MagicMock(
@@ -1984,9 +1916,7 @@ class TestConcurrentGuard:
 
     def test_concurrent_guard_blocks_duplicate(self, tmp_path, monkeypatch):
         """Lock file with live PID → returns False."""
-        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
-
-        runner = PlannerLoopRunner(workflow=PlannerLoopWorkflow())
+        from agenticcli.utils.epic_lock import acquire_epic_lock
 
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
@@ -1995,14 +1925,12 @@ class TestConcurrentGuard:
         lock_file.parent.mkdir(parents=True)
         lock_file.write_text(json.dumps({"pid": os.getpid(), "started_at": "2026-01-01"}))
 
-        result = runner._acquire_epic_lock("my_plan")
+        result = acquire_epic_lock("my_plan")
         assert result is False
 
     def test_concurrent_guard_clears_stale_lock(self, tmp_path, monkeypatch):
         """Lock file with dead PID → clears and proceeds."""
-        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
-
-        runner = PlannerLoopRunner(workflow=PlannerLoopWorkflow())
+        from agenticcli.utils.epic_lock import acquire_epic_lock
 
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
@@ -2011,7 +1939,7 @@ class TestConcurrentGuard:
         # PID 999999999 is almost certainly not running
         lock_file.write_text(json.dumps({"pid": 999999999, "started_at": "2026-01-01"}))
 
-        result = runner._acquire_epic_lock("stale_plan")
+        result = acquire_epic_lock("stale_plan")
         assert result is True
 
     def test_lock_released_after_completion(self, tmp_path, monkeypatch):

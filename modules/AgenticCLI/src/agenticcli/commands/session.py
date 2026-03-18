@@ -40,14 +40,6 @@ def _get_logs_dir() -> Path:
     return logs_dir
 
 
-def _get_context_dir() -> Path:
-    """Get the context directory for pre-compiled session context files.
-
-    Returns:
-        Path to ~/.agentic/sessions/context/
-    """
-    return get_context_dir()
-
 
 def _tmux_session_name(
     session_id: str,
@@ -586,19 +578,16 @@ def _resolve_epic_folder(epic_name: str) -> Path | None:
     return None
 
 
-# Backward compatibility alias
-_resolve_plan_folder = _resolve_epic_folder
-
 
 _DOGFOOD_STRATEGY = """
 Dogfood Strategy — Self-Healing Gaps:
 If you encounter a gap in the system (missing service, broken workflow, missing CLI command),
 do NOT work around it silently. Instead:
-1. Check if a plan already exists: agentic -j plan list
-2. If a relevant plan exists, add a task to it or start working on the gap task.
-3. If no plan exists, create one: agentic plan init <descriptive-name>
+1. Check if an epic already exists: agentic epic list
+2. If a relevant epic exists, add a ticket to it or start working on the gap ticket.
+3. If no epic exists, create one: agentic epic list (check docs/epics/live/ for existing epics)
 4. Then spawn a subagent to implement the fix:
-   agentic session spawn --role build-python --epic <plan_folder> -b
+   agentic session spawn --role build-python --epic <epic_folder> -b
 5. Continue your original work once the gap is resolved.
 This ensures gaps are tracked and fixed systematically rather than patched ad-hoc.
 """.strip()
@@ -610,7 +599,7 @@ _PLANNING_PHASE_ROLES_SESSION = frozenset({
     "epic-creator",
     "planner-explore",
     "explore",
-    "story-generator",
+    "story-writer",
     "planner-design",
     "planner-build",
     "planner-test",
@@ -857,12 +846,6 @@ def cmd_spawn(args, ctx=None):
             print_error(f"Epic folder not found: {plan_name}")
             sys.exit(1)
 
-    # Warn if epic has pending questions (informational only)
-    if epic_folder:
-        from agenticcli.commands.plan import has_pending_questions
-        if has_pending_questions(epic_folder):
-            print_warning(f"Epic {epic_folder.name} has pending questions. Check: agentic question list --epic {epic_folder.name}")
-
     # Validate: --task requires --epic
     if task_id and not epic_folder:
         print_error("--task requires --epic to be set.")
@@ -1087,16 +1070,6 @@ def cmd_spawn(args, ctx=None):
                         session_data["epic_folder"] = str(epic_folder)
                     _store.save(session_data)
 
-                    # Auto-start question watch-daemon
-                    if epic_folder:
-                        try:
-                            from agenticcli.commands.question import _ensure_watch_daemon
-                            started, reason = _ensure_watch_daemon(epic_folder)
-                            if started:
-                                logger.info("Auto-started question watch-daemon for %s", epic_folder.name)
-                        except Exception as e:
-                            logger.debug("Failed to auto-start watch-daemon: %s", e)
-
                     if background:
                         if is_json_output():
                             print_json({
@@ -1209,16 +1182,6 @@ def cmd_spawn(args, ctx=None):
                         session_data["tmux_session"] = tmux_session_name
                         session_data["last_activity"] = session_data["started_at"]
                         _store.save(session_data)
-
-                        # Auto-start ntfy question watch-daemon for this epic
-                        if epic_folder:
-                            try:
-                                from agenticcli.commands.question import _ensure_watch_daemon
-                                started, reason = _ensure_watch_daemon(epic_folder)
-                                if started:
-                                    logger.info("Auto-started question watch-daemon for %s", epic_folder.name)
-                            except Exception as e:
-                                logger.debug("Failed to auto-start watch-daemon: %s", e)
 
                         if background:
                             # Background: return immediately
@@ -1338,16 +1301,6 @@ def cmd_spawn(args, ctx=None):
             session_data["stderr_log"] = str(logs_dir / f"{session_id}.stderr.log")
             _store.save(session_data)
 
-            # Auto-start ntfy question watch-daemon for this epic
-            if epic_folder:
-                try:
-                    from agenticcli.commands.question import _ensure_watch_daemon
-                    started, reason = _ensure_watch_daemon(epic_folder)
-                    if started:
-                        logger.info("Auto-started question watch-daemon for %s", epic_folder.name)
-                except Exception as e:
-                    logger.debug("Failed to auto-start watch-daemon: %s", e)
-
             # Check for immediate spawn failure
             time.sleep(1)
             if not is_process_running(process.pid):
@@ -1401,16 +1354,6 @@ def cmd_spawn(args, ctx=None):
             session_data["pid"] = os.getpid()  # Current process for tracking
             session_data["status"] = "running"
             _store.save(session_data)
-
-            # Auto-start ntfy question watch-daemon for this epic
-            if epic_folder:
-                try:
-                    from agenticcli.commands.question import _ensure_watch_daemon
-                    started, reason = _ensure_watch_daemon(epic_folder)
-                    if started:
-                        logger.info("Auto-started question watch-daemon for %s", epic_folder.name)
-                except Exception as e:
-                    logger.debug("Failed to auto-start watch-daemon: %s", e)
 
             # Display context metrics before starting
             if not is_json_output():

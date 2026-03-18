@@ -57,7 +57,7 @@ def mock_env(sessions_dir, logs_dir, monkeypatch):
 
     context_dir = sessions_dir / "context"
     context_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(session, "_get_context_dir", lambda: context_dir)
+    monkeypatch.setattr(session, "get_context_dir", lambda: context_dir)
     monkeypatch.setattr(session, "_get_logs_dir", lambda: logs_dir)
 
     # Disable SDK path to force subprocess fallback

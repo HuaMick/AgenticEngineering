@@ -335,7 +335,7 @@ class TestOrchestrationGenerateMinimalPlan:
     def test_orchestration_generate_minimal_plan(self, minimal_plan, cli_runner):
         """Test generating MMD from a minimal plan with single phase."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["epic", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
         assert "Generated" in stdout or "orchestration" in stdout.lower()
@@ -353,7 +353,7 @@ class TestOrchestrationGenerateMinimalPlan:
     def test_orchestration_generate_includes_goal(self, minimal_plan, cli_runner):
         """Test that generated MMD includes objective as GOAL."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["epic", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
 
@@ -365,7 +365,7 @@ class TestOrchestrationGenerateMinimalPlan:
     def test_orchestration_generate_includes_agent_routing(self, minimal_plan, cli_runner):
         """Test that generated MMD includes AGENT_ROUTING header."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["epic", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
 
@@ -381,7 +381,7 @@ class TestOrchestrationGenerateComplexPlan:
     def test_orchestration_generate_complex_plan(self, complex_plan, cli_runner):
         """Test generating MMD from a complex plan with multiple phases."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(complex_plan)]
+            ["epic", "orchestration", "generate", "--plan", str(complex_plan)]
         )
         assert code == 0
 
@@ -401,7 +401,7 @@ class TestOrchestrationGenerateComplexPlan:
     ):
         """Test that generated MMD lists all phases in PHASES header."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(complex_plan)]
+            ["epic", "orchestration", "generate", "--plan", str(complex_plan)]
         )
         assert code == 0
 
@@ -417,7 +417,7 @@ class TestOrchestrationGenerateComplexPlan:
     def test_orchestration_generate_test_phase_routing(self, complex_plan, cli_runner):
         """Test that test phases get test-builder agent routing."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(complex_plan)]
+            ["epic", "orchestration", "generate", "--plan", str(complex_plan)]
         )
         assert code == 0
 
@@ -430,7 +430,7 @@ class TestOrchestrationGenerateComplexPlan:
     def test_orchestration_generate_includes_status(self, complex_plan, cli_runner):
         """Test that generated MMD includes STATUS header with phase statuses."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(complex_plan)]
+            ["epic", "orchestration", "generate", "--plan", str(complex_plan)]
         )
         assert code == 0
 
@@ -453,7 +453,7 @@ class TestOrchestrationGenerateCreatesFile:
         assert len(mmd_files_before) == 0
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["epic", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
 
@@ -464,7 +464,7 @@ class TestOrchestrationGenerateCreatesFile:
     def test_orchestration_generate_file_naming(self, minimal_plan, cli_runner):
         """Test that generated MMD file uses plan folder name for naming."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(minimal_plan)]
+            ["epic", "orchestration", "generate", "--plan", str(minimal_plan)]
         )
         assert code == 0
 
@@ -476,7 +476,6 @@ class TestOrchestrationGenerateCreatesFile:
         """Test generating MMD with custom output filename."""
         stdout, stderr, code = cli_runner(
             [
-                "agent",
                 "epic",
                 "orchestration",
                 "generate",
@@ -501,7 +500,7 @@ class TestOrchestrationGenerateForceOverwrite:
     ):
         """Test that generate fails when MMD exists without --force."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(plan_with_existing_mmd)]
+            ["epic", "orchestration", "generate", "--plan", str(plan_with_existing_mmd)]
         )
         assert code != 0
         assert "already exists" in stderr or "already exists" in stdout
@@ -518,7 +517,6 @@ class TestOrchestrationGenerateForceOverwrite:
 
         stdout, stderr, code = cli_runner(
             [
-                "agent",
                 "epic",
                 "orchestration",
                 "generate",
@@ -542,7 +540,6 @@ class TestOrchestrationGenerateForceOverwrite:
         """Test that --force completely replaces the file content."""
         stdout, stderr, code = cli_runner(
             [
-                "agent",
                 "epic",
                 "orchestration",
                 "generate",
@@ -575,7 +572,7 @@ class TestOrchestrationValidateMatchingMmd:
     ):
         """Test validation passes when MMD matches YAML phases."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "validate", "--plan", str(plan_with_matching_mmd)]
+            ["epic", "orchestration", "validate", "--plan", str(plan_with_matching_mmd)]
         )
         assert code == 0
         assert "passed" in stdout.lower() or "valid" in stdout.lower()
@@ -585,7 +582,7 @@ class TestOrchestrationValidateMatchingMmd:
     ):
         """Test that validation reports which files were checked."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "validate", "--plan", str(plan_with_matching_mmd)]
+            ["epic", "orchestration", "validate", "--plan", str(plan_with_matching_mmd)]
         )
         assert code == 0
         assert "orchestration_matching_mmd.mmd" in stdout
@@ -601,7 +598,6 @@ class TestOrchestrationValidateMatchingMmd:
         stdout, stderr, code = cli_runner(
             [
                 "-j",
-                "agent",
                 "epic",
                 "orchestration",
                 "validate",
@@ -626,7 +622,6 @@ class TestOrchestrationValidateMissingPhase:
         """Test validation fails when MMD is missing a phase from YAML."""
         stdout, stderr, code = cli_runner(
             [
-                "agent",
                 "epic",
                 "orchestration",
                 "validate",
@@ -648,7 +643,6 @@ class TestOrchestrationValidateMissingPhase:
         stdout, stderr, code = cli_runner(
             [
                 "-j",
-                "agent",
                 "epic",
                 "orchestration",
                 "validate",
@@ -677,7 +671,6 @@ class TestOrchestrationValidateMissingTask:
         """Test validation warns when MMD is missing task IDs from YAML."""
         stdout, stderr, code = cli_runner(
             [
-                "agent",
                 "epic",
                 "orchestration",
                 "validate",
@@ -698,7 +691,6 @@ class TestOrchestrationValidateMissingTask:
         """Test validation fails in strict mode when tasks are missing."""
         stdout, stderr, code = cli_runner(
             [
-                "agent",
                 "epic",
                 "orchestration",
                 "validate",
@@ -719,7 +711,6 @@ class TestOrchestrationValidateMissingTask:
         stdout, stderr, code = cli_runner(
             [
                 "-j",
-                "agent",
                 "epic",
                 "orchestration",
                 "validate",
@@ -743,7 +734,7 @@ class TestOrchestrationValidateNoMmdFile:
     def test_orchestration_validate_no_mmd_file(self, plan_without_mmd, cli_runner):
         """Test validation fails gracefully when no MMD file exists."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "validate", "--plan", str(plan_without_mmd)]
+            ["epic", "orchestration", "validate", "--plan", str(plan_without_mmd)]
         )
         # Should fail with exit code 2 (file not found)
         assert code == 2
@@ -753,7 +744,7 @@ class TestOrchestrationValidateNoMmdFile:
     def test_orchestration_validate_no_mmd_json_output(self, plan_without_mmd, cli_runner):
         """Test no MMD error with JSON output."""
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "orchestration", "validate", "--plan", str(plan_without_mmd)]
+            ["-j", "epic", "orchestration", "validate", "--plan", str(plan_without_mmd)]
         )
         assert code == 2
 
@@ -773,7 +764,7 @@ class TestOrchestrationGenerateEdgeCases:
         # No plan files created, no TinyDB entry
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(plan_dir)]
+            ["epic", "orchestration", "generate", "--plan", str(plan_dir)]
         )
         assert code != 0
         # With TinyDB: may report "No phases" or "No plan" depending on implementation
@@ -795,7 +786,7 @@ class TestOrchestrationGenerateEdgeCases:
         tinydb_populator("260128EP_empty_phases", plan_dir, plan_content)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(plan_dir)]
+            ["epic", "orchestration", "generate", "--plan", str(plan_dir)]
         )
         assert code != 0
         assert "No phases" in (stdout + stderr) or "phases" in (stdout + stderr).lower()
@@ -830,7 +821,7 @@ class TestOrchestrationGenerateEdgeCases:
         tinydb_populator("260128NS_nested_structure", plan_dir, tinydb_content)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "generate", "--plan", str(plan_dir)]
+            ["epic", "orchestration", "generate", "--plan", str(plan_dir)]
         )
         assert code == 0
 
@@ -857,7 +848,7 @@ flowchart LR
         # No plan files created, no TinyDB entry
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "validate", "--plan", str(plan_dir)]
+            ["epic", "orchestration", "validate", "--plan", str(plan_dir)]
         )
         assert code == 2
         assert "No plan" in (stdout + stderr) or "not found" in (stdout + stderr).lower() or "No task" in (stdout + stderr)
@@ -878,7 +869,7 @@ flowchart LR
         mmd_file.write_text(mmd_content)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "validate", "--plan", str(plan_dir)]
+            ["epic", "orchestration", "validate", "--plan", str(plan_dir)]
         )
         # Should handle gracefully (skip invalid file or warn)
         # May still succeed if no valid phases found, or fail
@@ -906,7 +897,7 @@ flowchart LR
         tinydb_populator("260128MM_multi_mmd", plan_dir, plan_content)
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "orchestration", "validate", "--plan", str(plan_dir)]
+            ["epic", "orchestration", "validate", "--plan", str(plan_dir)]
         )
         # Should succeed and potentially warn about multiple files
         assert code == 0
@@ -926,7 +917,7 @@ class TestGetValidAgentTypes:
 
     def test_discovers_agents_from_mock_directory(self, tmp_path):
         """Test that get_valid_agent_types discovers agents from directory structure."""
-        from agenticcli.commands.plan import get_valid_agent_types
+        from agenticcli.commands.epic import get_valid_agent_types
 
         # Create mock agent directory structure
         agents_dir = tmp_path / "agents"
@@ -945,7 +936,7 @@ class TestGetValidAgentTypes:
 
     def test_fallback_when_directory_missing(self, tmp_path):
         """Test fallback to hardcoded set when agents directory doesn't exist."""
-        from agenticcli.commands.plan import get_valid_agent_types, _FALLBACK_AGENT_TYPES
+        from agenticcli.commands.epic import get_valid_agent_types, _FALLBACK_AGENT_TYPES
 
         nonexistent = tmp_path / "nonexistent"
         result = get_valid_agent_types(agents_dir=nonexistent)
@@ -954,7 +945,7 @@ class TestGetValidAgentTypes:
 
     def test_fallback_when_directory_empty(self, tmp_path):
         """Test fallback when directory exists but has no agents."""
-        from agenticcli.commands.plan import get_valid_agent_types, _FALLBACK_AGENT_TYPES
+        from agenticcli.commands.epic import get_valid_agent_types, _FALLBACK_AGENT_TYPES
 
         agents_dir = tmp_path / "agents"
         agents_dir.mkdir()
@@ -965,7 +956,7 @@ class TestGetValidAgentTypes:
 
     def test_discovers_real_agents(self):
         """Test that get_valid_agent_types discovers from real filesystem."""
-        from agenticcli.commands.plan import get_valid_agent_types
+        from agenticcli.commands.epic import get_valid_agent_types
 
         result = get_valid_agent_types()
 
@@ -977,7 +968,7 @@ class TestGetValidAgentTypes:
 
     def test_skips_hidden_directories(self, tmp_path):
         """Test that hidden directories are skipped."""
-        from agenticcli.commands.plan import get_valid_agent_types
+        from agenticcli.commands.epic import get_valid_agent_types
 
         agents_dir = tmp_path / "agents"
         (agents_dir / "build" / "build-python").mkdir(parents=True)
@@ -990,7 +981,7 @@ class TestGetValidAgentTypes:
 
     def test_skips_files_in_category_dir(self, tmp_path):
         """Test that files (like manifest.yml) in category dirs are skipped."""
-        from agenticcli.commands.plan import get_valid_agent_types
+        from agenticcli.commands.epic import get_valid_agent_types
 
         agents_dir = tmp_path / "agents"
         (agents_dir / "build" / "build-python").mkdir(parents=True)
@@ -1038,7 +1029,7 @@ class TestAgentRoutingValidationErrors:
 
         # We need to call the inner validation function directly
         import re
-        from agenticcli.commands.plan import get_valid_agent_types
+        from agenticcli.commands.epic import get_valid_agent_types
 
         valid_agent_types = get_valid_agent_types(agents_dir=tmp_path / "agents_fake")
         # Since agents_fake doesn't exist, it uses fallback
@@ -1048,7 +1039,7 @@ class TestAgentRoutingValidationErrors:
 
     def test_valid_agent_routing_passes(self, tmp_path):
         """Test that valid agent types in AGENT_ROUTING do not produce errors."""
-        from agenticcli.commands.plan import get_valid_agent_types
+        from agenticcli.commands.epic import get_valid_agent_types
 
         agents_dir = tmp_path / "agents"
         (agents_dir / "build" / "build-python").mkdir(parents=True)
@@ -1094,138 +1085,3 @@ class TestAgentRoutingValidationErrors:
 
 
 # =============================================================================
-# LOOP TYPE VALIDATION TESTS (GA_010, GA_011, GA_012)
-# =============================================================================
-
-
-class TestGetValidLoopTypes:
-    """Tests for the loop type registry."""
-
-    def test_returns_expected_loop_types(self):
-        """Test that get_valid_loop_types returns expected set from real file."""
-        from agenticcli.commands.plan import get_valid_loop_types
-
-        result = get_valid_loop_types()
-
-        assert "test-fix-loop" in result
-        assert "audit-test-fix-loop" in result
-        assert "planner-loop" in result
-        assert "guidance-test-loop" in result
-        assert len(result) >= 10
-
-    def test_fallback_when_file_missing(self, tmp_path):
-        """Test fallback to hardcoded set when file doesn't exist."""
-        from agenticcli.commands.plan import get_valid_loop_types, _FALLBACK_LOOP_TYPES
-
-        result = get_valid_loop_types(loops_file=tmp_path / "nonexistent.yml")
-
-        assert result == _FALLBACK_LOOP_TYPES
-
-    def test_fallback_on_invalid_yaml(self, tmp_path):
-        """Test fallback when YAML is invalid."""
-        from agenticcli.commands.plan import get_valid_loop_types, _FALLBACK_LOOP_TYPES
-
-        bad_file = tmp_path / "bad.yml"
-        bad_file.write_text("{{{invalid yaml}")
-
-        result = get_valid_loop_types(loops_file=bad_file)
-
-        assert result == _FALLBACK_LOOP_TYPES
-
-    def test_reads_from_custom_file(self, tmp_path):
-        """Test reading loop types from a custom file."""
-        from agenticcli.commands.plan import get_valid_loop_types
-
-        custom_file = tmp_path / "loops.yml"
-        custom_file.write_text(yaml.dump({
-            "loop_types": {
-                "custom-loop": {"purpose": "test", "maximum_iterations": 3},
-                "another-loop": {"purpose": "test2", "maximum_iterations": 5},
-            }
-        }))
-
-        result = get_valid_loop_types(loops_file=custom_file)
-
-        assert result == {"custom-loop", "another-loop"}
-
-
-class TestLoopTypeValidation:
-    """Tests for loop type validation in cmd_validate."""
-
-    def test_valid_loop_type_no_warning(self, tmp_path, cli_runner):
-        """Test that valid loop types don't produce warnings."""
-        plan_dir = tmp_path / "260208XX_test"
-        plan_dir.mkdir()
-
-        plan_content = {
-            "name": "test-plan",
-            "objective": "Test",
-            "status": "pending",
-            "phases": [],
-            "loop_structures": [
-                {"id": "loop1", "type": "test-fix-loop", "applies_to_phase": "P1"},
-            ],
-        }
-        # Create a minimal MMD to avoid missing-mmd errors
-        (plan_dir / "orchestration_test.mmd").write_text("flowchart LR\n    Start((Start)) --> End((End))")
-
-        stdout, stderr, code = cli_runner(
-            ["agent", "epic", "validate", str(plan_dir)]
-        )
-        output = stdout + stderr
-        assert "not defined in agent-loops.yml" not in output
-
-    def test_invalid_loop_type_warns(self, tmp_path, cli_runner, tinydb_populator):
-        """Test that invalid loop types in YAML are handled.
-
-        Note: With TinyDB-only mode, loop_structures are stored in YAML on disk
-        but cmd_validate reads from TinyDB (yaml_files=[]).
-        The loop type check is therefore skipped when no YAML files are scanned.
-        This test verifies the command exits cleanly rather than crashing.
-        """
-        plan_dir = tmp_path / "260208XX_test"
-        plan_dir.mkdir()
-
-        plan_content = {
-            "name": "test-plan",
-            "objective": "Test",
-            "status": "pending",
-            "phases": [],
-            "loop_structures": [
-                {"id": "loop1", "type": "nonexistent-loop-type", "applies_to_phase": "P1"},
-            ],
-        }
-        (plan_dir / "orchestration_test.mmd").write_text("flowchart LR\n    Start((Start)) --> End((End))")
-        tinydb_populator("260208XX_test", plan_dir, {
-            "name": "test-plan",
-            "objective": "Test",
-            "status": "pending",
-            "phases": [],
-        })
-
-        stdout, stderr, code = cli_runner(
-            ["agent", "epic", "validate", str(plan_dir)]
-        )
-        # With TinyDB-only mode, loop_structures are not scanned from YAML
-        # so no warning about invalid loop types is generated.
-        # Command should exit cleanly (0 or with warnings about other things)
-        assert code in (0, 1)  # May warn about missing phases/tasks
-
-    def test_no_loop_structures_no_warning(self, tmp_path, cli_runner):
-        """Test that plans without loop_structures validate cleanly."""
-        plan_dir = tmp_path / "260208XX_test"
-        plan_dir.mkdir()
-
-        plan_content = {
-            "name": "test-plan",
-            "objective": "Test",
-            "status": "pending",
-            "phases": [],
-        }
-        (plan_dir / "orchestration_test.mmd").write_text("flowchart LR\n    Start((Start)) --> End((End))")
-
-        stdout, stderr, code = cli_runner(
-            ["agent", "epic", "validate", str(plan_dir)]
-        )
-        output = stdout + stderr
-        assert "not defined in agent-loops.yml" not in output

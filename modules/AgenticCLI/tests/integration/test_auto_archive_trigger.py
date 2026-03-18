@@ -231,7 +231,7 @@ class TestNoAutoArchiveOnCompletion:
 
         # Complete first task
         result = cli_runner([
-            "agent", "epic", "ticket", "complete", "build_01_001",
+            "epic", "ticket", "complete", "build_01_001",
             "--plan", str(plan_path),
         ])
         assert result.returncode == 0
@@ -244,7 +244,7 @@ class TestNoAutoArchiveOnCompletion:
 
         # Complete second task
         result = cli_runner([
-            "agent", "epic", "ticket", "complete", "build_01_002",
+            "epic", "ticket", "complete", "build_01_002",
             "--plan", str(plan_path),
         ])
         assert result.returncode == 0
@@ -265,9 +265,9 @@ class TestNoAutoArchiveOnCompletion:
         dest_path = completed_dir / plan_path.name
 
         # Complete all three tasks
-        cli_runner(["agent", "epic", "ticket", "complete", "build_01_001", "--plan", str(plan_path)])
-        cli_runner(["agent", "epic", "ticket", "complete", "build_01_002", "--plan", str(plan_path)])
-        result = cli_runner(["agent", "epic", "ticket", "complete", "build_01_003", "--plan", str(plan_path)])
+        cli_runner(["epic", "ticket", "complete", "build_01_001", "--plan", str(plan_path)])
+        cli_runner(["epic", "ticket", "complete", "build_01_002", "--plan", str(plan_path)])
+        result = cli_runner(["epic", "ticket", "complete", "build_01_003", "--plan", str(plan_path)])
 
         assert result.returncode == 0
         assert "completed" in result.stdout.lower()
@@ -285,7 +285,7 @@ class TestNoAutoArchiveOnCompletion:
         dest_path = completed_dir / plan_path.name
 
         result = cli_runner([
-            "agent", "epic", "ticket", "complete", "build_01_001",
+            "epic", "ticket", "complete", "build_01_001",
             "--plan", str(plan_path),
         ])
 
@@ -309,7 +309,7 @@ class TestNoAutoArchiveOnCompletion:
 
         # Complete task in first file
         result = cli_runner([
-            "agent", "epic", "ticket", "complete", "build_01_001",
+            "epic", "ticket", "complete", "build_01_001",
             "--plan", str(plan_path),
         ])
         assert result.returncode == 0
@@ -320,7 +320,7 @@ class TestNoAutoArchiveOnCompletion:
 
         # Complete task in second file
         result = cli_runner([
-            "agent", "epic", "ticket", "complete", "test_01_001",
+            "epic", "ticket", "complete", "test_01_001",
             "--plan", str(plan_path),
         ])
         assert result.returncode == 0
@@ -381,7 +381,7 @@ class TestNoAutoArchiveOnCompletion:
         dest_path = completed_dir / plan_path.name
 
         result = cli_runner([
-            "agent", "epic", "ticket", "complete", "nonexistent_task",
+            "epic", "ticket", "complete", "nonexistent_task",
             "--plan", str(plan_path),
         ])
 

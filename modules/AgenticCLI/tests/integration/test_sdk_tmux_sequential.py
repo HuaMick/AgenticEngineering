@@ -25,10 +25,7 @@ from agenticcli.utils.session_id import (
     tmux_session_name,
 )
 from agenticcli.utils.session_state import (
-    make_session_data,
-    mark_completed,
     mark_failed,
-    mark_running,
     read_sdk_metrics,
 )
 from agenticcli.utils.spawn_command import build_spawn_command
@@ -37,7 +34,7 @@ from agenticcli.utils.spawn_command import build_spawn_command
 # The five planning roles executed sequentially by PlannerLoopRunner
 PLANNING_ROLES = [
     "explore",
-    "story-generator",
+    "story-writer",
     "planner-build",
     "planner-reviewer",
     "planner-orchestration",
@@ -267,53 +264,10 @@ class TestSequentialSDKTmuxSpawns:
 
     # ── Session state helpers ─────────────────────────────────────────────
 
-    def test_make_session_data_transport_field(self):
-        """make_session_data records transport=sdk-tmux for tmux-based spawns."""
-        sid = generate_session_id()
-        data = make_session_data(
-            sid,
-            role="explore",
-            epic_folder=TEST_EPIC,
-            transport="sdk-tmux",
-            working_dir="/home/code",
-        )
-        assert data["transport"] == "sdk-tmux"
-        assert data["status"] == "starting"
-        assert data["role"] == "explore"
-        assert data["epic_folder"] == TEST_EPIC
-
-    def test_mark_running_sets_status(self):
-        """mark_running() transitions status to 'running'."""
-        sid = generate_session_id()
-        data = make_session_data(sid, role="planner-build", epic_folder=TEST_EPIC)
-        mark_running(data, pid=12345, transport="sdk-tmux", tmux_session="agentic-test")
-        assert data["status"] == "running"
-        assert data["pid"] == 12345
-        assert data["transport"] == "sdk-tmux"
-        assert data["tmux_session"] == "agentic-test"
-
-    def test_mark_completed_sets_status(self):
-        """mark_completed() transitions status to 'completed' with metrics."""
-        sid = generate_session_id()
-        data = make_session_data(sid, role="planner-reviewer", epic_folder=TEST_EPIC)
-        mark_completed(
-            data,
-            exit_code=0,
-            cost_usd=0.042,
-            duration_ms=25_000,
-            num_turns=8,
-            sdk_session_id="sdk-abc",
-        )
-        assert data["status"] == "completed"
-        assert data["exit_code"] == 0
-        assert data["cost_usd"] == 0.042
-        assert data["num_turns"] == 8
-        assert data["sdk_session_id"] == "sdk-abc"
-
     def test_mark_failed_sets_structured_error(self):
         """mark_failed() populates failure_reason with structured error info."""
         sid = generate_session_id()
-        data = make_session_data(sid, role="explore", epic_folder=TEST_EPIC)
+        data = {"session_id": sid, "status": "running", "role": "explore", "epic_folder": TEST_EPIC}
         mark_failed(
             data,
             error_code="sdk_pane_failure",
@@ -329,17 +283,25 @@ class TestSequentialSDKTmuxSpawns:
 
     def test_session_state_lifecycle_for_all_roles(self):
         """Full starting -> running -> completed lifecycle for each planning role."""
+        from datetime import datetime
+
         for role in PLANNING_ROLES:
             sid = generate_session_id()
-            data = make_session_data(
-                sid, role=role, epic_folder=TEST_EPIC, transport="sdk-tmux"
-            )
+            data = {
+                "session_id": sid, "status": "starting", "role": role,
+                "epic_folder": TEST_EPIC, "transport": "sdk-tmux",
+            }
             assert data["status"] == "starting"
 
-            mark_running(data, pid=99999)
+            data["status"] = "running"
+            data["pid"] = 99999
             assert data["status"] == "running"
 
-            mark_completed(data, cost_usd=0.02, num_turns=5)
+            data["status"] = "completed"
+            data["exit_code"] = 0
+            data["cost_usd"] = 0.02
+            data["num_turns"] = 5
+            data["ended_at"] = datetime.now().isoformat()
             assert data["status"] == "completed"
             assert data["exit_code"] == 0
 
@@ -348,16 +310,16 @@ class TestSequentialSDKTmuxSpawns:
     def test_state_store_round_trip(self, tmp_path):
         """Session state written to disk is read back intact."""
         from agenticcli.utils.state_store import StateStore
+        from datetime import datetime
 
         store = StateStore("sessions", id_key="session_id")
         sid = generate_session_id()
-        state = make_session_data(
-            sid,
-            role="planner-orchestration",
-            epic_folder=TEST_EPIC,
-            transport="sdk-tmux",
-        )
-        mark_completed(state, cost_usd=0.07, num_turns=12)
+        state = {
+            "session_id": sid, "status": "completed", "role": "planner-orchestration",
+            "epic_folder": TEST_EPIC, "transport": "sdk-tmux",
+            "cost_usd": 0.07, "num_turns": 12, "exit_code": 0,
+            "ended_at": datetime.now().isoformat(),
+        }
 
         store.save(state, state_dir=tmp_path)
 
@@ -371,14 +333,19 @@ class TestSequentialSDKTmuxSpawns:
     def test_state_store_five_sessions_independent(self, tmp_path):
         """Five sessions written to the same store are independent."""
         from agenticcli.utils.state_store import StateStore
+        from datetime import datetime
 
         store = StateStore("sessions", id_key="session_id")
         written: dict[str, dict] = {}
 
         for i, role in enumerate(PLANNING_ROLES):
             sid = generate_session_id()
-            state = make_session_data(sid, role=role, epic_folder=TEST_EPIC)
-            mark_completed(state, cost_usd=0.01 * (i + 1), num_turns=i + 2)
+            state = {
+                "session_id": sid, "status": "completed", "role": role,
+                "epic_folder": TEST_EPIC, "cost_usd": 0.01 * (i + 1),
+                "num_turns": i + 2, "exit_code": 0,
+                "ended_at": datetime.now().isoformat(),
+            }
             store.save(state, state_dir=tmp_path)
             written[sid] = state
 
@@ -399,7 +366,7 @@ class TestSequentialSDKTmuxSpawns:
 
         for role in PLANNING_ROLES:
             sid = generate_session_id()
-            state = make_session_data(sid, role=role, epic_folder=TEST_EPIC)
+            state = {"session_id": sid, "status": "starting", "role": role, "epic_folder": TEST_EPIC}
             store.save(state, state_dir=tmp_path)
             sids.append(sid)
 

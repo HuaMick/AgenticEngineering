@@ -209,7 +209,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 2: Generate orchestration MMD
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Initial orchestration generate failed: {stderr}"
@@ -227,7 +227,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 3: Validate passes (MMD matches TinyDB)
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Initial validation should pass: {stderr}"
@@ -250,7 +250,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 5: Validate fails (drift detected)
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Validation should fail when MMD is missing phases"
@@ -263,7 +263,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 6: Regenerate MMD with --force
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
@@ -278,7 +278,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Step 7: Validate passes again
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0, f"Final validation should pass after regeneration: {stderr}"
@@ -303,7 +303,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Generate MMD
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -316,7 +316,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Validate with JSON output
         stdout, stderr, code = cli_in_repo(
-            "-j", "agent", "epic", "orchestration", "validate",
+            "-j", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Validation should fail with drift"
@@ -328,13 +328,13 @@ class TestOrchestrationSyncWorkflow:
 
         # Regenerate and validate again with JSON
         cli_in_repo(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
 
         stdout, stderr, code = cli_in_repo(
-            "-j", "agent", "epic", "orchestration", "validate",
+            "-j", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -362,7 +362,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Generate MMD
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -376,7 +376,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Validate - should pass (missing tasks are warnings)
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0, "Should pass - missing tasks are warnings, not errors"
@@ -387,7 +387,7 @@ class TestOrchestrationSyncWorkflow:
 
         # Validate with --strict should fail
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path),
             "--strict"
         )
@@ -395,13 +395,13 @@ class TestOrchestrationSyncWorkflow:
 
         # Regenerate and validate strict mode should pass
         cli_in_repo(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
 
         stdout, stderr, code = cli_in_repo(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path),
             "--strict"
         )
@@ -504,7 +504,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Generate MMD with all 3 phases
         stdout, stderr, code = edge_cli(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -519,7 +519,7 @@ class TestOrchestrationSyncEdgeCases:
         # For simplicity, just validate - MMD has 3 phases, TinyDB also has 3
         # (We can't easily remove phases from TinyDB in this test)
         stdout, stderr, code = edge_cli(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         # All TinyDB phases (P1, P2, P3) are in MMD - should pass
@@ -538,7 +538,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Generate MMD
         edge_cli(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
 
@@ -550,7 +550,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Validate should fail - P2 (Renamed New Phase) not in MMD
         stdout, stderr, code = edge_cli(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Should fail - new phase not in MMD"
@@ -575,7 +575,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Generate MMD
         stdout, stderr, code = edge_cli(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -590,7 +590,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Validate should pass
         stdout, stderr, code = edge_cli(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -603,7 +603,7 @@ class TestOrchestrationSyncEdgeCases:
 
         # Validate should fail
         stdout, stderr, code = edge_cli(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0, "Should fail - Build Phase 2 not in MMD"
@@ -624,9 +624,9 @@ class TestOrchestrationSyncEdgeCases:
         _populate_tinydb_with_phases(_isolate_tinydb, "idempotent-sync", plan_path, phases)
 
         # Cycle 1: Generate and validate
-        edge_cli("agent", "epic", "orchestration", "generate", "--plan", str(plan_path))
+        edge_cli("epic", "orchestration", "generate", "--plan", str(plan_path))
         stdout1, _, code1 = edge_cli(
-            "agent", "epic", "orchestration", "validate", "--plan", str(plan_path)
+            "epic", "orchestration", "validate", "--plan", str(plan_path)
         )
         assert code1 == 0
 
@@ -636,12 +636,12 @@ class TestOrchestrationSyncEdgeCases:
 
         # Cycle 2: Regenerate (with --force) and validate
         edge_cli(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
         stdout2, _, code2 = edge_cli(
-            "agent", "epic", "orchestration", "validate", "--plan", str(plan_path)
+            "epic", "orchestration", "validate", "--plan", str(plan_path)
         )
         assert code2 == 0
 
@@ -653,12 +653,12 @@ class TestOrchestrationSyncEdgeCases:
 
         # Cycle 3: One more time
         edge_cli(
-            "agent", "epic", "orchestration", "generate",
+            "epic", "orchestration", "generate",
             "--plan", str(plan_path),
             "--force"
         )
         _, _, code3 = edge_cli(
-            "agent", "epic", "orchestration", "validate", "--plan", str(plan_path)
+            "epic", "orchestration", "validate", "--plan", str(plan_path)
         )
         assert code3 == 0
 
@@ -752,11 +752,11 @@ class TestOrchestrationSyncValidationDetails:
         _populate_tinydb_with_phases(_isolate_tinydb, "file-report", plan_path, phases)
 
         # Generate MMD
-        detail_cli("agent", "epic", "orchestration", "generate", "--plan", str(plan_path))
+        detail_cli("epic", "orchestration", "generate", "--plan", str(plan_path))
 
         # Validate and check output includes file names
         stdout, stderr, code = detail_cli(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0
@@ -790,17 +790,17 @@ class TestOrchestrationSyncValidationDetails:
         _populate_tinydb_with_phases(_isolate_tinydb, "counts", plan_path, phases)
 
         # Generate and validate
-        detail_cli("agent", "epic", "orchestration", "generate", "--plan", str(plan_path))
+        detail_cli("epic", "orchestration", "generate", "--plan", str(plan_path))
 
         stdout, stderr, code = detail_cli(
-            "agent", "epic", "orchestration", "validate",
+            "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code == 0
 
         # Check JSON output has counts
         stdout_json, _, _ = detail_cli(
-            "-j", "agent", "epic", "orchestration", "validate",
+            "-j", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         result = json.loads(stdout_json)
@@ -820,7 +820,7 @@ class TestOrchestrationSyncValidationDetails:
         _populate_tinydb_with_phases(_isolate_tinydb, "error-details", plan_path, phases)
 
         # Generate MMD
-        detail_cli("agent", "epic", "orchestration", "generate", "--plan", str(plan_path))
+        detail_cli("epic", "orchestration", "generate", "--plan", str(plan_path))
 
         # Add multiple new phases to TinyDB to create multiple drift errors
         _add_phase_to_tinydb(
@@ -834,7 +834,7 @@ class TestOrchestrationSyncValidationDetails:
 
         # Validate with JSON
         stdout, stderr, code = detail_cli(
-            "-j", "agent", "epic", "orchestration", "validate",
+            "-j", "epic", "orchestration", "validate",
             "--plan", str(plan_path)
         )
         assert code != 0

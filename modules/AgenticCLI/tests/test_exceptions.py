@@ -115,7 +115,7 @@ class TestPlanError:
         """Test not_found factory method."""
         err = PlanError.not_found("/path/plan.yml")
         assert "/path/plan.yml" in err.message
-        assert "plan scaffold" in err.recovery_hint
+        assert "epic list" in err.recovery_hint
         assert err.context.file_path == "/path/plan.yml"
 
     def test_invalid_yaml(self):
@@ -135,7 +135,7 @@ class TestPlanError:
         """Test task_not_found factory method."""
         err = PlanError.task_not_found("task-01", "/plan.yml")
         assert "task-01" in err.message
-        assert "plan status" in err.recovery_hint
+        assert "epic status" in err.recovery_hint
 
 
 class TestEpicFileError:

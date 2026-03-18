@@ -8,24 +8,22 @@ Run `agentic --help` and `agentic <command> --help` for full usage. Key command 
 
 ```
 agentic
-├── setup        (init, health, update, rebuild)
-├── configure    (preferences, config, state, env)
+├── setup        (init, update, rebuild)
+│   └── config   (show, init, get, set, list, delete, show-path, set-path, clear)
+│       └── env  (show, export, run)
+├── health       — Top-level health check (no subcommands)
 ├── session      (spawn, list, stop, healthcheck, logs)
+│   ├── state    (list, show, clear, cleanup)
 │   └── orchestrate
-│       ├── planning   — Generate ticket files + orchestration MMDs for epics
-│       ├── executing  — Execute phases from completed MMDs
+│       ├── planning   — Generate ticket files for epics
+│       ├── executing  — Execute phases via agents
 │       └── ralph      (start, stop, status, next, history) — Self-directing loop
-├── epic         (list, status, cancel, move, orchestration, stories)
-│   ├── ticket   (start, complete, list, status, add, update, current, prefill)
-│   └── phase    — Manage epic phases
-├── agent        — Plumbing commands for spawned agents
-│   ├── context  (bootstrap, role, task, inputs, generate-agent)
-│   ├── epic     — Agent-scoped epic operations
-│   ├── plan     — Agent-scoped plan operations
-│   └── question — Agent question queue
-├── plan         — Legacy plan commands (deprecated, use epic)
-├── langsmith    (runs, run, projects, stats, friction, sessions)
-└── question     (list, show, answer, ask, defer, watch)
+├── epic         (list, status, cancel, move, orchestration, stories, new, validate, archive, scaffold)
+│   ├── ticket   (start, complete, list, status, add, update, current, prefill, batch, remove)
+│   ├── phase    (add, list, update, remove)
+│   ├── move     (task, tasks, folder)
+│   └── db       (sync, status) — hidden
+└── config       — Hidden alias for 'setup config'
 ```
 
 ## Your Role as Meta-Orchestrator
@@ -93,9 +91,7 @@ agentic epic status --epic <folder>           # Overall epic progress
 │   │   ├── src/agenticguidance/services/  — Domain services
 │   │   └── assets/             — Shared definitions, examples, specs
 │   ├── AgenticBackend/     — Backend services
-│   ├── AgenticFrontend/    — Frontend UI
-│   ├── AgenticLangSmith/   — Trace analysis
-│   └── AgenticTmux/        — Tmux session management
+│   └── AgenticLangSmith/   — Trace analysis
 ├── docs/epics/
 │   ├── live/               — Active epics (YYMMDDXX_description/)
 │   └── completed/          — Archived epics
@@ -155,20 +151,9 @@ To spawn a single agent for targeted work:
 agentic session spawn --role <agent-name> --plan <epic-folder>
 ```
 
-## Context Injection (CCI)
-
-Agents bootstrap their context via CLI:
+## Ticket Management
 
 ```bash
-agentic agent context bootstrap --role <agent-name> -j  # Get seed context
-agentic agent epic ticket current -j                     # Get current task
-agentic agent epic ticket update <id> --status completed # Mark done
-```
-
-## LangSmith Observability
-
-```bash
-agentic langsmith runs              # Recent runs
-agentic langsmith stats             # Usage statistics
-agentic langsmith friction          # Friction pattern analysis
+agentic epic ticket current -j                     # Get current task
+agentic epic ticket update <id> --status completed # Mark done
 ```

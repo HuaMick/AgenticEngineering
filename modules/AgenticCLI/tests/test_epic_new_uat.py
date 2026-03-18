@@ -142,7 +142,7 @@ class TestUSORCH001InitiatePlanning:
         )
 
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new", objective, "--branch", branch]
+            ["epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0, f"Command should succeed. stderr: {stderr}"
@@ -174,7 +174,7 @@ class TestUSORCH001InitiatePlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", objective, "--branch", branch]
+            ["-j", "epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -204,7 +204,7 @@ class TestUSORCH001InitiatePlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", objective, "--branch", branch]
+            ["-j", "epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -229,7 +229,7 @@ class TestUSORCH001InitiatePlanning:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", objective, "--branch", branch]
+            ["-j", "epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0
@@ -262,7 +262,7 @@ class TestUSORCH002PlanCreation:
         branch = "feature-main-first"
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "Plan creation test", "--branch", branch]
+            ["-j", "epic", "new", "Plan creation test", "--branch", branch]
         )
 
         assert code == 0
@@ -302,7 +302,7 @@ class TestUSORCH005OrchestrationMMD:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "Orchestration test", "--branch", branch]
+            ["-j", "epic", "new", "Orchestration test", "--branch", branch]
         )
 
         assert code == 0
@@ -323,7 +323,7 @@ class TestUSORCH005OrchestrationMMD:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "MMD phase test", "--branch", branch]
+            ["-j", "epic", "new", "MMD phase test", "--branch", branch]
         )
 
         assert code == 0
@@ -344,7 +344,7 @@ class TestUSORCH005OrchestrationMMD:
 
         # Run plan new
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new", "Validation test", "--branch", branch]
+            ["epic", "new", "Validation test", "--branch", branch]
         )
 
         assert code == 0
@@ -356,7 +356,7 @@ class TestUSORCH005OrchestrationMMD:
         create_worktree_for_test(temp_repo, branch)
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", "JSON orch test", "--branch", branch]
+            ["-j", "epic", "new", "JSON orch test", "--branch", branch]
         )
 
         assert code == 0
@@ -388,7 +388,7 @@ class TestFullWorkflowIntegration:
         branch = "api-endpoint"
 
         stdout, stderr, code = cli_runner(
-            ["-j", "agent", "epic", "new", objective, "--branch", branch]
+            ["-j", "epic", "new", objective, "--branch", branch]
         )
 
         assert code == 0, "Plan creation should succeed"
@@ -417,7 +417,7 @@ class TestFullWorkflowIntegration:
     def test_error_recovery_missing_objective(self, cli_runner, temp_repo):
         """Verify clear error when objective is missing."""
         stdout, stderr, code = cli_runner(
-            ["agent", "epic", "new"]
+            ["epic", "new"]
         )
 
         assert code != 0, "Should fail without objective"
@@ -433,13 +433,13 @@ class TestFullWorkflowIntegration:
 
         # Create first plan
         stdout1, stderr1, code1 = cli_runner(
-            ["agent", "epic", "new", objective, "--branch", branch]
+            ["epic", "new", objective, "--branch", branch]
         )
         assert code1 == 0
 
         # Try to create duplicate (same branch = same epic_folder_name)
         stdout2, stderr2, code2 = cli_runner(
-            ["agent", "epic", "new", objective, "--branch", branch]
+            ["epic", "new", objective, "--branch", branch]
         )
 
         # Should fail - TinyDB detects duplicate epic_folder_name

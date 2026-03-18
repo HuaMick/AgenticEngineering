@@ -4,7 +4,7 @@ Validates the full planning loop workflow logic with all SDK/tmux/subprocess
 calls mocked.  No real API calls or real tmux sessions are used.
 
 The suite verifies:
-- All expected agent roles are invoked (explore, story-generator, planner-build,
+- All expected agent roles are invoked (explore, story-writer, planner-build,
   planner-reviewer, planner-orchestration)
 - Spawn commands include the --tmux flag (sdk-tmux path)
 - SDK metrics are collected after each agent completes
@@ -178,7 +178,7 @@ class TestPlannerLoopE2E:
     def test_planning_loop_spawns_all_roles(self, tmp_path, monkeypatch):
         """Full planning loop invokes all expected agent roles.
 
-        Verifies that epic-creator, story-generator, planner-explore,
+        Verifies that epic-creator, story-writer, planner-explore,
         planner-design, planner-reviewer, and planner-orchestration are each
         invoked for a single unplanned epic (epic-creator-first architecture).
         """
@@ -200,7 +200,7 @@ class TestPlannerLoopE2E:
             return _ok_result(session_id="explore-001")
 
         def tracking_spawn_story(pf):
-            spawned_roles.append("story-generator")
+            spawned_roles.append("story-writer")
             return _ok_result(session_id="story-001")
 
         def tracking_spawn_design(pf):
@@ -248,7 +248,7 @@ class TestPlannerLoopE2E:
 
         # All roles must appear
         assert "epic-creator" in spawned_roles, f"epic-creator not in {spawned_roles}"
-        assert "story-generator" in spawned_roles, f"story-generator not in {spawned_roles}"
+        assert "story-writer" in spawned_roles, f"story-writer not in {spawned_roles}"
         assert "planner-explore" in spawned_roles, f"planner-explore not in {spawned_roles}"
         assert "planner-design" in spawned_roles, f"planner-design not in {spawned_roles}"
         assert "planner-reviewer" in spawned_roles, f"planner-reviewer not in {spawned_roles}"
@@ -288,7 +288,7 @@ class TestPlannerLoopE2E:
 
         planning_roles = [
             "explore",
-            "story-generator",
+            "story-writer",
             "planner-build",
             "planner-reviewer",
             "planner-orchestration",
@@ -342,7 +342,7 @@ class TestPlannerLoopE2E:
         with (
             patch("agenticcli.workflows.planner_loop.SDK_AVAILABLE", True),
             patch("shutil.which", return_value="/usr/bin/tmux"),
-            patch("agenticcli.workflows.planner_loop.write_context_file"),
+            patch("agenticcli.workflows.planner_loop.diagnose_quick_exit", return_value=None),
             patch("agenticcli.workflows.planner_loop._session_store"),
             patch.object(workflow, "wait_for_session", return_value="completed"),
             patch("agenticcli.workflows.planner_loop.read_sdk_metrics",
@@ -407,7 +407,7 @@ class TestPlannerLoopE2E:
         with (
             patch("agenticcli.workflows.planner_loop.SDK_AVAILABLE", True),
             patch("shutil.which", return_value="/usr/bin/tmux"),
-            patch("agenticcli.workflows.planner_loop.write_context_file"),
+            patch("agenticcli.workflows.planner_loop.diagnose_quick_exit", return_value=None),
             patch("agenticcli.workflows.planner_loop._session_store"),
             patch("agenticcli.workflows.planner_loop.read_sdk_metrics",
                   return_value={
@@ -415,7 +415,7 @@ class TestPlannerLoopE2E:
                       "usage": {}, "sdk_session_id": "sdk-retry", "transport": "sdk-tmux",
                   }),
             patch.object(workflow, "wait_for_session", return_value="completed"),
-            patch("agenticcli.workflows.planner_loop.exponential_backoff", return_value=0),
+            patch("agenticcli.workflows.planner_loop.static_backoff", return_value=0),
             patch("agenticcli.workflows.planner_loop.time") as mock_time,
             patch("subprocess.run", side_effect=mock_subprocess_run),
         ):

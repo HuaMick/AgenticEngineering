@@ -62,6 +62,27 @@ def test_determine_transport_not_requested(monkeypatch):
     assert result == SUBPROCESS
 
 
+def test_force_sdk_direct_returns_sdk(monkeypatch):
+    """force_sdk_direct=True + sdk_available=True -> SDK_DIRECT."""
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/tmux" if name == "tmux" else None)
+    result = determine_transport(sdk_available=True, force_sdk_direct=True)
+    assert result == SDK_DIRECT
+
+
+def test_force_sdk_direct_ignored_without_sdk(monkeypatch):
+    """force_sdk_direct=True + sdk_available=False -> falls through to normal priority."""
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/tmux" if name == "tmux" else None)
+    result = determine_transport(sdk_available=False, force_sdk_direct=True)
+    assert result == TMUX
+
+
+def test_force_sdk_direct_false_no_effect(monkeypatch):
+    """force_sdk_direct=False doesn't change normal behavior."""
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/tmux" if name == "tmux" else None)
+    result = determine_transport(sdk_available=True, force_sdk_direct=False)
+    assert result == SDK_TMUX
+
+
 # ---------------------------------------------------------------------------
 # AGENTIC_FORCE_SDK_DIRECT override tests (planner_loop._run_role_agent)
 # ---------------------------------------------------------------------------

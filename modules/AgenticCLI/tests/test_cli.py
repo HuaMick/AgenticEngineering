@@ -8,9 +8,6 @@ class TestCLIHelp:
         """Test main --help output."""
         stdout, stderr, code = cli_runner(["--help"])
         assert "AgenticCLI" in stdout
-        assert "devops" in stdout
-        assert "plan" in stdout
-        assert "configure" in stdout
         assert "setup" in stdout
         assert "session" in stdout
         assert code == 0
@@ -24,28 +21,6 @@ class TestCLIHelp:
 
 class TestSubcommandHelp:
     """Tests for subcommand help output."""
-
-    def test_plan_help(self, cli_runner):
-        """Test plan --help output shows user-facing commands only."""
-        stdout, stderr, code = cli_runner(["plan", "--help"])
-        assert "plan" in stdout.lower()
-        # User-facing commands should be visible
-        assert "status" in stdout
-        assert "list" in stdout
-        assert "cancel" in stdout
-        # Agent-facing commands should be hidden from command list.
-        # Use line-based checks to avoid matching inside description text.
-        lines = stdout.splitlines()
-        # Find command-list lines (lines that start with a command name after the pipe char)
-        cmd_lines = [line.strip().strip("|").strip() for line in lines
-                     if line.strip().startswith("|") or line.strip().startswith("│")]
-        cmd_names = [line.split()[0] for line in cmd_lines if line and line.split()[0].isalpha()]
-        assert "scaffold" not in cmd_names
-        assert "validate" not in cmd_names
-        assert "task" not in cmd_names
-        assert "phase" not in cmd_names
-        assert "archive" not in cmd_names
-        assert code == 0
 
     def test_config_help(self, cli_runner):
         """Test configure config --help output."""
@@ -73,32 +48,16 @@ class TestCommandAliases:
     """Tests for command aliases."""
 
     def test_configure_alias_cfg(self, cli_runner):
-        """Test 'cfg' alias works for configure."""
+        """Test 'cfg' alias works for configure (now deprecated, shows config/env/state subcommands)."""
         result_full = cli_runner(["configure", "--help"])
         result_alias = cli_runner(["cfg", "--help"])
         assert result_full.returncode == 0
         assert result_alias.returncode == 0
-        # Both should show configure subcommands
+        # Both should show the deprecated configure subcommands
         assert "config" in result_alias.stdout
-        assert "preferences" in result_alias.stdout
+        assert "env" in result_alias.stdout
+        assert "state" in result_alias.stdout
 
-    def test_stories_alias_st(self, cli_runner):
-        """Test 'stories' and 'st' commands now show deprecation messages."""
-        for cmd in ["stories", "st"]:
-            result = cli_runner([cmd])
-            output = (result.stdout or "") + (result.stderr or "")
-            normalized = " ".join(output.split())
-            assert result.returncode == 1
-            assert "agentic agent stories" in normalized
-
-    def test_manifest_alias_mf(self, cli_runner):
-        """Test 'manifest' and 'mf' commands now show deprecation messages."""
-        for cmd in ["manifest", "mf"]:
-            result = cli_runner([cmd])
-            output = (result.stdout or "") + (result.stderr or "")
-            normalized = " ".join(output.split())
-            assert result.returncode == 1
-            assert "agentic agent manifest" in normalized
 
 
 class TestFlagShortcuts:
@@ -120,22 +79,7 @@ class TestFlagShortcuts:
         assert result.returncode == 0
         # Check user-facing top-level groups are visible
         assert "setup" in result.stdout
-        assert "configure" in result.stdout
         assert "session" in result.stdout
-        assert "devops" in result.stdout
-        assert "question" in result.stdout
-        assert "plan" in result.stdout
-        assert "langsmith" in result.stdout
-        # Hidden groups should NOT appear as command names in main help.
-        # Use line-based checks to avoid matching inside description text.
-        lines = result.stdout.splitlines()
-        cmd_lines = [line.strip().strip("|").strip() for line in lines
-                     if line.strip().startswith("|") or line.strip().startswith("\u2502")]
-        cmd_names = [line.split()[0] for line in cmd_lines if line and line.split()[0].isalpha()]
-        assert "stories" not in cmd_names
-        assert "manifest" not in cmd_names
-        assert "context" not in cmd_names
-        assert "entrypoint" not in cmd_names
-        assert "agent" not in cmd_names
+        assert "epic" in result.stdout
         # Check -j flag is documented
         assert "-j" in result.stdout or "--json" in result.stdout
