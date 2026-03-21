@@ -100,7 +100,7 @@ If user requests changes, return to planning loops with feedback.
 Report:
 - Live epic folder path
 - Phases created
-- Next steps: execute via `agentic session orchestrate executing`
+- Next steps: execute via `agentic orchestrate session implement`
 
 ## Boundaries
 

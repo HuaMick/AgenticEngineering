@@ -140,10 +140,10 @@ agentic agent epic ticket start <ticket_id> --epic <folder>
 agentic agent epic ticket complete <ticket_id> --epic <folder>
 
 # Spawn agent session
-agentic session spawn --role <agent-role> --epic <epic-folder>
+agentic orchestrate session spawn --role <agent-role> --epic <epic-folder>
 
 # Check session health
-agentic session healthcheck <session-id>
+agentic orchestrate health <session-id>
 ```
 
 MANDATE: NEVER use Edit tool to change ticket status. Use CLI commands for all status changes.
