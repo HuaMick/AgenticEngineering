@@ -1,0 +1,460 @@
+area: infrastructure
+description: "TinyDB data storage and service layer infrastructure"
+stories:
+- id: US-SET-017
+  title: TinyDB Epic Repository - CRUD Operations
+  category: services
+  priority: critical
+  description: As a CLI or agent managing epics, I want to use a TinyDB-backed EpicRepository for epic CRUD operations, so
+    that epic data access is faster, indexed, and queryable without scanning YAML files.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - EpicRepository provides create, read, update, delete operations via TinyDB
+  - step: 2
+    when: the feature is used
+    then:
+    - All epic data (name, worktree_path, branch, status, objective, phases, tickets) stored in TinyDB
+  - step: 3
+    when: the feature is used
+    then:
+    - FileLock wraps ALL write operations to ensure safe multi-agent concurrent access
+  - step: 7
+    when: the feature is used
+    then:
+    - Query by plan_id, status, branch, or folder name returns correct results
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  last_tested: '2026-02-24'
+  test_status: passing
+  test_notes: ''
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+- id: US-SET-018
+  title: TinyDB Ticket Storage and Queries
+  category: services
+  priority: critical
+  description: As a CLI listing or updating tickets, I want tickets stored in TinyDB with indexed lookups, so that ticket
+    queries (by status, phase, plan_id) are O(1) instead of O(n) YAML parsing.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Tickets stored as TinyDB documents with plan_id, phase_id, ticket_id, status fields
+  - step: 2
+    when: the feature is used
+    then:
+    - get_ticket_counts returns a dict with keys pending, in_progress, completed, and total
+  - step: 3
+    when: the feature is used
+    then:
+    - check_all_tickets_complete returns a boolean indicating whether all tickets are done
+  - step: 4
+    when: the feature is used
+    then:
+    - get_current_ticket resolves to the first in_progress ticket, then the first pending ticket
+  - step: 5
+    when: the feature is used
+    then:
+    - TaskData dataclass expanded with inputs, target_files, guidance, completed_date, and success_criteria fields
+  - step: 6
+    when: the feature is used
+    then:
+    - Update ticket status atomically in TinyDB
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  - modules/AgenticGuidance/src/agenticguidance/services/task.py
+  last_tested: '2026-02-24'
+  test_status: passing
+  test_notes: ''
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+- id: US-SET-019
+  title: YAML Import/Export for Human Readability
+  category: services
+  priority: high
+  description: As a developer reading epic files, I want epic data to round-trip between TinyDB and YAML without loss, so
+    that epics remain human-readable and git-trackable while TinyDB is the runtime store.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - sync_to_yaml() method writes current TinyDB epic state back to YAML format
+  - step: 2
+    when: the feature is used
+    then:
+    - Auto-import from YAML occurs on TinyDB cache miss (read-through pattern)
+  - step: 3
+    when: TinyDB has no record for an epic
+    then:
+    - it imports from the YAML file on first access
+  - step: 4
+    when: an error condition occurs
+    then:
+    - Round-trip (YAML -> TinyDB -> YAML) preserves all fields without data loss
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  last_tested: '2026-02-24'
+  test_status: passing
+  test_notes: ''
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+- id: US-SET-020
+  title: CLI Epic Commands Use EpicRepository
+  category: services
+  priority: critical
+  description: As a CLI user running epic commands, I want epic CLI commands to use EpicRepository as the primary data source
+    with YAML fallback, so that data access is consistent and goes through a single service layer.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - _get_repo() helper provides a EpicRepository instance to CLI command handlers
+  - step: 2
+    when: the feature is used
+    then:
+    - TinyDB-first with YAML fallback pattern applied throughout epic command handlers
+  - step: 3
+    when: the feature is used
+    then:
+    - folder_matches guard prevents cross-epic data leaks when loading by folder name
+  - step: 4
+    when: the feature is used
+    then:
+    - 30 epic-data YAML calls replaced with EpicRepository calls
+  - step: 5
+    when: the feature is used
+    then:
+    - 6 non-TinyDB epic records calls intentionally retained (config, context, and non-epic files)
+  - step: 6
+    when: the feature is used
+    then:
+    - No behavioral regression from the user's perspective
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/plan.py
+  last_tested: '2026-02-24'
+  test_status: passing
+  test_notes: ''
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+- id: US-SET-021
+  title: Data Migration from YAML to TinyDB
+  category: services
+  priority: high
+  description: As a system administrator upgrading to TinyDB, I want existing YAML epics to become available in TinyDB without
+    a manual migration step, so that no epic data is lost and no explicit migration command is required.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Read-through auto-import replaces any explicit migration script
+  - step: 2
+    when: TinyDB has no record for an epic
+    then:
+    - it automatically imports from the YAML file on first access
+  - step: 3
+    when: the feature is used
+    then:
+    - Auto-import is idempotent (repeated access does not duplicate data)
+  - step: 4
+    when: the feature is used
+    then:
+    - No manual migration step or command is needed to begin using TinyDB
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  last_tested: '2026-02-24'
+  test_status: passing
+  test_notes: ''
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+- id: US-SET-022
+  title: TinyDB Database Location and Lifecycle
+  category: services
+  priority: high
+  description: As a developer configuring the system, I want TinyDB database stored at a predictable repo-local location,
+    so that each repository has its own isolated plans database that does not conflict with git.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - TinyDB database stored at .agentic/plans.db within the repository root (not ~/.agentic/)
+  - step: 2
+    when: the feature is used
+    then:
+    - Each repository gets its own independent plans.db file
+  - step: 3
+    when: the feature is used
+    then:
+    - Database created automatically on first use
+  - step: 4
+    when: the feature is used
+    then:
+    - .agentic/ directory is listed in .gitignore so the database is not tracked by git
+  - step: 5
+    when: an error condition occurs
+    then:
+    - Graceful handling when database is missing (auto-rebuild from YAML via read-through import)
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  last_tested: '2026-02-24'
+  test_status: passing
+  test_notes: ''
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+- id: US-SET-023
+  title: Backward Compatibility During Migration
+  category: services
+  priority: high
+  description: As a agent or CLI user during transition period, I want the system to work correctly even when TinyDB state
+    diverges from disk state, so that existing workflows don't break and resurrection or disk-only epics are handled safely.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: an error condition occurs
+    then:
+    - EpicRepository falls back to YAML file reading when TinyDB record is not found
+  - step: 2
+    when: the feature is used
+    then:
+    - Resurrection detection re-imports an epic when it is in completed/ in TinyDB but present in live/ on disk
+  - step: 3
+    when: the feature is used
+    then:
+    - folder_matches guard ensures data isolation between epics that share a similar name
+  - step: 4
+    when: the feature is used
+    then:
+    - yaml_sync_enabled flag on TicketService enables dual-write to both TinyDB and YAML during transition
+  - step: 5
+    when: the feature is used
+    then:
+    - YAML files remain git-committable source of truth; TinyDB acts as a fast read cache
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan_repository.py
+  last_tested: '2026-02-24'
+  test_status: passing
+  test_notes: ''
+  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+- id: US-SET-024
+  title: YAML Root-Level Keys Convention
+  category: services
+  priority: critical
+  description: As a service reading/writing epic files, I want to use root-level keys (not nested under 'epic:'), so that
+    epic file structure is consistent.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - 'Epic files use root-level keys: phases:, tickets:, name:, etc.'
+  - step: 2
+    when: the feature is used
+    then:
+    - NOT nested under 'epic:' key
+  - step: 3
+    when: the feature is used
+    then:
+    - Services handle both legacy and modern formats for backward compatibility
+  - step: 4
+    when: the feature is used
+    then:
+    - New files always use root-level keys
+  - step: 5
+    when: the feature is used
+    then:
+    - Migration path from legacy to modern format
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  - modules/AgenticGuidance/src/agenticguidance/services/task.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-SET-025
+  title: Git Safety Checks
+  category: services
+  priority: high
+  description: As a service moving or deleting files, I want to check git status before potentially destructive operations,
+    so that uncommitted changes are not lost.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - GitSafetyChecker verifies no uncommitted changes
+  - step: 2
+    when: the feature is used
+    then:
+    - Check specific path or entire repo
+  - step: 3
+    when: the feature is used
+    then:
+    - Prevent folder moves with uncommitted changes
+  - step: 4
+    when: the feature is used
+    then:
+    - Warn user about uncommitted changes
+  - step: 5
+    when: the feature is used
+    then:
+    - Provide option to commit or stash changes first
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-SET-026
+  title: Domain -> Workflow -> Entrypoint Pattern
+  category: services
+  priority: high
+  description: As a developer creating new services, I want to follow Domain -> Workflow -> Entrypoint pattern, so that services
+    are consistently structured.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - 'Domain: Core business logic (EpicService, TicketService, QuestionQueue)'
+  - step: 2
+    when: the feature is used
+    then:
+    - 'Workflow: Orchestrates domain services for specific use cases'
+  - step: 3
+    when: the feature is used
+    then:
+    - 'Entrypoint: CLI commands or API endpoints that invoke workflows'
+  - step: 4
+    when: the feature is used
+    then:
+    - Services are independent and self-contained
+  - step: 5
+    when: the feature is used
+    then:
+    - Services maintain clear boundaries
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-SET-027
+  title: Service Layer Testing
+  category: services
+  priority: high
+  description: As a developer testing services, I want to have comprehensive service layer tests, so that service behavior
+    is validated and regressions prevented.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Unit tests for each service class
+  - step: 2
+    when: the feature is used
+    then:
+    - Integration tests for service interactions
+  - step: 3
+    when: the feature is used
+    then:
+    - Test fixtures for epic and ticket data
+  - step: 4
+    when: the feature is used
+    then:
+    - Mock file system for isolation
+  - step: 5
+    when: the feature is used
+    then:
+    - Test concurrent access scenarios
+  related_files:
+  - modules/AgenticGuidance/tests/test_services_plan_service.py
+  - modules/AgenticGuidance/tests/test_services_task.py
+  - modules/AgenticGuidance/tests/test_services_question.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-SET-028
+  title: Service Data Models
+  category: services
+  priority: high
+  description: As a developer using services, I want to use typed dataclasses for service data, so that data structures are
+    clear and type-safe.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - PlanData dataclass for epic data
+  - step: 2
+    when: the feature is used
+    then:
+    - Task dataclass for task data
+  - step: 3
+    when: the feature is used
+    then:
+    - Question dataclass for question data
+  - step: 4
+    when: the feature is used
+    then:
+    - Answer dataclass for answer data
+  - step: 5
+    when: the feature is used
+    then:
+    - Enums for status, severity, priority
+  - step: 6
+    when: the feature is used
+    then:
+    - Dataclasses have from_dict and to_dict methods
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/models/
+  - modules/AgenticGuidance/src/agenticguidance/models/question.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-SET-029
+  title: Ticket Story IDs Field
+  category: services
+  priority: high
+  description: As a planner agent creating implementation tickets, I want to attach user story IDs to tickets via a story_ids
+    field, so that planning-level traceability links tickets to the stories they implement.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Ticket dataclass has story_ids field (list[str], default empty list)
+  - step: 2
+    when: the feature is used
+    then:
+    - TicketData dataclass has story_ids field with __post_init__ defaulting None to []
+  - step: 3
+    when: the feature is used
+    then:
+    - story_ids are persisted in TinyDB via EpicRepository
+  - step: 4
+    when: the feature is used
+    then:
+    - TicketService correctly extracts story_ids from ticket data dicts
+  - step: 5
+    when: the feature is used
+    then:
+    - story_ids can be appended (mutable list)
+  - step: 6
+    when: the feature is used
+    then:
+    - Round-trip persistence works (write to TinyDB, read back, story_ids preserved)
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
+  - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+  - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+  related_stories:
+  - US-SET-028
+  - US-STR-011
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260308PD_planner_design_agent_story_alignment

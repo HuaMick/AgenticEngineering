@@ -1,0 +1,284 @@
+area: feedback_recovery
+description: "Test-fix loops, re-planning, escalation"
+stories:
+- id: US-PLN-065
+  title: Test-Fix Loop Execution
+  category: feedback_loops
+  priority: critical
+  description: As a orchestration-executor running test phases, I want to execute test-fix loops that re-run failing tests
+    after fixes, so that test failures are resolved iteratively without human intervention.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Test phases in the TinyDB phase records define test-fix loop structure
+  - step: 2
+    when: the feature is used
+    then:
+    - test-runner agent executes tests and reports results
+  - step: 3
+    when: an error condition occurs
+    then:
+    - On failure, the build agent is re-spawned to fix the issue
+  - step: 4
+    when: the feature is used
+    then:
+    - The loop repeats until tests pass or max iterations is reached
+  - step: 5
+    when: the feature is used
+    then:
+    - Loop iteration count and results are tracked in plan state
+  - step: 6
+    when: the feature is used
+    then:
+    - Max iterations prevents infinite loops
+  related_agents:
+  - orchestration-executor
+  - test-runner
+  - build-python
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-066
+  title: Feedback Trigger Handling
+  category: feedback_loops
+  priority: high
+  description: As a orchestration-executor encountering a failure, I want to route failures to the appropriate recovery agent
+    based on trigger type, so that different failure types get specialized handling.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: an error condition occurs
+    then:
+    - 'TEST_FAILURE triggers: re-spawn build agent with failure details'
+  - step: 2
+    when: an error condition occurs
+    then:
+    - 'BUILD_FAILURE triggers: escalate to orchestration-planning for re-planning'
+  - step: 3
+    when: an error condition occurs
+    then:
+    - 'CICD_FAILURE triggers: route to deploy-cicd for pipeline fixes'
+  - step: 4
+    when: the feature is used
+    then:
+    - 'GUIDANCE_GAP triggers: route to teacher-update-guidance for improvement'
+  - step: 5
+    when: an error condition occurs
+    then:
+    - 'AUDIT_FAILURE triggers: route to planner-cleaning for resolution'
+  - step: 6
+    when: the feature is used
+    then:
+    - Feedback triggers are defined in the TinyDB phase sequence
+  - step: 7
+    when: an error condition occurs
+    then:
+    - Trigger metadata includes failure details for the recovery agent
+  related_agents:
+  - orchestration-executor
+  - orchestration-planning
+  - teacher-update-guidance
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-067
+  title: Re-Planning After Failure
+  category: failure_recovery
+  priority: high
+  description: As a orchestration-executor unable to resolve a failure, I want to escalate to orchestration-planning for plan
+    modification, so that the plan adapts to unexpected situations instead of halting.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: test-fix loops exhaust max iterations
+    then:
+    - failure is escalated
+  - step: 2
+    when: an error condition occurs
+    then:
+    - orchestration-planning receives failure context and original plan
+  - step: 3
+    when: the feature is used
+    then:
+    - Re-planning may add new tasks, modify existing tasks, or adjust phases
+  - step: 4
+    when: the feature is used
+    then:
+    - The updated plan generates a new orchestration TinyDB phase records
+  - step: 5
+    when: the feature is used
+    then:
+    - Execution resumes with the updated plan
+  related_agents:
+  - orchestration-executor
+  - orchestration-planning
+  - planner-orchestration
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-068
+  title: Guidance Improvement from Friction
+  category: failure_recovery
+  priority: high
+  description: As a teacher agent responding to friction signals, I want to update guidance files based on observed agent
+    struggles, so that future agents do not encounter the same friction patterns.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - GUIDANCE_GAP triggers from execution are routed to teacher agents
+  - step: 2
+    when: the feature is used
+    then:
+    - teacher-update-guidance improves process.yml and inputs.yml files
+  - step: 3
+    when: the feature is used
+    then:
+    - teacher-update-assets creates or updates shared definitions and guidelines
+  - step: 4
+    when: the feature is used
+    then:
+    - Guidance changes are verified by test-guidance-simulator
+  - step: 5
+    when: the feature is used
+    then:
+    - Improved guidance reduces friction in subsequent executions
+  related_agents:
+  - teacher-update-guidance
+  - teacher-update-assets
+  - test-guidance-simulator
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-069
+  title: Test Audit and Reward Hacking Prevention
+  category: quality_assurance
+  priority: high
+  description: As a orchestration-executor ensuring test quality, I want to audit tests for reward hacking and verify genuine
+    outcomes, so that agents cannot game metrics to appear successful while failing.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - test-audit agent reviews test quality and detects gaming
+  - step: 2
+    when: the feature is used
+    then:
+    - Checks that tests verify actual behavior, not just help text validation
+  - step: 3
+    when: the feature is used
+    then:
+    - test-final-output validates final outputs against success criteria
+  - step: 4
+    when: the feature is used
+    then:
+    - Audit results are reported to the orchestration-executor
+  - step: 5
+    when: an error condition occurs
+    then:
+    - Failed audits block plan completion
+  related_agents:
+  - test-audit
+  - test-final-output
+  - orchestration-executor
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-070
+  title: Plan Compliance Auditing
+  category: quality_assurance
+  priority: medium
+  description: As a orchestration agent ensuring epic folder correctness, I want to audit epic folders for structural compliance,
+    so that epic folders are consistent and parseable by all agents and CLI tools.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - planner-audit agent checks epic folder structure
+  - step: 2
+    when: the feature is used
+    then:
+    - Validates presence of required files (TinyDB ticket records (build phase), TinyDB phase records)
+  - step: 3
+    when: the feature is used
+    then:
+    - Validates YAML schema compliance
+  - step: 4
+    when: the feature is used
+    then:
+    - Validates ticket IDs are unique within the epic
+  - step: 5
+    when: the feature is used
+    then:
+    - Validates phase references are consistent
+  - step: 6
+    when: the feature is used
+    then:
+    - Audit results report specific compliance issues
+  related_commands:
+  - agentic epic validate <path>
+  related_agents:
+  - planner-audit
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-071
+  title: Story Coverage Re-Run Loop
+  category: feedback_loops
+  priority: high
+  description: As a orchestration-executor managing test phase completion, I want to re-run the test-builder with uncovered
+    story IDs when pytest marker coverage is incomplete, so that story coverage gaps are closed iteratively without manual
+    intervention.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - After test phase, check pytest marker coverage against affected_stories list
+  - step: 2
+    when: the feature is used
+    then:
+    - 'If uncovered stories exist and iterations < max (default 3): re-spawn test-builder'
+  - step: 3
+    when: the feature is used
+    then:
+    - Re-spawned test-builder receives uncovered_story_ids and story_content as context
+  - step: 4
+    when: the feature is used
+    then:
+    - 'Exit condition: all affected stories have @pytest.mark.story markers in test files'
+  - step: 5
+    when: max iterations reached
+    then:
+    - transition to blocked state with coverage report
+  - step: 6
+    when: the feature is used
+    then:
+    - Loop is triggered by STORY_COVERAGE_INCOMPLETE feedback trigger
+  - step: 7
+    when: the feature is used
+    then:
+    - Coverage percentage and uncovered list included in loop state
+  related_agents:
+  - orchestration-executor
+  - test-builder
+  - planner-test
+  related_stories:
+  - US-PLN-080
+  - US-PLN-081
+  - US-STR-015
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260308PD_planner_design_agent_story_alignment

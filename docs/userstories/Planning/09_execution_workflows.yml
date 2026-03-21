@@ -1,0 +1,253 @@
+area: execution_workflows
+description: "TinyDB phase execution, agent routing, resume"
+stories:
+- id: US-PLN-059
+  title: Execute Approved Epic via TinyDB Phases
+  category: execution_workflow
+  priority: critical
+  description: As a developer with an approved epic, I want to execute the epic by routing work to appropriate agents, so
+    that implementation proceeds automatically with the right specialists.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Execution is initiated via TinyDB phase routing
+  - step: 2
+    when: the feature is used
+    then:
+    - orchestration-executor reads the TinyDB phase records via repo.list_phases()
+  - step: 3
+    when: the feature is used
+    then:
+    - TinyDB phase agent field determines which agent handles each phase
+  - step: 4
+    when: the feature is used
+    then:
+    - Phases execute in the order defined by the TinyDB phase sequence
+  - step: 5
+    when: the feature is used
+    then:
+    - 'Phase status transitions: pending -> in_progress -> completed'
+  - step: 6
+    when: the feature is used
+    then:
+    - State is persisted to TinyDB epic records and TinyDB phase status fields
+  related_commands:
+  - agentic orchestrate session implement
+  - agentic epic ticket current
+  related_agents:
+  - orchestration-executor
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-060
+  title: Dynamic Agent Routing
+  category: execution_workflow
+  priority: critical
+  description: As a orchestration-executor agent, I want to spawn the correct agent for each phase based on TinyDB phase metadata,
+    so that the right specialist handles each type of work.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Builder phases route to build-python (default) or build-flutter
+  - step: 2
+    when: the feature is used
+    then:
+    - Tester phases route to test-runner or test-guidance-simulator
+  - step: 3
+    when: the feature is used
+    then:
+    - Deployer phases route to deploy-cicd or deploy-worktree
+  - step: 4
+    when: the feature is used
+    then:
+    - Teacher phases route to teacher-update-guidance or teacher-update-assets
+  - step: 5
+    when: the feature is used
+    then:
+    - Cleaner phases route to planner-cleaning
+  - step: 6
+    when: the feature is used
+    then:
+    - Auditor phases route to test-audit or test-final-output
+  - step: 7
+    when: the feature is used
+    then:
+    - Routing is determined at runtime from TinyDB, not hardcoded
+  related_agents:
+  - orchestration-executor
+  - build-python
+  - test-runner
+  - teacher-update-guidance
+  last_tested: '2026-02-27'
+  test_status: passing
+  test_notes: Validated by 260226SD SDK migration plan. SDK migration plan executed 6 build phases and 5 test/UAT phases with
+    correct agent routing through the full lifecycle. ROLE_TOOL_ALLOWLIST added to sdk_runner.py provides role-based tool
+    restrictions per agent type. All 1622 AgenticCLI tests pass.
+  tested_by_plan: 260226SD_migrate_sessions_to_sdk
+- id: US-PLN-061
+  title: Phase-Level Ticket Execution
+  category: execution_workflow
+  priority: critical
+  description: As a specialist agent spawned by the executor, I want to receive my current ticket, execute it, and report
+    completion, so that epic progress is tracked at the ticket level.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Agent bootstraps via agentic agent context bootstrap to get role context and current ticket
+  - step: 2
+    when: the feature is used
+    then:
+    - Agent starts the ticket via agentic epic ticket start <id>
+  - step: 3
+    when: the feature is used
+    then:
+    - Agent performs the work defined in the ticket description and guidance
+  - step: 4
+    when: the feature is used
+    then:
+    - Agent marks the ticket complete via agentic epic ticket complete <id>
+  - step: 5
+    when: the feature is used
+    then:
+    - Ticket completion triggers status update in the TinyDB epic records
+  - step: 6
+    when: all tickets in a phase complete
+    then:
+    - the phase status updates
+  related_commands:
+  - agentic agent context bootstrap --role build-python
+  - agentic epic ticket start <id>
+  - agentic epic ticket complete <id>
+  related_agents:
+  - build-python
+  - test-runner
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-062
+  title: Validation Gates
+  category: execution_workflow
+  priority: high
+  description: As a orchestration-executor enforcing quality, I want to run validation before committing phase outputs, so
+    that defective work is caught before it progresses to the next phase.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Test phases execute test-fix loops before marking complete
+  - step: 2
+    when: the feature is used
+    then:
+    - Build phases require passing validation before completion
+  - step: 3
+    when: the feature is used
+    then:
+    - The executor spawns test agents (test-runner, test-audit) for validation
+  - step: 4
+    when: an error condition occurs
+    then:
+    - Failed validation triggers feedback loops (re-execution with fixes)
+  - step: 5
+    when: the feature is used
+    then:
+    - Validation results are recorded in the plan
+  related_agents:
+  - orchestration-executor
+  - test-runner
+  - test-audit
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-063
+  title: Persistent Execution State
+  category: state_management
+  priority: critical
+  description: As a orchestration-executor resuming after interruption, I want to pick up execution where it left off using
+    persistent state, so that interruptions do not cause work to be repeated.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Ticket statuses are persisted to TinyDB via EpicRepository via atomic file operations
+  - step: 2
+    when: the feature is used
+    then:
+    - FileLock ensures concurrent agents cannot corrupt state
+  - step: 3
+    when: the feature is used
+    then:
+    - An interrupted executor can resume by reading current ticket status
+  - step: 4
+    when: the feature is used
+    then:
+    - Completed tickets are not re-executed
+  - step: 5
+    when: the feature is used
+    then:
+    - In-progress tickets are re-attempted on resume
+  - step: 6
+    when: the feature is used
+    then:
+    - agentic epic ticket current returns the correct next ticket after resume
+  related_commands:
+  - agentic epic ticket current
+  - agentic epic ticket list --status in_progress
+  related_agents:
+  - orchestration-executor
+  last_tested: '2026-02-27'
+  test_status: passing
+  test_notes: Validated by 260226SD SDK migration plan. TinyDB-backed EpicRepository with FileLock confirmed working for concurrent
+    ticket state writes. SDK migration plan itself demonstrates resumable execution - tickets started/completed via agentic
+    epic ticket start/complete CLI throughout all 6 build phases and 5 test/UAT phases. All 1622 AgenticCLI tests pass including
+    TinyDB migration tests.
+  tested_by_plan: 260226SD_migrate_sessions_to_sdk
+- id: US-PLN-064
+  title: Epic Explicit Archival
+  category: state_management
+  priority: high
+  description: As a developer cleaning up after feature completion, I want to explicitly archive completed epics when the
+    orchestration-loop confirms completion, so that the live epics folder only shows active work and archiving is deliberate.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Ticket completion does NOT auto-archive; epic stays in live/ until explicitly archived
+  - step: 2
+    when: the feature is used
+    then:
+    - Epic status JSON shows action_required "archive" when all tickets are completed
+  - step: 3
+    when: the feature is used
+    then:
+    - The orchestration-loop archives via agentic epic move folder --force
+  - step: 4
+    when: the feature is used
+    then:
+    - The epic folder moves from docs/epics/live/ to docs/epics/completed/ on explicit command
+  - step: 5
+    when: the feature is used
+    then:
+    - Archival preserves all epic files and history
+  - step: 6
+    when: the feature is used
+    then:
+    - Unarchival is available via agentic epic unarchive for reactivation
+  related_commands:
+  - agentic epic move folder --epic <name> --force
+  - agentic epic unarchive --epic <name>
+  last_tested: '2026-02-23'
+  test_status: passed
+  test_notes: 'Validated by plan 260222RA: auto-archive removed, explicit archive model confirmed working'
+  tested_by_plan: 260222RA_remove_auto_archive_from_cli_task_completion

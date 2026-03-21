@@ -1,0 +1,298 @@
+area: orchestration_agents
+description: "Orchestration-planning, orchestration-executor agent behavior"
+stories:
+- id: US-PLN-046
+  title: Human-in-the-Loop Plan Creation
+  category: orchestration
+  priority: critical
+  description: As a user requesting a feature or improvement, I want to work with an orchestration agent to create a detailed
+    implementation plan, so that I can review and approve the plan before any code execution begins.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - orchestration-planning agent coordinates the planning workflow
+  - step: 2
+    when: the feature is used
+    then:
+    - Agent spawns deploy-worktree to set up epic folder structure
+  - step: 3
+    when: the feature is used
+    then:
+    - Agent spawns appropriate planner (planner-build, planner-test, planner-guidance, etc.)
+  - step: 4
+    when: the feature is used
+    then:
+    - Agent spawns planner-reviewer to validate each phase plan
+  - step: 5
+    when: the feature is used
+    then:
+    - Agent spawns planner-orchestration to generate orchestration TinyDB phase records
+  - step: 6
+    when: the feature is used
+    then:
+    - Human reviews and approves plan before execution
+  - step: 7
+    when: the feature is used
+    then:
+    - Plan saved to docs/epics/live/{plan_id}/
+  - step: 8
+    when: the feature is used
+    then:
+    - Orchestration TinyDB phase records generated with TinyDB phase agent field
+  related_commands:
+  - agentic epic init <branch> --description <desc>
+  related_agents:
+  - orchestration-planning
+  - deploy-worktree
+  - planner-build
+  - planner-test
+  - planner-guidance
+  - planner-reviewer
+  - planner-orchestration
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-047
+  title: Multi-Phase Plan Creation
+  category: orchestration
+  priority: high
+  description: As a orchestration-planning agent, I want to coordinate creation of multiple phases (build, test, teach, cleanup),
+    so that the plan is comprehensive and includes all necessary phases.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Spawns planner-build for implementation phases
+  - step: 2
+    when: the feature is used
+    then:
+    - Spawns planner-test for validation phases
+  - step: 3
+    when: the feature is used
+    then:
+    - Spawns planner-guidance for teaching phases
+  - step: 4
+    when: the feature is used
+    then:
+    - Spawns planner-cleaning for cleanup phases
+  - step: 5
+    when: the feature is used
+    then:
+    - Each phase plan is reviewed by planner-reviewer
+  - step: 6
+    when: the feature is used
+    then:
+    - Phases are integrated into single orchestration TinyDB phase records
+  - step: 7
+    when: the feature is used
+    then:
+    - Phase execution order is defined in TinyDB phase records PHASES metadata
+  related_agents:
+  - orchestration-planning
+  - planner-build
+  - planner-test
+  - planner-guidance
+  - planner-cleaning
+  - planner-reviewer
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-048
+  title: Orchestration Phase Generation via TinyDB
+  category: orchestration
+  priority: critical
+  description: As a orchestration-planning agent, I want to generate an orchestration TinyDB phase records from approved phase
+    plans, so that orchestration-executor can dynamically route work to appropriate agents.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - planner-orchestration spawned after all phases approved
+  - step: 2
+    when: the feature is used
+    then:
+    - 'TinyDB phase records includes required metadata: GOAL, PROFILE, PHASES, AGENT_ROUTING, STATUS'
+  - step: 3
+    when: the feature is used
+    then:
+    - TinyDB phase records follows plan-mmd-schema.yml specification
+  - step: 4
+    when: the feature is used
+    then:
+    - File saved as TinyDB phase records in epic folder
+  - step: 5
+    when: the feature is used
+    then:
+    - AGENT_ROUTING maps each phase to executor agent (build-python, test-runner, etc.)
+  - step: 6
+    when: the feature is used
+    then:
+    - STATUS tracks phase completion (pending, in_progress, completed, blocked)
+  related_agents:
+  - orchestration-planning
+  - planner-orchestration
+  related_files:
+  - modules/AgenticGuidance/assets/specifications/plan-mmd-schema.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-049
+  title: TinyDB-Driven Dynamic Execution
+  category: orchestration
+  priority: critical
+  description: As a orchestration-executor agent, I want to execute a plan by reading orchestration TinyDB phase records and
+    routing to specialized agents, so that plans are executed without hardcoded agent paths.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Discover TinyDB phase records via repo.list_phases() in epic folder
+  - step: 2
+    when: the feature is used
+    then:
+    - Parse TinyDB phase metadata to extract GOAL, PHASES, AGENT_ROUTING, STATUS
+  - step: 3
+    when: the feature is used
+    then:
+    - Execute phases in order defined by PHASES metadata
+  - step: 4
+    when: the feature is used
+    then:
+    - Route each phase to agent specified in AGENT_ROUTING
+  - step: 5
+    when: the feature is used
+    then:
+    - Update STATUS metadata as phases complete
+  - step: 6
+    when: the feature is used
+    then:
+    - Handle phase dependencies and blocking conditions
+  related_agents:
+  - orchestration-executor
+  related_files:
+  - modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml
+  - modules/AgenticGuidance/assets/specifications/orchestration-executor-specification.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-050
+  title: Agent Routing from Metadata
+  category: orchestration
+  priority: critical
+  description: As a orchestration-executor agent, I want to route work to agents based on TinyDB phase agent field, so that
+    execution is flexible and can adapt to different plan types.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - TinyDB phase agent field maps phase names to agent roles
+  - step: 2
+    when: the feature is used
+    then:
+    - 'Example: ''build-phase-1: build-python'' routes to build-python agent'
+  - step: 3
+    when: the feature is used
+    then:
+    - 'Example: ''test-phase-1: test-runner'' routes to test-runner agent'
+  - step: 4
+    when: an error condition occurs
+    then:
+    - Unsupported agent roles cause graceful failure with clear error
+  - step: 5
+    when: the feature is used
+    then:
+    - Agent spawning uses CLI context injection for role-specific context
+  related_commands:
+  - agentic context bootstrap --role <agent-role>
+  related_agents:
+  - orchestration-executor
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-051
+  title: Phase Status Tracking
+  category: orchestration
+  priority: high
+  description: As a orchestration-executor agent, I want to track phase completion status in TinyDB phase metadata, so that
+    execution can resume from last completed phase after interruption.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - 'STATUS metadata tracks: pending, in_progress, completed, blocked'
+  - step: 2
+    when: the feature is used
+    then:
+    - Phase marked 'in_progress' before agent spawned
+  - step: 3
+    when: the feature is used
+    then:
+    - Phase marked 'completed' after agent finishes successfully
+  - step: 4
+    when: an error condition occurs
+    then:
+    - Phase marked 'blocked' if dependencies not met or agent fails
+  - step: 5
+    when: the feature is used
+    then:
+    - STATUS persisted to TinyDB phase records after each phase transition
+  - step: 6
+    when: the feature is used
+    then:
+    - Orchestrator can resume from last completed phase
+  related_agents:
+  - orchestration-executor
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-052
+  title: Plan Execution Entrypoint
+  category: orchestration
+  priority: critical
+  description: As a user executing an approved plan, I want to invoke orchestration-executor via entrypoint file, so that
+    plan execution follows standardized workflow.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - TinyDB phase routing file exists in AgenticGuidance/entrypoints/
+  - step: 2
+    when: the feature is used
+    then:
+    - Entrypoint content injected into agent context to establish role
+  - step: 3
+    when: the feature is used
+    then:
+    - Entrypoint defines orchestration-executor as active agent
+  - step: 4
+    when: the feature is used
+    then:
+    - Entrypoint references epic folder location for TinyDB phase records discovery
+  - step: 5
+    when: the feature is used
+    then:
+    - Orchestrator bootstraps context via CCI pattern
+  related_commands:
+  - agentic context bootstrap --role orchestration-executor
+  related_agents:
+  - orchestration-executor
+  related_files:
+  - modules/AgenticGuidance/entrypoints/TinyDB phase routing
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

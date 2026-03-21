@@ -1,0 +1,313 @@
+area: epic_service
+description: "EpicService + TicketService CRUD, validation"
+stories:
+- id: US-PLN-082
+  title: Epic CRUD Operations
+  category: services
+  priority: critical
+  description: As a CLI or agent managing epics, I want to use EpicService for epic CRUD operations, so that epic data access
+    is programmatic and consistent.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - EpicService provides create, read, update, delete operations
+  - step: 2
+    when: the feature is used
+    then:
+    - Handles both modern (phases[].tickets[]) and legacy (epic.tickets[]) structures
+  - step: 3
+    when: the feature is used
+    then:
+    - Uses FileLock for atomic operations
+  - step: 4
+    when: the feature is used
+    then:
+    - Returns PlanData dataclass for type safety
+  - step: 5
+    when: the feature is used
+    then:
+    - Validates epic structure against schema
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-083
+  title: Epic Data Validation
+  category: services
+  priority: high
+  description: As a EpicService, I want to validate epic data against schema, so that only well-formed epics are persisted.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - 'Validate required fields: name, worktree_path, branch, status, objective, phases'
+  - step: 2
+    when: the feature is used
+    then:
+    - 'Validate status enum: planning, active, needs_review, blocked, completed'
+  - step: 3
+    when: the feature is used
+    then:
+    - 'Validate priority enum: critical, high, medium, low'
+  - step: 4
+    when: the feature is used
+    then:
+    - Validate phase structure
+  - step: 5
+    when: an error condition occurs
+    then:
+    - Return validation errors with specific field paths
+  related_files:
+  - modules/AgenticGuidance/assets/specifications/plan-schema.yml
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-084
+  title: Epic Movement Workflow
+  category: services
+  priority: high
+  description: As a EpicService, I want to automate epic archival when completed, so that completed epics are moved to docs/epics/completed/.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Detect when all tickets are completed
+  - step: 2
+    when: the feature is used
+    then:
+    - Check git status before moving folder
+  - step: 3
+    when: the feature is used
+    then:
+    - Move epic folder from live/ to completed/
+  - step: 4
+    when: the feature is used
+    then:
+    - Preserve epic structure and history
+  - step: 5
+    when: the feature is used
+    then:
+    - Handle git conflicts gracefully
+  - step: 6
+    when: an error condition occurs
+    then:
+    - 'Return MoveResult: SUCCESS, SKIPPED, FAILED'
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/plan.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-085
+  title: Epic Listing and Discovery
+  category: services
+  priority: high
+  description: As a CLI listing epics, I want to discover all epics in live/, completed/, deferred/, so that users can see
+    all epic states.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - List all epics in docs/epics/live/
+  - step: 2
+    when: the feature is used
+    then:
+    - List all epics in docs/epics/completed/
+  - step: 3
+    when: the feature is used
+    then:
+    - List all epics in docs/epics/deferred/
+  - step: 4
+    when: the feature is used
+    then:
+    - 'Return epic metadata: name, status, branch, objective'
+  - step: 5
+    when: the feature is used
+    then:
+    - Support filtering by status, priority, branch
+  related_commands:
+  - agentic epic list
+  - agentic epic list --status active
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-086
+  title: Ticket CRUD Operations
+  category: services
+  priority: critical
+  description: As a CLI or agent managing tickets, I want to use TicketService for ticket CRUD operations, so that ticket
+    data access is programmatic and consistent.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - TicketService provides create, read, update, delete operations
+  - step: 2
+    when: the feature is used
+    then:
+    - Handles both modern (phases[].tickets[]) and legacy (tickets[]) structures
+  - step: 3
+    when: the feature is used
+    then:
+    - Uses FileLock for atomic operations
+  - step: 4
+    when: the feature is used
+    then:
+    - Returns Task dataclass for type safety
+  - step: 5
+    when: the feature is used
+    then:
+    - Validates ticket structure
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/task.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-087
+  title: Ticket Status Management
+  category: services
+  priority: critical
+  description: As a CLI updating ticket status, I want to transition ticket status through workflow states, so that ticket
+    progress is tracked accurately.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - 'TaskStatus enum: PENDING, IN_PROGRESS, COMPLETED'
+  - step: 2
+    when: the feature is used
+    then:
+    - Validate status transitions (pending -> in_progress -> completed)
+  - step: 3
+    when: the feature is used
+    then:
+    - Set completed_date when status transitions to completed
+  - step: 4
+    when: the feature is used
+    then:
+    - Atomic status updates using FileLock
+  - step: 5
+    when: an error condition occurs
+    then:
+    - Return success/failure indication
+  related_commands:
+  - agentic epic ticket start <id> --epic <folder>
+  - agentic epic ticket complete <id> --epic <folder>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-088
+  title: Ticket Discovery
+  category: services
+  priority: high
+  description: As a agent executing tickets, I want to discover current and next tickets in an epic, so that I know what work
+    to execute.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Get current ticket (first IN_PROGRESS ticket)
+  - step: 2
+    when: the feature is used
+    then:
+    - Get next ticket (first PENDING ticket)
+  - step: 3
+    when: the feature is used
+    then:
+    - Get all tickets in a phase
+  - step: 4
+    when: the feature is used
+    then:
+    - Get all tickets with specific status
+  - step: 5
+    when: the feature is used
+    then:
+    - Return Task dataclass with full metadata
+  related_commands:
+  - agentic epic ticket current --epic <folder>
+  - agentic epic ticket next --epic <folder>
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-089
+  title: Ticket Movement to Completed
+  category: services
+  priority: medium
+  description: As a TicketService, I want to move completed tickets to epic_completed.yml, so that active epic files remain
+    focused on pending work.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - Detect when ticket transitions to COMPLETED
+  - step: 2
+    when: the feature is used
+    then:
+    - Move ticket from epic_build.yml to epic_completed.yml
+  - step: 3
+    when: the feature is used
+    then:
+    - Preserve ticket metadata and history
+  - step: 4
+    when: the feature is used
+    then:
+    - Atomic move operation using FileLock
+  - step: 5
+    when: the feature is used
+    then:
+    - Trigger epic archival when all tickets completed
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+- id: US-PLN-090
+  title: Question Queue Management
+  category: services
+  priority: high
+  description: As a agent encountering ambiguity, I want to use QuestionQueue to ask questions, so that I can get human input
+    to proceed.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: the feature is used
+    then:
+    - 'Create question with unique ID: Q-YYYYMMDD-HHMMSS-RAND'
+  - step: 2
+    when: the feature is used
+    then:
+    - Store question in epic_folder/questions/pending/
+  - step: 3
+    when: the feature is used
+    then:
+    - 'Question includes: id, text, context, severity, created_at'
+  - step: 4
+    when: the feature is used
+    then:
+    - 'QuestionSeverity enum: BLOCKING, HIGH, MEDIUM, LOW'
+  - step: 5
+    when: the feature is used
+    then:
+    - Question saved as YAML file
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/question.py
+  - modules/AgenticGuidance/src/agenticguidance/models/question.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
