@@ -57,11 +57,11 @@ class TestFindRepoRoot:
 class TestLoadValidStoryIds:
     """Test story ID loading from docs/userstories/."""
 
-    def test_returns_frozenset(self):
-        """Verify return type is frozenset."""
+    def test_returns_dict(self):
+        """Verify return type is dict mapping id -> lifecycle."""
         mod = _load_conftest_module()
         result = mod._load_valid_story_ids()
-        assert isinstance(result, frozenset)
+        assert isinstance(result, dict)
 
     def test_loads_story_ids_from_yaml(self):
         """Verify story IDs are loaded from YAML files in docs/userstories/."""
@@ -89,7 +89,7 @@ class TestLoadValidStoryIds:
 
         with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
             result = mod._load_valid_story_ids()
-            assert isinstance(result, frozenset)
+            assert isinstance(result, dict)
             assert "US-META-001" not in result, "00_metadata.yml stories should be excluded"
             assert "US-FEAT-001" in result, "Non-metadata stories should be loaded"
 
@@ -138,7 +138,7 @@ class TestCollectionValidation:
         mock_item.iter_markers.return_value = [mock_marker]
         mock_item.nodeid = "test_example.py::test_unknown_id"
 
-        valid_ids = frozenset({"US-STR-001", "US-STR-002"})
+        valid_ids = {"US-STR-001": "implemented", "US-STR-002": "implemented"}
 
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
             mod.pytest_collection_modifyitems(self._mock_config(), [mock_item])
@@ -155,7 +155,7 @@ class TestCollectionValidation:
         mock_item.iter_markers.return_value = [mock_marker]
         mock_item.nodeid = "test_example.py::test_something"
 
-        valid = frozenset({"US-STR-001"})
+        valid = {"US-STR-001": "implemented"}
         with patch.object(mod, "_VALID_STORY_IDS", valid):
             # Should warn but not raise
             mod.pytest_collection_modifyitems(self._mock_config(), [mock_item])
@@ -170,7 +170,7 @@ class TestCollectionValidation:
         mock_item.iter_markers.return_value = [mock_marker]
         mock_item.nodeid = "test_example.py::test_strict"
 
-        valid = frozenset({"US-STR-001"})
+        valid = {"US-STR-001": "implemented"}
         with patch.object(mod, "_VALID_STORY_IDS", valid):
             from _pytest.outcomes import Failed
 
@@ -186,7 +186,7 @@ class TestCollectionValidation:
         mock_marker.args = ("US-STR-001",)
         mock_item.iter_markers.return_value = [mock_marker]
 
-        valid = frozenset({"US-STR-001", "US-STR-002"})
+        valid = {"US-STR-001": "implemented", "US-STR-002": "implemented"}
         with patch.object(mod, "_VALID_STORY_IDS", valid):
             mod.pytest_collection_modifyitems(self._mock_config(), [mock_item])
             mock_item.warn.assert_not_called()
@@ -209,14 +209,14 @@ class TestCollectionValidation:
         mod = _load_conftest_module()
         with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
             result = mod._load_valid_story_ids()
-            assert result == frozenset()
+            assert result == {}
 
     def test_load_valid_story_ids_handles_no_git_root(self):
         """Verify empty frozenset returned when no .git root found."""
         mod = _load_conftest_module()
         with patch.object(mod, "_find_repo_root_from_tests", return_value=None):
             result = mod._load_valid_story_ids()
-            assert result == frozenset()
+            assert result == {}
 
     def test_load_valid_story_ids_from_stories_key(self, tmp_path):
         """Verify IDs loaded from YAML 'stories' key."""
@@ -298,7 +298,7 @@ class TestCollectionValidation:
 
         with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
             result = mod._load_valid_story_ids()
-            assert result == frozenset()
+            assert result == {}
 
     def test_skips_non_dict_content(self, tmp_path):
         """Verify files with non-dict top-level content are skipped."""
@@ -310,7 +310,7 @@ class TestCollectionValidation:
 
         with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
             result = mod._load_valid_story_ids()
-            assert result == frozenset()
+            assert result == {}
 
     def test_collection_modifyitems_handles_empty_valid_ids(self):
         """Verify plugin handles empty valid IDs set gracefully (returns early)."""
@@ -325,7 +325,7 @@ class TestCollectionValidation:
 
         # Patch _VALID_STORY_IDS to None (not yet loaded) and return empty
         with patch.object(mod, "_VALID_STORY_IDS", None):
-            with patch.object(mod, "_load_valid_story_ids", return_value=frozenset()):
+            with patch.object(mod, "_load_valid_story_ids", return_value={}):
                 # Should not crash; returns early when valid IDs is empty
                 mod.pytest_collection_modifyitems(mock_config, [mock_item])
                 # No warning should be issued (short-circuit on empty valid IDs)
@@ -343,7 +343,7 @@ class TestCollectionValidation:
         mock_config = MagicMock()
 
         with patch.object(mod, "_VALID_STORY_IDS", None):
-            with patch.object(mod, "_load_valid_story_ids", return_value=frozenset({"US-TEST-001"})) as mock_load:
+            with patch.object(mod, "_load_valid_story_ids", return_value={"US-TEST-001": "implemented"}) as mock_load:
                 mod.pytest_collection_modifyitems(mock_config, [mock_item])
                 mock_load.assert_called_once()
 

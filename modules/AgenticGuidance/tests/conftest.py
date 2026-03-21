@@ -43,17 +43,17 @@ def _find_repo_root_from_tests():
 def _load_valid_story_ids():
     """Load all valid story IDs from docs/userstories/ YAML files.
 
-    Returns a frozenset of story ID strings (e.g. 'US-STR-001').
-    Returns an empty set if the directory doesn't exist (e.g. in CI).
+    Returns a dict mapping story ID -> lifecycle state (e.g. {'US-STR-001': 'implemented'}).
+    Returns an empty dict if the directory doesn't exist (e.g. in CI).
     """
     repo_root = _find_repo_root_from_tests()
     if not repo_root:
-        return frozenset()
+        return {}
     userstories_dir = repo_root / "docs" / "userstories"
     if not userstories_dir.exists():
-        return frozenset()
+        return {}
 
-    valid_ids = set()
+    valid_ids = {}
     for yml_file in userstories_dir.glob("**/*.yml"):
         if yml_file.name == "00_metadata.yml":
             continue
@@ -69,12 +69,12 @@ def _load_valid_story_ids():
                 continue
             for story in items:
                 if isinstance(story, dict) and "id" in story:
-                    valid_ids.add(story["id"])
-    return frozenset(valid_ids)
+                    valid_ids[story["id"]] = story.get("lifecycle", "implemented")
+    return valid_ids
 
 
 # Module-level cache so IDs are loaded at most once per test session.
-_VALID_STORY_IDS: frozenset | None = None
+_VALID_STORY_IDS: dict | None = None
 
 
 def pytest_collection_modifyitems(config, items):
@@ -82,6 +82,7 @@ def pytest_collection_modifyitems(config, items):
 
     In default mode: issues pytest warnings for unknown story IDs.
     When story_strict = true in pyproject.toml: unknown story IDs cause test failure.
+    Also warns about tests referencing proposal or deprecated stories.
     """
     global _VALID_STORY_IDS  # noqa: PLW0603
 
@@ -114,6 +115,23 @@ def pytest_collection_modifyitems(config, items):
                     if strict_mode:
                         pytest.fail(msg)
                     else:
+                        item.warn(UserWarning(msg))
+                else:
+                    lifecycle = _VALID_STORY_IDS[story_id]
+                    if lifecycle == "proposal":
+                        msg = (
+                            f"@pytest.mark.story references proposal story "
+                            f"'{story_id}' — promote to under-construction before testing"
+                        )
+                        if strict_mode:
+                            pytest.fail(msg)
+                        else:
+                            item.warn(UserWarning(msg))
+                    elif lifecycle == "deprecated":
+                        msg = (
+                            f"@pytest.mark.story references deprecated story "
+                            f"'{story_id}' — consider removing this test marker"
+                        )
                         item.warn(UserWarning(msg))
 
 

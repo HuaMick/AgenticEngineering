@@ -552,10 +552,15 @@ process:
         STORY VALIDATION CHECK (references planning-standard.yml#escape_hatch_rules):
         6. If plan has affected_stories (from design_context.yml in epic folder,
            or via `agentic agent stories report --project <project> --coverage`):
-           a. Verify UAT phase validated those specific stories
-           b. Check story test results are captured (test_status field in story YAML
+           a. FENCE: Filter affected_stories by lifecycle before coverage check.
+              Only stories with lifecycle "under-construction" or "implemented" are checked.
+              Stories with lifecycle "proposal", "deprecated", or "archived" are excluded.
+           b. Verify UAT phase validated those specific stories
+           c. Check story test results are captured (test_status field in story YAML
               AND @pytest.mark.story markers in test files — markers are PRIMARY)
-           c. FENCE: Cannot proceed to shutdown if affected stories have test_status=failed
+           d. For "under-construction" stories: MUST have BOTH @pytest.mark.story test
+              markers AND @story() production code markers (from agenticguidance.markers)
+           e. FENCE: Cannot proceed to shutdown if affected stories have test_status=failed
         7. If plan has no affected_stories and no no_stories_rationale:
            a. Determine plan type from TinyDB epic metadata
            b. If plan type in blocked_plan_types (build, test) → BLOCK (not WARN)
@@ -565,29 +570,28 @@ process:
            a. If affected_stories present in TinyDB epic metadata, check TinyDB for UAT phase
            b. If no UAT phase found but affected_stories exist → BLOCK
               Error: "BLOCKED: Plan has affected_stories but no UAT phase in TinyDB."
-        9. STORY COVERAGE CHECK (pytest markers are PRIMARY source of truth):
-           a. Scan test files in the target project for @pytest.mark.story("<story_id>")
-              markers. Use grep/ripgrep to collect the set of story IDs referenced
-              by markers across all test files:
+        9. STORY COVERAGE CHECK (pytest markers are PRIMARY, production code markers secondary):
+           a. Run `agentic stories sync` to rebuild the TinyDB story index
+           b. Scan test files for @pytest.mark.story("<story_id>") markers:
               ```bash
-              grep -rh '@pytest.mark.story' modules/*/tests/ | grep -oP '"(US-[A-Z]+-\d+)"' | sort -u
+              agentic stories coverage -j
               ```
-           b. For each story ID in affected_stories, check if it appears in the
-              collected marker set
-           c. ALSO read test_status from story YAML as a secondary signal
+           c. Check production code coverage via `agentic stories code <story_id>`
+           d. ALSO read test_status from story YAML as a secondary signal
               (markers are persistent and authoritative; YAML test_status may decay)
-           d. Classification per story:
+           e. Classification per story:
               - COVERED: has @pytest.mark.story marker in test files
-              - UNTESTED: no marker found AND test_status=untested in YAML
+              - CODE_TAGGED: has @story() decorator in production code
+              - UNTESTED: no test marker found AND test_status=untested in YAML
               - FAILED: has marker but test_status=failed in YAML (tests exist but fail)
-           e. If ANY story is UNTESTED → BLOCK
+           f. If ANY story is UNTESTED → BLOCK
               Error: "BLOCKED: Story coverage incomplete. N/M stories have no
               @pytest.mark.story markers in test files: [IDs]"
-           f. If ANY story is FAILED → BLOCK
+           g. If ANY story is FAILED → BLOCK
               Error: "BLOCKED: Story tests failing. N/M stories have failing tests: [IDs]"
-           g. Report coverage: "Story coverage: N/M stories covered by pytest markers (X%)
-              YAML test_status: P pass, F fail, U untested"
-           h. NOTE: A story with a pytest marker but test_status=untested in YAML
+           h. Report coverage: "Story coverage: N/M stories covered by pytest markers (X%)
+              Code coverage: N/M stories tagged with @story() decorators (X%)"
+           i. NOTE: A story with a pytest marker but test_status=untested in YAML
               is considered COVERED — the marker is authoritative. The YAML field
               may not have been updated yet.
 

@@ -66,11 +66,11 @@ class TestFindRepoRootCLI:
 class TestLoadValidStoryIdsCLI:
     """Test story ID loading from docs/userstories/ via CLI conftest."""
 
-    def test_returns_frozenset(self):
-        """Verify return type is frozenset (immutable, cacheable)."""
+    def test_returns_dict(self):
+        """Verify return type is dict mapping id -> lifecycle."""
         mod = _load_conftest_module()
         result = mod._load_valid_story_ids()
-        assert isinstance(result, frozenset)
+        assert isinstance(result, dict)
 
     def test_loads_story_ids_from_yaml(self):
         """Verify story IDs loaded from YAML files follow US-XXX-NNN format."""
@@ -98,7 +98,7 @@ class TestLoadValidStoryIdsCLI:
 
         with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
             result = mod._load_valid_story_ids()
-            assert isinstance(result, frozenset)
+            assert isinstance(result, dict)
             assert "US-META-001" not in result, "00_metadata.yml stories should be excluded"
             assert "US-FEAT-001" in result, "Non-metadata stories should be loaded"
 
@@ -108,14 +108,14 @@ class TestLoadValidStoryIdsCLI:
         # Patch _find_repo_root_from_tests to return a dir without userstories
         with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
             result = mod._load_valid_story_ids()
-            assert result == frozenset()
+            assert result == {}
 
     def test_handles_no_git_root(self):
         """Verify returns empty frozenset when no .git root found."""
         mod = _load_conftest_module()
         with patch.object(mod, "_find_repo_root_from_tests", return_value=None):
             result = mod._load_valid_story_ids()
-            assert result == frozenset()
+            assert result == {}
 
     def test_loads_from_stories_key(self, tmp_path):
         """Verify IDs are loaded from YAML files with 'stories' key."""
@@ -200,7 +200,7 @@ class TestLoadValidStoryIdsCLI:
 
         with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
             result = mod._load_valid_story_ids()
-            assert result == frozenset()
+            assert result == {}
 
     def test_skips_non_dict_content(self, tmp_path):
         """Verify files with non-dict top-level content are skipped."""
@@ -212,7 +212,7 @@ class TestLoadValidStoryIdsCLI:
 
         with patch.object(mod, "_find_repo_root_from_tests", return_value=tmp_path):
             result = mod._load_valid_story_ids()
-            assert result == frozenset()
+            assert result == {}
 
     def test_skips_00_metadata_yml(self, tmp_path):
         """Verify 00_metadata.yml files are explicitly skipped."""
@@ -278,7 +278,7 @@ class TestCollectionValidationCLI:
         mock_config.getini.return_value = False
 
         # Provide known valid IDs so the fake ID is definitely unknown
-        valid_ids = frozenset({"US-STR-001", "US-STR-002"})
+        valid_ids = {"US-STR-001": "implemented", "US-STR-002": "implemented"}
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
             mod.pytest_collection_modifyitems(mock_config, [mock_item])
             mock_item.warn.assert_called_once()
@@ -298,7 +298,7 @@ class TestCollectionValidationCLI:
 
         mock_config = MagicMock()
         mock_config.getini.return_value = False
-        valid_ids = frozenset({"US-STR-001"})
+        valid_ids = {"US-STR-001": "implemented"}
 
         # Should NOT raise — only warn
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
@@ -321,7 +321,7 @@ class TestCollectionValidationCLI:
 
         # Patch _VALID_STORY_IDS to None (not yet loaded) and _load_valid_story_ids to return empty
         with patch.object(mod, "_VALID_STORY_IDS", None):
-            with patch.object(mod, "_load_valid_story_ids", return_value=frozenset()):
+            with patch.object(mod, "_load_valid_story_ids", return_value={}):
                 mod.pytest_collection_modifyitems(mock_config, [mock_item])
                 # Should not crash; returns early when valid IDs is empty
 
@@ -354,7 +354,7 @@ class TestCollectionValidationCLI:
         mock_config = MagicMock()
         mock_config.getini.return_value = False
 
-        valid_ids = frozenset({"US-STR-001", "US-STR-002"})
+        valid_ids = {"US-STR-001": "implemented", "US-STR-002": "implemented"}
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
             mod.pytest_collection_modifyitems(mock_config, [mock_item])
             mock_item.warn.assert_called_once()
@@ -373,7 +373,7 @@ class TestCollectionValidationCLI:
         mock_config = MagicMock()
         mock_config.getini.return_value = False
 
-        valid_ids = frozenset({"US-STR-001", "US-STR-002"})
+        valid_ids = {"US-STR-001": "implemented", "US-STR-002": "implemented"}
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
             mod.pytest_collection_modifyitems(mock_config, [mock_item])
             mock_item.warn.assert_not_called()
@@ -392,7 +392,7 @@ class TestCollectionValidationCLI:
 
         # Set cache to None to force loading
         with patch.object(mod, "_VALID_STORY_IDS", None):
-            with patch.object(mod, "_load_valid_story_ids", return_value=frozenset({"US-TEST-001"})) as mock_load:
+            with patch.object(mod, "_load_valid_story_ids", return_value={"US-TEST-001": "implemented"}) as mock_load:
                 mod.pytest_collection_modifyitems(mock_config, [mock_item])
                 mock_load.assert_called_once()
 

@@ -975,6 +975,50 @@ def stories_affected(
     ))
 
 
+@stories_app.command("promote")
+def stories_promote(
+    story_id: str = typer.Argument(..., help="Story ID to promote (proposal -> under-construction -> implemented)"),
+):
+    """Advance story lifecycle forward."""
+    _stories_handle(_ns(
+        stories_command="promote", story_id=story_id,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("deprecate")
+def stories_deprecate(
+    story_id: str = typer.Argument(..., help="Story ID to deprecate (implemented -> deprecated)"),
+):
+    """Mark a story as deprecated."""
+    _stories_handle(_ns(
+        stories_command="deprecate", story_id=story_id,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("archive")
+def stories_archive(
+    story_id: str = typer.Argument(..., help="Story ID to archive (deprecated -> archived)"),
+):
+    """Archive a deprecated story."""
+    _stories_handle(_ns(
+        stories_command="archive", story_id=story_id,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("code")
+def stories_code(
+    story_id: str = typer.Argument(..., help="Story ID to show production code for"),
+):
+    """Show production code tagged with a story ID."""
+    _stories_handle(_ns(
+        stories_command="code", story_id=story_id,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
 # ===========================================================================
 # COMMAND CATEGORIES (used by context/require_project checks above)
 # ===========================================================================

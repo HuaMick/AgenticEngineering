@@ -40,8 +40,16 @@ def handle(args, ctx=None):
         cmd_coverage(args)
     elif args.stories_command == "run":
         cmd_run(args)
+    elif args.stories_command == "promote":
+        cmd_promote(args)
+    elif args.stories_command == "deprecate":
+        cmd_deprecate(args)
+    elif args.stories_command == "archive":
+        cmd_archive(args)
+    elif args.stories_command == "code":
+        cmd_code(args)
     else:
-        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected|sync|coverage|run]", file=sys.stderr)
+        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected|sync|coverage|run|promote|deprecate|archive|code]", file=sys.stderr)
         sys.exit(1)
 
 
@@ -538,13 +546,26 @@ def cmd_status(args):
             print_error(f"Story not found: {story_id}")
         sys.exit(1)
 
+    # Look up code coverage from TinyDB
+    code_functions = []
+    try:
+        db_path = _get_repo_db_path()
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        code_functions = repo.get_code_for_story(story_id)
+        repo.close()
+    except Exception:
+        pass
+
     status_data = {
         "id": story_obj.id,
         "title": story_obj.title,
+        "lifecycle": story_obj.lifecycle,
         "test_status": story_obj.test_status or "untested",
         "last_tested": story_obj.last_tested or None,
         "test_notes": story_obj.test_notes,
         "tested_by_plan": story_obj.tested_by_plan or None,
+        "code_functions": code_functions,
         "file": story_obj.source_file,
     }
 
@@ -552,8 +573,9 @@ def cmd_status(args):
         print_json(status_data)
         return
 
-    print_header(f"Test Status: {story_id}")
+    print_header(f"Story Status: {story_id}")
     console.print(f"  [bold]Title:[/bold] {status_data['title']}")
+    console.print(f"  [bold]Lifecycle:[/bold] {status_data['lifecycle']}")
 
     ts = status_data["test_status"]
     if ts == "pass":
@@ -575,6 +597,13 @@ def cmd_status(args):
 
     if status_data["tested_by_plan"]:
         console.print(f"  [bold]Tested By Plan:[/bold] {status_data['tested_by_plan']}")
+
+    if status_data["code_functions"]:
+        console.print(f"  [bold]Code Functions:[/bold] {len(status_data['code_functions'])}")
+        for fn in status_data["code_functions"][:10]:
+            console.print(f"    [dim]- {fn}[/dim]")
+        if len(status_data["code_functions"]) > 10:
+            console.print(f"    [dim]... and {len(status_data['code_functions']) - 10} more[/dim]")
 
     console.print(f"  [dim]File: {status_data['file']}[/dim]")
 
@@ -731,7 +760,12 @@ def _scan_pytest_story_markers_detailed() -> dict[str, list[str]]:
 
 
 def _extract_story_ids_from_decorators(node: "ast.FunctionDef | ast.ClassDef") -> set[str]:
-    """Extract story IDs from @pytest.mark.story(...) decorators on a node.
+    """Extract story IDs from @pytest.mark.story(...) or @story(...) decorators.
+
+    Matches:
+    - @pytest.mark.story("US-XXX-NNN", ...)
+    - @story("US-XXX-NNN", ...)
+    - @markers.story("US-XXX-NNN", ...)
 
     Returns:
         Set of story ID strings found in story markers.
@@ -741,22 +775,90 @@ def _extract_story_ids_from_decorators(node: "ast.FunctionDef | ast.ClassDef") -
     story_ids: set[str] = set()
 
     for decorator in node.decorator_list:
-        # Match @pytest.mark.story("US-XXX-NNN", ...)
         if not isinstance(decorator, ast.Call):
             continue
 
         func = decorator.func
-        # Check for pytest.mark.story (Attribute chain)
+
+        is_story_call = False
+
         if isinstance(func, ast.Attribute) and func.attr == "story":
-            # Verify it's pytest.mark.story (at least mark.story)
             inner = func.value
+            # pytest.mark.story
             if isinstance(inner, ast.Attribute) and inner.attr == "mark":
-                # Extract string arguments
-                for arg in decorator.args:
-                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                        story_ids.add(arg.value)
+                is_story_call = True
+            # markers.story
+            elif isinstance(inner, ast.Name) and inner.id == "markers":
+                is_story_call = True
+        elif isinstance(func, ast.Name) and func.id == "story":
+            # bare @story(...)
+            is_story_call = True
+
+        if is_story_call:
+            for arg in decorator.args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    story_ids.add(arg.value)
 
     return story_ids
+
+
+def _scan_production_code_story_markers() -> dict[str, list[str]]:
+    """Scan production code for @story(...) decorators.
+
+    Walks modules/*/src/ directories (excludes tests/) looking for
+    @story(...) or @markers.story(...) decorators.
+
+    Returns:
+        Dict mapping story_id to list of code nodeids
+        (e.g. {"US-CLI-110": ["modules/AgenticCLI/src/agenticcli/foo.py::bar"]}).
+    """
+    import ast
+
+    cwd = Path.cwd()
+    repo_root = cwd
+    while repo_root != repo_root.parent:
+        if (repo_root / ".git").exists():
+            break
+        repo_root = repo_root.parent
+
+    src_dirs = sorted((repo_root / "modules").glob("*/src"))
+
+    mappings: dict[str, list[str]] = {}
+
+    for src_dir in src_dirs:
+        if not src_dir.exists():
+            continue
+        for py_file in sorted(src_dir.rglob("*.py")):
+            # Skip test files
+            if "/tests/" in str(py_file) or py_file.name.startswith("test_"):
+                continue
+            try:
+                source = py_file.read_text()
+                tree = ast.parse(source, filename=str(py_file))
+            except (SyntaxError, OSError):
+                continue
+
+            rel_path = str(py_file.relative_to(repo_root))
+
+            for node in ast.iter_child_nodes(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    story_ids = _extract_story_ids_from_decorators(node)
+                    if story_ids:
+                        nodeid = f"{rel_path}::{node.name}"
+                        for sid in story_ids:
+                            mappings.setdefault(sid, []).append(nodeid)
+
+                    # Also check methods inside classes
+                    if isinstance(node, ast.ClassDef):
+                        for method in ast.iter_child_nodes(node):
+                            if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                                method_ids = _extract_story_ids_from_decorators(method)
+                                if method_ids:
+                                    nodeid = f"{rel_path}::{node.name}::{method.name}"
+                                    for sid in method_ids:
+                                        mappings.setdefault(sid, []).append(nodeid)
+
+    return mappings
 
 
 def cmd_report(args):
@@ -1184,7 +1286,7 @@ def _get_affected_stories_from_changes(changed_files: list[str]) -> dict[str, li
 
 
 def cmd_sync(args):
-    """Scan test files for @pytest.mark.story markers and sync to TinyDB index."""
+    """Scan test files and production code for story markers and sync to TinyDB."""
     from agenticcli.console import console, is_json_output, print_json, print_success
 
     mappings = _scan_pytest_story_markers_detailed()
@@ -1194,12 +1296,18 @@ def cmd_sync(args):
     total_tests = sum(len(v) for v in mappings.values())
     orphan_markers = sorted(set(mappings.keys()) - all_story_ids)
 
+    # Scan production code for @story() decorators
+    code_mappings = _scan_production_code_story_markers()
+    total_code_fns = sum(len(v) for v in code_mappings.values())
+
     # Write to TinyDB
     db_path = _get_repo_db_path()
     from agenticguidance.services.epic_repository import EpicRepository
     repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
     repo.clear_story_tests()
     count = repo.sync_story_tests(mappings)
+    repo.clear_story_code()
+    code_count = repo.sync_story_code(code_mappings)
     repo.close()
 
     if is_json_output():
@@ -1208,11 +1316,17 @@ def cmd_sync(args):
             "test_functions": total_tests,
             "stories_covered": len(mappings),
             "orphan_markers": orphan_markers,
+            "code_stories_synced": code_count,
+            "code_functions": total_code_fns,
         })
         return
 
     print_success(f"Synced {count} stories with {total_tests} test functions")
-    console.print(f"  Stories with markers: {len(mappings)}")
+    console.print(f"  Stories with test markers: {len(mappings)}")
+    if code_count:
+        print_success(f"Synced {code_count} stories with {total_code_fns} production code functions")
+    else:
+        console.print("  [dim]No @story() decorators found in production code[/dim]")
     if orphan_markers:
         console.print(f"  [yellow]Orphan markers ({len(orphan_markers)}):[/yellow] markers referencing non-existent story IDs")
         for sid in orphan_markers[:10]:
@@ -1317,3 +1431,121 @@ def cmd_run(args):
 
     result = subprocess.run(cmd, cwd=str(repo_root))
     sys.exit(result.returncode)
+
+
+def _lifecycle_transition(args, target_state: str, verb: str):
+    """Common logic for lifecycle transition commands."""
+    from agenticguidance.services.story import LIFECYCLE_TRANSITIONS
+
+    from agenticcli.console import is_json_output, print_error, print_json, print_success
+
+    story_id = args.story_id
+    svc = StoryService(_find_userstories_dir())
+    story_obj = svc.get_by_id(story_id)
+
+    if story_obj is None:
+        if is_json_output():
+            print_json({"error": f"Story not found: {story_id}"})
+        else:
+            print_error(f"Story not found: {story_id}")
+        sys.exit(1)
+
+    if not story_obj.can_transition_to(target_state):
+        allowed = LIFECYCLE_TRANSITIONS.get(story_obj.lifecycle, [])
+        msg = (
+            f"Cannot {verb} {story_id}: lifecycle is '{story_obj.lifecycle}', "
+            f"allowed transitions: {allowed or 'none'}"
+        )
+        if is_json_output():
+            print_json({"error": msg, "current_lifecycle": story_obj.lifecycle})
+        else:
+            print_error(msg)
+        sys.exit(1)
+
+    updated = svc.update_lifecycle(story_id, target_state)
+    if not updated:
+        print_error(f"Could not update story {story_id}")
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "story_id": story_id,
+            "previous_lifecycle": story_obj.lifecycle,
+            "lifecycle": target_state,
+        })
+    else:
+        print_success(f"{story_id}: {story_obj.lifecycle} -> {target_state}")
+
+
+def cmd_promote(args):
+    """Advance story lifecycle: proposal -> under-construction -> implemented."""
+    from agenticguidance.services.story import LIFECYCLE_TRANSITIONS
+
+    story_id = args.story_id
+    svc = StoryService(_find_userstories_dir())
+    story_obj = svc.get_by_id(story_id)
+
+    if story_obj is None:
+        from agenticcli.console import is_json_output, print_error, print_json
+        if is_json_output():
+            print_json({"error": f"Story not found: {story_id}"})
+        else:
+            print_error(f"Story not found: {story_id}")
+        sys.exit(1)
+
+    # Determine next promotion target
+    promote_map = {
+        "proposal": "under-construction",
+        "under-construction": "implemented",
+    }
+    target = promote_map.get(story_obj.lifecycle)
+    if not target:
+        from agenticcli.console import is_json_output, print_error, print_json
+        msg = f"Cannot promote {story_id}: lifecycle '{story_obj.lifecycle}' is not promotable"
+        if is_json_output():
+            print_json({"error": msg, "current_lifecycle": story_obj.lifecycle})
+        else:
+            print_error(msg)
+        sys.exit(1)
+
+    _lifecycle_transition(args, target, "promote")
+
+
+def cmd_deprecate(args):
+    """Mark story as deprecated: implemented -> deprecated."""
+    _lifecycle_transition(args, "deprecated", "deprecate")
+
+
+def cmd_archive(args):
+    """Archive a deprecated story: deprecated -> archived."""
+    _lifecycle_transition(args, "archived", "archive")
+
+
+def cmd_code(args):
+    """Show production code tagged with a story ID."""
+    from agenticcli.console import console, is_json_output, print_error, print_header, print_json
+
+    story_id = args.story_id
+
+    db_path = _get_repo_db_path()
+    from agenticguidance.services.epic_repository import EpicRepository
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+    code_fns = repo.get_code_for_story(story_id)
+    repo.close()
+
+    if is_json_output():
+        print_json({
+            "story_id": story_id,
+            "code_functions": code_fns,
+            "count": len(code_fns),
+        })
+        return
+
+    if not code_fns:
+        print_header(f"Code for {story_id}")
+        console.print("  [dim]No production code tagged with this story. Run 'agentic stories sync' first.[/dim]")
+        return
+
+    print_header(f"Code for {story_id} ({len(code_fns)} functions)")
+    for fn in code_fns:
+        console.print(f"  {fn}")

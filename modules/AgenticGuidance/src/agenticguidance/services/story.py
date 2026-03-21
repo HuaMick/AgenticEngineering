@@ -10,6 +10,16 @@ from typing import Optional
 
 import yaml
 
+# Lifecycle states and allowed transitions
+LIFECYCLE_STATES = ("proposal", "under-construction", "implemented", "deprecated", "archived")
+LIFECYCLE_TRANSITIONS = {
+    "proposal": ["under-construction"],
+    "under-construction": ["implemented"],
+    "implemented": ["deprecated"],
+    "deprecated": ["archived"],
+    "archived": [],
+}
+
 
 @dataclass
 class Story:
@@ -29,12 +39,19 @@ class Story:
     related_commands: list[str] = field(default_factory=list)
     source_file: str = ""
     project: str = ""
+    lifecycle: str = "implemented"
 
     @property
     def prefix(self) -> str:
         """Extract category prefix (e.g., 'US-SET' from 'US-SET-001')."""
         match = re.match(r"(US-[A-Z]+)", self.id)
         return match.group(1) if match else "OTHER"
+
+    def can_transition_to(self, target: str) -> bool:
+        """Check if transitioning to the target lifecycle state is allowed."""
+        if self.lifecycle not in LIFECYCLE_TRANSITIONS:
+            return False
+        return target in LIFECYCLE_TRANSITIONS[self.lifecycle]
 
 
 class StoryService:
@@ -134,6 +151,7 @@ class StoryService:
                     related_commands=item.get("related_commands", []),
                     source_file=str(path),
                     project=project,
+                    lifecycle=item.get("lifecycle", "implemented"),
                 )
                 result.append(story)
         return result
@@ -158,6 +176,42 @@ class StoryService:
     def all_ids(self) -> frozenset[str]:
         """Return all valid story IDs."""
         return frozenset(s.id for s in self.load_all())
+
+    def update_lifecycle(self, story_id: str, new_status: str) -> bool:
+        """Update the lifecycle state of a story (writes back to YAML).
+
+        Only allows valid transitions as defined in LIFECYCLE_TRANSITIONS.
+        """
+        if new_status not in LIFECYCLE_STATES:
+            return False
+
+        story = self.get_by_id(story_id)
+        if not story or not story.source_file:
+            return False
+
+        if not story.can_transition_to(new_status):
+            return False
+
+        path = Path(story.source_file)
+        try:
+            content = yaml.safe_load(path.read_text())
+        except Exception:
+            return False
+
+        if not content or not isinstance(content, dict):
+            return False
+
+        for key in ("stories", "user_stories"):
+            items = content.get(key, [])
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if isinstance(item, dict) and item.get("id") == story_id:
+                    item["lifecycle"] = new_status
+                    path.write_text(yaml.dump(content, sort_keys=False, default_flow_style=False))
+                    self._stories = None
+                    return True
+        return False
 
     def update_test_status(
         self,

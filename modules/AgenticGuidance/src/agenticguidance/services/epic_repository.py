@@ -75,6 +75,7 @@ class EpicRepository:
         self._tickets = self._db.table("tickets")
         self._phases = self._db.table("phases")
         self._story_tests = self._db.table("story_tests")
+        self._story_code = self._db.table("story_code")
 
         # Migrate legacy "plans" / "tasks" tables if they exist
         self._migrate_from_plans_table()
@@ -1162,6 +1163,88 @@ class EpicRepository:
     def clear_story_tests(self) -> None:
         """Wipe the story_tests table for a full resync."""
         self._story_tests.truncate()
+
+    # ------------------------------------------------------------------
+    # Story-Code Index
+    # ------------------------------------------------------------------
+
+    def sync_story_code(self, mappings: dict[str, list[str]]) -> int:
+        """Bulk upsert story-to-production-code mappings from a scan.
+
+        Args:
+            mappings: Dict of story_id -> list of code nodeids
+                      (e.g. "rel/path.py::function_name").
+
+        Returns:
+            Number of story records upserted.
+        """
+        now = datetime.now().isoformat()
+        count = 0
+        SC = Query()
+
+        with self._lock:
+            for story_id, code_nodeids in mappings.items():
+                code_files = sorted({nid.split("::")[0] for nid in code_nodeids})
+                doc = {
+                    "story_id": story_id,
+                    "code_functions": sorted(code_nodeids),
+                    "code_files": code_files,
+                    "last_synced": now,
+                }
+                existing = self._story_code.search(SC.story_id == story_id)
+                if existing:
+                    self._story_code.update(doc, SC.story_id == story_id)
+                else:
+                    self._story_code.insert(doc)
+                count += 1
+
+        return count
+
+    def get_code_for_story(self, story_id: str) -> list[str]:
+        """Get production code nodeids for a story.
+
+        Args:
+            story_id: Story ID (e.g. 'US-CLI-110').
+
+        Returns:
+            List of code nodeid strings.
+        """
+        SC = Query()
+        docs = self._story_code.search(SC.story_id == story_id)
+        if docs:
+            return docs[0].get("code_functions", [])
+        return []
+
+    def get_stories_for_code(self, code_nodeid: str) -> list[str]:
+        """Reverse lookup: find all story IDs linked to a code nodeid.
+
+        Args:
+            code_nodeid: Code node ID (e.g. 'src/foo.py::bar').
+
+        Returns:
+            List of story ID strings.
+        """
+        story_ids = []
+        for doc in self._story_code.all():
+            if code_nodeid in doc.get("code_functions", []):
+                story_ids.append(doc["story_id"])
+        return story_ids
+
+    def get_uncovered_stories_by_code(self, all_story_ids: set[str]) -> list[str]:
+        """Find stories with no linked production code.
+
+        Args:
+            all_story_ids: Complete set of known story IDs.
+
+        Returns:
+            Sorted list of story IDs that have no code mappings.
+        """
+        covered = {doc["story_id"] for doc in self._story_code.all()}
+        return sorted(all_story_ids - covered)
+
+    def clear_story_code(self) -> None:
+        """Wipe the story_code table for a full resync."""
+        self._story_code.truncate()
 
     # ------------------------------------------------------------------
     # Internal helpers
