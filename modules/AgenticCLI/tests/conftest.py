@@ -307,23 +307,39 @@ def temp_repo(temp_dir):
     epics_live = repo_dir / "docs" / "epics" / "live"
     epics_live.mkdir(parents=True)
 
-    # Create a sample epic folder (flattened structure: plan files directly in folder)
+    # Create a sample epic folder
     epic_folder = epics_live / "260103AE_test"
     epic_folder.mkdir(parents=True)
 
-    # Create sample plan file (flattened: directly in epic_folder)
-    sample_plan = {
-        "plan": {
+    # Populate TinyDB instead of legacy YAML
+    agentic_dir = repo_dir / ".agentic"
+    agentic_dir.mkdir(parents=True, exist_ok=True)
+    db_path = agentic_dir / "epics.db"
+    populate_tinydb_from_yaml(
+        db_path,
+        "260103AE_test",
+        epic_folder,
+        {
             "name": "Test Plan",
             "status": "in_progress",
             "phases": [
-                {"id": "01", "name": "Phase 1", "status": "completed"},
-                {"id": "02", "name": "Phase 2", "status": "pending"},
+                {
+                    "name": "Phase 1",
+                    "status": "completed",
+                    "tickets": [
+                        {"id": "T1", "name": "Task 1", "status": "completed"},
+                    ],
+                },
+                {
+                    "name": "Phase 2",
+                    "status": "pending",
+                    "tickets": [
+                        {"id": "T2", "name": "Task 2", "status": "proposed"},
+                    ],
+                },
             ],
-        }
-    }
-    with open(epic_folder / "plan_test.yml", "w") as f:
-        yaml.dump(sample_plan, f)
+        },
+    )
 
     yield repo_dir
 

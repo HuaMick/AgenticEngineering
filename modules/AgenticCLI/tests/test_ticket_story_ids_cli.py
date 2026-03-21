@@ -313,7 +313,7 @@ class TestCmdTaskUpdateStoryIds:
         ticket = epic_repo["repo"].get_ticket("260308PD_test", "T1")
         assert ticket.story_ids == ["US-GD-001", "US-GD-002"]
 
-    def test_update_ticket_story_ids_in_text_output(self, epic_repo, tmp_path, capsys):
+    def test_update_ticket_story_ids_in_text_output(self, epic_repo, tmp_path):
         """Verify story_ids appears in text mode output."""
         from agenticcli.commands.epic import cmd_task_update
 
@@ -335,7 +335,9 @@ class TestCmdTaskUpdateStoryIds:
         )
 
         with patch("agenticcli.console.is_json_output", return_value=False):
-            cmd_task_update(args)
+            with patch("agenticcli.console.print_success") as mock_success:
+                cmd_task_update(args)
 
-        captured = capsys.readouterr()
-        assert "story_ids" in captured.out or "story_ids=2 items" in captured.out
+        mock_success.assert_called_once()
+        call_msg = mock_success.call_args[0][0]
+        assert "story_ids" in call_msg

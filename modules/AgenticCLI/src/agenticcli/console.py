@@ -183,7 +183,7 @@ def format_status(status: str) -> str:
         "deferred": "[dim]deferred[/dim]",
         "blocked": "[red]blocked[/red]",
         # Backward compat for legacy values
-        "proposed": "[dim]active[/dim]",
+        "proposed": "[dim]proposed[/dim]",
         "failed": "[red]failed[/red]",
     }
     # Legacy aliases — map to canonical status before lookup

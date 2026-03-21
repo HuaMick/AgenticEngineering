@@ -161,11 +161,11 @@ class TestFormatStatus:
         assert "blue" in result
 
     def test_format_proposed(self):
-        """Test formatting proposed status maps to dim active."""
+        """Test formatting proposed status maps to dim proposed."""
         from agenticcli.console import format_status
 
         result = format_status("proposed")
-        assert "active" in result
+        assert "proposed" in result
         assert "dim" in result
 
     def test_format_failed(self):

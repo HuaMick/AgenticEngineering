@@ -320,10 +320,16 @@ class EpicMovementWorkflow:
         force: bool = False,
         silent: bool = False,
     ) -> FolderMoveResult:
-        """Archive the epic by setting status to 'completed' in TinyDB.
+        """Archive the epic: set TinyDB status to 'completed' and move folder.
 
-        No filesystem operations are performed. The TinyDB status field is
-        the sole source of truth for epic lifecycle state.
+        Steps:
+        1. Update TinyDB status to 'completed'.
+        2. Move folder from ``live/`` to ``completed/`` via shutil.move().
+        3. Update ``epic_folder`` path in TinyDB to the new location.
+
+        Edge cases:
+        - Destination already exists → fail (no overwrite).
+        - Source folder missing → TinyDB-only update (no move).
 
         Args:
             dry_run: If True, don't make any changes.
@@ -333,42 +339,83 @@ class EpicMovementWorkflow:
         Returns:
             FolderMoveResult with operation outcome.
         """
+        import shutil
+
         epic_name = self.epic_path.name
+        source = self.epic_path
+
+        # Determine completed/ destination (sibling of live/)
+        if source.parent.name == "live":
+            completed_dir = source.parent.parent / "completed"
+        else:
+            completed_dir = None
+        destination = completed_dir / epic_name if completed_dir else None
 
         if dry_run:
+            dest_str = str(destination) if destination else "(TinyDB status=completed)"
             return FolderMoveResult(
-                source=str(self.epic_path),
-                destination="(TinyDB status=completed)",
+                source=str(source),
+                destination=dest_str,
                 result=MoveResult.SUCCESS,
-                message=f"[dry-run] Would set status=completed in TinyDB for {epic_name}",
+                message=f"[dry-run] Would archive {epic_name}",
             )
 
         if self._repository is None:
             return FolderMoveResult(
-                source=str(self.epic_path),
+                source=str(source),
                 destination="(TinyDB status=completed)",
                 result=MoveResult.FAILED,
                 message="TinyDB repository not available",
             )
 
         try:
+            # Step 1: Update TinyDB status
             update_result = self._repository.archive_epic(epic_name)
-            if update_result.success:
+            if not update_result.success:
                 return FolderMoveResult(
-                    source=str(self.epic_path),
+                    source=str(source),
                     destination="(TinyDB status=completed)",
-                    result=MoveResult.SUCCESS,
-                    message=f"Set status=completed in TinyDB for {epic_name}",
+                    result=MoveResult.FAILED,
+                    message=f"TinyDB update failed: {update_result.message}",
                 )
+
+            # Step 2: Move folder from live/ to completed/
+            if destination and source.exists():
+                if destination.exists():
+                    return FolderMoveResult(
+                        source=str(source),
+                        destination=str(destination),
+                        result=MoveResult.FAILED,
+                        message=f"Destination already exists: {destination}",
+                    )
+                completed_dir.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source), str(destination))
+
+                # Step 3: Update epic_folder path in TinyDB
+                try:
+                    self._repository.update_epic(
+                        epic_name, {"epic_folder": str(destination)}
+                    )
+                except Exception:
+                    pass  # Non-fatal: folder moved, TinyDB path is secondary
+
+                return FolderMoveResult(
+                    source=str(source),
+                    destination=str(destination),
+                    result=MoveResult.SUCCESS,
+                    message=f"Archived {epic_name} to {destination}",
+                )
+
+            # Source missing or not in live/ → TinyDB-only update
             return FolderMoveResult(
-                source=str(self.epic_path),
+                source=str(source),
                 destination="(TinyDB status=completed)",
-                result=MoveResult.FAILED,
-                message=f"TinyDB update failed: {update_result.message}",
+                result=MoveResult.SUCCESS,
+                message=f"Set status=completed in TinyDB for {epic_name}",
             )
         except Exception as e:
             return FolderMoveResult(
-                source=str(self.epic_path),
+                source=str(source),
                 destination="(TinyDB status=completed)",
                 result=MoveResult.FAILED,
                 message=f"Archive failed: {e}",

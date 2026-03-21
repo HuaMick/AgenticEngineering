@@ -17,28 +17,36 @@ import yaml
 
 # All known agents - ordered by category
 KNOWN_AGENTS = [
-    # Planners (6)
+    # Planners (11)
+    "epic-creator",
     "planner-audit",
     "planner-build",
     "planner-cleaning",
+    "planner-explore",
     "planner-guidance",
     "planner-guidance-testing",
+    "planner-orchestration",
+    "planner-sdk",
     "planner-test",
-    # Test agents (7)
+    "story-writer",
+    # Test agents (8)
     "test-audit",
     "test-builder",
+    "test-cleaner",
     "test-final-output",
     "test-guidance-simulator",
     "test-runner",
     "test-service",
     "test-user-simulator",
-    # Orchestration agents (2)
+    # Orchestration agents (3)
     "orchestration-executor",
+    "orchestration-loop",
     "orchestration-planning",
     # Teacher agents (2)
     "teacher-update-assets",
     "teacher-update-guidance",
-    # Build agents (2)
+    # Build agents (3)
+    "build-agentic-docs",
     "build-flutter",
     "build-python",
     # Deploy agents (1)
@@ -47,23 +55,31 @@ KNOWN_AGENTS = [
 
 # Agent category mapping
 AGENT_CATEGORIES = {
+    "epic-creator": "planner",
     "planner-audit": "planner",
     "planner-build": "planner",
     "planner-cleaning": "planner",
+    "planner-explore": "planner",
     "planner-guidance": "planner",
     "planner-guidance-testing": "planner",
+    "planner-orchestration": "planner",
+    "planner-sdk": "planner",
     "planner-test": "planner",
+    "story-writer": "planner",
     "test-audit": "test",
     "test-builder": "test",
+    "test-cleaner": "test",
     "test-final-output": "test",
     "test-guidance-simulator": "test",
     "test-runner": "test",
     "test-service": "test",
     "test-user-simulator": "test",
     "orchestration-executor": "orchestration",
+    "orchestration-loop": "orchestration",
     "orchestration-planning": "orchestration",
     "teacher-update-assets": "teacher",
     "teacher-update-guidance": "teacher",
+    "build-agentic-docs": "build",
     "build-flutter": "build",
     "build-python": "build",
     "deploy-cicd": "deploy",

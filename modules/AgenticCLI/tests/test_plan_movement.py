@@ -223,19 +223,26 @@ class TestFolderArchive:
     """Tests for folder archival."""
 
     def test_archive_epic_folder(self, plan_folder):
-        """Test archiving an epic folder updates TinyDB status to completed."""
+        """Test archiving an epic folder moves it to completed/ and updates TinyDB."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
         from agenticguidance.services.epic_repository import EpicRepository
+
+        # The DB is inside the plan folder; grab path before move
+        db_path = plan_folder / ".agentic" / "epics.db"
+        expected_dest = plan_folder.parent.parent / "completed" / "260103AE_test"
 
         workflow = PlanMovementWorkflow(plan_folder)
         result = workflow.archive_epic_folder(force=True)
 
         assert result.result == MoveResult.SUCCESS
-        assert result.destination == "(TinyDB status=completed)"
+        assert str(expected_dest) in result.destination
+        # Folder should have moved
+        assert expected_dest.exists()
+        assert not plan_folder.exists()
 
-        # Verify TinyDB status was set to completed
-        db_path = plan_folder / ".agentic" / "epics.db"
-        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        # DB moved with the folder — verify TinyDB status
+        moved_db = expected_dest / ".agentic" / "epics.db"
+        repo = EpicRepository(db_path=moved_db, auto_bootstrap=False)
         epic = repo.get_epic("260103AE_test")
         repo.close()
         assert epic is not None
@@ -250,25 +257,22 @@ class TestFolderArchive:
 
         assert result.result == MoveResult.SUCCESS
         assert "dry-run" in result.message
-
-        # Destination should not exist
-        dest = Path(result.destination)
-        assert not dest.exists()
+        # Source should still exist (no move)
+        assert plan_folder.exists()
 
     def test_archive_already_exists(self, plan_folder):
-        """Test archiving an already-completed epic is idempotent (returns SUCCESS)."""
+        """Test archiving when destination exists fails."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
 
+        # Pre-create the destination so the move would collide
+        dest = plan_folder.parent.parent / "completed" / "260103AE_test"
+        dest.mkdir(parents=True, exist_ok=True)
+
         workflow = PlanMovementWorkflow(plan_folder)
+        result = workflow.archive_epic_folder(force=True)
 
-        # First archive sets status to completed
-        result1 = workflow.archive_epic_folder(force=True)
-        assert result1.result == MoveResult.SUCCESS
-
-        # Second archive on an already-completed epic also succeeds (idempotent)
-        result2 = workflow.archive_epic_folder(force=True)
-        assert result2.result == MoveResult.SUCCESS
-        assert result2.destination == "(TinyDB status=completed)"
+        assert result.result == MoveResult.FAILED
+        assert "already exists" in result.message
 
 
 @pytest.mark.story("US-PLN-007")
@@ -369,20 +373,16 @@ class TestArchiveSourceRemoval:
         return plan_path
 
     def test_archive_removes_source_folder(self, flat_plan_folder):
-        """Test that archive_epic_folder sets TinyDB status to completed.
-
-        In the TinyDB model, archiving only updates the status field in TinyDB.
-        No filesystem operations (folder moves or deletions) are performed.
-        """
+        """Test that archive_epic_folder moves folder from live/ to completed/."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
         from agenticguidance.services.epic_repository import EpicRepository
 
         # Populate TinyDB so archive_epic can find the epic
-        # flat_plan_folder = repo/docs/epics/live/260129TE_test_archive
-        # walk up to repo_dir for the DB path
         repo_dir = flat_plan_folder.parent.parent.parent.parent
         db_path = repo_dir / ".agentic" / "epics.db"
         _populate_tinydb_for_movement(db_path, "260129TE_test_archive", [])
+
+        expected_dest = flat_plan_folder.parent.parent / "completed" / "260129TE_test_archive"
 
         # Source folder exists before archive
         assert flat_plan_folder.exists()
@@ -391,10 +391,11 @@ class TestArchiveSourceRemoval:
         result = workflow.archive_epic_folder(force=True)
 
         assert result.result == MoveResult.SUCCESS
-        assert result.destination == "(TinyDB status=completed)"
+        assert str(expected_dest) in result.destination
 
-        # Source folder is NOT removed (TinyDB-only; no filesystem operations)
-        assert flat_plan_folder.exists(), "Source folder should remain (no filesystem move)"
+        # Source folder IS removed (moved to completed/)
+        assert not flat_plan_folder.exists()
+        assert expected_dest.exists()
 
         # TinyDB status is now completed
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
@@ -404,31 +405,23 @@ class TestArchiveSourceRemoval:
         assert epic.status == "completed"
 
     def test_archive_destination_folder_exists(self, flat_plan_folder):
-        """Test that archive_epic_folder reports the TinyDB destination correctly.
-
-        In the TinyDB model, destination is "(TinyDB status=completed)" rather
-        than a filesystem path. No folder is created on disk.
-        """
+        """Test that archive fails when destination already exists."""
         from agenticguidance.services import MoveResult, EpicMovementWorkflow as PlanMovementWorkflow
-        from agenticguidance.services.epic_repository import EpicRepository
 
         # Populate TinyDB so archive_epic can find the epic
         repo_dir = flat_plan_folder.parent.parent.parent.parent
         db_path = repo_dir / ".agentic" / "epics.db"
         _populate_tinydb_for_movement(db_path, "260129TE_test_archive", [])
 
+        # Pre-create destination to cause collision
+        dest = flat_plan_folder.parent.parent / "completed" / "260129TE_test_archive"
+        dest.mkdir(parents=True, exist_ok=True)
+
         workflow = PlanMovementWorkflow(flat_plan_folder)
         result = workflow.archive_epic_folder(force=True)
 
-        assert result.result == MoveResult.SUCCESS
-        assert result.destination == "(TinyDB status=completed)"
-
-        # TinyDB status is completed — this is the "destination" in the new model
-        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-        epic = repo.get_epic("260129TE_test_archive")
-        repo.close()
-        assert epic is not None
-        assert epic.status == "completed"
+        assert result.result == MoveResult.FAILED
+        assert "already exists" in result.message
 
     def test_archive_dry_run_does_not_remove_source(self, flat_plan_folder):
         """Test that dry-run does NOT remove source folder."""

@@ -68,7 +68,7 @@ class TestAgentNameDetection:
 
     def test_all_agents_registered(self):
         """Verify all agents are in KNOWN_AGENTS."""
-        assert len(KNOWN_AGENTS) == 20, f"Expected 20 agents, got {len(KNOWN_AGENTS)}"
+        assert len(KNOWN_AGENTS) == 28, f"Expected 28 agents, got {len(KNOWN_AGENTS)}"
 
     def test_all_agents_have_categories(self):
         """Verify all agents have category mappings."""
@@ -412,19 +412,19 @@ class TestAgentCategories:
     """Tests for agent category organization."""
 
     def test_planner_agents_count(self):
-        """Verify 6 planner agents."""
+        """Verify 11 planner agents."""
         planners = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "planner"]
-        assert len(planners) == 6
+        assert len(planners) == 11
 
     def test_test_agents_count(self):
-        """Verify 7 test agents."""
+        """Verify 8 test agents."""
         testers = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "test"]
-        assert len(testers) == 7
+        assert len(testers) == 8
 
     def test_orchestration_agents_count(self):
-        """Verify 2 orchestration agents."""
+        """Verify 3 orchestration agents."""
         orchestrators = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "orchestration"]
-        assert len(orchestrators) == 2
+        assert len(orchestrators) == 3
 
     def test_teacher_agents_count(self):
         """Verify 2 teacher agents."""
@@ -432,9 +432,9 @@ class TestAgentCategories:
         assert len(teachers) == 2
 
     def test_build_agents_count(self):
-        """Verify 2 build agents."""
+        """Verify 3 build agents."""
         builders = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "build"]
-        assert len(builders) == 2
+        assert len(builders) == 3
 
     def test_deploy_agents_count(self):
         """Verify 1 deploy agent."""

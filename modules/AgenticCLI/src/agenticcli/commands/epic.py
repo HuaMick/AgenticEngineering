@@ -1876,6 +1876,15 @@ def cmd_list(args):
     if not show_all:
         plans_data = [p for p in plans_data if p["status"] != "completed"]
 
+    # Compute action hint for each epic
+    for plan in plans_data:
+        if plan["proposed"] + plan["completed"] == 0:
+            plan["action"] = "needs planning"
+        elif plan["proposed"] > 0:
+            plan["action"] = "ready to implement"
+        else:
+            plan["action"] = ""
+
     if is_json_output():
         print_json({"plans": plans_data})
     else:
@@ -1887,16 +1896,22 @@ def cmd_list(args):
 
         rows = []
         for plan in plans_data:
+            action_cell = f"[cyan]{plan['action']}[/cyan]" if plan["action"] else ""
             rows.append(
                 [
                     f"[bold]{plan['name']}[/bold]",
                     format_status(plan["status"]),
                     f"[dim]{plan['proposed']}[/dim]",
                     f"[green]{plan['completed']}[/green]",
+                    action_cell,
                 ]
             )
 
-        print_table("", ["Epic", "Status", "Proposed", "Completed"], rows)
+        print_table("", ["Epic", "Status", "Proposed", "Completed", "Action"], rows)
+
+        needs_planning = sum(1 for p in plans_data if p["action"] == "needs planning")
+        if needs_planning:
+            console.print(f"\n[dim]Hint: {needs_planning} epic(s) need planning. Run: agentic orchestrate session plan[/dim]")
 
 
 def cmd_task_update(args, ctx=None):
