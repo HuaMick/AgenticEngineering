@@ -6,6 +6,8 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+pytestmark = pytest.mark.story("US-GDN-021")
+
 from agenticguidance.models.question import (
     Answer,
     AnswerConfidence,

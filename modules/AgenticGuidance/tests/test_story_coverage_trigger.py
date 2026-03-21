@@ -17,11 +17,14 @@ AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
 EXECUTOR_PROCESS = AGENTS_DIR / "orchestration" / "orchestration-executor" / "process.yml"
 PLANNER_TEST_PROCESS = AGENTS_DIR / "planner" / "planner-test" / "process.yml"
 
+pytestmark = pytest.mark.story("US-STR-009")
+
 
 # ---------------------------------------------------------------------------
 # Tests for STORY_COVERAGE_INCOMPLETE trigger in executor
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-009")
 class TestStoryCoverageIncompleteTrigger:
     """Test the STORY_COVERAGE_INCOMPLETE feedback trigger definition."""
 
@@ -95,6 +98,7 @@ class TestStoryCoverageIncompleteTrigger:
 # Tests for validation_gate pytest marker check
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-010")
 class TestValidationGateMarkerCheck:
     """Test the validation_gate checks pytest story markers."""
 
@@ -141,6 +145,7 @@ class TestValidationGateMarkerCheck:
 # Tests for story-coverage-loop in planner-test
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-009")
 class TestStoryCoverageLoop:
     """Test story-coverage-loop option in planner-test process.yml."""
 

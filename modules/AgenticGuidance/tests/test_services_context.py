@@ -14,7 +14,10 @@ from agenticguidance.services.context import (
     _find_agents_directory,
 )
 
+pytestmark = pytest.mark.story("US-GDN-004")
 
+
+@pytest.mark.story("US-GDN-021")
 class TestMainFirstEpicResolver:
     """Tests for MainFirstEpicResolver class."""
 
@@ -250,6 +253,7 @@ class TestMainFirstEpicResolver:
         repo.close()
 
 
+@pytest.mark.story("US-GDN-022")
 class TestGetRoleProcess:
     """Tests for get_role_process function."""
 
@@ -331,6 +335,7 @@ class TestGetRoleProcess:
         assert result["manifest"] is None
 
 
+@pytest.mark.story("US-GDN-023")
 class TestGetRoleInputsManifest:
     """Tests for get_role_inputs_manifest function."""
 
@@ -411,6 +416,7 @@ class TestGetRoleInputsManifest:
         assert len(result["layers"]) == 1
 
 
+@pytest.mark.story("US-GDN-025")
 class TestGenerateAgentBootstrap:
     """Tests for generate_agent_bootstrap function."""
 

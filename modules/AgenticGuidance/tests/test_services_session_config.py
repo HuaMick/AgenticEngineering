@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-001")
+
 from agenticguidance.services.session_config import (
     SessionConfig,
     SessionConfigLoader,

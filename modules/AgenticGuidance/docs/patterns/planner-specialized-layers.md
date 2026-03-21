@@ -140,7 +140,6 @@ Testers likely don't need:
 - `/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml` (updated)
 - `/modules/AgenticGuidance/agents/planner/planner-test/inputs.yml` (updated)
 - `/modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml` (updated)
-- `/modules/AgenticGuidance/agents/planner/planner-reviewer/inputs.yml` (updated)
 
 ## Audit Source
 

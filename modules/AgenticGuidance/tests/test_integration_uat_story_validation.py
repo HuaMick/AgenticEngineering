@@ -12,6 +12,8 @@ import tempfile
 import shutil
 import yaml
 
+pytestmark = pytest.mark.story("US-PLN-072")
+
 
 @pytest.fixture
 def temp_plan_dir():

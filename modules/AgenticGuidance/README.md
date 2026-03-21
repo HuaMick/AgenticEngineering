@@ -91,20 +91,19 @@ The CLI provides reliable primitives. Agents compose those primitives with judgm
 
 ## Agent Categories
 
-The module contains 6 implemented agent categories with 24 active agents (plus 2 deprecated):
+The module contains 6 implemented agent categories with 21 active agents (plus 2 deprecated):
 
-### Orchestration (3 active, 2 deprecated)
+### Orchestration (2 active, 2 deprecated)
 High-level coordination of planning and execution workflows.
 
 | Agent | Purpose |
 |-------|---------|
 | `orchestration-planning` | Human-in-the-loop epic creation + MMD generation |
 | `orchestration-executor` | Dynamic agent routing from Plan-MMD |
-| `orchestration-friction` | LangSmith trace friction analysis workflow |
 | ~~`orchestration-build`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
 | ~~`orchestration-guidance`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
 
-### Planner (7 agents)
+### Planner (6 agents)
 Create executable implementation epics from objectives.
 
 | Agent | Purpose |
@@ -114,7 +113,6 @@ Create executable implementation epics from objectives.
 | `planner-cleaning` | Cleanup and audit planning |
 | `planner-guidance` | Guidance improvement planning |
 | `planner-guidance-testing` | Guidance completeness testing |
-| `planner-reviewer` | Epic review and approval |
 | `planner-audit` | Epic folder compliance auditing |
 
 ### Test (7 agents)
@@ -130,14 +128,13 @@ Validation through testing and quality assurance.
 | `test-service` | Service-level testing |
 | `test-user-simulator` | User interaction simulation |
 
-### Teacher (3 agents)
+### Teacher (2 agents)
 Improve agent guidance by building paths, fences, and signposts.
 
 | Agent | Purpose |
 |-------|---------|
 | `teacher-update-guidance` | Improve process.yml and inputs.yml files |
 | `teacher-update-assets` | Create/update shared assets (definitions, guidelines) |
-| `teacher-trace-diagnostics` | Analyze LangSmith traces for friction patterns |
 
 ### Build (2 agents)
 Building and compiling code for production deployment.
@@ -185,7 +182,7 @@ Behavioral rules and constraints that define "how to act":
 Reference implementations organized by agent category:
 - `orchestration/` - MMD reference examples, phase templates (build, test, teach, cleanup, UAT)
 - `planner/` - Plan structure examples, component patterns (loops, gates, validation)
-- `teacher/` - Concise guidance examples, LangSmith trace analysis
+- `teacher/` - Concise guidance examples
 - `test/` - Test plan examples, final outcome reports
 - `cleaner/` - Directory preservation rules
 
@@ -209,7 +206,6 @@ Four top-level entrypoints for initiating workflows:
 | `_plan_build.yml` | Create implementation epics for code changes |
 | `_plan_teach.yml` | Create guidance epics for teaching/documentation |
 | `_orchestrate.yml` | Execute a pre-approved epic |
-| `_analyze_friction.yml` | Analyze LangSmith traces for friction patterns |
 
 ### Usage
 
@@ -235,7 +231,6 @@ To initiate a workflow, **inject the content** of the appropriate entrypoint fil
 |-------|------|
 | `orchestration-executor` | Generic MMD-driven executor that routes to agents based on Plan-MMD metadata |
 | `orchestration-planning` | Human-in-the-loop plan creation with MMD generation |
-| `orchestration-friction` | LangSmith trace analysis for friction pattern detection |
 
 ### Main-First Planning Workflow
 
@@ -311,7 +306,6 @@ This section is the **source of truth** for agent implementation status. Epic-re
 |-------|--------|-------|
 | orchestration-planning | Implemented | Human-in-the-loop epic creation, MMD generation |
 | orchestration-executor | Implemented | Dynamic agent routing from Plan-MMD metadata |
-| orchestration-friction | Implemented | LangSmith trace friction analysis workflow |
 | ~~orchestration-build~~ | Deprecated | Replaced by orchestration-executor |
 | ~~orchestration-guidance~~ | Deprecated | Replaced by orchestration-executor |
 
@@ -324,7 +318,6 @@ This section is the **source of truth** for agent implementation status. Epic-re
 | planner-cleaning | Implemented | Cleanup and audit planning |
 | planner-guidance | Implemented | Guidance improvement planning |
 | planner-guidance-testing | Implemented | Guidance completeness testing |
-| planner-reviewer | Implemented | Epic review and approval |
 | planner-audit | Implemented | Epic folder compliance auditing |
 
 ### Test Agents
@@ -345,7 +338,6 @@ This section is the **source of truth** for agent implementation status. Epic-re
 |-------|--------|-------|
 | teacher-update-guidance | Implemented | Improve process.yml and inputs.yml files |
 | teacher-update-assets | Implemented | Create/update shared assets |
-| teacher-trace-diagnostics | Implemented | Analyze LangSmith traces for friction patterns |
 
 ### Build Agents
 
@@ -367,7 +359,7 @@ This section is the **source of truth** for agent implementation status. Epic-re
 
 | Infrastructure | Status | Notes |
 |----------------|--------|-------|
-| Agent Guidance Files | Implemented | 24 active agents with manifest.yml, inputs.yml, process.yml |
+| Agent Guidance Files | Implemented | 21 active agents with manifest.yml, inputs.yml, process.yml |
 | Definition Files | Implemented | 42 definition files in assets/definitions/ |
 | Guideline Files | Implemented | 46 guideline files in assets/guidelines/ |
 | Shared Input Configs | Implemented | 11 shared input configurations |
@@ -417,7 +409,6 @@ AgenticGuidance is one of three project modules:
 AgenticEngineering/
 ├── modules/
 │   ├── AgenticBackend/    # Backend services
-│   ├── AgenticFrontend/   # Frontend UI
 │   └── AgenticGuidance/   # This module - guidance layer
 ```
 

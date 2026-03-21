@@ -14,7 +14,7 @@ Each module provides a specific domain of functionality:
 - preset: Ticket preset loading
 - session: Tmux session lifecycle management
 - claude_session: Claude Code session state management
-- ralph: Ralph Loop epic discovery and prioritization
+- story: User story data model and service (StoryService)
 - ticket: Ticket CRUD operations (TicketService)
 """
 
@@ -92,13 +92,7 @@ from .template import (
     TemplateWorkflow,
     create_template_context_from_project,
 )
-from .ralph import (
-    EpicAction,
-    EpicInfo,
-    PlanAction,
-    PlanInfo,
-    RalphLoopService,
-)
+from .story import Story, StoryService
 from .ticket import (
     Ticket,
     TicketService,
@@ -170,12 +164,9 @@ __all__ = [
     "TemplateContext",
     "TemplateWorkflow",
     "create_template_context_from_project",
-    # Ralph Loop services
-    "EpicAction",
-    "EpicInfo",
-    "PlanAction",  # backward-compat alias for EpicAction
-    "PlanInfo",    # backward-compat alias for EpicInfo
-    "RalphLoopService",
+    # Story services
+    "Story",
+    "StoryService",
     # Ticket services (new canonical names)
     "Ticket",
     "TicketService",

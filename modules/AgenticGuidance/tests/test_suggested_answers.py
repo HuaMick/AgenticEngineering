@@ -13,6 +13,8 @@ Tests cover:
 import pytest
 import tempfile
 import time
+
+pytestmark = pytest.mark.story("US-GDN-021")
 from pathlib import Path
 
 from agenticguidance.models.question import (

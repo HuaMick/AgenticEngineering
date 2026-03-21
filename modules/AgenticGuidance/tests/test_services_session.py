@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-001")
+
 from agenticguidance.services.session import (
     SessionInfo,
     SessionResult,

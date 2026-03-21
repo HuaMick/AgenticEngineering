@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.story("US-PLN-008")
+
 from agenticguidance.services.ticket import Ticket, TicketService, TicketStatus
 
 

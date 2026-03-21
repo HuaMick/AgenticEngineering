@@ -9,6 +9,8 @@ import pytest
 import yaml
 from pathlib import Path
 
+pytestmark = pytest.mark.story("US-PLN-091")
+
 
 @pytest.fixture
 def planner_build_process():

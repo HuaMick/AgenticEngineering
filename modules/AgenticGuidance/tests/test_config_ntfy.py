@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SET-005")
+
 from agenticguidance.services.config import (
     DEFAULT_CONFIG,
     ENV_VAR_MAPPING,

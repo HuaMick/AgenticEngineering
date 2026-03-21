@@ -12,11 +12,14 @@ import pytest
 from agenticguidance.services.epic import TicketData
 from agenticguidance.services.ticket import Ticket, TicketStatus
 
+pytestmark = pytest.mark.story("US-STR-009")
+
 
 # ---------------------------------------------------------------------------
 # Ticket dataclass tests
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-011")
 class TestTicketStoryIds:
     """Test Ticket dataclass story_ids field."""
 
@@ -90,6 +93,7 @@ class TestTicketStoryIds:
 # TicketData dataclass tests
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-011")
 class TestTicketDataStoryIds:
     """Test TicketData dataclass story_ids field."""
 
@@ -137,6 +141,7 @@ class TestTicketDataStoryIds:
 # TicketService conversion tests
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-011")
 class TestTicketServiceStoryIds:
     """Test TicketService conversion methods handle story_ids."""
 
@@ -213,6 +218,7 @@ class TestTicketServiceStoryIds:
 # EpicRepository story_ids persistence tests
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-011")
 class TestEpicRepositoryStoryIds:
     """Test EpicRepository stores and retrieves story_ids."""
 

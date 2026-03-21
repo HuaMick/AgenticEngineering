@@ -43,7 +43,7 @@ def _find_repo_root_from_tests():
 def _load_valid_story_ids():
     """Load all valid story IDs from docs/userstories/ YAML files.
 
-    Returns a frozenset of story ID strings (e.g. 'US-CLI-110').
+    Returns a frozenset of story ID strings (e.g. 'US-STR-001').
     Returns an empty set if the directory doesn't exist (e.g. in CI).
     """
     repo_root = _find_repo_root_from_tests()
@@ -136,7 +136,15 @@ def pytest_sessionfinish(session, exitstatus):
 
 @pytest.fixture(autouse=True)
 def _isolate_tinydb(tmp_path):
-    """Redirect all TinyDB writes to a per-test temp directory."""
+    """Redirect all TinyDB writes to a per-test temp directory.
+
+    Patches the two entry points that determine the DB file path:
+    - agenticcli.commands.epic._get_repo_db_path: used by CLI commands that
+      import from agenticcli (e.g. cmd_init, cmd_list, _get_repo() helpers).
+      Without this patch those commands write to the real repo-local DB.
+    - agenticguidance.services.epic.EpicService._find_repo_root: used by
+      EpicService.__init__ to derive the repo-local db_path.
+    """
     isolated_db_path = tmp_path / ".agentic" / "epics.db"
     isolated_db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -145,8 +153,12 @@ def _isolate_tinydb(tmp_path):
     def _isolated_find_repo_root(start=None):
         return tmp_path
 
-    with patch.object(EpicService, "_find_repo_root", staticmethod(_isolated_find_repo_root)):
-        yield isolated_db_path
+    with patch(
+        "agenticcli.commands.epic._get_repo_db_path",
+        return_value=isolated_db_path,
+    ):
+        with patch.object(EpicService, "_find_repo_root", staticmethod(_isolated_find_repo_root)):
+            yield isolated_db_path
 
 
 def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data):
@@ -171,6 +183,14 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
     phases = yaml_data.get("phases", [])
     for phase in phases:
         phase_name = phase.get("name", phase.get("id", "default"))
+        # Create the phase record so get_epic() returns complete phase data
+        repo.add_phase(epic_folder_name, {
+            "name": phase_name,
+            "phase_id": phase.get("phase_id", phase.get("id", "")),
+            "description": phase.get("description", ""),
+            "status": phase.get("status", "pending"),
+            "execution": phase.get("execution", "sequential"),
+        })
         tickets = phase.get("tickets", phase.get("tasks", []))
         for ticket in tickets:
             repo.add_ticket(epic_folder_name, phase_name, ticket)

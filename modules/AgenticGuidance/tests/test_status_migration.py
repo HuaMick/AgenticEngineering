@@ -7,6 +7,8 @@ values: active, planning, in_progress, completed, deferred, blocked.
 import pytest
 from pathlib import Path
 
+pytestmark = pytest.mark.story("US-PLN-082")
+
 from agenticguidance.services.epic import (
     EpicService,
     EpicStatus,

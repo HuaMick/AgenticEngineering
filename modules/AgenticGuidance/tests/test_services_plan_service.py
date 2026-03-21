@@ -19,6 +19,8 @@ from agenticguidance.services.epic import (
     ValidationResult,
 )
 
+pytestmark = pytest.mark.story("US-PLN-082")
+
 
 def _setup_epic_in_tinydb(service: EpicService, epic_folder: Path, epic_data: dict) -> None:
     """Populate TinyDB with epic data from a YAML-style dict.
@@ -53,6 +55,7 @@ def _setup_epic_in_tinydb(service: EpicService, epic_folder: Path, epic_data: di
             service._repository.add_ticket(epic_folder_name, phase_name, ticket)
 
 
+@pytest.mark.story("US-PLN-082")
 class TestEpicServiceInit:
     """Tests for EpicService initialization."""
 
@@ -96,6 +99,7 @@ class TestEpicServiceInit:
         assert service.repo_path == repo_path
 
 
+@pytest.mark.story("US-PLN-082")
 class TestCreateEpic:
     """Tests for create_epic() method."""
 
@@ -224,6 +228,7 @@ class TestCreateEpic:
         assert result.epic_folder_name.split("_")[1].isalnum() or "_" in result.epic_folder_name.split("_")[1]
 
 
+@pytest.mark.story("US-PLN-082")
 class TestGetEpic:
     """Tests for get_epic() method."""
 
@@ -453,6 +458,7 @@ class TestGetEpic:
         assert len(phase2_tasks) == 1
 
 
+@pytest.mark.story("US-PLN-082")
 class TestListEpics:
     """Tests for list_epics() method."""
 
@@ -644,6 +650,7 @@ class TestListEpics:
         assert epics[0].epic_folder_name == "260203PS_valid"
 
 
+@pytest.mark.story("US-PLN-082")
 class TestUpdateEpicStatus:
     """Tests for update_epic_status() method."""
 
@@ -777,6 +784,7 @@ class TestUpdateEpicStatus:
         assert updated_epic.status == "active"
 
 
+@pytest.mark.story("US-PLN-086")
 class TestGetEpicTickets:
     """Tests for get_epic_tickets() method."""
 
@@ -869,6 +877,7 @@ class TestGetEpicTickets:
         assert tasks == []
 
 
+@pytest.mark.story("US-PLN-082")
 class TestValidateEpicStructure:
     """Tests for validate_epic_structure() method."""
 
@@ -1120,6 +1129,7 @@ class TestValidateEpicStructure:
         assert any("TinyDB" in e or "not found" in e for e in result.errors)
 
 
+@pytest.mark.story("US-PLN-086")
 class TestValidateTicketNesting:
     """Tests for ticket validation in validate_epic_structure() using TinyDB.
 
@@ -1432,6 +1442,7 @@ class TestValidateTicketNesting:
         )
 
 
+@pytest.mark.story("US-PLN-082")
 class TestDryRunOperations:
     """Tests for dry-run functionality across operations."""
 

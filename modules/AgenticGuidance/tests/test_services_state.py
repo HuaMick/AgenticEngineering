@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-005")
+
 from agenticguidance.services.state import (
     FileLock,
     ProcessEntry,

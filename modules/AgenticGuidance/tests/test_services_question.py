@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-GDN-021")
+
 from agenticguidance.models.question import (
     Answer,
     AnswerConfidence,

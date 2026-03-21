@@ -12,6 +12,8 @@ import yaml
 import tempfile
 import shutil
 
+pytestmark = pytest.mark.story("US-PLN-091")
+
 
 @pytest.fixture
 def temp_epic_folder():
