@@ -1,10 +1,6 @@
-"""Tests for 'agentic plan bootstrap' command.
+"""Tests for epic init (formerly bootstrap) command.
 
-NOTE: The 'agentic plan bootstrap' command has been removed. All bootstrap
-functionality has been migrated to 'agentic epic bootstrap' and
-'agentic agent epic bootstrap'. These tests verify that the old plan
-bootstrap command is gone (cmd_bootstrap no longer exists in plan.py)
-and that the epic bootstrap command works correctly.
+These tests verify that cmd_init creates TinyDB records correctly.
 """
 
 import json
@@ -15,6 +11,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+
+pytestmark = pytest.mark.story("US-PLN-001")
 
 
 @pytest.fixture
@@ -55,6 +53,7 @@ def temp_git_repo(tmp_path):
     return repo_path
 
 
+@pytest.mark.story("US-PLN-002", "US-PLN-005")
 class TestPlanBootstrap:
     """Tests verifying plan bootstrap has been removed and replaced by epic bootstrap."""
 
@@ -99,7 +98,7 @@ class TestPlanBootstrap:
             os.chdir(temp_git_repo)
             with patch("agenticcli.console.is_json_output", return_value=False):
                 with patch("builtins.print"):
-                    epic_module.cmd_bootstrap(args)
+                    epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 
@@ -131,7 +130,7 @@ class TestPlanBootstrap:
             os.chdir(temp_git_repo)
             with patch("agenticcli.console.is_json_output", return_value=False):
                 with patch("builtins.print"):
-                    epic_module.cmd_bootstrap(args)
+                    epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 
@@ -159,7 +158,7 @@ class TestPlanBootstrap:
             os.chdir(temp_git_repo)
             with patch("agenticcli.console.is_json_output", return_value=False):
                 with patch("builtins.print"):
-                    epic_module.cmd_bootstrap(args)
+                    epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 
@@ -191,7 +190,7 @@ class TestPlanBootstrap:
             os.chdir(temp_git_repo)
             with patch("agenticcli.console.is_json_output", return_value=False):
                 with patch("builtins.print"):
-                    epic_module.cmd_bootstrap(args)
+                    epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 
@@ -224,13 +223,13 @@ class TestPlanBootstrap:
             # First create a plan
             with patch("agenticcli.console.is_json_output", return_value=False):
                 with patch("builtins.print"):
-                    epic_module.cmd_bootstrap(args)
+                    epic_module.cmd_init(args)
 
             # Try to create again with same description - should exit(2)
             with pytest.raises(SystemExit) as exc_info:
                 with patch("agenticcli.console.is_json_output", return_value=False):
                     with patch("builtins.print"):
-                        epic_module.cmd_bootstrap(args)
+                        epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 
@@ -255,7 +254,7 @@ class TestPlanBootstrap:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_git_repo)
-            epic_module.cmd_bootstrap(args)
+            epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 
@@ -287,7 +286,7 @@ class TestPlanBootstrap:
             os.chdir(temp_git_repo)
             with patch("agenticcli.console.is_json_output", return_value=False):
                 with patch("builtins.print"):
-                    epic_module.cmd_bootstrap(args)
+                    epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 
@@ -318,7 +317,7 @@ class TestPlanBootstrap:
             os.chdir(temp_git_repo)
             with patch("agenticcli.console.is_json_output", return_value=False):
                 with patch("builtins.print"):
-                    epic_module.cmd_bootstrap(args)
+                    epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 
@@ -359,7 +358,7 @@ class TestPlanBootstrap:
             os.chdir(temp_git_repo)
             with patch("agenticcli.console.is_json_output", return_value=False):
                 with patch("builtins.print"):
-                    epic_module.cmd_bootstrap(args)
+                    epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 
@@ -381,6 +380,7 @@ class TestPlanBootstrap:
         assert "IM_001" in ticket_ids, f"Expected IM_001 stub ticket, got: {ticket_ids}"
 
 
+@pytest.mark.story("US-PLN-002")
 class TestPlanBootstrapErrors:
     """Tests for error handling in bootstrap command."""
 
@@ -413,7 +413,7 @@ class TestPlanBootstrapErrors:
             with pytest.raises(SystemExit) as exc_info:
                 with patch("agenticcli.console.is_json_output", return_value=False):
                     with patch("builtins.print"):
-                        epic_module.cmd_bootstrap(args)
+                        epic_module.cmd_init(args)
         finally:
             os.chdir(original_cwd)
 

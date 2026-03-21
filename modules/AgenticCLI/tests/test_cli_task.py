@@ -5,56 +5,10 @@ Unit tests for argument parsing of ticket prefill, list, status, and add command
 
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-008")]
 
 
-class TestTaskPrefillParser:
-    """Tests for 'agentic epic ticket prefill' argument parsing."""
-
-    def test_prefill_help_shows_options(self, cli_runner):
-        """Test prefill --help shows all options."""
-        stdout, stderr, code = cli_runner(["epic", "ticket", "prefill", "--help"])
-        assert "--preset" in stdout
-        assert "-t" in stdout  # short form
-        assert "--plan" in stdout
-        assert "--dry-run" in stdout
-        assert code == 0
-
-    def test_prefill_requires_preset(self, cli_runner):
-        """Test that --preset is required."""
-        stdout, stderr, code = cli_runner(["epic", "ticket", "prefill"])
-        assert code != 0
-        assert "required" in stderr.lower() or "preset" in stderr.lower()
-
-    def test_prefill_accepts_preset_short_form(self, cli_runner):
-        """Test -t shortcut for --preset."""
-        # This will fail at runtime (preset not found) but parser accepts it
-        stdout, stderr, code = cli_runner(
-            ["epic", "ticket", "prefill", "-t", "nonexistent"]
-        )
-        # Parser accepts the argument structure, runtime fails finding preset
-        assert code != 0
-        # Either runtime error about not found or parser error
-        assert "not found" in stderr.lower() or code != 0
-
-    def test_prefill_accepts_dry_run_flag(self, cli_runner):
-        """Test --dry-run flag is recognized."""
-        # Parser should accept the flag even if command fails for other reasons
-        stdout, stderr, code = cli_runner(
-            ["epic", "ticket", "prefill", "-t", "nonexistent", "--dry-run"]
-        )
-        # Parser accepted --dry-run, error is about preset not found
-        assert "invalid" not in stderr.lower() or "not found" in stderr.lower()
-
-    def test_prefill_accepts_short_dry_run(self, cli_runner):
-        """Test -n shortcut for --dry-run."""
-        stdout, stderr, code = cli_runner(
-            ["epic", "ticket", "prefill", "-t", "nonexistent", "-n"]
-        )
-        # Parser should accept -n flag
-        assert "unrecognized" not in stderr.lower()
-
-
+@pytest.mark.story("US-PLN-009")
 class TestTaskListParser:
     """Tests for 'agentic epic ticket list' argument parsing."""
 
@@ -91,31 +45,7 @@ class TestTaskListParser:
         assert "--verbose" in result.stdout or "-v" in result.stdout
 
 
-class TestTaskStatusParser:
-    """Tests for 'agentic epic ticket status' argument parsing."""
-
-    def test_status_help_shows_options(self, cli_runner):
-        """Test status --help shows options."""
-        stdout, stderr, code = cli_runner(["epic", "ticket", "status", "--help"])
-        assert "task_id" in stdout.lower()
-        assert "--plan" in stdout
-        assert code == 0
-
-    def test_status_requires_task_id(self, cli_runner):
-        """Test that task_id positional argument is required."""
-        stdout, stderr, code = cli_runner(["epic", "ticket", "status"])
-        assert code != 0
-        # argparse error for missing positional
-        assert "required" in stderr.lower() or "argument" in stderr.lower()
-
-    def test_status_accepts_task_id(self, cli_runner):
-        """Test parser accepts task_id positional."""
-        # Will fail at runtime but parser accepts the argument
-        result = cli_runner(["epic", "ticket", "status", "build_01_001"])
-        # Parser accepted the task_id, runtime may fail finding it
-        assert "invalid" not in result.stderr.lower() or "not found" in result.stderr.lower()
-
-
+@pytest.mark.story("US-PLN-010")
 class TestTaskAddParser:
     """Tests for 'agentic epic ticket add' argument parsing."""
 

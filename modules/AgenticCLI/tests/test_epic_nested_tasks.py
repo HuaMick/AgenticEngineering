@@ -230,35 +230,6 @@ class TestTaskList:
 
 
 @pytest.mark.story("US-PLN-009")
-class TestTaskStatus:
-    """Tests for cmd_task_status with nested tasks."""
-
-    def test_shows_nested_task_details(self, nested_task_plan, cli_runner):
-        """Test that status shows details for nested task."""
-        stdout, stderr, code = cli_runner(
-            ["epic", "ticket", "status", "TST-001", "--plan", str(nested_task_plan)]
-        )
-        assert code == 0
-        assert "TST-001" in stdout
-        assert "First task" in stdout or "description" in stdout.lower()
-
-    def test_includes_phase_info(self, nested_task_plan, cli_runner):
-        """Test that phase information is included in status output."""
-        stdout, stderr, code = cli_runner(
-            ["epic", "ticket", "status", "TST-001", "--plan", str(nested_task_plan)]
-        )
-        assert code == 0
-        assert "Phase" in stdout or "P1" in stdout or "Build" in stdout
-
-    def test_error_when_task_not_found(self, nested_task_plan, cli_runner):
-        """Test error when querying non-existent task."""
-        stdout, stderr, code = cli_runner(
-            ["epic", "ticket", "status", "NONEXISTENT", "--plan", str(nested_task_plan)]
-        )
-        assert code != 0
-        assert "not found" in stderr.lower()
-
-
 @pytest.mark.story("US-PLN-010")
 class TestTaskCurrent:
     """Tests for cmd_task_current with nested tasks."""

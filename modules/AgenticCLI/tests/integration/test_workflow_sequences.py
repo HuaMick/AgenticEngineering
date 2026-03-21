@@ -17,6 +17,8 @@ import yaml
 class TestPlanWorkflowSequence:
     """Test plan creation -> status -> task -> archive workflow."""
 
+    pytestmark = pytest.mark.story("US-PLN-001")
+
     @pytest.fixture
     def integration_repo(self):
         """Create a full integration test repo with git."""
@@ -96,42 +98,22 @@ class TestPlanWorkflowSequence:
 
         os.chdir(original_cwd)
 
-    def test_plan_scaffold_status_workflow(self, cli_in_repo, integration_repo):
-        """Test: scaffold plan -> check status -> validate."""
-        stdout, stderr, code = cli_in_repo("epic", "scaffold", "test-feature")
-        assert code == 0
-        assert "Created planning folder" in stdout or "Created epic" in stdout
-
-        # Epic is registered in TinyDB (no folder created on disk)
-        stdout, stderr, code = cli_in_repo("epic", "status", "--epic", "test-feature")
-        assert code == 0
-
-        stdout, stderr, code = cli_in_repo("epic", "validate")
+    def test_plan_status_workflow(self, cli_in_repo, integration_repo):
+        """Test: check status with validate flag."""
+        # Epic status works even without epic arg (auto-detect)
+        stdout, stderr, code = cli_in_repo("epic", "status")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
-    def test_plan_with_json_output(self, cli_in_repo, integration_repo):
-        """Test plan commands with JSON output mode."""
-        cli_in_repo("epic", "scaffold", "json-test")
-
-        # Epic data is in TinyDB only — no YAML files needed
-        stdout, stderr, code = cli_in_repo("--json", "epic", "status", "--epic", "json-test")
-        assert code == 0
-        data = json.loads(stdout)
-        assert isinstance(data, dict)
-        assert len(data) > 0
-
-    def test_plan_scaffold_already_exists(self, cli_in_repo, integration_repo):
-        """Test scaffolding a plan that already exists (idempotent with TinyDB)."""
-        stdout, stderr, code = cli_in_repo("epic", "scaffold", "duplicate-test")
-        assert code == 0
-
-        # Scaffold is deprecated and idempotent — duplicate calls succeed silently
-        stdout, stderr, code = cli_in_repo("epic", "scaffold", "duplicate-test")
-        assert code == 0
+    def test_plan_status_validate(self, cli_in_repo, integration_repo):
+        """Test: epic status --validate runs validation checks."""
+        stdout, stderr, code = cli_in_repo("epic", "status", "--validate")
+        assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
 
 class TestConfigWorkflowSequence:
     """Test config initialization -> set -> get -> list workflow."""
+
+    pytestmark = pytest.mark.story("US-PLN-001")
 
     @pytest.fixture
     def config_repo(self):
@@ -264,6 +246,8 @@ class TestConfigWorkflowSequence:
 class TestHealthCheckSequence:
     """Test health check and diagnostic workflows."""
 
+    pytestmark = pytest.mark.story("US-PLN-001")
+
     @pytest.fixture
     def health_repo(self):
         """Create a repo for health check testing."""
@@ -355,6 +339,8 @@ class TestHealthCheckSequence:
 class TestErrorRecoverySequence:
     """Test error handling and recovery scenarios."""
 
+    pytestmark = pytest.mark.story("US-PLN-001")
+
     def test_invalid_command_shows_help(self, cli_runner):
         """Test that invalid commands show helpful error messages."""
         stdout, stderr, code = cli_runner("nonexistent")
@@ -364,8 +350,8 @@ class TestErrorRecoverySequence:
 
     def test_missing_required_args(self, cli_runner):
         """Test that missing required args show usage."""
-        stdout, stderr, code = cli_runner("epic", "scaffold")
-        assert code == 2
+        stdout, stderr, code = cli_runner("epic", "new")
+        assert code in [1, 2]
 
     def test_invalid_plan_path_handled(self, cli_runner, temp_dir):
         """Test handling of invalid plan paths."""
@@ -380,6 +366,8 @@ class TestErrorRecoverySequence:
 
 class TestStateWorkflowSequence:
     """Test state management workflows."""
+
+    pytestmark = pytest.mark.story("US-PLN-001")
 
     @pytest.fixture
     def state_repo(self):
@@ -471,6 +459,8 @@ class TestStateWorkflowSequence:
 class TestEnvWorkflowSequence:
     """Test environment variable management workflows."""
 
+    pytestmark = pytest.mark.story("US-PLN-001")
+
     @pytest.fixture
     def env_repo(self):
         """Create a repo for env testing."""
@@ -556,6 +546,8 @@ class TestEnvWorkflowSequence:
 class TestCrossCommandIntegration:
     """Test interactions between different command groups."""
 
+    pytestmark = pytest.mark.story("US-PLN-001")
+
     @pytest.fixture
     def full_integration_repo(self):
         """Create a fully-featured integration repo."""
@@ -640,16 +632,12 @@ class TestCrossCommandIntegration:
         # Step 2: Check health
         stdout, stderr, code = full_cli("setup", "health")
 
-        # Step 3: Scaffold a plan
-        stdout, stderr, code = full_cli("epic", "scaffold", "feature-integration")
-        assert code == 0
-
-        # Step 5: Check plan status
+        # Step 3: Check plan status
         stdout, stderr, code = full_cli("epic", "status")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
-        # Step 6: Validate plan
-        stdout, stderr, code = full_cli("epic", "validate")
+        # Step 4: Check status with validate flag
+        stdout, stderr, code = full_cli("epic", "status", "--validate")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
     def test_json_mode_consistency(self, full_cli):

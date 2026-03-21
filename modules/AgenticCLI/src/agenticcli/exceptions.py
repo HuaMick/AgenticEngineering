@@ -82,7 +82,7 @@ class PlanError(AgenticError):
         """Create error for missing plan file."""
         return cls(
             message=f"Plan file not found: {path}",
-            recovery_hint="Create a plan with 'agentic plan scaffold' or check the file path",
+            recovery_hint="Check the file path or use 'agentic epic list' to see active epics",
             context=ErrorContext(file_path=path, operation="plan_read"),
         )
 
@@ -118,7 +118,7 @@ class PlanError(AgenticError):
         """Create error for missing task in plan."""
         return cls(
             message=f"Task '{task_id}' not found in plan",
-            recovery_hint="Check the task ID or list tasks with 'agentic plan status'",
+            recovery_hint="Check the task ID or list tasks with 'agentic epic status'",
             context=ErrorContext(
                 file_path=plan_path,
                 operation="plan_task",
@@ -137,7 +137,7 @@ class EpicFileError(AgenticError):
         """Create error for missing epic file."""
         return cls(
             message=f"Epic file not found: {path}",
-            recovery_hint="Create an epic with 'agentic epic scaffold' or check the file path",
+            recovery_hint="Create an epic with 'agentic epic new' or check the file path",
             context=ErrorContext(file_path=path, operation="epic_read"),
         )
 
@@ -196,7 +196,7 @@ class EpicFolderError(AgenticError):
         """Create error for missing epic folder."""
         return cls(
             message=f"Epic folder not found: {path}",
-            recovery_hint="Create an epic folder with 'agentic epic scaffold' or check the path",
+            recovery_hint="Create an epic folder with 'agentic epic new' or check the path",
             context=ErrorContext(file_path=path, operation="epic_folder_read"),
         )
 
@@ -205,7 +205,7 @@ class EpicFolderError(AgenticError):
         """Create error for invalid epic folder structure."""
         return cls(
             message=f"Invalid epic folder structure: {reason}",
-            recovery_hint="Use 'agentic epic scaffold' to create a valid epic folder structure",
+            recovery_hint="Use 'agentic epic new' to create a valid epic folder structure",
             context=ErrorContext(
                 file_path=path,
                 operation="epic_folder_validate",
@@ -273,7 +273,7 @@ class ValidationError(AgenticError):
         """Create error for invalid epic folder structure."""
         return cls(
             message=f"Invalid epic folder structure: {reason}",
-            recovery_hint="Use 'agentic epic scaffold' to create a valid epic folder structure",
+            recovery_hint="Use 'agentic epic new' to create a valid epic folder structure",
             context=ErrorContext(file_path=path, operation="validate_epic_folder", details={"reason": reason}),
         )
 

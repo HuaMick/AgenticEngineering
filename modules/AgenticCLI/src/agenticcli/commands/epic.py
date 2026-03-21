@@ -5,11 +5,9 @@ Handles epic folder operations and ticket tracking.
 
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import yaml
 
 # Cache for dynamic agent type discovery
 _agent_types_cache: set | None = None
@@ -205,46 +203,30 @@ def handle(args, ctx=None):
         cmd_new(args, ctx)
     elif args.epic_command == "init":
         cmd_init(args, ctx)
-    elif args.epic_command == "bootstrap":
-        cmd_bootstrap(args, ctx)
-    elif args.epic_command == "scaffold":
-        cmd_scaffold(args)
     elif args.epic_command == "status":
         cmd_status(args)
-    elif args.epic_command == "validate":
-        cmd_validate(args)
     elif args.epic_command == "ticket":
         if args.ticket_action == "start":
             cmd_task_start(args)
         elif args.ticket_action == "complete":
             cmd_task_complete(args)
-        elif args.ticket_action == "prefill":
-            cmd_task_prefill(args, ctx)
         elif args.ticket_action == "list":
             cmd_task_list(args, ctx)
-        elif args.ticket_action == "status":
-            cmd_task_status(args, ctx)
         elif args.ticket_action == "add":
             cmd_task_add(args, ctx)
         elif args.ticket_action == "update":
             cmd_task_update(args, ctx)
         elif args.ticket_action == "remove":
             cmd_task_remove(args, ctx)
-        elif args.ticket_action == "batch":
-            cmd_task_batch(args, ctx)
         elif args.ticket_action == "current":
             cmd_task_current(args, ctx)
         else:
-            print("Usage: agentic epic ticket <start|complete|prefill|list|status|add|update|remove|batch|current> ...", file=sys.stderr)
+            print("Usage: agentic epic ticket <start|complete|list|add|update|remove|current> ...", file=sys.stderr)
             sys.exit(1)
     elif args.epic_command == "archive":
         cmd_archive(args)
-    elif args.epic_command == "unarchive":
-        cmd_unarchive(args, ctx)
     elif args.epic_command == "list":
         cmd_list(args)
-    elif args.epic_command == "move":
-        cmd_move(args, ctx)
     elif args.epic_command == "phase":
         if args.phase_action == "add":
             cmd_phase_add(args, ctx)
@@ -257,28 +239,10 @@ def handle(args, ctx=None):
         else:
             print("Usage: agentic epic phase <add|list|update|remove>", file=sys.stderr)
             sys.exit(1)
-    elif args.epic_command == "replan":
-        cmd_replan(args, ctx)
-    elif args.epic_command == "stories":
-        if args.stories_action == "list":
-            cmd_stories_list(args, ctx)
-        elif args.stories_action == "test":
-            cmd_stories_test(args, ctx)
-        else:
-            print("Usage: agentic epic stories <list|test>", file=sys.stderr)
-            sys.exit(1)
     elif args.epic_command == "cancel":
         cmd_cancel(args, ctx)
-    elif args.epic_command == "db":
-        if args.db_action == "sync":
-            cmd_db_sync(args)
-        elif args.db_action == "status":
-            cmd_db_status(args)
-        else:
-            print("Usage: agentic epic db <sync|status>", file=sys.stderr)
-            sys.exit(1)
     else:
-        print("Usage: agentic epic <new|init|scaffold|status|validate|ticket|archive|unarchive|list|move|phase|orchestration|stories|db|cancel>", file=sys.stderr)
+        print("Usage: agentic epic <new|status|ticket|archive|list|phase|cancel>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -1028,43 +992,6 @@ def cmd_init(args, ctx=None):
         console.print(f"[dim]  agentic stories untested --project <name>[/dim]")
 
 
-def cmd_scaffold(args):
-    """Create planning folder structure (DEPRECATED - use 'agentic epic init' instead)."""
-    from agenticcli.console import is_json_output, print_json
-
-    name = args.name
-    base_path = Path.cwd()
-
-    plan_path = base_path / "docs" / "epics" / "live" / name
-
-    # Print deprecation warning
-    if not is_json_output():
-        print("\n[WARNING] 'agentic plan scaffold' is DEPRECATED", file=sys.stderr)
-        print("Use 'agentic epic init <branch> --description <description>' instead", file=sys.stderr)
-        print("The scaffold command creates only the folder structure.\n", file=sys.stderr)
-
-    # Create epic in TinyDB (primary data store — no folder creation)
-    try:
-        from agenticguidance.services.epic_repository import EpicRepository
-        repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
-        repo.create_epic({
-            "epic_folder_name": name,
-            "epic_folder": str(plan_path),
-            "name": name,
-            "status": "active",
-        })
-        repo.close()
-    except Exception:
-        pass
-
-    if is_json_output():
-        print_json({"name": name, "path": str(plan_path), "folder": str(plan_path), "deprecated": True})
-    else:
-        print(f"Created planning folder: {plan_path}")
-        print(f"  (epic data stored in TinyDB)")
-        print("\n[RECOMMENDED] Next time, use: agentic epic init <branch> --description <description>")
-
-
 def cmd_status(args):
     """Show epic status and task summary.
 
@@ -1155,29 +1082,35 @@ def cmd_status(args):
         "active": ("Spawn planning agent", f"agentic orchestrate session plan --epic {epic_folder_name}"),
         "planning": ("Planning in progress", None),
         "in_progress": ("Execute current ticket", f"agentic epic ticket current --epic {epic_folder_name}"),
-        "completed": ("Archive epic", f"agentic epic move folder --epic {epic_folder_name}"),
+        "completed": ("Archive epic", f"agentic epic archive {epic_folder_name}"),
         "deferred": ("Resolve blockers", None),
         "blocked": ("Resolve blockers", None),
     }
     next_action, next_command = _status_actions.get(plan_status, ("Check epic state", None))
 
+    # --validate: collect validation results
+    validation_data = None
+    if getattr(args, "validate", False):
+        validation_data = _collect_validation(plan_path, args)
+
     if is_json_output():
-        print_json(
-            {
-                "plan": plan_path.name,
-                "status": plan_status,
-                "has_orchestration": has_orchestration,
-                "next_action": next_action,
-                "next_command": next_command,
-                "deferred_reason": deferred_reason,
-                "files": file_stats,
-                "totals": {
-                    "pending": total_pending,
-                    "completed": total_completed,
-                },
-                "progress_percent": round(pct, 1),
-            }
-        )
+        result_data = {
+            "plan": plan_path.name,
+            "status": plan_status,
+            "has_orchestration": has_orchestration,
+            "next_action": next_action,
+            "next_command": next_command,
+            "deferred_reason": deferred_reason,
+            "files": file_stats,
+            "totals": {
+                "pending": total_pending,
+                "completed": total_completed,
+            },
+            "progress_percent": round(pct, 1),
+        }
+        if validation_data is not None:
+            result_data["validation"] = validation_data
+        print_json(result_data)
     else:
         print_header(f"Epic Status: {plan_path.name}")
 
@@ -1228,6 +1161,132 @@ def cmd_status(args):
         if next_command:
             console.print(f"  [dim]Command: {next_command}[/dim]")
 
+        # Print validation results in human-readable form
+        if validation_data is not None:
+            _print_validation(plan_path, validation_data)
+
+
+def _collect_validation(plan_path, args):
+    """Collect validation results for an epic (called from cmd_status --validate).
+
+    Returns a dict with status, orchestration, errors, warnings, etc.
+    Calls sys.exit(1) if there are errors.
+    """
+    strict = getattr(args, "strict", False)
+    check_fences = getattr(args, "check_fences", False)
+
+    errors = []
+    warnings = []
+
+    # Validate epic exists in TinyDB
+    try:
+        repo = _get_repo()
+        plan_data_obj = repo.get_epic(plan_path.name)
+        if plan_data_obj is None:
+            errors.append(f"Epic '{plan_path.name}' not found in TinyDB")
+    except Exception as e:
+        errors.append(f"Failed to query TinyDB: {e}")
+
+    # Orchestration validation - check TinyDB phases
+    orchestration_result = {"status": "PASS", "details": []}
+
+    has_tinydb_phases = False
+    tinydb_phase_count = 0
+    try:
+        repo = _get_repo()
+        phases = repo.list_phases(plan_path.name)
+        repo.close()
+        if phases and any(phase.agent for phase in phases):
+            has_tinydb_phases = True
+            tinydb_phase_count = len(phases)
+    except Exception:
+        pass
+
+    if has_tinydb_phases:
+        orchestration_result["details"].append("Orchestration phases found in TinyDB")
+        orchestration_result["details"].append(f"Phases found: {tinydb_phase_count}")
+    else:
+        orchestration_result["status"] = "FAIL"
+        orchestration_result["details"].append("Missing: orchestration phases in TinyDB")
+        orchestration_result["details"].append("Action: Spawn orchestration-planning agent")
+        orchestration_result["details"].append("Command: agentic orchestrate session plan --epic <folder>")
+        if strict:
+            errors.append("Missing orchestration phases in TinyDB")
+        else:
+            warnings.append("Missing orchestration phases in TinyDB")
+
+    # --check-fences: validate UAT fence compliance
+    fence_results = {}
+    if check_fences:
+        fence_results = _check_fences(plan_path)
+        for fence_name, result in fence_results.items():
+            if result["status"] == "FAIL":
+                errors.append(f"Fence {fence_name}: {result['message']}")
+            elif result["status"] == "WARN":
+                warnings.append(f"Fence {fence_name}: {result['message']}")
+
+    # Additional structural validation via PlanService (non-fatal)
+    try:
+        from agenticguidance.services.epic import EpicService
+        svc = EpicService()
+        svc_result = svc.validate_epic_structure(plan_path)
+        if svc_result and hasattr(svc_result, "errors") and svc_result.errors:
+            for svc_err in svc_result.errors:
+                if svc_err not in errors:
+                    warnings.append(f"[PlanService] {svc_err}")
+    except Exception:
+        pass
+
+    has_errors = len(errors) > 0
+    overall_status = "FAIL" if has_errors else ("WARN" if warnings else "PASS")
+
+    data = {
+        "status": overall_status,
+        "orchestration": orchestration_result,
+        "errors": errors,
+        "warnings": warnings,
+    }
+    if check_fences:
+        data["fences"] = fence_results
+
+    if has_errors:
+        sys.exit(1)
+
+    return data
+
+
+def _print_validation(plan_path, validation_data):
+    """Print validation results in human-readable form."""
+    orchestration_result = validation_data.get("orchestration", {})
+    errors = validation_data.get("errors", [])
+    warnings = validation_data.get("warnings", [])
+    fence_results = validation_data.get("fences", {})
+
+    print(f"\nValidation: {plan_path}")
+    print("=" * 60)
+
+    print(f"\nOrchestration: {orchestration_result.get('status', 'UNKNOWN')}")
+    for detail in orchestration_result.get("details", []):
+        print(f"  - {detail}")
+
+    if fence_results:
+        print("\nFence Checks:")
+        for fence_name, result in fence_results.items():
+            status_marker = "PASS" if result["status"] == "PASS" else result["status"]
+            print(f"  {fence_name}: {status_marker} - {result['message']}")
+
+    if errors:
+        print("\nErrors:")
+        for err in errors:
+            print(f"  - {err}")
+
+    if warnings:
+        print("\nWarnings:")
+        for warn in warnings:
+            print(f"  - {warn}")
+
+    if not errors and not warnings and orchestration_result.get("status") == "PASS":
+        print("\n  All checks passed")
 
 
 def _check_fences(plan_path: Path) -> dict:
@@ -1383,140 +1442,6 @@ def _check_fences(plan_path: Path) -> dict:
     return results
 
 
-def cmd_validate(args):
-    """Validate epic structure and orchestration.
-
-    Checks for orchestration phases in TinyDB and reports validation results.
-    """
-    from agenticcli.console import is_json_output, print_json
-
-    plan_path = find_epic_folder(args.path)
-    strict = getattr(args, "strict", False)
-    errors = []
-    warnings = []
-    stub_files = []
-
-    # Check folder structure
-    if not plan_path.exists():
-        print(f"Error: Path does not exist: {plan_path}", file=sys.stderr)
-        sys.exit(1)
-
-    # Validate epic exists in TinyDB
-    try:
-        repo = _get_repo()
-        plan_data_obj = repo.get_epic(plan_path.name)
-        if plan_data_obj is None:
-            errors.append(f"Epic '{plan_path.name}' not found in TinyDB")
-    except Exception as e:
-        errors.append(f"Failed to query TinyDB: {e}")
-
-    # Orchestration validation - check TinyDB phases
-    orchestration_result = {"status": "PASS", "details": []}
-
-    has_tinydb_phases = False
-    tinydb_phase_count = 0
-    try:
-        repo = _get_repo()
-        phases = repo.list_phases(plan_path.name)
-        repo.close()
-        if phases and any(phase.agent for phase in phases):
-            has_tinydb_phases = True
-            tinydb_phase_count = len(phases)
-    except Exception:
-        pass
-
-    if has_tinydb_phases:
-        orchestration_result["status"] = "PASS"
-        orchestration_result["details"].append("Orchestration phases found in TinyDB")
-        orchestration_result["details"].append(f"Phases found: {tinydb_phase_count}")
-    else:
-        orchestration_result["status"] = "FAIL"
-        orchestration_result["details"].append("Missing: orchestration phases in TinyDB")
-        orchestration_result["details"].append("Action: Spawn orchestration-planning agent")
-        orchestration_result["details"].append("Command: agentic orchestrate session plan --epic <folder>")
-        if strict:
-            errors.append("Missing orchestration phases in TinyDB")
-        else:
-            warnings.append("Missing orchestration phases in TinyDB")
-
-    # --check-fences: validate UAT fence compliance
-    check_fences = getattr(args, "check_fences", False)
-    fence_results = {}
-    if check_fences:
-        fence_results = _check_fences(plan_path)
-        for fence_name, result in fence_results.items():
-            if result["status"] == "FAIL":
-                errors.append(f"Fence {fence_name}: {result['message']}")
-            elif result["status"] == "WARN":
-                warnings.append(f"Fence {fence_name}: {result['message']}")
-
-    # Additional structural validation via PlanService (non-fatal)
-    try:
-        from agenticguidance.services.epic import EpicService
-        svc = EpicService()
-        svc_result = svc.validate_epic_structure(plan_path)
-        if svc_result and hasattr(svc_result, "errors") and svc_result.errors:
-            for svc_err in svc_result.errors:
-                if svc_err not in errors:
-                    warnings.append(f"[PlanService] {svc_err}")
-    except Exception:
-        pass
-
-    # Determine overall validation result
-    has_errors = len(errors) > 0
-    overall_status = "FAIL" if has_errors else ("WARN" if warnings else "PASS")
-
-    # Report results
-    if is_json_output():
-        result_data = {
-            "plan": plan_path.name,
-            "status": overall_status,
-            "orchestration": orchestration_result,
-            "errors": errors,
-            "warnings": warnings,
-            "stub_files": stub_files,
-        }
-        if check_fences:
-            result_data["fences"] = fence_results
-        print_json(result_data)
-    else:
-        print(f"Validating: {plan_path}")
-        print("=" * 60)
-
-        # Orchestration validation section
-        print(f"\nOrchestration: {orchestration_result['status']}")
-        for detail in orchestration_result["details"]:
-            print(f"  - {detail}")
-
-        # Fence validation section
-        if check_fences:
-            print("\nFence Checks:")
-            for fence_name, result in fence_results.items():
-                status_marker = "PASS" if result["status"] == "PASS" else result["status"]
-                print(f"  {fence_name}: {status_marker} - {result['message']}")
-
-        if errors:
-            print("\nErrors:")
-            for err in errors:
-                print(f"  - {err}")
-
-        if warnings:
-            print("\nWarnings:")
-            for warn in warnings:
-                print(f"  - {warn}")
-
-        # Special message for stub templates
-        if stub_files and not strict:
-            print("\nNote: Stub templates detected. Use --strict to fail validation on stubs.")
-            print("      Either populate these files with content or delete them if unused.")
-
-        if not errors and not warnings and orchestration_result["status"] == "PASS":
-            print("\n  All checks passed")
-
-    if has_errors:
-        sys.exit(1)
-
-
 def cmd_task_start(args):
     """Mark a task as in_progress.
 
@@ -1565,59 +1490,6 @@ def _update_task_status(plan_path: Path, task_id: str, new_status: str):
 
     print(f"Error: Task {task_id} not found in TinyDB", file=sys.stderr)
     sys.exit(1)
-
-
-def cmd_task_prefill(args, ctx=None):
-    """Load preset task list from template.
-
-    Loads tasks from a preset YAML template and adds them to the
-    current plan's task list for tracking.
-
-    Args:
-        args: Parsed arguments with preset, plan, dry_run.
-        ctx: Optional CLIContext.
-    """
-    from agenticcli.console import (
-        console,
-        is_json_output,
-        print_error,
-        print_info,
-        print_json,
-        print_success,
-        print_table,
-    )
-
-    from agenticcli.workflows.ticket_workflow import TicketPresetWorkflow
-
-    preset_name = args.preset
-    plan_path = find_epic_folder(getattr(args, "plan", None))
-    dry_run = getattr(args, "dry_run", False)
-
-    workflow = TicketPresetWorkflow(plan_path)
-
-    try:
-        result = workflow.load_preset(preset_name, dry_run=dry_run)
-    except FileNotFoundError:
-        print_error(f"Preset '{preset_name}' not found")
-        print_info("Available presets: " + ", ".join(workflow.list_presets()))
-        sys.exit(1)
-
-    if is_json_output():
-        print_json({
-            "preset": preset_name,
-            "tasks_added": result.tasks_added,
-            "tasks": result.tasks,
-            "dry_run": dry_run,
-        })
-    else:
-        if dry_run:
-            console.print(f"[dim][dry-run] Would add {len(result.tasks)} tasks from preset '{preset_name}'[/dim]")
-        else:
-            print_success(f"Added {result.tasks_added} tasks from preset '{preset_name}'")
-
-        # Show tasks
-        rows = [[t["id"], t["description"], t.get("priority", "medium")] for t in result.tasks]
-        print_table("Tasks", ["ID", "Description", "Priority"], rows)
 
 
 def cmd_task_list(args, ctx=None):
@@ -1708,113 +1580,6 @@ def cmd_task_list(args, ctx=None):
             print_table("", ["ID", "Description", "Status", "Phase"], rows)
 
         console.print(f"\n[dim]Total: {len(all_tasks)} tasks[/dim]")
-
-
-def cmd_task_status(args, ctx=None):
-    """Show detailed status for a specific task.
-
-    Finds task by ID and displays all available information
-    including guidance, success criteria, inputs, and target files.
-
-    Args:
-        args: Parsed arguments with task_id and plan.
-        ctx: Optional CLIContext.
-    """
-    from agenticcli.console import (
-        console,
-        format_status,
-        is_json_output,
-        print_error,
-        print_header,
-        print_json,
-        print_key_value,
-    )
-
-    task_id = args.task_id
-    plan_path = find_epic_folder(getattr(args, "plan", None))
-
-    task_data = None
-    source_file = None
-    phase_info = None
-
-    # Try PlanRepository (TinyDB) first
-    try:
-        repo = _get_repo()
-        if repo is not None:
-            plan_doc = repo.get_epic(plan_path.name)
-            folder_matches = (
-                plan_doc is not None
-                and plan_doc.epic_folder.resolve() == plan_path.resolve()
-            )
-            if folder_matches:
-                td = repo.get_ticket(plan_path.name, task_id)
-                if td is not None:
-                    task_data = {
-                        "id": td.id,
-                        "task_id": td.id,
-                        "name": td.name or "",
-                        "description": td.description or "",
-                        "status": td.status or "pending",
-                        "inputs": td.inputs or [],
-                        "target_files": td.target_files or [],
-                        "guidance": td.guidance or "",
-                        "success_criteria": td.success_criteria or [],
-                    }
-                    source_file = "(via TinyDB)"
-                    # Get phase info
-                    phase_name = td.phase_name or ""
-                    phase_obj = repo.get_phase(plan_path.name, phase_name) if phase_name else None
-                    phase_info = {
-                        "phase_id": phase_name,
-                        "name": phase_name,
-                        "status": phase_obj.status if phase_obj else None,
-                    }
-            repo.close()
-    except Exception:
-        task_data = None
-
-    if not task_data:
-        print_error(f"Task '{task_id}' not found")
-        sys.exit(1)
-
-    if is_json_output():
-        print_json({
-            "task": task_data,
-            "phase": phase_info,
-            "source_file": source_file,
-        })
-    else:
-        print_header(f"Task: {task_id}")
-
-        print_key_value("Description", task_data.get("description", "N/A"))
-        print_key_value("Status", format_status(task_data.get("status", "pending")))
-        pid = phase_info['phase_id']
-        pname = phase_info['name']
-        phase_display = f"{pid} - {pname}" if pid and pid != pname else (pname or pid or "N/A")
-        print_key_value("Phase", phase_display)
-        print_key_value("Source File", source_file)
-
-        if task_data.get("inputs"):
-            console.print("\n[bold]Inputs:[/bold]")
-            for inp in task_data["inputs"]:
-                if isinstance(inp, dict):
-                    console.print(f"  - {inp.get('path', inp)}")
-                else:
-                    console.print(f"  - {inp}")
-
-        if task_data.get("target_files"):
-            console.print("\n[bold]Target Files:[/bold]")
-            for tf in task_data["target_files"]:
-                console.print(f"  - {tf}")
-
-        if task_data.get("guidance"):
-            console.print("\n[bold]Guidance:[/bold]")
-            console.print(f"[dim]{task_data['guidance']}[/dim]")
-
-        if task_data.get("success_criteria"):
-            console.print("\n[bold]Success Criteria:[/bold]")
-            for criterion in task_data["success_criteria"]:
-                console.print(f"  - {criterion}")
 
 
 def cmd_task_add(args, ctx=None):
@@ -1960,51 +1725,6 @@ def cmd_archive(args):
         print(f"Archived epic: {epic_folder_name}")
     else:
         print(f"Error: {result.message}")
-        sys.exit(1)
-
-
-def cmd_unarchive(args, ctx=None):
-    """Unarchive an epic by setting its TinyDB status to 'in_progress'.
-
-    This is the reverse of archiving - useful when an epic was archived
-    prematurely or needs to be resumed.
-
-    Args:
-        args: Parsed arguments with plan name.
-        ctx: Optional CLIContext.
-    """
-    from agenticcli.console import (
-        is_json_output,
-        print_error,
-        print_json,
-        print_success,
-    )
-
-    plan_name = args.plan
-
-    repo = _get_repo()
-    if repo is None:
-        if is_json_output():
-            print_json({"error": "Could not connect to TinyDB repository."})
-        else:
-            print_error("Could not connect to TinyDB repository.")
-        sys.exit(1)
-
-    result = repo.unarchive_epic(plan_name)
-    if result.success:
-        if is_json_output():
-            print_json({
-                "result": "success",
-                "plan_name": plan_name,
-                "status": "in_progress",
-            })
-        else:
-            print_success(f"Unarchived epic: {plan_name}")
-    else:
-        if is_json_output():
-            print_json({"error": result.message})
-        else:
-            print_error(result.message)
         sys.exit(1)
 
 
@@ -2177,107 +1897,6 @@ def cmd_list(args):
             )
 
         print_table("", ["Epic", "Status", "Proposed", "Completed"], rows)
-
-
-def cmd_move(args, ctx=None):
-    """Move completed tasks or archive folder.
-
-    Supports:
-    - plan move task <task-id>: Move a single task
-    - plan move tasks: Move all completed tasks
-    - plan move folder: Archive the entire plan folder
-    """
-    from agenticcli.console import (
-        console,
-        is_json_output,
-        print_error,
-        print_json,
-        print_success,
-        print_warning,
-    )
-    from agenticguidance.services import MoveResult, EpicMovementWorkflow
-
-    plan_path = find_epic_folder(getattr(args, "plan", None))
-    workflow = EpicMovementWorkflow(plan_path)
-
-    dry_run = getattr(args, "dry_run", False)
-    force = getattr(args, "force", False)
-    move_type = getattr(args, "move_type", None)
-
-    if move_type == "task":
-        task_id = args.task_id
-        result = workflow.move_task_to_completed(task_id, dry_run=dry_run, force=force)
-
-        if is_json_output():
-            print_json({
-                "task_id": result.task_id,
-                "result": result.result.value,
-                "message": result.message,
-                "source_file": result.source_file,
-                "target_file": result.target_file,
-            })
-        else:
-            if result.result == MoveResult.SUCCESS:
-                print_success(result.message)
-            elif result.result == MoveResult.SKIPPED:
-                print_warning(result.message)
-            else:
-                print_error(result.message)
-                sys.exit(1)
-
-    elif move_type == "tasks":
-        results = workflow.move_all_completed_tasks(dry_run=dry_run, force=force)
-
-        if is_json_output():
-            print_json({
-                "results": [
-                    {
-                        "task_id": r.task_id,
-                        "result": r.result.value,
-                        "message": r.message,
-                    }
-                    for r in results
-                ],
-                "success": sum(1 for r in results if r.result == MoveResult.SUCCESS),
-                "skipped": sum(1 for r in results if r.result == MoveResult.SKIPPED),
-                "failed": sum(1 for r in results if r.result == MoveResult.FAILED),
-            })
-        else:
-            success = sum(1 for r in results if r.result == MoveResult.SUCCESS)
-            skipped = sum(1 for r in results if r.result == MoveResult.SKIPPED)
-            failed = sum(1 for r in results if r.result == MoveResult.FAILED)
-
-            if success > 0:
-                print_success(f"Moved {success} task(s) to completed")
-            if skipped > 0:
-                print_warning(f"Skipped {skipped} task(s)")
-            if failed > 0:
-                print_error(f"Failed {failed} task(s)")
-            if not results:
-                console.print("[dim]No completed tasks found to move.[/dim]")
-
-    elif move_type == "folder":
-        result = workflow.archive_epic_folder(dry_run=dry_run, force=force)
-
-        if is_json_output():
-            print_json({
-                "source": result.source,
-                "destination": result.destination,
-                "result": result.result.value,
-                "message": result.message,
-            })
-        else:
-            if result.result == MoveResult.SUCCESS:
-                print_success(result.message)
-            elif result.result == MoveResult.SKIPPED:
-                print_warning(result.message)
-            else:
-                print_error(result.message)
-                sys.exit(1)
-
-    else:
-        print("Usage: agentic epic move <task|tasks|folder>", file=sys.stderr)
-        sys.exit(1)
 
 
 def cmd_task_update(args, ctx=None):
@@ -2507,121 +2126,6 @@ def cmd_task_remove(args, ctx=None):
         print_json({"task_id": task_id, "removed": True, "epic": plan_path.name})
     else:
         print_success(f"Removed ticket '{task_id}' from {plan_path.name}")
-
-
-def cmd_task_batch(args, ctx=None):
-    """Bulk import tickets and phases from JSON (stdin or --file).
-
-    Reads JSON with format: {"phases": [...], "tickets": [...]}
-    and populates TinyDB in one shot.
-
-    Args:
-        args: Parsed arguments with plan, file.
-        ctx: Optional CLIContext.
-    """
-    import json
-
-    from agenticcli.console import (
-        is_json_output,
-        print_error,
-        print_json,
-        print_success,
-        print_warning,
-    )
-
-    plan_path = find_epic_folder(getattr(args, "plan", None))
-    input_file = getattr(args, "file", None)
-
-    # Read JSON from file or stdin
-    try:
-        if input_file:
-            with open(input_file) as f:
-                data = json.load(f)
-        else:
-            data = json.load(sys.stdin)
-    except json.JSONDecodeError as e:
-        print_error(f"Invalid JSON input: {e}")
-        sys.exit(1)
-    except Exception as e:
-        print_error(f"Error reading input: {e}")
-        sys.exit(1)
-
-    phases_input = data.get("phases", [])
-    tickets_input = data.get("tickets", [])
-
-    if not phases_input and not tickets_input:
-        print_error("Input JSON must contain 'phases' or 'tickets' (or both)")
-        sys.exit(1)
-
-    phases_added = 0
-    phases_skipped = 0
-    tickets_added = 0
-    tickets_skipped = 0
-    errors = []
-
-    try:
-        repo = _get_repo()
-        if repo is None:
-            print_error("TinyDB repository unavailable")
-            sys.exit(1)
-
-        if not _ensure_epic_in_db(repo, plan_path):
-            print_error(f"Epic '{plan_path.name}' could not be registered in TinyDB")
-            sys.exit(1)
-
-        # Insert phases first
-        for phase_doc in phases_input:
-            phase_name = phase_doc.get("name", "")
-            if not phase_name:
-                errors.append("Phase missing 'name' field - skipped")
-                phases_skipped += 1
-                continue
-            ok = repo.add_phase(plan_path.name, phase_doc)
-            if ok:
-                phases_added += 1
-            else:
-                phases_skipped += 1
-
-        # Insert tickets
-        for ticket_doc in tickets_input:
-            ticket_id = ticket_doc.get("id") or ticket_doc.get("task_id", "")
-            if not ticket_id:
-                errors.append("Ticket missing 'id' field - skipped")
-                tickets_skipped += 1
-                continue
-            phase_name = ticket_doc.get("phase_name") or ticket_doc.get("phase", "")
-            if not phase_name:
-                # Use last inserted phase or default
-                all_phases = repo.list_phases(plan_path.name)
-                phase_name = all_phases[-1].name if all_phases else "Ad-hoc Tasks"
-            ok = repo.add_ticket(plan_path.name, phase_name, ticket_doc)
-            if ok:
-                tickets_added += 1
-            else:
-                tickets_skipped += 1
-
-    except Exception as e:
-        print_error(f"Error during batch import: {e}")
-        sys.exit(1)
-
-    if is_json_output():
-        print_json({
-            "phases_added": phases_added,
-            "phases_skipped": phases_skipped,
-            "tickets_added": tickets_added,
-            "tickets_skipped": tickets_skipped,
-            "errors": errors,
-            "epic": plan_path.name,
-        })
-    else:
-        print_success(
-            f"Batch import complete: {phases_added} phases added, "
-            f"{tickets_added} tickets added "
-            f"({phases_skipped} phases skipped, {tickets_skipped} tickets skipped)"
-        )
-        if errors:
-            for err in errors:
-                print_warning(err)
 
 
 def cmd_task_current(args, ctx=None):
@@ -3193,431 +2697,3 @@ def cmd_phase_remove(args, ctx=None):
         print_success(msg)
 
 
-def cmd_replan(args, ctx=None):
-    """Prepare an epic for new planning.
-
-    Resets all completed ticket statuses back to 'proposed' and removes
-    the orchestration MMD file, ready for a fresh planning cycle.
-
-    Args:
-        args: Parsed arguments with plan, force.
-        ctx: Optional CLIContext.
-    """
-    from agenticcli.console import (
-        is_json_output,
-        print_error,
-        print_json,
-        print_success,
-        print_warning,
-    )
-
-    plan_path = find_epic_folder(getattr(args, "plan", None))
-    force = getattr(args, "force", False)
-
-    if not force and not is_json_output():
-        print_warning(
-            f"About to replan epic '{plan_path.name}':\n"
-            "  - All completed/in_progress ticket statuses will be reset to 'proposed'"
-        )
-        response = input("Confirm? [y/N] ")
-        if response.lower() != "y":
-            print("Aborted")
-            sys.exit(0)
-
-    tickets_reset = 0
-
-    try:
-        repo = _get_repo()
-        if repo is None:
-            print_error("TinyDB repository unavailable")
-            sys.exit(1)
-
-        if not _ensure_epic_in_db(repo, plan_path):
-            print_error(f"Epic '{plan_path.name}' not found in TinyDB")
-            sys.exit(1)
-
-        # Reset all non-proposed tickets back to proposed
-        all_tickets = repo.get_tickets(plan_path.name)
-        for ticket in all_tickets:
-            if ticket.status and ticket.status != "proposed":
-                repo.update_ticket_status(plan_path.name, ticket.id, "proposed")
-                tickets_reset += 1
-
-    except Exception as e:
-        print_error(f"Error resetting tickets: {e}")
-        sys.exit(1)
-
-    if is_json_output():
-        print_json({
-            "epic": plan_path.name,
-            "tickets_reset": tickets_reset,
-        })
-    else:
-        print_success(
-            f"Replanned '{plan_path.name}': "
-            f"{tickets_reset} ticket(s) reset to 'proposed'"
-        )
-
-
-
-
-
-
-
-
-def cmd_stories_list(args, ctx=None):
-    """List user stories for an epic.
-
-    User stories are not yet stored in TinyDB -- this is a stub.
-
-    Args:
-        args: Parsed arguments with optional plan path.
-        ctx: Optional CLIContext.
-    """
-    from agenticcli.console import (
-        console,
-        is_json_output,
-        print_error,
-        print_header,
-        print_json,
-        print_table,
-    )
-
-    plan_path = find_epic_folder(getattr(args, "plan", None))
-
-    # User stories are not stored in TinyDB - feature needs migration
-    all_stories = []
-
-    if is_json_output():
-        print_json({"user_stories": all_stories, "count": len(all_stories)})
-    else:
-        print_header(f"User Stories in {plan_path.name}")
-        console.print("[dim]No user stories found. User stories are not yet stored in TinyDB.[/dim]")
-
-
-def cmd_stories_test(args, ctx=None):
-    """Generate blind test scenarios from user stories.
-
-    Generates executable test cases from user story data.
-
-    For each story:
-    - Extracts command (if present)
-    - Generates test_id based on story id
-    - Creates expected_outcome from so_that or i_want
-    - Determines validation_type based on command type
-
-    Args:
-        args: Parsed arguments with optional plan, output, format.
-        ctx: Optional CLIContext.
-    """
-    import json
-
-    from agenticcli.console import (
-        console,
-        is_json_output,
-        print_error,
-        print_header,
-        print_info,
-        print_json,
-        print_success,
-    )
-
-    plan_path = find_epic_folder(getattr(args, "plan", None))
-    output_file = getattr(args, "output", None)
-    output_format = getattr(args, "format", "yaml")
-
-    # User stories are not stored in TinyDB - feature needs migration
-    all_stories = []
-
-    if not all_stories:
-        print_error("No user stories found in plan files")
-        sys.exit(1)
-
-    # Generate test cases from stories
-    test_cases = []
-    for story in all_stories:
-        test_case = _generate_test_case_from_story(story)
-        test_cases.append(test_case)
-
-    # Build output structure
-    test_output = {
-        "test_suite": {
-            "name": f"User Story Tests - {plan_path.name}",
-            "plan_folder": str(plan_path),
-            "generated_at": datetime.now().isoformat(),
-            "test_count": len(test_cases),
-        },
-        "test_cases": test_cases,
-    }
-
-    # Output results
-    if output_file:
-        output_path = Path(output_file)
-        if output_format == "json":
-            output_path.write_text(json.dumps(test_output, indent=2))
-        else:
-            output_path.write_text(yaml.dump(test_output, default_flow_style=False, sort_keys=False))
-
-        if not is_json_output():
-            print_success(f"Generated {len(test_cases)} test cases to {output_path}")
-    else:
-        # Output to stdout
-        if is_json_output() or output_format == "json":
-            print_json(test_output)
-        else:
-            print(yaml.dump(test_output, default_flow_style=False, sort_keys=False))
-
-
-def _generate_test_case_from_story(story: dict) -> dict:
-    """Generate a test case structure from a user story.
-
-    Args:
-        story: User story dictionary with id, i_want, so_that, command, etc.
-
-    Returns:
-        Test case dictionary with test_id, command, expected_outcome, validation_type.
-    """
-    story_id = story.get("id", "unknown")
-    command = story.get("command", "")
-    i_want = story.get("i_want", "")
-    so_that = story.get("so_that", "")
-    acceptance = story.get("acceptance", "")
-
-    # Generate test_id from story id
-    test_id = f"test_{story_id}" if story_id else "test_unknown"
-
-    # Determine expected outcome - prefer so_that, then i_want
-    if so_that:
-        expected_outcome = so_that
-    elif i_want:
-        expected_outcome = f"User can {i_want}"
-    else:
-        expected_outcome = "Feature works as expected"
-
-    # Determine validation type based on command
-    validation_type = _determine_validation_type(command)
-
-    # Build test case
-    test_case = {
-        "test_id": test_id,
-        "story_id": story_id,
-        "description": i_want,
-        "command": command if command else None,
-        "expected_outcome": expected_outcome,
-        "validation_type": validation_type,
-    }
-
-    # Add acceptance criteria if present
-    if acceptance:
-        if isinstance(acceptance, list):
-            test_case["acceptance_criteria"] = acceptance
-        else:
-            test_case["acceptance_criteria"] = [acceptance]
-
-    # Add suggested assertions based on validation type
-    test_case["assertions"] = _generate_assertions(validation_type, command, expected_outcome)
-
-    return test_case
-
-
-def _determine_validation_type(command: str) -> str:
-    """Determine the validation type based on the command.
-
-    Args:
-        command: CLI command string.
-
-    Returns:
-        Validation type: exit_code, output_contains, file_exists, json_schema, or manual.
-    """
-    if not command:
-        return "manual"
-
-    command_lower = command.lower()
-
-    # JSON output commands should validate schema
-    if "--json" in command_lower or "-j" in command_lower:
-        return "json_schema"
-
-    # File creation/modification commands
-    file_keywords = ["create", "scaffold", "init", "write", "generate"]
-    if any(kw in command_lower for kw in file_keywords):
-        return "file_exists"
-
-    # List/show commands should check output content
-    list_keywords = ["list", "show", "status", "get", "find"]
-    if any(kw in command_lower for kw in list_keywords):
-        return "output_contains"
-
-    # Default to exit code check
-    return "exit_code"
-
-
-def _generate_assertions(validation_type: str, command: str, expected_outcome: str) -> list:
-    """Generate test assertions based on validation type.
-
-    Args:
-        validation_type: Type of validation to perform.
-        command: The CLI command being tested.
-        expected_outcome: Expected outcome description.
-
-    Returns:
-        List of assertion dictionaries.
-    """
-    assertions = []
-
-    if validation_type == "exit_code":
-        assertions.append({
-            "type": "exit_code",
-            "expected": 0,
-            "description": "Command completes successfully",
-        })
-
-    elif validation_type == "output_contains":
-        assertions.append({
-            "type": "exit_code",
-            "expected": 0,
-            "description": "Command completes successfully",
-        })
-        assertions.append({
-            "type": "output_contains",
-            "pattern": "# TODO: Add expected output pattern",
-            "description": expected_outcome,
-        })
-
-    elif validation_type == "file_exists":
-        assertions.append({
-            "type": "exit_code",
-            "expected": 0,
-            "description": "Command completes successfully",
-        })
-        assertions.append({
-            "type": "file_exists",
-            "path": "# TODO: Add expected file path",
-            "description": "Expected file is created",
-        })
-
-    elif validation_type == "json_schema":
-        assertions.append({
-            "type": "exit_code",
-            "expected": 0,
-            "description": "Command completes successfully",
-        })
-        assertions.append({
-            "type": "json_valid",
-            "description": "Output is valid JSON",
-        })
-        assertions.append({
-            "type": "json_has_key",
-            "key": "# TODO: Add expected JSON key",
-            "description": expected_outcome,
-        })
-
-    else:  # manual
-        assertions.append({
-            "type": "manual",
-            "description": expected_outcome,
-            "steps": ["# TODO: Add manual verification steps"],
-        })
-
-    return assertions
-
-def cmd_bootstrap(args, ctx=None):
-    """Bootstrap a new plan with an objective.
-
-    DEPRECATED: Use `agentic epic init --objective` instead.
-    This command is kept for backward compatibility and redirects to cmd_init.
-    """
-    import sys
-
-    from agenticcli.console import (
-        is_json_output,
-        print_warning,
-    )
-
-    if not is_json_output():
-        print_warning(
-            "plan bootstrap is deprecated. Use: agentic epic init <branch> --objective '<objective>' --description '<desc>'"
-        )
-
-    # Redirect to cmd_init by forwarding args
-    cmd_init(args, ctx)
-
-
-def _find_epics_base() -> Optional[Path]:
-    """Find the docs/epics base directory.
-
-    Walks up from CWD looking for a docs/epics directory.
-
-    Returns:
-        Path to docs/epics if found, None otherwise.
-    """
-    current = Path.cwd()
-    while current != current.parent:
-        epics_dir = current / "docs" / "epics"
-        if epics_dir.is_dir():
-            return epics_dir
-        current = current.parent
-    return None
-
-
-def cmd_db_sync(args):
-    """db sync is disabled. TinyDB is the sole data store.
-
-    YAML epic files are no longer used for data storage.
-    """
-    json_output = getattr(args, "json", False)
-
-    error_msg = "Error: db sync is disabled. TinyDB is the sole data store. YAML epic files are no longer used."
-    if json_output:
-        import json
-        print(json.dumps({"error": error_msg}))
-    else:
-        print(error_msg, file=sys.stderr)
-    sys.exit(1)
-
-
-def cmd_db_status(args):
-    """Show TinyDB database statistics."""
-    from agenticguidance.services.epic_repository import EpicRepository
-
-    json_output = getattr(args, "json", False)
-
-    try:
-        repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
-
-        plans = repo.list_epics()
-        plan_count = len(plans)
-
-        # Count by status
-        status_counts: dict = {}
-        for p in plans:
-            s = p.status or "unknown"
-            status_counts[s] = status_counts.get(s, 0) + 1
-
-        db_size = repo.db_path.stat().st_size if repo.db_path.exists() else 0
-
-        result = {
-            "db_path": str(repo.db_path),
-            "db_size_bytes": db_size,
-            "plan_count": plan_count,
-            "status_breakdown": status_counts,
-        }
-
-        if json_output:
-            import json
-            print(json.dumps(result))
-        else:
-            print(f"Database: {repo.db_path}")
-            print(f"Size: {db_size / 1024:.1f} KB")
-            print(f"Plans: {plan_count}")
-            for status, count in sorted(status_counts.items()):
-                print(f"  {status}: {count}")
-
-        repo.close()
-    except Exception as e:
-        if json_output:
-            import json
-            print(json.dumps({"error": str(e)}))
-        else:
-            print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)

@@ -1,5 +1,8 @@
 """Tests for custom exceptions."""
 
+import pytest
+
+pytestmark = pytest.mark.story("US-SET-001")
 
 from agenticcli.exceptions import (
     AgenticError,
@@ -13,6 +16,7 @@ from agenticcli.exceptions import (
 )
 
 
+@pytest.mark.story("US-SET-001")
 class TestErrorContext:
     """Tests for ErrorContext dataclass."""
 
@@ -41,6 +45,7 @@ class TestErrorContext:
         assert ctx.details == {"branch": "feature-x"}
 
 
+@pytest.mark.story("US-SET-001")
 class TestAgenticError:
     """Tests for base AgenticError class."""
 
@@ -103,6 +108,7 @@ class TestAgenticError:
         assert "file_path" not in data
 
 
+@pytest.mark.story("US-SET-001")
 class TestPlanError:
     """Tests for PlanError class."""
 
@@ -138,6 +144,7 @@ class TestPlanError:
         assert "epic status" in err.recovery_hint
 
 
+@pytest.mark.story("US-SET-001")
 class TestEpicFileError:
     """Tests for EpicFileError class."""
 
@@ -150,7 +157,7 @@ class TestEpicFileError:
         """Test not_found factory method."""
         err = EpicFileError.not_found("/path/epic.yml")
         assert "/path/epic.yml" in err.message
-        assert "epic scaffold" in err.recovery_hint
+        assert "epic new" in err.recovery_hint
         assert err.context.file_path == "/path/epic.yml"
 
     def test_invalid_yaml(self):
@@ -178,6 +185,7 @@ class TestEpicFileError:
         assert PlanFileError is EpicFileError
 
 
+@pytest.mark.story("US-SET-001")
 class TestConfigError:
     """Tests for ConfigError class."""
 
@@ -205,6 +213,7 @@ class TestConfigError:
         assert "config init" in err.recovery_hint
 
 
+@pytest.mark.story("US-SET-001")
 class TestValidationError:
     """Tests for ValidationError class."""
 
@@ -224,13 +233,13 @@ class TestValidationError:
         """Test invalid_epic_folder factory method."""
         err = ValidationError.invalid_epic_folder("/epics/bad", "missing live directory")
         assert "missing live directory" in err.message
-        assert "epic scaffold" in err.recovery_hint
+        assert "epic new" in err.recovery_hint
 
     def test_invalid_plan_folder_delegates_to_epic(self):
         """Test invalid_plan_folder delegates to invalid_epic_folder (backward compat)."""
         err = ValidationError.invalid_plan_folder("/plans/bad", "missing live directory")
         assert "missing live directory" in err.message
-        assert "epic scaffold" in err.recovery_hint
+        assert "epic new" in err.recovery_hint
 
     def test_schema_violation(self):
         """Test schema_violation factory method."""
@@ -241,6 +250,7 @@ class TestValidationError:
         assert err.context.details["violations"] == violations
 
 
+@pytest.mark.story("US-SET-001")
 class TestEnvironmentError:
     """Tests for EnvironmentError class."""
 
@@ -263,6 +273,7 @@ class TestEnvironmentError:
         assert err.context.details["stderr"] == "Error output"
 
 
+@pytest.mark.story("US-SET-001")
 class TestTemplateError:
     """Tests for TemplateError class."""
 

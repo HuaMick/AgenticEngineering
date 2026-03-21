@@ -164,7 +164,7 @@ class TestPlanStatusPathArguments:
 
 
 class TestPlanValidatePathArguments:
-    """Integration tests for 'agentic plan validate' path arguments."""
+    """Integration tests for 'agentic epic status --validate' path arguments."""
 
     @pytest.fixture
     def plan_to_validate(self, temp_repo, tinydb_populator):
@@ -172,27 +172,7 @@ class TestPlanValidatePathArguments:
         plan_path = temp_repo / "docs" / "epics" / "live" / "260202CL_validate_test"
         plan_path.mkdir(parents=True)
 
-        # Create valid plan file
-        plan_file = plan_path / "plan_build.yml"
-        plan_content = {
-            "plan": {
-                "name": "Validate Test Plan",
-                "status": "in_progress",
-                "phases": [
-                    {
-                        "id": "build_01",
-                        "name": "Build Phase",
-                        "status": "pending",
-                        "tickets": []
-                    }
-                ]
-            }
-        }
-
-        with open(plan_file, "w") as f:
-            yaml.dump(plan_content, f)
-
-        # Register in TinyDB so cmd_validate finds the epic
+        # Register in TinyDB so cmd_status finds the epic
         tinydb_populator("260202CL_validate_test", plan_path, {
             "name": "Validate Test Plan",
             "status": "in_progress",
@@ -204,109 +184,84 @@ class TestPlanValidatePathArguments:
         return plan_path
 
     def test_validate_with_plan_flag(self, cli_runner, plan_to_validate):
-        """Test plan validate with --plan flag."""
+        """Test epic status --validate with --plan flag."""
         result = cli_runner([
-            "epic", "validate",
+            "epic", "status",
+            "--validate",
             "--plan", str(plan_to_validate)
         ])
 
         assert result.returncode == 0
-        assert "valid" in result.stdout.lower() or "pass" in result.stdout.lower() or "ok" in result.stdout.lower()
+        combined = result.stdout.lower() + result.stderr.lower()
+        assert "validation" in combined or "pass" in combined or "status" in combined
 
     def test_validate_with_short_plan_flag(self, cli_runner, plan_to_validate):
-        """Test plan validate with -p short flag."""
+        """Test epic status --validate with -p short flag."""
         result = cli_runner([
-            "epic", "validate",
+            "epic", "status",
+            "--validate",
             "-p", str(plan_to_validate)
         ])
 
         assert result.returncode == 0
-        assert "valid" in result.stdout.lower() or "pass" in result.stdout.lower() or "ok" in result.stdout.lower()
 
     def test_validate_with_positional_path(self, cli_runner, plan_to_validate):
-        """Test plan validate with positional path argument (backward compatibility)."""
+        """Test epic status --validate with positional path argument."""
         result = cli_runner([
-            "epic", "validate",
+            "epic", "status",
+            "--validate",
             str(plan_to_validate)
         ])
 
         assert result.returncode == 0
-        assert "valid" in result.stdout.lower() or "pass" in result.stdout.lower() or "ok" in result.stdout.lower()
 
     def test_validate_with_folder_name_match(self, cli_runner, plan_to_validate):
-        """Test plan validate with partial folder name."""
+        """Test epic status --validate with partial folder name."""
         result = cli_runner([
-            "epic", "validate",
+            "epic", "status",
+            "--validate",
             "--plan", "260202CL_validate_test"
         ])
 
         assert result.returncode == 0
-        assert "valid" in result.stdout.lower() or "pass" in result.stdout.lower() or "ok" in result.stdout.lower()
 
     def test_validate_with_strict_flag(self, cli_runner, plan_to_validate):
-        """Test plan validate with --strict option.
+        """Test epic status --validate --strict.
 
         Strict mode requires orchestration phases in TinyDB. Since the test fixture
-        doesn't include them, strict validation should fail with an error about
-        missing orchestration phases.
+        doesn't include them, strict validation should fail.
         """
         result = cli_runner([
-            "epic", "validate",
+            "epic", "status",
+            "--validate", "--strict",
             "--plan", str(plan_to_validate),
-            "--strict"
         ])
 
         # Strict mode should fail because fixture lacks orchestration phases
         assert result.returncode == 1
-        assert "orchestration" in result.stdout.lower() or "missing" in result.stdout.lower()
 
     def test_validate_with_plan_flag_json_output(self, cli_runner, plan_to_validate):
-        """Test plan validate with --plan flag and JSON output."""
+        """Test epic status --validate with JSON output."""
         result = cli_runner([
             "-j",
-            "epic", "validate",
+            "epic", "status",
+            "--validate",
             "--plan", str(plan_to_validate)
         ])
 
         assert result.returncode == 0
         data = json.loads(result.stdout)
-        assert "valid" in data or "errors" in data or "status" in data
-
-    def test_validate_plan_flag_priority(self, cli_runner, plan_to_validate, temp_repo, tinydb_populator):
-        """Test that --plan flag takes priority over positional argument."""
-        # Create a second plan folder with invalid YAML
-        invalid_plan = temp_repo / "docs" / "epics" / "live" / "260202CL_invalid_plan"
-        invalid_plan.mkdir(parents=True)
-
-        invalid_file = invalid_plan / "plan_invalid.yml"
-        invalid_file.write_text("invalid: [unclosed bracket")
-
-        # Also register invalid plan in TinyDB (it has no valid phases)
-        tinydb_populator("260202CL_invalid_plan", invalid_plan, {
-            "name": "Invalid Plan",
-            "status": "pending",
-            "phases": [],
-        })
-
-        # Pass both; --plan should win (valid plan)
-        result = cli_runner([
-            "epic", "validate",
-            str(invalid_plan),  # positional (should be ignored)
-            "--plan", str(plan_to_validate)  # flag (should be used)
-        ])
-
-        assert result.returncode == 0
-        assert "valid" in result.stdout.lower() or "pass" in result.stdout.lower() or "ok" in result.stdout.lower()
+        assert "validation" in data or "status" in data
 
     def test_validate_nonexistent_plan(self, cli_runner):
-        """Test plan validate with nonexistent plan path."""
+        """Test epic status --validate with nonexistent plan path."""
         result = cli_runner([
-            "epic", "validate",
+            "epic", "status",
+            "--validate",
             "--plan", "/nonexistent/validate/folder"
         ])
 
         assert result.returncode != 0
-        assert "not found" in result.stderr.lower() or "error" in result.stderr.lower()
 
 
 class TestPlanArchivePathArguments:

@@ -16,6 +16,8 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+pytestmark = pytest.mark.story("US-SET-017")
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -798,30 +800,3 @@ class TestUS_GD_206_YamlSyncDisabled:
         )
 
 
-class TestDbSyncDisabled:
-    """Verify db sync command throws error since YAML is decommissioned."""
-
-    def test_cmd_db_sync_exits_with_error(self):
-        """cmd_db_sync() should exit with error and clear message."""
-        import types
-        from agenticcli.commands.epic import cmd_db_sync
-
-        args = types.SimpleNamespace(json=False)
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_db_sync(args)
-        assert exc_info.value.code == 1
-
-    def test_cmd_db_sync_json_exits_with_error(self, capsys):
-        """cmd_db_sync() with JSON output should include error key."""
-        import json
-        import types
-        from agenticcli.commands.epic import cmd_db_sync
-
-        args = types.SimpleNamespace(json=True)
-        with pytest.raises(SystemExit) as exc_info:
-            cmd_db_sync(args)
-        assert exc_info.value.code == 1
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert "error" in data
-        assert "disabled" in data["error"].lower()

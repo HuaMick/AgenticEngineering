@@ -19,6 +19,8 @@ import pytest
 
 from tests.conftest import populate_tinydb_from_yaml
 
+pytestmark = pytest.mark.story("US-PLN-002")
+
 
 @pytest.fixture
 def task_repo(temp_dir, _isolate_tinydb):
@@ -172,6 +174,7 @@ def task_cli_runner(task_repo):
     os.chdir(original_cwd)
 
 
+@pytest.mark.story("US-PLN-009")
 class TestTaskHelp:
     """Tests for plan task command help output."""
 
@@ -183,6 +186,7 @@ class TestTaskHelp:
         assert "prefill" in stdout or "list" in stdout or "add" in stdout
 
 
+@pytest.mark.story("US-PLN-009")
 class TestTaskList:
     """Tests for plan task list command."""
 
@@ -221,6 +225,7 @@ class TestTaskList:
                         assert task["status"] == "pending"
 
 
+@pytest.mark.story("US-PLN-010")
 class TestTaskCurrent:
     """Tests for plan task current command."""
 
@@ -247,6 +252,7 @@ class TestTaskCurrent:
                 assert data["status"] == "in_progress"
 
 
+@pytest.mark.story("US-PLN-011")
 class TestTaskUpdate:
     """Tests for plan task update command."""
 
@@ -273,25 +279,8 @@ class TestTaskUpdate:
                 assert update_result.returncode in [0, 1]
 
 
-class TestTaskPrefill:
-    """Tests for plan task prefill command."""
-
-    def test_task_prefill_help(self, cli_runner):
-        """Test task prefill help shows preset option."""
-        stdout, stderr, code = cli_runner(["epic", "ticket", "prefill", "--help"])
-        assert code == 0
-        assert "preset" in stdout.lower() or "load" in stdout.lower()
-
-    def test_task_prefill_loads_preset(self, task_cli_runner):
-        """Test task prefill with a preset name."""
-        # Try loading planner-build preset (may or may not exist)
-        stdout, stderr, code = task_cli_runner(
-            ["epic", "ticket", "prefill", "--preset", "planner-build"]
-        )
-        # Should succeed or fail gracefully with message
-        assert code == 0 or "not found" in stderr.lower() or "error" in stderr.lower()
-
-
+@pytest.mark.story("US-PLN-012")
+@pytest.mark.story("US-PLN-012")
 class TestTaskAdd:
     """Tests for plan task add command."""
 
@@ -308,6 +297,7 @@ class TestTaskAdd:
         assert result.returncode in [0, 1]
 
 
+@pytest.mark.story("US-PLN-009", "US-PLN-011")
 class TestTaskIntegration:
     """Integration tests for task commands working together."""
 
@@ -374,28 +364,3 @@ class TestTaskIntegration:
                         # May or may not have a new task, but should not be the same
                         # completed task
                         pass  # Test passes if no error
-
-
-class TestTaskStatus:
-    """Tests for plan task status command."""
-
-    def test_task_status_help(self, cli_runner):
-        """Test task status help."""
-        stdout, stderr, code = cli_runner(["epic", "ticket", "status", "--help"])
-        assert code == 0
-
-    def test_task_status_shows_task_details(self, task_cli_runner):
-        """Test task status command shows task details."""
-        # First get a valid task ID
-        list_result = task_cli_runner(["-j", "epic", "ticket", "list"])
-        if list_result.stdout.strip():
-            task_list = json.loads(list_result.stdout)
-            if isinstance(task_list, list) and task_list:
-                first_task = task_list[0]
-                if isinstance(first_task, dict) and first_task.get("id"):
-                    # Get status for that task
-                    status_result = task_cli_runner(
-                        ["epic", "ticket", "status", first_task["id"]]
-                    )
-                    # Should succeed
-                    assert status_result.returncode in [0, 1]
