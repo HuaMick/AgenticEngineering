@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-PLN-053")
+
 from agenticcli.utils.sdk_runner import SessionResult
 
 
@@ -93,11 +95,11 @@ def _setup_tinydb_for_workflow(tmp_path, epic_folder_name, *, agent_type=None,
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-053")
 class TestDiscoverPlansNeedingOrchestration:
     """Test discover_plans_needing_orchestration method.
 
     The primary path checks TinyDB for live epics with no phases.
-    The legacy fallback checks for missing orchestration_*.mmd files on disk.
     """
 
     def test_finds_plans_without_phases_in_tinydb(self, tmp_path):
@@ -167,6 +169,7 @@ class TestDiscoverPlansNeedingOrchestration:
         assert result == []
 
 
+@pytest.mark.story("US-PLN-053")
 class TestRunHealthCheck:
     """Test run_health_check method."""
 
@@ -213,118 +216,12 @@ class TestRunHealthCheck:
             workflow.run_health_check()
 
 
-class TestParseDesignStatus:
-    """Test parse_design_status method."""
-
-    def test_approved_status(self):
-        """Parses 'approved' from design agent output."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        result = SessionResult(
-            status="completed",
-            result="Design complete.\nDESIGN_STATUS: approved\nAll stories mapped.",
-        )
-        assert workflow.parse_design_status(result) == "approved"
-
-    def test_needs_explore_status(self):
-        """Parses 'needs_explore' from design agent output."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        result = SessionResult(
-            status="completed",
-            result="DESIGN_STATUS: needs_explore\nDESIGN_GAPS: Tickets T001, T003 missing target-files",
-        )
-        assert workflow.parse_design_status(result) == "needs_explore"
-
-    def test_needs_stories_status(self):
-        """Parses 'needs_stories' from design agent output."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        result = SessionResult(
-            status="completed",
-            result="DESIGN_STATUS: needs_stories\nDESIGN_GAPS: Build tickets have no story mapping",
-        )
-        assert workflow.parse_design_status(result) == "needs_stories"
-
-    def test_defaults_to_approved(self):
-        """Defaults to 'approved' when no DESIGN_STATUS line found."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        result = SessionResult(
-            status="completed",
-            result="Design looks good, all stories mapped.",
-        )
-        assert workflow.parse_design_status(result) == "approved"
-
-
-class TestParseReviewStatus:
-    """Test parse_review_status method."""
-
-    def test_approved_status(self):
-        """Parses 'APPROVED' from reviewer output."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        result = SessionResult(
-            status="completed",
-            result="All checks pass.\nREVIEW_STATUS: APPROVED",
-        )
-        assert workflow.parse_review_status(result) == "APPROVED"
-
-    def test_rejected_status(self):
-        """Parses 'REJECTED' from reviewer output."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        result = SessionResult(
-            status="completed",
-            result="REVIEW_STATUS: REJECTED\nREVIEW_FEEDBACK: Missing UAT phase",
-        )
-        assert workflow.parse_review_status(result) == "REJECTED"
-
-    def test_needs_revision_status(self):
-        """Parses 'NEEDS_REVISION' from reviewer output."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        result = SessionResult(
-            status="completed",
-            result="REVIEW_STATUS: NEEDS_REVISION\nREVIEW_FEEDBACK: Add story mapping",
-        )
-        assert workflow.parse_review_status(result) == "NEEDS_REVISION"
-
-    def test_legacy_reject_keyword(self):
-        """Falls back to keyword detection for legacy output."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        result = SessionResult(
-            status="completed",
-            result="Decision: REJECT. Missing story coverage.",
-        )
-        assert workflow.parse_review_status(result) == "REJECTED"
-
-    def test_defaults_to_approved(self):
-        """Defaults to 'APPROVED' when no status pattern found."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        result = SessionResult(
-            status="completed",
-            result="All tickets look good.",
-        )
-        assert workflow.parse_review_status(result) == "APPROVED"
-
-
 # ---------------------------------------------------------------------------
 # PlannerLoopRunner tests
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-053")
 class TestPlannerLoopRunner:
     """Test PlannerLoopRunner orchestration.
 
@@ -365,14 +262,8 @@ class TestPlannerLoopRunner:
                             overrides.get("spawn_explore", lambda pf, **kw: _ok_result()))
         monkeypatch.setattr(workflow, "spawn_story_agent",
                             overrides.get("spawn_story", lambda pf: _ok_result()))
-        monkeypatch.setattr(workflow, "spawn_design_agent",
-                            overrides.get("spawn_design", lambda pf: SessionResult(status="completed", result="DESIGN_STATUS: approved")))
         monkeypatch.setattr(workflow, "discover_stories",
                             overrides.get("stories", lambda pf, project=None: []))
-        monkeypatch.setattr(workflow, "spawn_reviewer",
-                            overrides.get("spawn_reviewer", lambda pf: _ok_result()))
-        monkeypatch.setattr(workflow, "run_review_cycle",
-                            overrides.get("review", lambda pf, **kw: (True, 1, "approved")))
         monkeypatch.setattr(workflow, "spawn_orchestration_agent",
                             overrides.get("spawn_orchestration", lambda pf: _ok_result()))
 
@@ -387,7 +278,7 @@ class TestPlannerLoopRunner:
         assert "Planning complete" in capsys.readouterr().out
 
     def test_processes_single_plan(self, monkeypatch, capsys):
-        """Runner processes a plan through the 7-step workflow (epic-creator-first)."""
+        """Runner processes a plan through the 5-step pipeline."""
         call_log = []
 
         def tracking_discover():
@@ -408,14 +299,6 @@ class TestPlannerLoopRunner:
             call_log.append(("spawn_explore", pf))
             return _ok_result(session_id="explore-session-abc")
 
-        def tracking_design(pf):
-            call_log.append(("design", pf))
-            return SessionResult(status="completed", result="DESIGN_STATUS: approved", session_id="design-session-abc")
-
-        def tracking_review(pf, **kw):
-            call_log.append(("review", pf))
-            return (True, 1, "approved")
-
         def tracking_orchestration(pf):
             call_log.append(("orchestration", pf))
             return _ok_result(session_id="orchestration-session-abc")
@@ -426,32 +309,25 @@ class TestPlannerLoopRunner:
             spawn_epic_creator=tracking_epic_creator,
             spawn_story=tracking_spawn_story,
             spawn_explore=tracking_spawn_explore,
-            spawn_design=tracking_design,
-            review=tracking_review,
             spawn_orchestration=tracking_orchestration,
         )
         result = runner.run(max_iterations=5)
 
         assert result is True
-        # Verify call sequence includes all 7 steps
+        # Verify call sequence includes all pipeline steps
         step_names = [c[0] for c in call_log]
         assert "discover" in step_names
         assert "epic_creator" in step_names
         assert "spawn_story" in step_names
         assert "spawn_explore" in step_names
-        assert "design" in step_names
-        assert "review" in step_names
         assert "orchestration" in step_names
 
-        # Verify ordering: epic_creator -> story -> explore -> design -> review -> orchestration
+        # Verify ordering: epic_creator -> story -> explore -> orchestration
         idx_creator = next(i for i, c in enumerate(call_log) if c[0] == "epic_creator")
         idx_story = next(i for i, c in enumerate(call_log) if c[0] == "spawn_story")
         idx_explore = next(i for i, c in enumerate(call_log) if c[0] == "spawn_explore")
-        idx_design = next(i for i, c in enumerate(call_log) if c[0] == "design")
-        idx_review = next(i for i, c in enumerate(call_log) if c[0] == "review")
         idx_orch = next(i for i, c in enumerate(call_log) if c[0] == "orchestration")
-        assert idx_creator < idx_story < idx_explore < idx_design
-        assert idx_review < idx_orch
+        assert idx_creator < idx_story < idx_explore < idx_orch
 
     def test_epic_creator_failure_skips_plan(self, monkeypatch):
         """Plan is skipped when epic-creator agent fails."""
@@ -511,45 +387,6 @@ class TestPlannerLoopRunner:
 
         assert "bad_story_plan" in runner.state["plans_skipped"]
 
-    def test_design_failure_skips_plan(self, monkeypatch):
-        """Plan is skipped when design agent fails (design is now fatal)."""
-        call_count = {"discover": 0}
-
-        def discover():
-            call_count["discover"] += 1
-            if call_count["discover"] <= 1:
-                return ["bad_design_plan"]
-            return []
-
-        runner = self._make_runner(
-            monkeypatch,
-            epic_folders=["bad_design_plan"],
-            discover=discover,
-            spawn_design=lambda pf: _fail_result(),
-        )
-        result = runner.run(max_iterations=5)
-
-        assert "bad_design_plan" in runner.state["plans_skipped"]
-
-    def test_review_loop_max_rejections(self, monkeypatch):
-        """Plan is skipped after max review rejections."""
-        call_count = {"discover": 0}
-
-        def discover():
-            call_count["discover"] += 1
-            if call_count["discover"] <= 1:
-                return ["rejected_plan"]
-            return []
-
-        runner = self._make_runner(
-            monkeypatch,
-            discover=discover,
-            review=lambda pf, **kw: (False, 3, "Max review iterations reached"),
-        )
-        result = runner.run(max_iterations=5)
-
-        assert "rejected_plan" in runner.state["plans_skipped"]
-
     def test_respects_max_iterations(self, monkeypatch):
         """Runner stops early when all discovered epics fail planning."""
         runner = self._make_runner(
@@ -576,48 +413,7 @@ class TestPlannerLoopRunner:
         assert result is False
         assert any("unhealthy" in e.get("error", "") for e in runner.state["errors"])
 
-    def test_design_loopback_needs_stories(self, monkeypatch):
-        """Design gate can request story re-run when stories are missing."""
-        call_log = []
-
-        def tracking_discover():
-            if not call_log or "discover" not in [c[0] for c in call_log]:
-                call_log.append(("discover",))
-                return ["loopback_plan"]
-            return []
-
-        design_call_count = [0]
-
-        def tracking_design(pf):
-            design_call_count[0] += 1
-            call_log.append(("design", pf, design_call_count[0]))
-            if design_call_count[0] == 1:
-                return SessionResult(status="completed", result="DESIGN_STATUS: needs_stories\nDESIGN_GAPS: Missing stories")
-            return SessionResult(status="completed", result="DESIGN_STATUS: approved")
-
-        story_call_count = [0]
-
-        def tracking_story(pf):
-            story_call_count[0] += 1
-            call_log.append(("story", pf, story_call_count[0]))
-            return _ok_result()
-
-        runner = self._make_runner(
-            monkeypatch,
-            epic_folders=["loopback_plan"],
-            discover=tracking_discover,
-            spawn_story=tracking_story,
-            spawn_design=tracking_design,
-        )
-        result = runner.run(max_iterations=5)
-
-        assert result is True
-        # Story should be called twice (once initial, once after needs_stories)
-        assert story_call_count[0] == 2
-        # Design should be called twice (needs_stories, then approved)
-        assert design_call_count[0] == 2
-
-
+@pytest.mark.story("US-PLN-055")
 class TestRunRoleAgent:
     """Test the _run_role_agent SDK integration method."""
 
@@ -679,33 +475,7 @@ class TestRunRoleAgent:
         assert result.session_id == "subprocess-session-123"
 
 
-class TestReviewCycleWithSessionResult:
-    """Test run_review_cycle with SessionResult-based spawn_reviewer."""
-
-    def test_approved_on_successful_review(self, monkeypatch):
-        """Review cycle approves when reviewer completes successfully."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        monkeypatch.setattr(workflow, "spawn_reviewer", lambda pf: _ok_result())
-
-        approved, iters, feedback = workflow.run_review_cycle("test_plan")
-        assert approved is True
-        assert iters == 1
-        assert feedback == "approved"
-
-    def test_rejected_on_failed_review(self, monkeypatch):
-        """Review cycle rejects when reviewer fails."""
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
-
-        workflow = PlannerLoopWorkflow()
-        monkeypatch.setattr(workflow, "spawn_reviewer", lambda pf: _fail_result())
-
-        approved, iters, feedback = workflow.run_review_cycle("test_plan")
-        assert approved is False
-        assert "failed" in feedback
-
-
+@pytest.mark.story("US-PLN-053")
 class TestGetPlanStatus:
     """Test get_plan_status reads epic status and ticket counts from TinyDB."""
 
@@ -903,6 +673,7 @@ class TestGetPlanStatus:
         assert workflow.get_plan_status("empty_plan") == "pending"
 
 
+@pytest.mark.story("US-PLN-053")
 class TestProcessPlanPlanningTransition:
     """Verify _process_plan sets status=planning at the start."""
 
@@ -953,6 +724,7 @@ class TestProcessPlanPlanningTransition:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-055")
 class TestRunViaSdkRetry:
     """Test retry logic in _run_via_sdk (SDK_010)."""
 
@@ -1079,6 +851,7 @@ class TestRunViaSdkRetry:
         assert captured_timeouts["last"] == ROLE_TIMEOUT_SECONDS["planner-orchestration"]  # 3600
 
 
+@pytest.mark.story("US-PLN-053")
 class TestValidateResult:
     """Test _validate_result observability helper (SDK_011)."""
 
@@ -1171,17 +944,10 @@ class TestValidateResult:
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda pf: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "spawn_explore_agents", lambda pf, **kw: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "spawn_story_agent", lambda pf: _ok_result(duration_ms=100))
-        monkeypatch.setattr(workflow, "spawn_design_agent", lambda pf: SessionResult(status="completed", result="DESIGN_STATUS: approved", duration_ms=100))
-        monkeypatch.setattr(workflow, "run_review_cycle", lambda pf, **kw: (True, 1, "approved"))
         monkeypatch.setattr(workflow, "spawn_orchestration_agent", lambda pf: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "_validate_result", tracking_validate_result)
 
         runner = PlannerLoopRunner(workflow=workflow)
-        monkeypatch.setattr(
-            runner.workflow, "discover_plans_needing_orchestration",
-            lambda: ["my_test_plan"] if not validated_roles else [],
-        )
-        # Need to override discover on the runner's workflow
         call_count = {"n": 0}
 
         def one_shot_discover():
@@ -1192,11 +958,10 @@ class TestValidateResult:
 
         runner.run(max_iterations=5)
 
-        # epic-creator, story-writer, planner-explore, planner-design, and planner-orchestration should all be validated
+        # epic-creator, story-writer, planner-explore, and planner-orchestration should all be validated
         assert "epic-creator" in validated_roles
         assert "story-writer" in validated_roles
         assert "planner-explore" in validated_roles
-        assert "planner-design" in validated_roles
         assert "planner-orchestration" in validated_roles
 
 
@@ -1205,6 +970,7 @@ class TestValidateResult:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-055")
 class TestBuildSdkOptionsWithRole:
     """Test that _build_sdk_options passes allowed_tools per role (SDK_016)."""
 
@@ -1294,6 +1060,7 @@ class TestBuildSdkOptionsWithRole:
 # ── TT_005: Test wait_for_session tmux-aware completion detection ─────
 
 
+@pytest.mark.story("US-PLN-055")
 class TestWaitForSessionTmux:
     """TT_005: Tests for tmux-aware completion detection in wait_for_session."""
 
@@ -1562,6 +1329,87 @@ class TestWaitForSessionTmux:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-053")
+class TestValidatePlanningOutput:
+    """Tests for _validate_planning_output pre-flight validation."""
+
+    def _make_runner_with_repo(self, tmp_path, monkeypatch, epic_folder, tickets):
+        """Create a PlannerLoopRunner with real TinyDB and tickets."""
+        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
+        from agenticguidance.services.epic_repository import EpicRepository
+
+        db_path = _setup_tinydb_for_workflow(
+            tmp_path, epic_folder, tickets=tickets,
+        )
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_path / "docs" / "epics" / "live")
+        workflow._repository = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        runner = PlannerLoopRunner(workflow=workflow)
+        return runner
+
+    def test_valid_tickets_no_warnings(self, tmp_path, monkeypatch):
+        """Tickets with target_files and guidance produce no warnings."""
+        runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
+            {"task_id": "T1", "name": "Build X", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/foo.py"],
+             "guidance": "Implement foo", "success_criteria": "Tests pass"},
+        ])
+        valid, warnings = runner._validate_planning_output("test_epic")
+        assert valid is True
+        assert len(warnings) == 0
+
+    def test_missing_target_files_warns(self, tmp_path, monkeypatch):
+        """Tickets without target_files produce a warning."""
+        runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
+            {"task_id": "T1", "name": "Build X", "status": "proposed",
+             "agent": "build-python", "guidance": "Do stuff"},
+        ])
+        valid, warnings = runner._validate_planning_output("test_epic")
+        assert valid is True  # Advisory only
+        assert any("target_files" in w for w in warnings)
+
+    def test_missing_guidance_warns(self, tmp_path, monkeypatch):
+        """Tickets without guidance or success_criteria produce a warning."""
+        runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
+            {"task_id": "T1", "name": "Build X", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/foo.py"]},
+        ])
+        valid, warnings = runner._validate_planning_output("test_epic")
+        assert valid is True
+        assert any("guidance" in w for w in warnings)
+
+    def test_no_tickets_warns(self, tmp_path, monkeypatch):
+        """Epic with no tickets produces a warning."""
+        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
+        from agenticguidance.services.epic_repository import EpicRepository
+
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        db_path = tmp_path / ".agentic" / "epics.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo.create_epic({"epic_folder_name": "empty_epic", "status": "active"})
+        repo.close()
+
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_path / "docs" / "epics" / "live")
+        workflow._repository = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        runner = PlannerLoopRunner(workflow=workflow)
+
+        valid, warnings = runner._validate_planning_output("empty_epic")
+        assert valid is True
+        assert any("No tickets" in w for w in warnings)
+
+    def test_unknown_agent_warns(self, tmp_path, monkeypatch):
+        """Tickets with unknown agent type produce a warning."""
+        runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
+            {"task_id": "T1", "name": "Build X", "status": "proposed",
+             "agent": "nonexistent-agent", "target_files": ["src/foo.py"],
+             "guidance": "Do stuff"},
+        ])
+        valid, warnings = runner._validate_planning_output("test_epic")
+        assert valid is True
+        assert any("nonexistent-agent" in w for w in warnings)
+
+
+@pytest.mark.story("US-PLN-053")
 class TestTicketPromotion:
     """Tests for ticket promotion step in _process_plan (Bug 1 fix)."""
 
@@ -1588,13 +1436,8 @@ class TestTicketPromotion:
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "spawn_story_agent", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "spawn_explore_agents", lambda f, **kw: _ok_result())
-        monkeypatch.setattr(workflow, "spawn_design_agent", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "spawn_orchestration_agent", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "_validate_result", lambda result, name: None)
-        monkeypatch.setattr(workflow, "parse_design_status", lambda result: "approved")
-
-        # Mock run_review_cycle to approve immediately
-        monkeypatch.setattr(workflow, "run_review_cycle", lambda f, **kw: (True, 1, "approved"))
 
         # Suppress status update side-effect in _process_plan preamble
         monkeypatch.setattr(workflow, "_get_repository", lambda: workflow._repository)
@@ -1660,6 +1503,7 @@ class TestTicketPromotion:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-055")
 class TestTmuxSdkSessionRecords:
     """Tests for _run_via_tmux_sdk session record timing (Bug 3 fix)."""
 
@@ -1753,6 +1597,7 @@ class TestTmuxSdkSessionRecords:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-053")
 class TestProcessPlanAutoRegister:
     """Test auto-registration of epic folders in _process_plan."""
 
@@ -1826,6 +1671,7 @@ class TestProcessPlanAutoRegister:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-055")
 class TestAgentPromptIncludesEpicFlag:
     """Test _build_agent_prompt includes --epic flag."""
 
@@ -1843,6 +1689,7 @@ class TestAgentPromptIncludesEpicFlag:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-053")
 class TestBudgetEnforcement:
     """Test cost budget halts processing."""
 
@@ -1911,6 +1758,7 @@ class TestBudgetEnforcement:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-053")
 class TestConcurrentGuard:
     """Test file-based concurrent run guard."""
 

@@ -13,7 +13,7 @@ agentic orchestrate --mode planning --plan <folder>
 
 - Spawns specialized planners (planner-build, planner-test, planner-guidance, etc.)
 - Manages review/approval loops via planner-reviewer
-- Generates orchestration MMDs via planner-orchestration
+- Creates orchestration phases in TinyDB via planner-orchestration
 - Enforces story-first planning and UAT fences
 
 ## Plan Creation Protocol
@@ -35,17 +35,17 @@ CRITICAL: When creating a new plan, follow this mandatory sequence to ensure pro
 2. **Then spawn planner agents with the folder path**
    ```bash
    # CLI returns the plan folder path, use it:
-   agentic session spawn --role planner-build --plan <plan-folder-name>
+   agentic orchestrate session spawn --role planner-build --plan <plan-folder-name>
    ```
 
 3. **Review and approve the plan**
-   The planner creates plan YAML files, orchestration creates MMD files
+   The planner creates plan YAML files, orchestration creates TinyDB phase records
 
 ### Incorrect Pattern (DO NOT USE)
 
 ```bash
 # WRONG: Spawning planner without running plan init first
-agentic session spawn --role planner-build --plan 260214XX_new_feature
+agentic orchestrate session spawn --role planner-build --plan 260214XX_new_feature
 # ^ This will fail the FENCE in planner-build/process.yml
 ```
 
@@ -96,7 +96,7 @@ Source of truth for the full process definition:
 ```
 modules/AgenticGuidance/agents/orchestration/orchestration-planning/
   manifest.yml   - spawns fence, outputs, purpose
-  process.mmd    - full Mermaid flowchart with all subgraphs
+  process.yml    - full process definition with all steps
   inputs.yml     - input contract
 ```
 

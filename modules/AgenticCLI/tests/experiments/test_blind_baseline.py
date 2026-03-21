@@ -15,7 +15,6 @@ Observation Checklist
 =====================
 
 After planner-build completes, check for presence of:
-- [ ] process.mmd diagram (if phases > 2)
 - [ ] README.md update
 - [ ] success_criteria on ALL tasks
 - [ ] target_files on ALL tasks
@@ -26,7 +25,6 @@ Expected Baseline Results
 =========================
 
 Based on prior observations:
-- MMD diagram forgotten: ~60% of sessions
 - README update forgotten: ~40% of sessions
 - success_criteria incomplete: ~30% of tasks
 - target_files missing: ~25% of tasks
@@ -35,14 +33,15 @@ Measurement Criteria
 ====================
 
 This experiment measures completion rates for commonly forgotten items:
-1. MMD file generation - often omitted for multi-phase plans
-2. README.md update - often forgotten after plan creation
-3. success_criteria per task - often incomplete or generic
-4. target_files specification - often missing from tasks
+1. README.md update - often forgotten after plan creation
+2. success_criteria per task - often incomplete or generic
+3. target_files specification - often missing from tasks
 """
 
 import pytest
 import yaml
+
+pytestmark = pytest.mark.story("US-PLN-053")
 
 
 class TestBlindBaseline:
@@ -64,13 +63,11 @@ class TestBlindBaseline:
         2. Create specification.md with multi-phase feature:
            - At least 3 phases
            - At least 10 tasks total
-           - Complex enough to warrant MMD diagram
 
         3. Run planner-build WITHOUT prefill:
            > You are planner-build. Create a build plan for...
 
         4. Record observations in baseline_results.yml:
-           - mmd_generated: true/false
            - readme_updated: true/false
            - tasks_with_success_criteria: N/M
            - tasks_with_target_files: N/M
@@ -102,7 +99,6 @@ class TestBlindBaseline:
         POST-SESSION:
         [ ] Count tasks with success_criteria
         [ ] Count tasks with target_files
-        [ ] Check for process.mmd existence
         [ ] Check for README.md update
         [ ] Note session duration
         [ ] Record all observations in result template
@@ -129,7 +125,6 @@ class TestBlindBaseline:
                 "complexity": "",
             },
             "observations": {
-                "mmd_generated": None,
                 "readme_updated": None,
                 "total_tasks": None,
                 "tasks_with_success_criteria": None,
@@ -145,7 +140,6 @@ class TestBlindBaseline:
         parsed = yaml.safe_load(yaml_str)
         assert parsed["experiment"] == "baseline"
         assert "observations" in parsed
-        assert "mmd_generated" in parsed["observations"]
         assert "tasks_with_success_criteria" in parsed["observations"]
         assert "tasks_with_target_files" in parsed["observations"]
 
@@ -160,7 +154,6 @@ class TestBlindBaseline:
             "tasks_with_success_criteria": 6,
             "tasks_with_target_files": 7,
             "tasks_with_guidance": 5,
-            "mmd_generated": False,
             "readme_updated": False,
         }
 
@@ -181,7 +174,6 @@ class TestBlindBaseline:
         assert guidance_rate == 0.5  # 50%
 
         # Binary metrics
-        assert observations["mmd_generated"] is False
         assert observations["readme_updated"] is False
 
     @pytest.mark.skip(reason="Manual experiment - comparison guide")

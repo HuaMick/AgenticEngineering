@@ -9,6 +9,8 @@ import pytest
 import yaml
 from pathlib import Path
 
+pytestmark = pytest.mark.story("US-PLN-091")
+
 
 @pytest.fixture
 def planner_test_process():
@@ -179,7 +181,6 @@ def test_uat_phase_planning_section_exists():
 
     Verifies:
     - uat_phase_planning section exists
-    - Section references uat_phase.mmd template
     - Section marks UAT as mandatory
     """
     process_path = Path(__file__).parent.parent / "agents" / "planner" / "planner-test" / "process.yml"
@@ -195,11 +196,3 @@ def test_uat_phase_planning_section_exists():
     # Check that it's marked as mandatory
     assert process['uat_phase_planning'].get('mandatory') is True, \
         "uat_phase_planning should be marked as mandatory: true"
-
-    # Read raw content to check text references
-    with open(process_path, 'r') as f:
-        content = f.read()
-
-    # Check for template reference
-    assert "uat_phase.mmd" in content, \
-        "Missing reference to uat_phase.mmd template"

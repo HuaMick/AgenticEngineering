@@ -1,0 +1,258 @@
+# Story Schema Definition
+# Defines the expected YAML structure for user story files.
+#
+# SCOPE: Structural definitions for .yml files in docs/userstories/ directories.
+# Story files define user stories with acceptance criteria, test status, and relationships.
+#
+# RELATED:
+#   - modules/AgenticGuidance/src/agenticguidance/services/story.py (StoryService)
+#   - modules/AgenticCLI/src/agenticcli/commands/stories.py (CLI commands)
+
+# =============================================================================
+# FILE STRUCTURE
+# =============================================================================
+
+file_structure:
+  location_pattern: "docs/userstories/<Category>/<NN>_<topic>.yml"
+  top_level_key:
+    description: |
+      Each story file must contain either a "stories" or "user_stories" key
+      at the top level, containing a list of story objects.
+    valid_keys:
+      - "stories"
+      - "user_stories"
+    example: |
+      area: installation
+      description: "Setup wizard, update/rebuild, CLI installation"
+      stories:
+      - id: US-SET-001
+        title: Initial CLI Setup
+        ...
+
+  optional_file_metadata:
+    area:
+      description: "Grouping area for the stories in this file."
+      type: string
+    description:
+      description: "Human-readable description of the story group."
+      type: string
+
+  metadata_file:
+    name: "00_metadata.yml"
+    description: |
+      Each category directory may contain a 00_metadata.yml file with
+      category-level metadata. This file is excluded from story parsing.
+
+# =============================================================================
+# STORY OBJECT SCHEMA
+# =============================================================================
+
+story_schema:
+  required_fields:
+    id:
+      type: string
+      pattern: "^US-[A-Z]{2,4}-\\d{3}$"
+      description: |
+        Unique story identifier. Format: US-<CATEGORY>-<NUMBER>
+        Category is 2-4 uppercase letters. Number is zero-padded to 3 digits.
+      examples:
+        - "US-SET-001"
+        - "US-CLI-110"
+        - "US-PLAN-003"
+        - "US-STR-012"
+
+    title:
+      type: string
+      description: "Short descriptive title for the user story."
+      examples:
+        - "Initial CLI Setup"
+        - "Epic List Display"
+
+  optional_fields:
+    category:
+      type: string
+      description: "Functional category within the story group (e.g., configuration, testing)."
+      examples:
+        - "configuration"
+        - "testing"
+        - "session"
+
+    priority:
+      type: string
+      enum:
+        - "low"
+        - "medium"
+        - "high"
+        - "critical"
+      default: "medium"
+      description: "Relative priority of the story."
+
+    description:
+      type: string
+      description: |
+        Full user story description, typically in the format:
+        "As a <role>, I want to <action>, so that <benefit>."
+
+    steps:
+      type: list
+      description: |
+        Ordered list of step objects defining the user journey.
+        Alternative key name: "journey" (both are accepted).
+      item_schema:
+        step:
+          type: integer
+          description: "Step number (1-based)."
+        action:
+          type: string
+          description: "What the user does (used in simple format)."
+        when:
+          type: string
+          description: "Precondition or trigger (used in BDD format)."
+        then:
+          type: list
+          description: "Expected outcomes (used in BDD format)."
+        expected:
+          type: string
+          description: "Expected result (used in simple format)."
+      examples:
+        simple_format:
+          - step: 1
+            action: "Run agentic setup"
+            expected: "Setup wizard launches"
+        bdd_format:
+          - step: 1
+            when: "the feature is used"
+            then:
+              - "agentic setup runs an interactive setup wizard"
+
+    journey:
+      type: list
+      description: "Alias for 'steps'. Both keys are accepted by StoryService."
+
+    success_criteria:
+      type: list
+      items:
+        type: string
+      description: "List of acceptance criteria that must be met."
+      example:
+        - "CLI responds within 2 seconds"
+        - "Configuration is persisted across sessions"
+
+    prerequisites:
+      type: list
+      items:
+        type: string
+      description: "List of prerequisites or dependencies."
+
+    related_stories:
+      type: list
+      items:
+        type: string
+        pattern: "^US-[A-Z]{2,4}-\\d{3}$"
+      description: "List of related story IDs."
+
+    related_commands:
+      type: list
+      items:
+        type: string
+      description: "List of CLI commands relevant to this story."
+      example:
+        - "agentic setup"
+        - "agentic setup --force"
+
+    # Test tracking fields
+    test_status:
+      type: string
+      enum:
+        - "untested"
+        - "pass"
+        - "fail"
+        - "skip"
+        - "regression"
+      default: "untested"
+      description: "Current test status of the story."
+
+    last_tested:
+      type: string
+      format: "ISO 8601 datetime or null"
+      description: "Timestamp of the last test run."
+
+    tested_by_plan:
+      type: string
+      description: "Epic folder name that last tested this story."
+
+    test_notes:
+      type: string
+      description: "Free-text notes about test results or issues."
+
+# =============================================================================
+# ID PREFIX CONVENTIONS
+# =============================================================================
+
+id_prefixes:
+  description: |
+    Story ID prefixes map to functional areas of the system.
+    The prefix is extracted by matching the pattern US-[A-Z]+ from the ID.
+  known_prefixes:
+    US-SET: "Setup, installation, and configuration"
+    US-SES: "Session management and lifecycle"
+    US-PLN: "Planning and orchestration"
+    US-STR: "Story management and tracking"
+    US-GUI: "Guidance and agent definitions"
+    US-CLI: "CLI commands and UX"
+
+# =============================================================================
+# VALIDATION CHECKLIST
+# =============================================================================
+
+validation_checklist:
+  file_validation:
+    - "File is valid YAML"
+    - "Top-level key is 'stories' or 'user_stories' containing a list"
+    - "File is not named 00_metadata.yml"
+
+  story_validation:
+    - "Each story has a unique 'id' field"
+    - "ID matches pattern US-[A-Z]{2,4}-\\d{3}"
+    - "Each story has a non-empty 'title' field"
+    - "If 'priority' is set, it is one of: low, medium, high, critical"
+    - "If 'test_status' is set, it is one of: untested, pass, fail, skip, regression"
+    - "If 'related_stories' is set, each item matches the ID pattern"
+
+  directory_validation:
+    - "Stories are organized under docs/userstories/<Category>/"
+    - "Category directories use PascalCase naming"
+    - "Files are numbered with NN_ prefix for ordering"
+
+# =============================================================================
+# COMPLETE EXAMPLE
+# =============================================================================
+
+complete_example:
+  description: "Minimal but complete story file structure."
+  template: |
+    area: session
+    description: "Session lifecycle and management stories"
+    stories:
+    - id: US-SES-001
+      title: Spawn Agent Session
+      category: session
+      priority: high
+      description: >
+        As a developer, I want to spawn an agent session in tmux,
+        so that I can run agents in isolated environments.
+      steps:
+      - step: 1
+        when: "the user runs agentic orchestrate session spawn"
+        then:
+          - "A new tmux session is created"
+          - "The agent process starts in the session"
+      success_criteria:
+        - "Session appears in agentic orchestrate session list"
+        - "Agent responds to queries within timeout"
+      related_commands:
+        - "agentic orchestrate session spawn --role build-python"
+        - "agentic orchestrate session list"
+      test_status: untested
+      last_tested: null
+      tested_by_plan: null

@@ -49,7 +49,7 @@ def _find_repo_root_from_tests():
 def _load_valid_story_ids():
     """Load all valid story IDs from docs/userstories/ YAML files.
 
-    Returns a frozenset of story ID strings (e.g. 'US-CLI-110').
+    Returns a frozenset of story ID strings (e.g. 'US-STR-001').
     Returns an empty set if the directory doesn't exist (e.g. in CI).
     """
     repo_root = _find_repo_root_from_tests()
@@ -306,11 +306,6 @@ def temp_repo(temp_dir):
     }
     with open(epic_folder / "plan_test.yml", "w") as f:
         yaml.dump(sample_plan, f)
-
-    # Create a minimal orchestration MMD file (EN-006 requires it for task start)
-    (epic_folder / "orchestration_test.mmd").write_text(
-        "flowchart TD\n  P01[Phase 1] --> P02[Phase 2]\n"
-    )
 
     yield repo_dir
 

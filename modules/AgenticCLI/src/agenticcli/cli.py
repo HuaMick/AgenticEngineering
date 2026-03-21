@@ -324,7 +324,7 @@ def health():
 # ===========================================================================
 
 configure_group = typer.Typer(
-    help="[DEPRECATED] Use 'agentic config', 'agentic health', 'agentic session state'",
+    help="[DEPRECATED] Use 'agentic config', 'agentic health', 'agentic orchestrate debug state'",
     no_args_is_help=True,
     hidden=True,
 )
@@ -348,19 +348,27 @@ def _prefs_handle(args):
 
 
 # ===========================================================================
-# SESSION
+# ORCHESTRATE (top-level group)
 # ===========================================================================
 
-session_app = typer.Typer(help="Manage Claude Code sessions, orchestration, and agents", no_args_is_help=True)
-app.add_typer(session_app, name="session")
+orchestrate_app = typer.Typer(help="Orchestrate agent sessions, health checks, and debugging", no_args_is_help=True)
+app.add_typer(orchestrate_app, name="orchestrate")
 
+# --- session subgroup under orchestrate ---
+orch_session_app = typer.Typer(help="Manage agent sessions: plan, implement, spawn, list, stop", no_args_is_help=True)
+orchestrate_app.add_typer(orch_session_app, name="session")
+
+# --- debug subgroup under orchestrate ---
+debug_app = typer.Typer(help="Debugging tools: logs, state", no_args_is_help=True)
+orchestrate_app.add_typer(debug_app, name="debug")
+debug_app.add_typer(state_app, name="state")
 
 
 def _session_handle(args):
     _dispatch("session", args)
 
 
-@session_app.command("spawn")
+@orch_session_app.command("spawn")
 def session_spawn(
     prompt: Annotated[Optional[str], typer.Option("--prompt", "-p", help="The prompt to send")] = None,
     role: Annotated[Optional[str], typer.Option("--role", help="Agent role to spawn")] = None,
@@ -399,7 +407,7 @@ def session_spawn(
     ))
 
 
-@session_app.command("list")
+@orch_session_app.command("list")
 def session_list(
     all_sessions: Annotated[bool, typer.Option("--all", "-a", help="Show all sessions including completed")] = False,
     type_filter: Annotated[Optional[str], typer.Option("--type", "-t", help="Filter by type: session, loop, orchestration")] = None,
@@ -408,7 +416,7 @@ def session_list(
     _session_handle(_ns(command="session", session_command="list", json=_global["json"], debug=_global["debug"], show_all=all_sessions, type=type_filter))
 
 
-@session_app.command("stop")
+@orch_session_app.command("stop")
 def session_stop(
     session_id: str = typer.Argument(..., help="Session ID to stop"),
     force: Annotated[bool, typer.Option("--force", "-f", help="Force kill")] = False,
@@ -421,8 +429,8 @@ def session_stop(
     ))
 
 
-@session_app.command("healthcheck")
-def session_healthcheck(
+@orchestrate_app.command("health")
+def orchestrate_health(
     session_id: Annotated[str, typer.Argument(help="Session ID (or prefix)")],
     json_output: Annotated[bool, typer.Option("-j", "--json", help="JSON output")] = False,
     diagnose: Annotated[bool, typer.Option("--diagnose", help="Auto-spawn diagnostic planner for unhealthy sessions")] = False,
@@ -436,8 +444,8 @@ def session_healthcheck(
     ))
 
 
-@session_app.command("logs")
-def session_logs(
+@debug_app.command("logs")
+def debug_logs(
     session_id: Annotated[str, typer.Argument(help="Session ID (or prefix)")],
     stderr: Annotated[bool, typer.Option("--stderr", help="Show stderr instead of stdout")] = False,
     lines: Annotated[int, typer.Option("-n", "--lines", help="Number of lines to show")] = 50,
@@ -452,17 +460,8 @@ def session_logs(
     ))
 
 
-orchestrate_app = typer.Typer(help="Run automated orchestration commands", no_args_is_help=True)
-session_app.add_typer(orchestrate_app, name="orchestrate")
-session_app.add_typer(state_app, name="state")
-
-# --- Ralph (nested under orchestrate) ---
-from agenticcli.commands.ralph import app as ralph_app
-orchestrate_app.add_typer(ralph_app, name="ralph")
-
-
-@orchestrate_app.command("planning")
-def session_orchestrate_planning(
+@orch_session_app.command("plan")
+def orchestrate_session_plan(
     epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder name or short ID (e.g. '260305AG')")] = None,
     plan: Annotated[Optional[str], typer.Option("--plan", help="[Deprecated: use --epic] Epic folder name")] = None,
     prompt: Annotated[Optional[str], typer.Option("--prompt", help="Additional prompt/instructions appended to each spawned agent")] = None,
@@ -489,8 +488,8 @@ def session_orchestrate_planning(
     ))
 
 
-@orchestrate_app.command("executing")
-def session_orchestrate_executing(
+@orch_session_app.command("implement")
+def orchestrate_session_implement(
     epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder name or short ID (e.g. '260305AG')")] = None,
     plan: Annotated[Optional[str], typer.Option("--plan", help="[Deprecated: use --epic] Epic folder name")] = None,
     background: Annotated[bool, typer.Option("--background", "-b", help="Run in background")] = False,
@@ -501,7 +500,7 @@ def session_orchestrate_executing(
     dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts for spawned agents (default: enabled)")] = True,
     budget: Annotated[float, typer.Option("--budget", help="Max USD cost before halting")] = 50.0,
 ):
-    """Run automated orchestration execution for plans with completed MMDs."""
+    """Run automated orchestration execution for epics with pending phases."""
     resolved_epic = epic or plan
     from agenticcli.commands.orchestrate import cmd_orchestrate
     cmd_orchestrate(_ns(
@@ -885,38 +884,6 @@ def epic_move_folder(
     ))
 
 
-# --- epic orchestration (nested sub-app) ---
-epic_orch_app = typer.Typer(help="Manage epic orchestration MMD files", no_args_is_help=True)
-epic_app.add_typer(epic_orch_app, name="orchestration")
-
-
-@epic_orch_app.command("generate")
-def epic_orchestration_generate(
-    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
-    output: Annotated[Optional[str], typer.Option("--output", "-o", help="Output filename")] = None,
-    force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing")] = False,
-):
-    """Generate orchestration MMD from epic YAML."""
-    _epic_handle(_ns(
-        command="epic", epic_command="orchestration", orchestration_action="generate",
-        json=_global["json"], debug=_global["debug"],
-        plan=epic, output=output, force=force,
-    ))
-
-
-@epic_orch_app.command("validate")
-def epic_orchestration_validate(
-    epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
-    strict: Annotated[bool, typer.Option("--strict", help="Treat warnings as errors")] = False,
-):
-    """Validate orchestration MMD against epic YAML."""
-    _epic_handle(_ns(
-        command="epic", epic_command="orchestration", orchestration_action="validate",
-        json=_global["json"], debug=_global["debug"],
-        plan=epic, strict=strict,
-    ))
-
-
 # --- epic stories (nested sub-app) ---
 epic_stories_app = typer.Typer(help="Manage user stories in epic files", no_args_is_help=True)
 epic_app.add_typer(epic_stories_app, name="stories")
@@ -1075,10 +1042,11 @@ def stories_find(
     query: Annotated[Optional[str], typer.Argument(help="Search query (ID, title, or keyword)")] = None,
     project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
     tag: Annotated[Optional[str], typer.Option("--tag", "-t", help="Filter by tag")] = None,
+    changes: Annotated[Optional[str], typer.Option("--changes", help="Filter by changed files (comma-separated paths, or 'git' for git diff)")] = None,
 ):
     """Search user stories by ID, title, or keyword."""
     _stories_handle(_ns(
-        stories_command="find", query=query, project=project, tag=tag,
+        stories_command="find", query=query, project=project, tag=tag, changes=changes,
         json=_global["json"], debug=_global["debug"],
     ))
 
@@ -1174,7 +1142,7 @@ def stories_affected(
 
 GLOBAL_COMMANDS = {
     "setup", "configure", "cfg", "session",
-    "langsmith", "ls", "question",
+    "question",
 }
 
 PROJECT_COMMANDS = {

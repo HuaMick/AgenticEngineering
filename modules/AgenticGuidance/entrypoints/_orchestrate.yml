@@ -1,11 +1,11 @@
 entrypoint:
   name: "_orchestrate"
-  goal: "Execute a pre-approved plan by orchestrating agents dynamically via Plan-MMD."
-  description: "Entrypoint that delegates execution to the generic orchestration-executor agent with MMD-driven dynamic routing."
+  goal: "Execute a pre-approved plan by orchestrating agents dynamically via TinyDB phase routing."
+  description: "Entrypoint that delegates execution to the generic orchestration-executor agent with TinyDB-driven dynamic routing."
 
   # Orchestration agent that controls the execution workflow
   # Note: The current session takes on the role of the orchestration-executor agent.
-  # The executor discovers orchestration_*.mmd inside the plan folder and routes dynamically.
+  # The executor reads phases from TinyDB and routes agents dynamically.
   orchestration: "modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml"
 
   # Inputs are loaded by the orchestration agent from:
@@ -16,13 +16,12 @@ entrypoint:
     - "Run: agentic entrypoint execute _orchestrate --compile"
     - "Run: agentic agent epic ticket current"
     - "Follow the orchestration process from compiled output"
-    - "Discover orchestration_*.mmd file inside <epic_folder>/live/"
-    - "If .mmd not found: ERROR - 'No orchestration MMD found in epic folder'"
-    - "Load Plan-MMD and extract AGENT_ROUTING, PHASES, FEEDBACK_TRIGGERS, STATUS metadata"
-    - "Load ticket_*.yml files from the same <epic_folder>/live/ directory"
-    - "Execute phases in order defined by MMD flowchart"
-    - "Route agents dynamically based on AGENT_ROUTING metadata"
-    - "Handle failures via FEEDBACK_TRIGGERS (loop, re-plan, or escalate)"
+    - "Load TinyDB phases from the epic repository"
+    - "If no phases found: ERROR - 'No phases found in epic repository'"
+    - "Extract agent routing, loop type, feedback triggers, and max iterations from each phase"
+    - "Execute phases in dependency order from TinyDB"
+    - "Route agents dynamically based on phase agent field"
+    - "Handle failures via feedback_triggers (loop, re-plan, or escalate)"
     - "Report completion status and any blocking issues"
 
   input:
@@ -31,4 +30,4 @@ entrypoint:
   output:
     - "Execution status (completed, blocked, failed)"
     - "Phase completion report with per-phase timestamps"
-    - "Updated STATUS in MMD and plan YAML files"
+    - "Updated phase statuses in TinyDB"

@@ -13,9 +13,6 @@ You are **Antigravity**, the primary orchestration and planning agent for the **
 ├── modules/
 │   ├── AgenticCLI/          # CLI interface (`agentic` command)
 │   ├── AgenticGuidance/     # Services, agents, guidance assets
-│   ├── AgenticTmux/         # Terminal session management (`agentic-tmux`)
-│   ├── AgenticLangSmith/    # LangSmith trace integration
-│   └── AgenticFrontend/     # (placeholder)
 ├── docs/
 │   ├── epics/               # live/, completed/, deferred/
 │   ├── userstories/         # AgenticCLI/, AgenticGuidance/
@@ -31,10 +28,7 @@ You are **Antigravity**, the primary orchestration and planning agent for the **
 
 ```
 AgenticCLI ──► AgenticGuidance (all services)
-           ──► AgenticLangSmith
-AgenticTmux ─► AgenticGuidance
 AgenticGuidance ─► (pyyaml, jinja2)
-AgenticLangSmith ─► (langsmith)
 ```
 
 ### 1.3 Build System
@@ -42,7 +36,7 @@ AgenticLangSmith ─► (langsmith)
 - **All modules**: Hatchling (pyproject.toml)
 - **Python**: 3.10+ (3.11+ for AgenticCLI)
 - **CLI backends**: Argparse (default) or Typer (`AGENTIC_USE_TYPER=1`)
-- **Entry points**: `agentic` (AgenticCLI), `agentic-tmux` (AgenticTmux)
+- **Entry points**: `agentic` (AgenticCLI)
 
 ---
 
@@ -76,26 +70,20 @@ Interact with the project system through the `agentic` CLI. Avoid manual file ma
 | `agentic epic` | Epic lifecycle (user-facing) | `new`, `list`, `status` |
 | `agentic agent epic` | Epic lifecycle (agent-facing) | `init`, `phase add`, `ticket start/complete`, `validate`, `archive` |
 | `agentic agent stories` | User story discovery | `find`, `list`, `status` |
-| `agentic session` | Agent session management | `spawn`, `status`, `logs`, `kill` |
-| `agentic loop` | Ralph Loop execution | `start`, `status`, `stop` |
+| `agentic orchestrate` | Epic orchestration & sessions | `session plan/implement/spawn/list/stop`, `health`, `debug` |
+| `agentic orchestrate session` | Session management | `spawn`, `list`, `stop`, `plan`, `implement` |
+| `agentic orchestrate health` | Session health check | (no subcommands) |
+| `agentic orchestrate debug state` | State inspection | `list`, `show`, `clear` |
+| `agentic orchestrate debug logs` | Session logs | (no subcommands) |
 | `agentic question` | Human-in-the-loop Q&A | `ask`, `answer`, `list`, `watch` |
 | `agentic agent context` | Context bootstrapping | `bootstrap --role <role>` |
-| `agentic session orchestrate` | Epic execution | (modes: planning, executor, loop) |
 | `agentic devops worktree` | Git worktree ops | `create`, `list`, `remove` |
 | `agentic agent entrypoint` | Workflow entry points | `list`, `show`, `execute` |
 | `agentic planner` | Planner commands | (epic loop) |
-| `agentic ralph` | Ralph loop mgmt | `status`, `next`, `history` |
-| `agentic langsmith` | Trace analysis | (LangSmith integration) |
-| `agentic setup` | Setup, health, update | `init`, `health`, `update`, `rebuild` |
-| `agentic configure config` | Configuration | `get`, `set`, `list`, `show` |
-| `agentic configure preferences` | User preferences | `get`, `set`, `list` |
-| `agentic configure env` | Environment vars | `show`, `export`, `run` |
-| `agentic configure state` | State inspection | `list`, `show`, `clear` |
-| `agentic session` | Sessions & agents | `spawn`, `list`, `stop`, `healthcheck`, `logs` |
-| `agentic session orchestrate` | Orchestration | `planning`, `executing` |
-| `agentic session orchestrate ralph` | Ralph iteration | `start`, `stop`, `next`, `status`, `history` |
-| `agentic session planner` | Planner loop | `start`, `stop`, `status` |
-| `agentic session terminal` | Web terminal | `serve` |
+| `agentic setup` | Setup, update | `init`, `update`, `rebuild` |
+| `agentic health` | Health check | (top-level, no subcommands) |
+| `agentic config` | Configuration | `get`, `set`, `list`, `show`, `init` |
+| `agentic config env` | Environment vars | `show`, `export`, `run` |
 | `agentic agent manifest` | Agent manifest ops | `list`, `show` |
 | `agentic package` | Package management | (packaging) |
 
@@ -136,8 +124,7 @@ modules/AgenticGuidance/agents/
 | **Deploy** | `deploy-worktree` | `--role deploy-worktree` | Git worktree + VS Code workspace |
 | | `deploy-cicd` | `--role deploy-cicd` | CI/CD pipeline synchronization |
 | **Orchestration** | `orchestration-planning` | `--role orchestration-planning` | Plan creation with HITL |
-| | `orchestration-executor` | `--role orchestration-executor` | MMD-driven plan execution |
-| | `orchestration-friction` | `--role orchestration-friction` | LangSmith friction analysis |
+| | `orchestration-executor` | `--role orchestration-executor` | TinyDB-driven plan execution |
 | **Planner** | `planner-build` | `--role planner-build` | Implementation phase planning |
 | | `planner-test` | `--role planner-test` | Test phase planning |
 | | `planner-cleaning` | `--role planner-cleaning` | Cleanup/audit planning |
@@ -147,7 +134,6 @@ modules/AgenticGuidance/agents/
 | | `planner-audit` | `--role planner-audit` | Plan folder compliance |
 | **Teacher** | `teacher-update-guidance` | `--role teacher-update-guidance` | Improve process.yml/inputs.yml |
 | | `teacher-update-assets` | `--role teacher-update-assets` | Shared asset creation |
-| | `teacher-trace-diagnostics` | `--role teacher-trace-diagnostics` | Friction pattern detection |
 | **Test** | `test-runner` | `--role test-runner` | Execute tests, report results |
 | | `test-builder` | `--role test-builder` | Create new tests |
 | | `test-audit` | `--role test-audit` | Test quality & reward hacking |
@@ -183,7 +169,6 @@ modules/AgenticGuidance/agents/
 | **QuestionQueue** | `services/question.py` | Q&A workflow | `questions/pending/`, `answered/` |
 | **SessionService** | `services/session.py` | tmux session lifecycle | `~/.config/agenticcli/sessions.json` |
 | **SessionStateService** | `services/claude_session.py` | Claude session tracking | `~/.agentic/sessions/*.json` |
-| **RalphLoopService** | `services/ralph.py` | Epic discovery & priority | `~/.agentic/ralph/state.json` |
 | **ContextService** | `services/context.py` | Main-First epic resolution | Git metadata |
 | **ConfigService** | `services/config.py` | Multi-layer config | Files + ENV |
 | **TemplateWorkflow** | `services/template.py` | Jinja2 rendering | Memory |
@@ -209,9 +194,6 @@ class TicketData: id, name, description, status, agent, phase_name
 # Question workflow
 class QuestionSeverity(Enum): BLOCKING, HIGH, MEDIUM, LOW
 class AnswerConfidence(Enum): HIGH, MEDIUM, LOW
-
-# Ralph Loop
-class EpicAction: action (execute|plan|complete|blocked), epic_name, ticket_id, reason
 ```
 
 ### 5.3 Architecture Pattern: Domain -> Workflow -> Entrypoint
@@ -238,7 +220,7 @@ Every new objective follows this sequence:
 3. **Epic Init**: `agentic agent epic init <branch_name> --description "..." --objective "..."`
 4. **Phase Determination**: Structure work using `agentic agent epic phase add`
 5. **Ticket Population**: Define tickets with success criteria and agent assignments
-6. **Orchestration MMD**: Generate flow using `agentic agent epic orchestration generate`
+6. **Orchestration phases**: Stored in TinyDB via planner-orchestration
 7. **Validation**: `agentic agent epic validate <epic_path> --strict`
 
 ---
@@ -254,7 +236,6 @@ docs/epics/live/YYMMDDXX_description/
 ├── plan_test.yml                    # Test phase tickets (optional)
 ├── plan_teach.yml                   # Teach phase tickets (optional)
 ├── plan_uat.yml                     # UAT phase (optional)
-├── orchestration_<name>.mmd         # Process diagram
 ├── questions/                       # HITL Q&A
 │   ├── pending/
 │   └── answered/
@@ -307,7 +288,7 @@ phases:
 |-----------|-------|---------|
 | `definitions/` | 42 files | "What is X?" conceptual foundations |
 | `guidelines/` | 46 files | "How to act" behavioral rules |
-| `examples/` | 14+ files | Reference implementations, MMD templates |
+| `examples/` | 14+ files | Reference implementations, phase templates |
 | `inputs/` | 11 files | Shared reference layers for agents |
 | `specifications/` | 4 files (~126KB) | Formal schemas |
 | `templates/` | — | Bootstrap templates |
@@ -340,7 +321,6 @@ phases:
 Each agent has:
 - `process.yml` - Goal, inputs, outputs, steps, guidelines
 - `inputs.yml` - Required inputs, reference layers, context
-- `process.mmd` (optional) - Visual flowchart
 
 ### 8.5 Reference Layers (Input Inheritance)
 
@@ -363,8 +343,7 @@ deploy-shared.yml            ← Deploy agents
 |------------|-------|---------|
 | `_plan_build.yml` | `orchestration-planning` | Create build/implementation epics |
 | `_plan_teach.yml` | `orchestration-planning` | Create guidance improvement epics |
-| `_orchestrate.yml` | `orchestration-executor` | Execute pre-approved Epic-MMD files |
-| `_analyze_friction.yml` | `orchestration-friction` | Analyze traces for friction patterns |
+| `_orchestrate.yml` | `orchestration-executor` | Execute pre-approved TinyDB epics |
 
 ---
 
@@ -381,28 +360,28 @@ deploy-shared.yml            ← Deploy agents
 
 ---
 
-## 11. Orchestration MMD Format
+## 11. Orchestration Phase Format
 
-### 11.1 AGENT_ROUTING Metadata
+### 11.1 TinyDB Phase Records
 
-```mermaid
-%% PHASES: Phase_A, Phase_B, Phase_C
-%% AGENT_ROUTING: Phase_A -> build-python, Phase_B -> test-runner, Phase_C -> teacher-update-guidance
-%% STATUS: Phase_A=pending, Phase_B=pending, Phase_C=pending
-%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate
-%%   1. Phase_A - Build components
-%%   2. Phase_B - Test components
-%%   3. Phase_C - Update guidance
-```
+Phases are stored in TinyDB with the following fields:
+
+| Field | Purpose |
+|-------|---------|
+| `name` | Phase identifier (e.g., Phase_A) |
+| `agent` | Agent to route to (e.g., build-python, test-runner) |
+| `status` | `pending`, `in_progress`, `completed`, or `failed` |
+| `feedback_triggers` | Re-run rules on failure (e.g., `TEST_FAILURE -> test-fix-loop`) |
+| `loop_type` | Iteration pattern (e.g., test-fix-loop) |
+| `loop_max_iterations` | Max loop iterations |
 
 ### 11.2 Phase Templates
 
 Available in `assets/examples/orchestration/phase_templates/`:
-- `build_phase.mmd` - Domain->Workflow->Entrypoint pattern
-- `test_phase.mmd` - Test-fix-loop integration
-- `uat_phase.mmd` - User Acceptance Testing
-- `teach_phase.mmd` - Guidance improvement
-- `cleanup_phase.mmd` - Cleaner integration
+- `build_phase` - Domain->Workflow->Entrypoint pattern
+- `test_phase` - Test-fix-loop integration
+- `teach_phase` - Guidance improvement
+- `cleanup_phase` - Cleaner integration
 
 ---
 
@@ -506,16 +485,16 @@ Builders hand off out-of-scope errors to planners:
 
 ## 14. Sub-Agent Handoff
 
-Use `agentic session spawn` to delegate tasks. Never perform build or test tasks yourself if a sub-agent exists.
+Use `agentic orchestrate session spawn` to delegate tasks. Never perform build or test tasks yourself if a sub-agent exists.
 
 ```bash
 # Spawn a build agent
-agentic session spawn --role build-python --dangerously-skip-permissions \
+agentic orchestrate session spawn --role build-python --dangerously-skip-permissions \
   --prompt "Build the authentication module per task AUTH_001"
 
 # Monitor agent
-agentic session status <id>
-agentic session logs <id>
+agentic orchestrate health <id>
+agentic orchestrate debug logs <id>
 ```
 
 ---
@@ -532,7 +511,7 @@ DESIGN   → PlannerLoopWorkflow populates plan_build.yml with phases/tickets
 
 VALIDATE → agentic agent epic validate <path> --strict
 
-EXECUTE  → RalphLoopService discovers epics → spawns agents per phase
+EXECUTE  → ExecutionRunner reads TinyDB phases → spawns agents per phase
 
 TRACK    → agentic agent epic ticket start/complete <ticket_id> --epic <folder>
 
@@ -548,17 +527,7 @@ HUMAN ANSWERS → agentic question answer <id> "Use argon2"
 AGENT READS   → agentic question get <id> -j
 ```
 
-### 15.3 Ralph Loop
-
-```
-START    → agentic session orchestrate ralph start --max-iterations 20
-ITERATE  → agentic session orchestrate ralph next -j   # Returns: execute|epic|complete|blocked
-TRACK    → agentic session orchestrate ralph status
-HISTORY  → agentic session orchestrate ralph history
-STOP     → agentic session orchestrate ralph stop
-```
-
-### 15.4 Context Bootstrap (CCI)
+### 15.3 Context Bootstrap (CCI)
 
 ```bash
 # Every agent session starts with:
@@ -584,7 +553,6 @@ agentic --json agent context bootstrap --role <agent-role>
 | Process state | `~/.config/agenticguidance/state.json` |
 | Session registry | `~/.config/agenticcli/sessions.json` |
 | Claude sessions | `~/.agentic/sessions/*.json` |
-| Ralph loop state | `~/.agentic/ralph/state.json` |
 | Epics (live) | `docs/epics/live/` |
 | Epics (archived) | `docs/epics/completed/` |
 | User stories | `docs/userstories/<project>/` |
@@ -595,6 +563,6 @@ agentic --json agent context bootstrap --role <agent-role>
 ## 17. Execution Monitoring
 
 When spawning background sessions (`-b`):
-- Use `agentic session status <id>` to check status.
-- Use `agentic session logs <id>` to inspect progress.
+- Use `agentic orchestrate health <id>` to check status.
+- Use `agentic orchestrate debug logs <id>` to inspect progress.
 - If a session hangs or fails, diagnose using logs before retrying or escalating.

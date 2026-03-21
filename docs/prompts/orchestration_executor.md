@@ -5,33 +5,33 @@ Run the execution phase of an orchestrated plan using a deterministic Python run
 ## Quick Start
 
 ```bash
-agentic session orchestrate executing
-agentic session orchestrate executing --plan <folder>
-agentic session orchestrate executing --plan <folder> --background
+agentic orchestrate session implement
+agentic orchestrate session implement --plan <folder>
+agentic orchestrate session implement --plan <folder> --background
 ```
 
 ## What It Does
 
 The `executing` subcommand is driven by a **deterministic Python `ExecutionRunner`** in the CLI,
-not a meta-LLM agent. It reads the orchestration MMD file, resolves AGENT_ROUTING metadata,
+not a meta-LLM agent. It reads TinyDB phase records, resolves agent routing,
 and spawns the appropriate agent for each pending phase sequentially.
 
-1. Discovers plans with completed orchestration planning (has `orchestration_*.mmd`).
-2. Parses the MMD header to extract `AGENT_ROUTING` and `STATUS` metadata.
+1. Discovers plans with completed orchestration planning (has TinyDB phases with agent routing).
+2. Reads TinyDB phase records to extract agent routing and status metadata.
 3. Finds the first phase with `pending` status.
-4. Spawns the corresponding agent via `agentic session spawn --role <agent> --plan <folder>`.
-5. Waits for the agent to complete, then updates the MMD `STATUS` field.
+4. Spawns the corresponding agent via `agentic orchestrate session spawn --role <agent> --plan <folder>`.
+5. Waits for the agent to complete, then updates the TinyDB phase status.
 6. Iterates to the next pending phase, or finishes when all phases are complete.
 7. Handles `FEEDBACK_TRIGGERS` (e.g., `TEST_FAILURE -> Test`) to re-run failed phases.
 
-## MMD as Source of Truth
+## TinyDB as Source of Truth
 
-The orchestration MMD file is the single source of truth for:
+TinyDB is the single source of truth for:
 
-- **Phase ordering** - The `PHASES` header lists execution order
-- **Agent routing** - `AGENT_ROUTING` maps each phase to its agent type
-- **Phase status** - `STATUS` tracks `pending`, `in_progress`, `completed`, `failed` per phase
-- **Feedback triggers** - `FEEDBACK_TRIGGER` defines re-run rules on failure
+- **Phase ordering** - Phases listed in insertion/sequence order
+- **Agent routing** - `agent` field maps each phase to its agent type
+- **Phase status** - `status` tracks `pending`, `in_progress`, `completed`, `failed` per phase
+- **Feedback triggers** - `feedback_triggers` field defines re-run rules on failure
 
 ## CLI Options
 
@@ -46,5 +46,5 @@ The orchestration MMD file is the single source of truth for:
 
 ## See Also
 
-- `agentic session orchestrate planning` - Create and approve plans (generates the MMD)
-- Orchestration MMD format: `docs/plans/live/<folder>/orchestration_*.mmd`
+- `agentic orchestrate session plan` - Create and approve plans (creates TinyDB phase records)
+- Orchestration phases stored in TinyDB

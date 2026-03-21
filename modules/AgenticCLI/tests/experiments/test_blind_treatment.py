@@ -52,6 +52,8 @@ Success threshold: >15% improvement over baseline
 import pytest
 import yaml
 
+pytestmark = pytest.mark.story("US-PLN-053")
+
 
 class TestBlindTreatment:
     """Treatment scenario for blind testing experiment.
@@ -112,7 +114,6 @@ class TestBlindTreatment:
         POST-SESSION:
         [ ] Count tasks with success_criteria
         [ ] Count tasks with target_files
-        [ ] Check for process.mmd existence
         [ ] Check for README.md update
         [ ] Count prefilled tasks that were addressed
         [ ] Note session duration
@@ -128,8 +129,7 @@ class TestBlindTreatment:
           agentic plan task list --plan <path>
 
         Expected output should show tasks like:
-          pb_001 - Generate process.mmd diagram if plan has multiple phases
-          pb_002 - Update README.md with plan summary
+          pb_001 - Update README.md with plan summary
           pb_003 - Validate all inputs.yml file references exist
           pb_004 - Add success_criteria to each task
           pb_005 - Specify target_files for each task

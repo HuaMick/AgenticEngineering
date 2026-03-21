@@ -13,6 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-GDN-001")
+
 from agenticcli.commands.agent_help import (
     AGENT_CATEGORIES,
     KNOWN_AGENTS,
@@ -24,6 +26,7 @@ from agenticcli.commands.agent_help import (
 )
 
 
+@pytest.mark.story("US-GDN-001")
 class TestAgentNameDetection:
     """Tests for agent name detection functions (CCI positional syntax)."""
 
@@ -47,7 +50,6 @@ class TestAgentNameDetection:
         """Test multi-word agent names work correctly."""
         # All agents with multiple dashes
         assert is_agent_name("planner-guidance-testing") is True
-        assert is_agent_name("teacher-trace-diagnostics") is True
         assert is_agent_name("test-guidance-simulator") is True
         assert is_agent_name("teacher-update-guidance") is True
 
@@ -64,9 +66,9 @@ class TestAgentNameDetection:
         # Old flag syntax should return None
         assert get_agent_name("--planner-guidance") is None
 
-    def test_all_23_agents_registered(self):
-        """Verify all 23 agents are in KNOWN_AGENTS."""
-        assert len(KNOWN_AGENTS) == 23, f"Expected 23 agents, got {len(KNOWN_AGENTS)}"
+    def test_all_agents_registered(self):
+        """Verify all agents are in KNOWN_AGENTS."""
+        assert len(KNOWN_AGENTS) == 20, f"Expected 20 agents, got {len(KNOWN_AGENTS)}"
 
     def test_all_agents_have_categories(self):
         """Verify all agents have category mappings."""
@@ -80,6 +82,7 @@ class TestAgentNameDetection:
             assert category in valid_categories, f"Invalid category {category} for {agent}"
 
 
+@pytest.mark.story("US-GDN-022")
 class TestAgentHelpContent:
     """Tests for agent help content generation."""
 
@@ -135,6 +138,7 @@ class TestAgentHelpContent:
         assert isinstance(context.get("inputs", []), list)
 
 
+@pytest.mark.story("US-GDN-022")
 class TestAgentHelpOutput:
     """Tests for agent help output formatting."""
 
@@ -201,6 +205,7 @@ class TestAgentHelpOutput:
         assert isinstance(data, dict)
 
 
+@pytest.mark.story("US-GDN-001")
 class TestAgentDirectoryFinding:
     """Tests for finding agent directories."""
 
@@ -227,6 +232,7 @@ class TestAgentDirectoryFinding:
         assert agent_dir is None
 
 
+@pytest.mark.story("US-GDN-001", "US-GDN-022")
 class TestCLIIntegration:
     """Integration tests for CLI invocation with CCI positional syntax."""
 
@@ -346,6 +352,7 @@ class TestCLIIntegration:
         assert elapsed < 0.5, f"CLI took {elapsed:.2f}s, expected < 0.5s"
 
 
+@pytest.mark.story("US-GDN-022")
 class TestErrorHandling:
     """Tests for error handling."""
 
@@ -400,13 +407,14 @@ class TestErrorHandling:
                 assert context["agent"] == "build-python"
 
 
+@pytest.mark.story("US-GDN-001")
 class TestAgentCategories:
     """Tests for agent category organization."""
 
     def test_planner_agents_count(self):
-        """Verify 7 planner agents."""
+        """Verify 6 planner agents."""
         planners = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "planner"]
-        assert len(planners) == 7
+        assert len(planners) == 6
 
     def test_test_agents_count(self):
         """Verify 7 test agents."""
@@ -414,14 +422,14 @@ class TestAgentCategories:
         assert len(testers) == 7
 
     def test_orchestration_agents_count(self):
-        """Verify 3 orchestration agents."""
+        """Verify 2 orchestration agents."""
         orchestrators = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "orchestration"]
-        assert len(orchestrators) == 3
+        assert len(orchestrators) == 2
 
     def test_teacher_agents_count(self):
-        """Verify 3 teacher agents."""
+        """Verify 2 teacher agents."""
         teachers = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "teacher"]
-        assert len(teachers) == 3
+        assert len(teachers) == 2
 
     def test_build_agents_count(self):
         """Verify 2 build agents."""

@@ -18,6 +18,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+pytestmark = pytest.mark.story("US-PLN-082")
 import yaml
 
 
@@ -130,42 +132,42 @@ class TestFindPlanFolderLivePreference:
     def test_tinydb_completed_path_resolved_to_live(self, git_repo_with_resurrection):
         """When TinyDB points to completed/ but live/ exists, return live/.
 
-        find_plan_folder() imports PlanRepository locally; when TinyDB lookup
+        find_epic_folder() imports EpicRepository locally; when TinyDB lookup
         fails (or isn't available), it falls through to the filesystem scan
         which correctly returns the live/ path.
         """
-        from agenticcli.commands.plan import find_plan_folder
+        from agenticcli.commands.epic import find_epic_folder
 
         repo_dir = git_repo_with_resurrection
         plan_name = "260222NE_resurrected"
         live_path = repo_dir / "docs" / "epics" / "live" / plan_name
 
-        with patch("agenticcli.commands.plan.subprocess.run") as mock_run:
+        with patch("agenticcli.commands.epic.subprocess.run") as mock_run:
             mock_run.return_value.stdout = str(repo_dir) + "\n"
             mock_run.return_value.returncode = 0
 
             # The TinyDB import will fail (no DB), falling through to
             # filesystem scan which should find the live/ folder.
-            result = find_plan_folder(plan_name)
+            result = find_epic_folder(plan_name)
             assert result == live_path
 
     def test_only_live_exists_returns_live(self, git_repo_with_resurrection):
         """When epic exists only in live/ (no TinyDB entry), return live/."""
-        from agenticcli.commands.plan import find_plan_folder
+        from agenticcli.commands.epic import find_epic_folder
 
         repo_dir = git_repo_with_resurrection
         live_path = repo_dir / "docs" / "epics" / "live" / "260222NE_resurrected"
 
-        with patch("agenticcli.commands.plan.subprocess.run") as mock_run:
+        with patch("agenticcli.commands.epic.subprocess.run") as mock_run:
             mock_run.return_value.stdout = str(repo_dir) + "\n"
             mock_run.return_value.returncode = 0
 
-            result = find_plan_folder("260222NE_resurrected")
+            result = find_epic_folder("260222NE_resurrected")
             assert result == live_path
 
     def test_only_completed_returns_nothing(self, tmp_path):
         """When epic exists only in completed/ (normal archived epic), sys.exit(1)."""
-        from agenticcli.commands.plan import find_plan_folder
+        from agenticcli.commands.epic import find_epic_folder
 
         repo_dir = tmp_path / "repo"
         repo_dir.mkdir()
@@ -181,13 +183,13 @@ class TestFindPlanFolderLivePreference:
         subprocess.run(["git", "add", "."], cwd=repo_dir, capture_output=True)
         subprocess.run(["git", "commit", "-m", "init"], cwd=repo_dir, capture_output=True)
 
-        with patch("agenticcli.commands.plan.subprocess.run") as mock_run:
+        with patch("agenticcli.commands.epic.subprocess.run") as mock_run:
             mock_run.return_value.stdout = str(repo_dir) + "\n"
             mock_run.return_value.returncode = 0
 
             # No live/ folder for this epic -> should exit
             with pytest.raises(SystemExit) as exc_info:
-                find_plan_folder("260222NE_only_archived")
+                find_epic_folder("260222NE_only_archived")
             assert exc_info.value.code == 1
 
 

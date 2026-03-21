@@ -3,7 +3,6 @@
 User Acceptance Testing for:
 - US-ORCH-001: Initiate Implementation Planning
 - US-ORCH-002: Main-First Planning Workflow
-- US-ORCH-005: Generate Orchestration MMD from Plan
 - US-CLI-010: Initialize Plan with Worktree (referenced in US-ORCH-002)
 
 These tests validate end-to-end behavior from a user's perspective.
@@ -16,6 +15,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+
+pytestmark = pytest.mark.story("US-PLN-001")
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +115,7 @@ def mock_claude_subprocess(_isolate_tinydb):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-074")
 class TestUSORCH001InitiatePlanning:
     """UAT for US-ORCH-001: Initiate Implementation Planning.
 
@@ -249,6 +251,7 @@ class TestUSORCH001InitiatePlanning:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-074")
 class TestUSORCH002PlanCreation:
     """UAT for plan creation workflow.
 
@@ -278,25 +281,23 @@ class TestUSORCH002PlanCreation:
 
 
 # ---------------------------------------------------------------------------
-# US-ORCH-005: Generate Orchestration MMD from Plan
+# US-ORCH-005: Orchestration Phase Tracking
 # ---------------------------------------------------------------------------
 
 
-class TestUSORCH005OrchestrationMMD:
+@pytest.mark.story("US-PLN-074")
+class TestUSORCH005OrchestrationPhases:
     """UAT for US-ORCH-005: Orchestration phase tracking via TinyDB.
 
     After the folder-creation removal (260308MA), orchestration data is stored
-    in TinyDB rather than MMD files. MMD generation is best-effort and requires
-    the folder to exist on disk, which is no longer guaranteed.
-
-    These tests verify that:
+    in TinyDB. These tests verify that:
     - plan new completes successfully
     - Phases/tickets are tracked in TinyDB
     - The result JSON includes the plan folder path
     """
 
-    def test_orchestration_mmd_generated(self, cli_runner, temp_repo, _isolate_tinydb):
-        """Verify plan new completes and TinyDB has phase/ticket records (MMD is best-effort)."""
+    def test_orchestration_phases_created(self, cli_runner, temp_repo, _isolate_tinydb):
+        """Verify plan new completes and TinyDB has phase/ticket records."""
         branch = "test-orch-mmd"
 
         create_worktree_for_test(temp_repo, branch)
@@ -316,8 +317,8 @@ class TestUSORCH005OrchestrationMMD:
         repo.close()
         assert epic is not None, "Epic should be in TinyDB after plan new"
 
-    def test_mmd_contains_phase_nodes(self, cli_runner, temp_repo, _isolate_tinydb):
-        """Verify TinyDB has phase records after plan new (replaces MMD phase node check)."""
+    def test_tinydb_contains_phase_data(self, cli_runner, temp_repo, _isolate_tinydb):
+        """Verify TinyDB has phase records after plan new."""
         branch = "test-mmd-phases"
 
         create_worktree_for_test(temp_repo, branch)
@@ -336,7 +337,7 @@ class TestUSORCH005OrchestrationMMD:
         repo.close()
         assert len(phases) >= 1, "TinyDB should have at least one phase record"
 
-    def test_mmd_validated_after_generation(self, cli_runner, temp_repo):
+    def test_orchestration_validated_after_creation(self, cli_runner, temp_repo):
         """Verify plan new completes successfully (orchestration validation is best-effort)."""
         branch = "test-mmd-validate"
 
@@ -379,6 +380,7 @@ class TestUSORCH005OrchestrationMMD:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-074")
 class TestFullWorkflowIntegration:
     """Integration tests validating complete user journey."""
 

@@ -246,9 +246,9 @@ class TestPlanValidatePathArguments:
     def test_validate_with_strict_flag(self, cli_runner, plan_to_validate):
         """Test plan validate with --strict option.
 
-        Strict mode requires orchestration_*.mmd files. Since the test fixture
-        doesn't include one, strict validation should fail with an error about
-        missing orchestration file.
+        Strict mode requires orchestration phases in TinyDB. Since the test fixture
+        doesn't include them, strict validation should fail with an error about
+        missing orchestration phases.
         """
         result = cli_runner([
             "epic", "validate",
@@ -256,7 +256,7 @@ class TestPlanValidatePathArguments:
             "--strict"
         ])
 
-        # Strict mode should fail because fixture lacks orchestration_*.mmd
+        # Strict mode should fail because fixture lacks orchestration phases
         assert result.returncode == 1
         assert "orchestration" in result.stdout.lower() or "missing" in result.stdout.lower()
 

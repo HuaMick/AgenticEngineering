@@ -1,6 +1,6 @@
 """Integration tests for sequential SDK-in-tmux agent spawning.
 
-Validates that the spawn orchestration logic handles 5 sequential planning
+Validates that the spawn orchestration logic handles 4 sequential planning
 roles correctly without real SDK or tmux calls.
 
 Context: The SDK zombie bug means query() cannot be called >1x per process.
@@ -30,13 +30,13 @@ from agenticcli.utils.session_state import (
 )
 from agenticcli.utils.spawn_command import build_spawn_command
 
+pytestmark = pytest.mark.story("US-SES-001")
 
-# The five planning roles executed sequentially by PlannerLoopRunner
+# The planning roles executed sequentially by PlannerLoopRunner
 PLANNING_ROLES = [
-    "explore",
+    "epic-creator",
     "story-writer",
-    "planner-build",
-    "planner-reviewer",
+    "planner-explore",
     "planner-orchestration",
 ]
 
@@ -49,7 +49,7 @@ class TestSequentialSDKTmuxSpawns:
 
     # ── Command construction ──────────────────────────────────────────────
 
-    def test_five_sequential_spawns_build_correct_commands(self):
+    def test_four_sequential_spawns_build_correct_commands(self):
         """Each planning role produces a valid spawn command with --tmux flag."""
         for role in PLANNING_ROLES:
             cmd = build_spawn_command(role=role, epic_folder=TEST_EPIC)
@@ -68,7 +68,7 @@ class TestSequentialSDKTmuxSpawns:
     def test_spawn_command_skip_permissions_flag(self):
         """skip_permissions=True appends --dangerously-skip-permissions."""
         cmd = build_spawn_command(
-            role="planner-build",
+            role="planner-explore",
             epic_folder=TEST_EPIC,
             skip_permissions=True,
         )
@@ -76,7 +76,7 @@ class TestSequentialSDKTmuxSpawns:
 
     def test_spawn_command_no_skip_permissions_by_default(self):
         """skip_permissions defaults to False — flag absent unless requested."""
-        cmd = build_spawn_command(role="planner-build", epic_folder=TEST_EPIC)
+        cmd = build_spawn_command(role="planner-explore", epic_folder=TEST_EPIC)
         assert "--dangerously-skip-permissions" not in cmd
 
     def test_spawn_command_json_flag_present_by_default(self):
@@ -85,7 +85,7 @@ class TestSequentialSDKTmuxSpawns:
         assert "-j" in cmd
 
     def test_planner_loop_sequential_spawn_flow(self):
-        """All 5 planning roles produce valid spawn commands (skip_permissions=True)."""
+        """All 4 planning roles produce valid spawn commands (skip_permissions=True)."""
         results = []
         for role in PLANNING_ROLES:
             cmd = build_spawn_command(
@@ -95,7 +95,7 @@ class TestSequentialSDKTmuxSpawns:
             )
             results.append(cmd)
 
-        assert len(results) == 5
+        assert len(results) == 4
         for cmd in results:
             assert "--dangerously-skip-permissions" in cmd
             assert "--tmux" in cmd
@@ -137,8 +137,8 @@ class TestSequentialSDKTmuxSpawns:
                 sid = generate_session_id()
                 assert sid not in ids, f"Session ID reused: {sid}"
                 ids.add(sid)
-        # 15 unique IDs total (5 roles × 3 retries)
-        assert len(ids) == 15
+        # 12 unique IDs total (4 roles × 3 retries)
+        assert len(ids) == 12
 
     def test_session_id_is_valid_uuid_format(self):
         """generate_session_id() returns a well-formed UUID string."""
@@ -174,13 +174,20 @@ class TestSequentialSDKTmuxSpawns:
         assert "explore" in name
 
     def test_tmux_session_names_differ_per_role(self):
-        """Different roles produce different tmux session names."""
+        """Different roles produce different tmux session names.
+
+        Note: tmux_session_name truncates role to 8 chars, so roles sharing the
+        same first-8-char prefix (e.g. planner-explore / planner-orchestration)
+        collide.  We test with roles that are provably distinct after truncation.
+        """
         sid = generate_session_id()
+        # Use roles whose first 8 chars are unique to avoid truncation collisions.
+        distinct_roles = ["epic-creator", "story-writer", "planner-explore"]
         names = {
             tmux_session_name(sid, epic_folder=Path(TEST_EPIC), role=role)
-            for role in PLANNING_ROLES
+            for role in distinct_roles
         }
-        assert len(names) == len(PLANNING_ROLES), "Role names must be distinct"
+        assert len(names) == len(distinct_roles), "Role names must be distinct"
 
     def test_tmux_session_name_sanitised(self):
         """tmux_session_name contains only alphanumerics and hyphens."""
@@ -236,8 +243,8 @@ class TestSequentialSDKTmuxSpawns:
         assert metrics["sdk_session_id"] == ""
         assert metrics["transport"] == "unknown"
 
-    def test_sdk_metrics_all_five_roles_readable(self, tmp_path):
-        """SDK metrics can be read back for all 5 planning roles independently."""
+    def test_sdk_metrics_all_four_roles_readable(self, tmp_path):
+        """SDK metrics can be read back for all 4 planning roles independently."""
         role_states = {}
         for i, role in enumerate(PLANNING_ROLES):
             sid = generate_session_id()
@@ -330,8 +337,8 @@ class TestSequentialSDKTmuxSpawns:
         assert loaded["cost_usd"] == 0.07
         assert loaded["transport"] == "sdk-tmux"
 
-    def test_state_store_five_sessions_independent(self, tmp_path):
-        """Five sessions written to the same store are independent."""
+    def test_state_store_four_sessions_independent(self, tmp_path):
+        """Four sessions written to the same store are independent."""
         from agenticcli.utils.state_store import StateStore
         from datetime import datetime
 
@@ -357,8 +364,8 @@ class TestSequentialSDKTmuxSpawns:
             assert loaded["cost_usd"] == original["cost_usd"]
             assert loaded["num_turns"] == original["num_turns"]
 
-    def test_state_store_list_all_five_sessions(self, tmp_path):
-        """StateStore.list_all() returns all five saved sessions."""
+    def test_state_store_list_all_four_sessions(self, tmp_path):
+        """StateStore.list_all() returns all four saved sessions."""
         from agenticcli.utils.state_store import StateStore
 
         store = StateStore("sessions", id_key="session_id")

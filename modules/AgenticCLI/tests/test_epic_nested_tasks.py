@@ -15,7 +15,7 @@ import pytest
 
 from tests.conftest import populate_tinydb_from_yaml
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-008")]
 
 
 @pytest.fixture
@@ -64,9 +64,6 @@ def nested_task_plan(tmp_path, _isolate_tinydb):
         ],
     }
 
-    # EN-006: task start requires orchestration MMD
-    (plan_dir / "orchestration_build.mmd").write_text("graph TD\n  A-->B\n")
-
     populate_tinydb_from_yaml(_isolate_tinydb, "260127TS_test_plan", plan_dir, yaml_data)
     yield plan_dir
 
@@ -97,9 +94,6 @@ def nested_task_plan_with_task_id(tmp_path, _isolate_tinydb):
         ],
     }
 
-    # EN-006: task start requires orchestration MMD
-    (plan_dir / "orchestration_build.mmd").write_text("graph TD\n  A-->B\n")
-
     populate_tinydb_from_yaml(_isolate_tinydb, "260127TI_test_taskid", plan_dir, yaml_data)
     yield plan_dir
 
@@ -116,6 +110,7 @@ def _get_ticket_status(db_path, epic_folder_name, ticket_id):
     return None
 
 
+@pytest.mark.story("US-PLN-011")
 class TestUpdateTaskStatus:
     """Tests for _update_task_status with nested tasks."""
 
@@ -185,6 +180,7 @@ class TestUpdateTaskStatus:
         assert "not found" in stderr.lower()
 
 
+@pytest.mark.story("US-PLN-009")
 class TestTaskList:
     """Tests for cmd_task_list with nested tasks."""
 
@@ -233,6 +229,7 @@ class TestTaskList:
         assert "TST-003" not in stdout
 
 
+@pytest.mark.story("US-PLN-009")
 class TestTaskStatus:
     """Tests for cmd_task_status with nested tasks."""
 
@@ -262,6 +259,7 @@ class TestTaskStatus:
         assert "not found" in stderr.lower()
 
 
+@pytest.mark.story("US-PLN-010")
 class TestTaskCurrent:
     """Tests for cmd_task_current with nested tasks."""
 
@@ -312,6 +310,7 @@ class TestTaskCurrent:
         assert "TST-001" in stdout
 
 
+@pytest.mark.story("US-PLN-009", "US-PLN-011")
 class TestEdgeCases:
     """Tests for edge cases in nested task handling."""
 
@@ -381,9 +380,6 @@ class TestEdgeCases:
                 },
             ],
         }
-
-        # EN-006: task start requires orchestration MMD
-        (plan_dir / "orchestration_build.mmd").write_text("graph TD\n  A-->B\n")
 
         populate_tinydb_from_yaml(_isolate_tinydb, "260127SC_special", plan_dir, yaml_data)
 

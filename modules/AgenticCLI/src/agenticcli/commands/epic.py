@@ -18,10 +18,10 @@ _agent_types_cache: set | None = None
 _FALLBACK_AGENT_TYPES = {
     "build-python", "build-flutter",
     "deploy-cicd",
-    "orchestration-executor", "orchestration-planning", "orchestration-friction",
+    "orchestration-executor", "orchestration-planning",
     "planner-build", "planner-test", "planner-guidance", "planner-cleaning",
-    "planner-reviewer", "planner-audit", "planner-orchestration", "planner-guidance-testing",
-    "teacher-update-guidance", "teacher-update-assets", "teacher-trace-diagnostics",
+    "planner-audit", "planner-orchestration", "planner-guidance-testing",
+    "teacher-update-guidance", "teacher-update-assets",
     "test-runner", "test-builder", "test-guidance-simulator", "test-final-output",
     "test-audit", "test-user-simulator", "test-service",
 }
@@ -259,14 +259,6 @@ def handle(args, ctx=None):
             sys.exit(1)
     elif args.epic_command == "replan":
         cmd_replan(args, ctx)
-    elif args.epic_command == "orchestration":
-        if args.orchestration_action == "generate":
-            cmd_orchestration_generate(args, ctx)
-        elif args.orchestration_action == "validate":
-            cmd_orchestration_validate(args, ctx)
-        else:
-            print("Usage: agentic epic orchestration <generate|validate>", file=sys.stderr)
-            sys.exit(1)
     elif args.epic_command == "stories":
         if args.stories_action == "list":
             cmd_stories_list(args, ctx)
@@ -699,74 +691,6 @@ def cmd_new(args, ctx=None):
             print_error(f"Planner agent failed with exit code {planner_exitcode}")
             if planner_stderr:
                 console.print(f"[red]{planner_stderr}[/red]")
-
-    # Step 3: Generate orchestration MMD (Phase 3)
-    if not is_json_output():
-        print_info("[Step 3] Generating orchestration MMD...")
-
-    # Generate orchestration by calling cmd_orchestration_generate
-    orch_args = SimpleNamespace(
-        plan=str(plan_folder),
-        output=None,  # Use default naming
-        force=True,  # Overwrite if exists
-    )
-
-    orchestration_success = False
-    try:
-        # Suppress orchestration output - we produce our own summary
-        orch_stdout = io.StringIO()
-        with redirect_stdout(orch_stdout):
-            cmd_orchestration_generate(orch_args, ctx)
-        orchestration_success = True
-        if not is_json_output():
-            print_success("Orchestration MMD generated")
-    except SystemExit as e:
-        if e.code != 0:
-            if not is_json_output():
-                print_warning("Orchestration generation failed - you can generate it manually later")
-                print_warning("  Run: agentic epic orchestration generate --plan " + str(plan_folder))
-        else:
-            orchestration_success = True
-    except Exception as e:
-        if not is_json_output():
-            print_warning(f"Orchestration generation failed: {e}")
-            print_warning("  You can generate it manually later with:")
-            print_warning("  agentic epic orchestration generate --plan " + str(plan_folder))
-
-    # Step 3b: Validate orchestration MMD (Phase 3)
-    validation_success = False
-    if orchestration_success:
-        if not is_json_output():
-            print_info("[Step 3b] Validating orchestration MMD...")
-
-        validate_args = SimpleNamespace(
-            plan=str(plan_folder),
-            strict=False,
-        )
-
-        try:
-            # Suppress validation output
-            val_stdout = io.StringIO()
-            with redirect_stdout(val_stdout):
-                cmd_orchestration_validate(validate_args, ctx)
-            validation_success = True
-            if not is_json_output():
-                print_success("Orchestration validation passed")
-        except SystemExit as e:
-            if e.code == 0:
-                validation_success = True
-            else:
-                if not is_json_output():
-                    print_warning("Orchestration validation found issues")
-                    if execute:
-                        print_error("Cannot execute with invalid orchestration. Fix issues and retry with --execute.")
-                        execute = False  # Block execution
-        except Exception as e:
-            if not is_json_output():
-                print_warning(f"Orchestration validation failed: {e}")
-                if execute:
-                    print_error("Cannot execute without valid orchestration.")
-                    execute = False
 
     # If --execute was NOT passed, stop here
     if not execute:
@@ -1228,7 +1152,7 @@ def cmd_status(args):
 
     # Derive next_action and next_command from the unified status field
     _status_actions = {
-        "active": ("Spawn planning agent", f"agentic session orchestrate planning --epic {epic_folder_name}"),
+        "active": ("Spawn planning agent", f"agentic orchestrate session plan --epic {epic_folder_name}"),
         "planning": ("Planning in progress", None),
         "in_progress": ("Execute current ticket", f"agentic epic ticket current --epic {epic_folder_name}"),
         "completed": ("Archive epic", f"agentic epic move folder --epic {epic_folder_name}"),
@@ -1262,7 +1186,7 @@ def cmd_status(args):
             console.print(f"[bold]Orchestration:[/bold] [green]Phases in TinyDB[/green]")
         else:
             console.print("[bold]Orchestration:[/bold] [red]MISSING[/red]")
-            console.print("  Run: agentic session orchestrate planning --epic <folder>")
+            console.print("  Run: agentic orchestrate session plan --epic <folder>")
 
         console.print(f"[bold]Status:[/bold] {plan_status}")
 
@@ -1306,82 +1230,16 @@ def cmd_status(args):
 
 
 
-def _parse_mmd_phases(mmd_content: str) -> list[str]:
-    """Parse phase IDs from MMD file content.
-
-    Looks for:
-    - subgraph patterns: subgraph "Phase 1: Name" or subgraph Phase1_SG
-    - Phase node patterns: P1[...], Phase1[...]
-
-    Args:
-        mmd_content: Raw MMD file content.
-
-    Returns:
-        List of phase IDs found (e.g., ["P1", "P2", "P3"]).
-    """
-    import re
-
-    phases = set()
-
-    # Pattern 1: subgraph "Phase N: Name" or subgraph Phase_N_SG
-    # Examples: subgraph "Phase 1: Plan List Enhancement"
-    subgraph_pattern = r'subgraph\s+["\']?(?:Phase\s*)?(\d+|P\d+)[:\s]'
-    for match in re.finditer(subgraph_pattern, mmd_content, re.IGNORECASE):
-        phase_num = match.group(1)
-        if phase_num.isdigit():
-            phases.add(f"P{phase_num}")
-        else:
-            phases.add(phase_num.upper())
-
-    # Pattern 2: subgraph with ID like "Phase1_SG" or "CLISessionCommands_SG"
-    # We skip these as they are internal subgraph names, not phase IDs
-
-    # Pattern 3: Phase node definitions like P1[P1: description] or P1[Enter Phase 1]
-    phase_node_pattern = r'\b(P\d+)\s*\['
-    for match in re.finditer(phase_node_pattern, mmd_content):
-        phases.add(match.group(1).upper())
-
-    return sorted(phases)
-
-
-def _parse_mmd_tasks(mmd_content: str) -> list[str]:
-    """Parse task IDs from MMD file content.
-
-    Looks for task node patterns like:
-    - P1_T1[EN-001: description]
-    - EN-001, EN-002, CC-001, etc.
-
-    Args:
-        mmd_content: Raw MMD file content.
-
-    Returns:
-        List of task IDs found.
-    """
-    import re
-
-    tasks = set()
-
-    # Pattern: Task IDs like EN-001, CC-001, etc. (2-3 letter prefix + hyphen + 3 digits)
-    task_id_pattern = r'\b([A-Z]{2,3}-\d{3})\b'
-    for match in re.finditer(task_id_pattern, mmd_content):
-        tasks.add(match.group(1))
-
-    return sorted(tasks)
-
-
-def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
+def _check_fences(plan_path: Path) -> dict:
     """Run UAT fence validation checks on a plan folder.
 
-    Four fences are checked:
+    Three fences are checked:
     1. Story Discovery: plan has affected_stories or no_stories_rationale
-    2. UAT Existence: MMD has UAT subgraph
-    3. Story Coverage: all affected stories have test_status != untested
-    4. Marker Coverage: all affected stories have @pytest.mark.story markers in test files
+    2. Story Coverage: all affected stories have test_status != untested
+    3. Marker Coverage: all affected stories have @pytest.mark.story markers in test files
 
     Args:
         plan_path: Path to the plan folder.
-        yaml_files: Unused (kept for signature compatibility). YAML scanning removed.
-        mmd_files: List of orchestration_*.mmd files found.
 
     Returns:
         Dict of fence name -> {status, message}.
@@ -1426,36 +1284,9 @@ def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
             "message": "No affected_stories and no no_stories_rationale in plan metadata",
         }
 
-    # --- Fence 2: UAT Existence ---
-    has_uat_subgraph = False
-    if mmd_files:
-        try:
-            mmd_content = mmd_files[0].read_text()
-            # Check for UAT subgraph or UAT-related nodes
-            if re.search(r'(?i)(UAT|User.?Acceptance)', mmd_content):
-                has_uat_subgraph = True
-        except IOError:
-            pass
-
-    if has_uat_subgraph:
-        results["Fence 2 (UAT Existence)"] = {
-            "status": "PASS",
-            "message": "UAT subgraph found in MMD",
-        }
-    elif not mmd_files:
-        results["Fence 2 (UAT Existence)"] = {
-            "status": "WARN",
-            "message": "No MMD file found (cannot check for UAT subgraph)",
-        }
-    else:
-        results["Fence 2 (UAT Existence)"] = {
-            "status": "FAIL",
-            "message": "No UAT subgraph found in MMD",
-        }
-
-    # --- Fence 3: Story Coverage ---
+    # --- Fence 2: Story Coverage ---
     if not affected_stories:
-        results["Fence 3 (Story Coverage)"] = {
+        results["Fence 2 (Story Coverage)"] = {
             "status": "WARN",
             "message": "No affected stories to check coverage for",
         }
@@ -1481,19 +1312,19 @@ def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
         total = len(affected_stories)
         if untested:
             pct = (tested / total) * 100 if total > 0 else 0
-            results["Fence 3 (Story Coverage)"] = {
+            results["Fence 2 (Story Coverage)"] = {
                 "status": "WARN",
                 "message": f"Coverage: {tested}/{total} ({pct:.0f}%). Untested: {', '.join(untested)}",
             }
         else:
-            results["Fence 3 (Story Coverage)"] = {
+            results["Fence 2 (Story Coverage)"] = {
                 "status": "PASS",
                 "message": f"All {total} stories tested",
             }
 
-    # --- Fence 4: Pytest Story Marker Coverage ---
+    # --- Fence 3: Pytest Story Marker Coverage ---
     if not affected_stories:
-        results["Fence 4 (Marker Coverage)"] = {
+        results["Fence 3 (Marker Coverage)"] = {
             "status": "WARN",
             "message": "No affected stories to check marker coverage for",
         }
@@ -1536,7 +1367,7 @@ def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
 
         if stories_without_markers:
             pct = (marked / total_affected) * 100 if total_affected > 0 else 0
-            results["Fence 4 (Marker Coverage)"] = {
+            results["Fence 3 (Marker Coverage)"] = {
                 "status": "WARN",
                 "message": (
                     f"Marker coverage: {marked}/{total_affected} ({pct:.0f}%). "
@@ -1544,7 +1375,7 @@ def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
                 ),
             }
         else:
-            results["Fence 4 (Marker Coverage)"] = {
+            results["Fence 3 (Marker Coverage)"] = {
                 "status": "PASS",
                 "message": f"All {total_affected} affected stories have @pytest.mark.story markers",
             }
@@ -1555,10 +1386,7 @@ def _check_fences(plan_path: Path, yaml_files: list, mmd_files: list) -> dict:
 def cmd_validate(args):
     """Validate epic structure and orchestration.
 
-    Enhanced with orchestration validation (EN-007):
-    - Checks for orchestration phases in TinyDB
-    - Falls back to checking orchestration_*.mmd file
-    - Reports validation results (PASS/FAIL with details)
+    Checks for orchestration phases in TinyDB and reports validation results.
     """
     from agenticcli.console import is_json_output, print_json
 
@@ -1574,7 +1402,6 @@ def cmd_validate(args):
         sys.exit(1)
 
     # Validate epic exists in TinyDB
-    yaml_files = []  # Unused; kept for _check_fences signature compatibility
     try:
         repo = _get_repo()
         plan_data_obj = repo.get_epic(plan_path.name)
@@ -1583,11 +1410,9 @@ def cmd_validate(args):
     except Exception as e:
         errors.append(f"Failed to query TinyDB: {e}")
 
-    # EN-007: Orchestration validation - check TinyDB phases first, then legacy MMD
-    mmd_files = list(plan_path.glob("orchestration_*.mmd"))
+    # Orchestration validation - check TinyDB phases
     orchestration_result = {"status": "PASS", "details": []}
 
-    # Check TinyDB phases (primary)
     has_tinydb_phases = False
     tinydb_phase_count = 0
     try:
@@ -1604,35 +1429,21 @@ def cmd_validate(args):
         orchestration_result["status"] = "PASS"
         orchestration_result["details"].append("Orchestration phases found in TinyDB")
         orchestration_result["details"].append(f"Phases found: {tinydb_phase_count}")
-    elif mmd_files:
-        # Legacy: MMD file still valid
-        mmd_file = mmd_files[0]
-        try:
-            mmd_content = mmd_file.read_text()
-            mmd_phases = _parse_mmd_phases(mmd_content)
-            mmd_tasks = _parse_mmd_tasks(mmd_content)
-            orchestration_result["details"].append(f"Orchestration file: {mmd_file.name}")
-            orchestration_result["details"].append(f"Phases found: {len(mmd_phases)}")
-            orchestration_result["details"].append(f"Tasks referenced: {len(mmd_tasks)}")
-        except IOError as e:
-            orchestration_result["status"] = "FAIL"
-            orchestration_result["details"].append(f"Cannot read MMD: {e}")
-            errors.append(f"Cannot read {mmd_file.name}: {e}")
     else:
         orchestration_result["status"] = "FAIL"
-        orchestration_result["details"].append("Missing: orchestration phases in TinyDB or MMD file")
+        orchestration_result["details"].append("Missing: orchestration phases in TinyDB")
         orchestration_result["details"].append("Action: Spawn orchestration-planning agent")
-        orchestration_result["details"].append("Command: agentic session orchestrate planning --epic <folder>")
+        orchestration_result["details"].append("Command: agentic orchestrate session plan --epic <folder>")
         if strict:
-            errors.append("Missing orchestration phases (TinyDB) or orchestration_*.mmd file")
+            errors.append("Missing orchestration phases in TinyDB")
         else:
-            warnings.append("Missing orchestration phases (TinyDB) or orchestration_*.mmd file")
+            warnings.append("Missing orchestration phases in TinyDB")
 
     # --check-fences: validate UAT fence compliance
     check_fences = getattr(args, "check_fences", False)
     fence_results = {}
     if check_fences:
-        fence_results = _check_fences(plan_path, yaml_files, mmd_files)
+        fence_results = _check_fences(plan_path)
         for fence_name, result in fence_results.items():
             if result["status"] == "FAIL":
                 errors.append(f"Fence {fence_name}: {result['message']}")
@@ -3406,8 +3217,7 @@ def cmd_replan(args, ctx=None):
     if not force and not is_json_output():
         print_warning(
             f"About to replan epic '{plan_path.name}':\n"
-            "  - All completed/in_progress ticket statuses will be reset to 'proposed'\n"
-            "  - The orchestration MMD file will be removed"
+            "  - All completed/in_progress ticket statuses will be reset to 'proposed'"
         )
         response = input("Confirm? [y/N] ")
         if response.lower() != "y":
@@ -3415,8 +3225,6 @@ def cmd_replan(args, ctx=None):
             sys.exit(0)
 
     tickets_reset = 0
-    mmd_removed = False
-    mmd_path = None
 
     try:
         repo = _get_repo()
@@ -3439,621 +3247,22 @@ def cmd_replan(args, ctx=None):
         print_error(f"Error resetting tickets: {e}")
         sys.exit(1)
 
-    # Remove orchestration MMD file
-    try:
-        mmd_files = list(plan_path.glob("orchestration_*.mmd"))
-        for mmd_file in mmd_files:
-            mmd_path = mmd_file
-            mmd_file.unlink()
-            mmd_removed = True
-    except Exception as e:
-        print_warning(f"Could not remove MMD file: {e}")
-
     if is_json_output():
         print_json({
             "epic": plan_path.name,
             "tickets_reset": tickets_reset,
-            "mmd_removed": mmd_removed,
-            "mmd_path": str(mmd_path) if mmd_path else None,
         })
     else:
         print_success(
             f"Replanned '{plan_path.name}': "
             f"{tickets_reset} ticket(s) reset to 'proposed'"
-            + (f", removed {mmd_path.name}" if mmd_removed else "")
         )
 
 
-def _determine_agent_type(phase_name: str, phase_id: str) -> str:
-    """Determine the agent type for a phase based on its name or ID.
 
-    Uses keyword matching to route phases to appropriate agents.
 
-    Args:
-        phase_name: The name of the phase.
-        phase_id: The ID of the phase.
 
-    Returns:
-        Agent type string matching a valid agent type (e.g., build-python, test-builder).
-    """
-    name_lower = phase_name.lower()
-    id_lower = phase_id.lower()
 
-    # Check for test-related phases
-    if any(kw in name_lower for kw in ["test", "testing", "validation", "verify"]):
-        return "test-builder"
-
-    # Check for documentation phases
-    if any(kw in name_lower for kw in ["doc", "documentation", "readme", "guide"]):
-        return "build-python"
-
-    # Check for cleanup/audit phases
-    if any(kw in name_lower for kw in ["cleanup", "clean", "audit", "archive"]):
-        return "planner-cleaning"
-
-    # Check for deploy-related phases
-    if any(kw in name_lower for kw in ["deploy", "release", "cicd", "ci/cd"]):
-        return "deploy-cicd"
-
-    # Default to build-python for build/implementation phases
-    return "build-python"
-
-
-def _generate_phase_subgraph(phase: dict, phase_index: int) -> list[str]:
-    """Generate MMD subgraph content for a single phase.
-
-    Args:
-        phase: Phase dictionary from YAML.
-        phase_index: Index of the phase (1-based).
-
-    Returns:
-        List of MMD lines for this phase subgraph.
-    """
-    phase_id = _get_phase_id(phase) or f"P{phase_index}"
-    phase_name = phase.get("name", f"Phase {phase_index}")
-    agent_type = _determine_agent_type(phase_name, phase_id)
-    tasks = phase.get("tickets", [])
-
-    # Create a safe subgraph ID (alphanumeric only)
-    sg_id = f"{phase_id.replace('-', '_')}_SG"
-
-    lines = []
-    lines.append(f'    subgraph {sg_id} ["{phase_name}"]')
-    lines.append(f"        Phase{phase_index}[Enter {phase_name}] --> SpawnAgent{phase_index}[Spawn {agent_type} Agent]")
-
-    # Add task nodes
-    prev_node = f"SpawnAgent{phase_index}"
-    for i, task in enumerate(tasks):
-        task_id = task.get("id") or task.get("task_id", f"T{i+1}")
-        task_name = task.get("name", task.get("description", "")[:40])
-        task_node = f"Task_{phase_id.replace('-', '_')}_{i+1}"
-        lines.append(f"        {prev_node} --> {task_node}[{task_id}: {task_name}]")
-        prev_node = task_node
-
-    lines.append(f"        {prev_node} --> Phase{phase_index}Complete[{phase_name} Complete]")
-    lines.append("    end")
-
-    return lines
-
-
-def _generate_test_fix_loop(phase_index: int, phase_name: str) -> list[str]:
-    """Generate MMD content for a test-fix loop phase.
-
-    Args:
-        phase_index: Index of the phase (1-based).
-        phase_name: Name of the testing phase.
-
-    Returns:
-        List of MMD lines for the test-fix loop.
-    """
-    lines = []
-    sg_id = f"Testing{phase_index}_SG"
-
-    lines.append(f'    subgraph {sg_id} ["{phase_name} (Test-Fix-Loop)"]')
-    lines.append(f"        Phase{phase_index}[Enter {phase_name}] --> SpawnTestBuilder{phase_index}[Spawn test-builder Agent]")
-    lines.append(f"        SpawnTestBuilder{phase_index} --> RunTests{phase_index}[Run Tests]")
-    lines.append(f"        RunTests{phase_index} --> TestsPassed{phase_index}{{Tests Passed?}}")
-    lines.append("")
-    lines.append("        %% Test-Fix Loop: retry path")
-    lines.append(f'        TestsPassed{phase_index} -- "No: Fix in Iteration" --> SpawnBuilderFix{phase_index}[Spawn builder Agent for Fixes]')
-    lines.append(f"        SpawnBuilderFix{phase_index} --> ApplyFixes{phase_index}[Apply Implementation Fixes]")
-    lines.append(f"        ApplyFixes{phase_index} --> RunTests{phase_index}")
-    lines.append("")
-    lines.append("        %% Success path")
-    lines.append(f'        TestsPassed{phase_index} -- "Yes: All Pass" --> Phase{phase_index}Complete[{phase_name} Complete]')
-    lines.append("    end")
-    lines.append("")
-    lines.append("    %% Escalation path for persistent test failures")
-    lines.append(f'    TestsPassed{phase_index} -- "No: Escalate" --> CheckIterations{phase_index}{{Max Iterations Reached?}}')
-    lines.append(f'    CheckIterations{phase_index} -- "No" --> SpawnTestBuilder{phase_index}')
-    lines.append(f'    CheckIterations{phase_index} -- "Yes" --> EscalateTests{phase_index}((Ask User: Test Failures Persist))')
-
-    return lines
-
-
-def cmd_orchestration_generate(args, ctx=None):
-    """Generate orchestration MMD from TinyDB phase data.
-
-    Reads phases from TinyDB and generates a Mermaid flowchart diagram with:
-    - Phase nodes from TinyDB
-    - Agent routing based on phase type
-    - Test-fix loop structure for test phases
-    - Feedback triggers
-    - CLI commands in comments
-
-    Args:
-        args: Parsed arguments with plan path, output, force flags.
-        ctx: Optional CLIContext.
-    """
-    from agenticcli.console import (
-        console,
-        is_json_output,
-        print_error,
-        print_json,
-        print_success,
-        print_warning,
-    )
-
-    plan_path = find_epic_folder(getattr(args, "plan", None))
-    output_name = getattr(args, "output", None)
-    force = getattr(args, "force", False)
-
-    # Collect all phases via PlanRepository (TinyDB-first)
-    all_phases = []
-    plan_name = None
-    plan_objective = None
-
-    try:
-        repo = _get_repo()
-        plan_data_obj = repo.get_epic(plan_path.name)
-        if (plan_data_obj and plan_data_obj.phases
-                and plan_data_obj.epic_folder == plan_path):
-            plan_name = plan_data_obj.name or ""
-            plan_objective = plan_data_obj.objective or ""
-            for phase in plan_data_obj.phases:
-                all_phases.append({
-                    "name": phase.name,
-                    "status": phase.status,
-                    "execution": phase.execution,
-                    "tickets": [
-                        {"id": t.id, "task_id": t.id, "name": t.name, "status": t.status, "agent": t.agent}
-                        for t in (phase.tasks or [])
-                    ],
-                })
-    except Exception:
-        pass
-
-    if not all_phases:
-        print_error("No phases found in TinyDB for this epic")
-        sys.exit(1)
-
-    # Determine output file name
-    if output_name:
-        mmd_file = plan_path / output_name
-    else:
-        # Use plan folder name for the MMD file
-        folder_name = plan_path.name
-        # Extract the short name part (after date prefix)
-        if "_" in folder_name:
-            short_name = folder_name.split("_", 1)[1]
-        else:
-            short_name = folder_name
-        mmd_file = plan_path / f"orchestration_{short_name}.mmd"
-
-    # Check if file exists
-    if mmd_file.exists() and not force:
-        print_error(f"MMD file already exists: {mmd_file.name}")
-        print("Use --force to overwrite", file=sys.stderr)
-        sys.exit(1)
-
-    # Build phase metadata for header comments
-    phase_names = []
-    agent_routing = []
-    phase_statuses = []
-
-    for phase in all_phases:
-        phase_id = _get_phase_id(phase) or f"P{len(phase_names)+1}"
-        phase_name = phase.get("name", f"Phase {len(phase_names)+1}")
-        phase_status = phase.get("status", "pending")
-        agent_type = _determine_agent_type(phase_name, phase_id)
-
-        phase_names.append(f"{phase_id}: {phase_name}")
-        agent_routing.append(f"{phase_id} -> {agent_type}")
-        phase_statuses.append(f"{phase_id}={phase_status}")
-
-    # Generate MMD content
-    mmd_lines = []
-
-    # Header with metadata comments
-    mmd_lines.append("%% =============================================================================")
-    mmd_lines.append(f"%% GOAL: {plan_objective or 'Execute plan tasks'}")
-    mmd_lines.append("%% =============================================================================")
-    mmd_lines.append(f"%% PROFILE: Orchestration-{plan_name or plan_path.name}")
-    mmd_lines.append(f"%% INPUT_SOURCE: TinyDB epic={plan_path.name}")
-    mmd_lines.append("%%")
-    mmd_lines.append("%% PHASES:")
-    for pn in phase_names:
-        mmd_lines.append(f"%%   {pn}")
-    mmd_lines.append("%%")
-    mmd_lines.append(f"%% AGENT_ROUTING: {', '.join(agent_routing)}")
-    mmd_lines.append(f"%% STATUS: {', '.join(phase_statuses)}")
-    mmd_lines.append("%% FEEDBACK_TRIGGERS: TEST_FAILURE -> test-fix-loop, BUILD_FAILURE -> escalate")
-    mmd_lines.append("%% =============================================================================")
-    mmd_lines.append("")
-
-    # Flowchart start
-    mmd_lines.append("flowchart LR")
-    mmd_lines.append("    Start((Start)) --> LoadInputs[Load Context Inputs]")
-    mmd_lines.append("")
-
-    # Input validation phase
-    mmd_lines.append("    %% ========================================")
-    mmd_lines.append("    %% INPUT VALIDATION PHASE")
-    mmd_lines.append("    %% ========================================")
-    mmd_lines.append("    LoadInputs --> ReviewInputs[Review All Listed Inputs]")
-    mmd_lines.append("    ReviewInputs --> CheckInputs{All Inputs Found?}")
-    mmd_lines.append("")
-    mmd_lines.append('    CheckInputs -- "No: Missing" --> SearchInputs[Search for Missing Inputs]')
-    mmd_lines.append("    SearchInputs --> Found{Found?}")
-    mmd_lines.append('    Found -- "Yes: Update paths" --> UpdateRefs[Update References]')
-    mmd_lines.append("    UpdateRefs --> ReviewInputs")
-    mmd_lines.append('    Found -- "No: Stop" --> AskUser((Ask User for Clarification))')
-    mmd_lines.append("")
-    mmd_lines.append('    CheckInputs -- "Yes: Verified" --> Phase1')
-    mmd_lines.append("")
-
-    # Generate phase subgraphs
-    for i, phase in enumerate(all_phases, 1):
-        phase_name = phase.get("name", f"Phase {i}")
-        phase_id = _get_phase_id(phase) or f"P{i}"
-
-        mmd_lines.append("    %% ========================================")
-        mmd_lines.append(f"    %% PHASE {i}: {phase_name.upper()}")
-        mmd_lines.append("    %% ========================================")
-
-        # Determine if this is a test phase (use test-fix loop)
-        is_test_phase = any(kw in phase_name.lower() for kw in ["test", "testing", "validation"])
-
-        if is_test_phase:
-            # Generate test-fix loop
-            agent_type = "test-builder"
-            mmd_lines.append(f"    %% AGENT_ROUTING: {agent_type} agent with test-fix loop")
-            mmd_lines.append("    %% LOOP_DEFINITION: test-fix-loop")
-            mmd_lines.append("    %% MAX_ITERATIONS: 5")
-            mmd_lines.append("")
-
-            loop_lines = _generate_test_fix_loop(i, phase_name)
-            mmd_lines.extend(loop_lines)
-        else:
-            # Generate standard phase subgraph
-            agent_type = _determine_agent_type(phase_name, phase_id)
-            tasks = phase.get("tickets", [])
-            task_ids = [t.get("id") or t.get("task_id", "") for t in tasks]
-
-            mmd_lines.append(f"    %% AGENT_ROUTING: {agent_type} agent")
-            if task_ids:
-                mmd_lines.append(f"    %% Tasks: {', '.join(filter(None, task_ids))}")
-            mmd_lines.append("")
-
-            sg_lines = _generate_phase_subgraph(phase, i)
-            mmd_lines.extend(sg_lines)
-
-        mmd_lines.append("")
-
-        # Connect to next phase
-        if i < len(all_phases):
-            mmd_lines.append(f"    Phase{i}Complete --> Phase{i+1}")
-        mmd_lines.append("")
-
-    # Validation and finalization
-    mmd_lines.append("    %% ========================================")
-    mmd_lines.append("    %% FINALIZATION")
-    mmd_lines.append("    %% ========================================")
-    last_phase = len(all_phases)
-    mmd_lines.append(f"    Phase{last_phase}Complete --> UpdatePlanStatus[Update Plan Status: completed]")
-    mmd_lines.append("    %% agentic epic move folder --plan <path>")
-    mmd_lines.append("    UpdatePlanStatus --> ArchivePlan[Archive to docs/epics/completed/]")
-    mmd_lines.append("    ArchivePlan --> End((End: Plan Complete))")
-    mmd_lines.append("")
-
-    # Styling
-    mmd_lines.append("    %% ========================================")
-    mmd_lines.append("    %% STYLING")
-    mmd_lines.append("    %% ========================================")
-    mmd_lines.append("    classDef entrypoint fill:#90EE90,stroke:#228B22")
-    mmd_lines.append("    classDef exitpoint fill:#FFB6C1,stroke:#DC143C")
-    mmd_lines.append("    classDef userpoint fill:#87CEEB,stroke:#4682B4")
-    mmd_lines.append("    classDef keyaction fill:#FFD700,stroke:#DAA520")
-    mmd_lines.append("    class Start entrypoint")
-    mmd_lines.append("    class End exitpoint")
-
-    # Collect user points (escalation nodes)
-    user_points = ["AskUser"]
-    for i in range(1, len(all_phases) + 1):
-        phase_name = all_phases[i-1].get("name", "")
-        if any(kw in phase_name.lower() for kw in ["test", "testing", "validation"]):
-            user_points.append(f"EscalateTests{i}")
-
-    if user_points:
-        mmd_lines.append(f"    class {','.join(user_points)} userpoint")
-
-    mmd_lines.append("")
-
-    # Write the MMD file
-    mmd_content = "\n".join(mmd_lines)
-
-    try:
-        mmd_file.write_text(mmd_content)
-    except IOError as e:
-        print_error(f"Failed to write {mmd_file}: {e}")
-        sys.exit(1)
-
-    if is_json_output():
-        print_json({
-            "output_file": str(mmd_file),
-            "plan_path": str(plan_path),
-            "phases_count": len(all_phases),
-            "phases": [_get_phase_id(p) or f"P{i+1}" for i, p in enumerate(all_phases)],
-        })
-    else:
-        print_success(f"Generated orchestration MMD: {mmd_file.name}")
-        console.print(f"[dim]Phases: {len(all_phases)}[/dim]")
-        console.print(f"[dim]Plan: {plan_path.name}[/dim]")
-
-
-def cmd_orchestration_validate(args, ctx=None):
-    """Validate orchestration MMD against TinyDB phase/ticket data.
-
-    Compares the orchestration_*.mmd file against TinyDB data to detect:
-    - Missing phases: TinyDB phases not mentioned in MMD
-    - Missing task IDs: Task IDs from TinyDB not referenced in MMD
-    - Invalid agent routing: Agent types not matching expected patterns
-
-    Args:
-        args: Parsed arguments with plan path and strict flag.
-        ctx: Optional CLIContext.
-
-    Exit codes:
-        0: Validation passed (no errors)
-        1: Validation failed (errors found, or warnings with --strict)
-        2: File not found or parsing error
-    """
-    import re
-
-    from agenticcli.console import (
-        console,
-        is_json_output,
-        print_error,
-        print_info,
-        print_json,
-        print_success,
-        print_warning,
-    )
-
-    plan_path = find_epic_folder(getattr(args, "plan", None))
-    strict = getattr(args, "strict", False)
-
-    # Find orchestration MMD file
-    mmd_files = list(plan_path.glob("orchestration_*.mmd"))
-    if not mmd_files:
-        print_error(f"No orchestration_*.mmd file found in {plan_path}")
-        sys.exit(2)
-
-    mmd_file = mmd_files[0]  # Use first match
-    if len(mmd_files) > 1:
-        print_warning(f"Multiple MMD files found, using: {mmd_file.name}")
-
-    # Read MMD content
-    try:
-        mmd_content = mmd_file.read_text()
-    except IOError as e:
-        print_error(f"Failed to read {mmd_file}: {e}")
-        sys.exit(2)
-
-    # Collect all phases and tasks via PlanRepository (TinyDB-first)
-    yaml_phases = []
-    yaml_tasks = []
-    yaml_phase_ids = set()
-
-    try:
-        repo = _get_repo()
-        plan_data_obj = repo.get_epic(plan_path.name)
-        if (plan_data_obj and plan_data_obj.phases
-                and plan_data_obj.epic_folder == plan_path):
-            source = "(via TinyDB)"
-            for idx, phase in enumerate(plan_data_obj.phases):
-                phase_name = phase.name or ""
-                phase_id = f"P{idx + 1}"
-                yaml_phases.append({
-                    "id": phase_id,
-                    "name": phase_name,
-                    "source": source,
-                })
-                yaml_phase_ids.add(phase_id)
-                for task in (phase.tasks or []):
-                    if task.id:
-                        yaml_tasks.append({
-                            "id": task.id,
-                            "phase_id": phase_id,
-                            "name": task.name or "",
-                            "source": source,
-                        })
-    except Exception:
-        pass
-
-    if not yaml_tasks:
-        print_error(f"No task data found in TinyDB for epic: {plan_path.name}")
-        sys.exit(2)
-
-    # Validation results
-    errors = []
-    warnings = []
-
-    # --- Validation 1: All YAML phases present in MMD ---
-    # Check for phase references in MMD (comments or nodes)
-    # Patterns to look for: "P1", "Phase 1", "P1:" in comments, phase_id in PHASES section
-    for phase in yaml_phases:
-        phase_id = phase["id"]
-        phase_name = phase["name"]
-
-        # Check various patterns that indicate phase is mentioned
-        patterns = [
-            rf"\b{re.escape(phase_id)}\b",  # Exact phase ID (e.g., P1)
-            rf"{re.escape(phase_id)}:",  # Phase ID with colon
-            rf"{re.escape(phase_id)} ->",  # Phase ID in routing
-            rf"Phase{phase_id.lstrip('P')}",  # Phase1, Phase2, etc.
-        ]
-
-        found = False
-        for pattern in patterns:
-            if re.search(pattern, mmd_content, re.IGNORECASE):
-                found = True
-                break
-
-        if not found:
-            errors.append({
-                "type": "missing_phase",
-                "phase_id": phase_id,
-                "phase_name": phase_name,
-                "source": phase["source"],
-                "message": f"Phase {phase_id} ({phase_name}) not found in MMD",
-            })
-
-    # --- Validation 2: Task IDs referenced in MMD ---
-    # Task IDs should appear in comments or node labels (e.g., CR-001, 01.1)
-    for task in yaml_tasks:
-        task_id = task["id"]
-
-        # Search for task ID in MMD
-        pattern = rf"\b{re.escape(task_id)}\b"
-        if not re.search(pattern, mmd_content):
-            warnings.append({
-                "type": "missing_task_id",
-                "task_id": task_id,
-                "phase_id": task["phase_id"],
-                "task_name": task["name"],
-                "source": task["source"],
-                "message": f"Task {task_id} not referenced in MMD",
-            })
-
-    # --- Validation 3: Agent routing valid ---
-    # Extract AGENT_ROUTING comments and validate format
-    # Uses dynamic agent type discovery from filesystem (with fallback)
-    valid_agent_types = get_valid_agent_types()
-
-    # Find AGENT_ROUTING lines in MMD (supports both %% and # comment styles)
-    routing_pattern = r"(?:%%|#)\s*AGENT_ROUTING:\s*(.+)"
-    routing_matches = re.findall(routing_pattern, mmd_content)
-
-    for routing_line in routing_matches:
-        # Parse individual routings (comma-separated)
-        # Supports both "Phase -> agent-type" and "Phase=agent-type" formats
-        routings = routing_line.split(",")
-        for routing in routings:
-            routing = routing.strip()
-            match = re.match(r"([\w-]+)\s*(?:->|=)\s*(\S+)", routing)
-            if match:
-                route_phase_id, agent_type = match.groups()
-                agent_type = agent_type.strip().lower()
-
-                # Check if agent type is valid (error, not warning - per plan-mmd-schema.yml)
-                if agent_type not in valid_agent_types:
-                    errors.append({
-                        "type": "invalid_agent_routing",
-                        "phase_id": route_phase_id,
-                        "agent_type": agent_type,
-                        "message": f"Unknown agent type '{agent_type}' for phase {route_phase_id}. Valid types: {', '.join(sorted(valid_agent_types))}",
-                    })
-
-                # Check if routed phase exists in YAML (if we have yaml_phase_ids)
-                if yaml_phase_ids and route_phase_id not in yaml_phase_ids:
-                    # Could be a generic reference, so just warn
-                    warnings.append({
-                        "type": "routing_unknown_phase",
-                        "phase_id": route_phase_id,
-                        "agent_type": agent_type,
-                        "message": f"Agent routing references unknown phase {route_phase_id}",
-                    })
-
-    # --- Validation 4: Check PHASES comment section matches YAML ---
-    # Extract PHASES from MMD comments and compare
-    phases_section_pattern = r"%%\s*PHASES:\s*\n((?:%%\s+.+\n)*)"
-    phases_section_match = re.search(phases_section_pattern, mmd_content)
-
-    if phases_section_match:
-        mmd_phases_text = phases_section_match.group(1)
-        # Extract phase IDs from the comment section
-        mmd_phase_ids = set()
-        for line in mmd_phases_text.split("\n"):
-            # Pattern: %%   P1: Phase name
-            phase_match = re.match(r"%%\s+([\w-]+):", line)
-            if phase_match:
-                mmd_phase_ids.add(phase_match.group(1))
-
-        # Check for phases in YAML not in MMD PHASES section
-        for phase_id in yaml_phase_ids:
-            if phase_id not in mmd_phase_ids:
-                errors.append({
-                    "type": "phase_not_in_header",
-                    "phase_id": phase_id,
-                    "message": f"Phase {phase_id} missing from MMD PHASES header section",
-                })
-
-    # --- Output results ---
-    total_errors = len(errors)
-    total_warnings = len(warnings)
-    validation_passed = total_errors == 0 and (not strict or total_warnings == 0)
-
-    if is_json_output():
-        print_json({
-            "plan_path": str(plan_path),
-            "mmd_file": mmd_file.name,
-            "data_source": "TinyDB",
-            "validation_passed": validation_passed,
-            "strict_mode": strict,
-            "yaml_phases_count": len(yaml_phases),
-            "yaml_tasks_count": len(yaml_tasks),
-            "errors": errors,
-            "warnings": warnings,
-            "summary": {
-                "errors": total_errors,
-                "warnings": total_warnings,
-            },
-        })
-    else:
-        print_info(f"Validating: {mmd_file.name}")
-        print_info("Against: TinyDB phase/ticket data")
-        console.print()
-
-        # Print errors
-        if errors:
-            console.print("[bold red]Errors:[/bold red]")
-            for err in errors:
-                console.print(f"  [red]ERROR[/red] [{err['type']}] {err['message']}")
-            console.print()
-
-        # Print warnings
-        if warnings:
-            console.print("[bold yellow]Warnings:[/bold yellow]")
-            for warn in warnings:
-                console.print(f"  [yellow]WARN[/yellow] [{warn['type']}] {warn['message']}")
-            console.print()
-
-        # Summary
-        console.print(f"[dim]YAML phases: {len(yaml_phases)}, tasks: {len(yaml_tasks)}[/dim]")
-
-        if validation_passed:
-            print_success(f"Validation passed ({total_errors} errors, {total_warnings} warnings)")
-        else:
-            if total_errors > 0:
-                print_error(f"Validation failed: {total_errors} errors, {total_warnings} warnings")
-            else:
-                print_warning(f"Validation failed (strict mode): {total_warnings} warnings")
-
-    # Exit code
-    if not validation_passed:
-        sys.exit(1)
-    sys.exit(0)
 
 
 def cmd_stories_list(args, ctx=None):

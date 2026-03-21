@@ -12,12 +12,15 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-PLN-001")
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for _slugify_objective
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-002")
 class TestSlugifyObjective:
     """Tests for branch name auto-generation from objective strings."""
 
@@ -181,6 +184,7 @@ def mock_claude_subprocess():
 
 
 @pytest.mark.usefixtures("mock_claude_subprocess")
+@pytest.mark.story("US-PLN-002")
 class TestPlanNew:
     """Tests for 'agentic plan new' command."""
 
@@ -365,6 +369,7 @@ class TestPlanNew:
 
 
 @pytest.mark.usefixtures("mock_claude_subprocess")
+@pytest.mark.story("US-PLN-002")
 class TestPlanNewErrorCases:
     """Error case tests for plan new."""
 
@@ -391,6 +396,7 @@ class TestPlanNewErrorCases:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-002")
 class TestBuildPlannerPrompt:
     """Tests for planner prompt template generation."""
 
@@ -523,6 +529,7 @@ class TestBuildPlannerPrompt:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-002")
 class TestPlanNewPlannerSpawn:
     """Tests for planner agent spawning in plan new."""
 
@@ -679,11 +686,12 @@ class TestPlanNewPlannerSpawn:
 
 
 @pytest.mark.usefixtures("mock_claude_subprocess")
+@pytest.mark.story("US-PLN-002")
 class TestPlanNewOrchestration:
     """Tests for orchestration generation in plan new (Phase 3)."""
 
-    def test_new_generates_orchestration_mmd(self, cli_runner, temp_repo, _isolate_tinydb):
-        """Test plan new completes and creates TinyDB records (MMD generation is best-effort)."""
+    def test_new_creates_tinydb_records(self, cli_runner, temp_repo, _isolate_tinydb):
+        """Test plan new completes and creates TinyDB records."""
         branch = "plan-orch-test"
         create_worktree_for_test(temp_repo, branch)
 
@@ -695,8 +703,7 @@ class TestPlanNewOrchestration:
         result = json.loads(stdout)
         plan_folder = Path(result["plan_folder"])
 
-        # Verify epic and tickets exist in TinyDB (MMD generation is best-effort
-        # and requires folder on disk; TinyDB is the canonical data store)
+        # Verify epic and tickets exist in TinyDB (the canonical data store)
         from agenticguidance.services.epic_repository import EpicRepository
         repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
         epic = repo.get_epic(plan_folder.name)
@@ -706,7 +713,6 @@ class TestPlanNewOrchestration:
     def test_new_validates_orchestration_after_generation(self, cli_runner, temp_repo, monkeypatch):
         """Test plan new succeeds even when orchestration validation is skipped (no disk folder).
 
-        Orchestration MMD generation/validation requires the epic folder on disk.
         Since folder creation was removed (TinyDB-only), the orchestration step
         is best-effort. cmd_new should still complete successfully.
         """
@@ -793,6 +799,7 @@ class TestPlanNewOrchestration:
 
 
 @pytest.mark.usefixtures("mock_claude_subprocess")
+@pytest.mark.story("US-PLN-002")
 class TestPlanNewBuilderSpawning:
     """Tests for builder spawning with --execute flag (Phase 4)."""
 
@@ -992,9 +999,8 @@ class TestPlanNewBuilderSpawning:
     def test_execute_proceeds_when_orchestration_skipped(self, cli_runner, temp_repo, monkeypatch):
         """Test --execute proceeds to spawn builders even when orchestration generation is skipped.
 
-        Since epic folders are no longer created on disk, orchestration MMD generation
-        fails gracefully. Builder spawning (--execute) proceeds based on TinyDB tickets,
-        not orchestration MMD status.
+        Since epic folders are no longer created on disk, orchestration generation
+        fails gracefully. Builder spawning (--execute) proceeds based on TinyDB tickets.
         """
         from unittest.mock import Mock, patch
 
@@ -1053,6 +1059,7 @@ class TestPlanNewBuilderSpawning:
 
 
 @pytest.mark.usefixtures("mock_claude_subprocess")
+@pytest.mark.story("US-PLN-002")
 class TestPlanNewIntegration:
     """Integration tests for full plan new flow (Phase 5)."""
 

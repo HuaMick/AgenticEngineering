@@ -360,7 +360,7 @@ def _find_agents_directory() -> Optional[Path]:
 
 
 def _load_agent_process(agent_dir: Path) -> Optional[dict]:
-    """Load process.yml or process.mmd from an agent directory.
+    """Load process.yml from an agent directory.
 
     Args:
         agent_dir: Path to agent directory.
@@ -544,14 +544,14 @@ Before taking action, run these commands to get your context:
 agentic context bootstrap --role {role_id} -j
 
 # 2. Get your current/next task details
-agentic plan task current -j
+agentic agent epic ticket current -j
 ```
 
 ## Execution Loop
 
-1. **Read** your current task from `agentic plan task current`
+1. **Read** your current task from `agentic agent epic ticket current`
 2. **Execute** the task following the guidance provided
-3. **Update** status when done: `agentic plan task update <task-id> --status completed`
+3. **Update** status when done: `agentic agent epic ticket update <task-id> --status completed`
 4. **Repeat** from step 1 until all tasks are complete
 
 ## CLI Commands Reference
@@ -559,8 +559,8 @@ agentic plan task current -j
 | Command | Purpose |
 |---------|---------|
 | `agentic context bootstrap --role {role_id}` | Get Seed Context |
-| `agentic plan task current` | Get current/next task |
-| `agentic plan task update <id> --status <s>` | Update task status |
+| `agentic agent epic ticket current` | Get current/next task |
+| `agentic agent epic ticket update <id> --status <s>` | Update task status |
 
 ## Role Boundary
 

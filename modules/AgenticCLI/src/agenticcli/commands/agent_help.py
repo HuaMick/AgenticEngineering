@@ -17,13 +17,12 @@ import yaml
 
 # All known agents - ordered by category
 KNOWN_AGENTS = [
-    # Planners (7)
+    # Planners (6)
     "planner-audit",
     "planner-build",
     "planner-cleaning",
     "planner-guidance",
     "planner-guidance-testing",
-    "planner-reviewer",
     "planner-test",
     # Test agents (7)
     "test-audit",
@@ -33,12 +32,10 @@ KNOWN_AGENTS = [
     "test-runner",
     "test-service",
     "test-user-simulator",
-    # Orchestration agents (3)
+    # Orchestration agents (2)
     "orchestration-executor",
-    "orchestration-friction",
     "orchestration-planning",
-    # Teacher agents (3)
-    "teacher-trace-diagnostics",
+    # Teacher agents (2)
     "teacher-update-assets",
     "teacher-update-guidance",
     # Build agents (2)
@@ -55,7 +52,6 @@ AGENT_CATEGORIES = {
     "planner-cleaning": "planner",
     "planner-guidance": "planner",
     "planner-guidance-testing": "planner",
-    "planner-reviewer": "planner",
     "planner-test": "planner",
     "test-audit": "test",
     "test-builder": "test",
@@ -65,9 +61,7 @@ AGENT_CATEGORIES = {
     "test-service": "test",
     "test-user-simulator": "test",
     "orchestration-executor": "orchestration",
-    "orchestration-friction": "orchestration",
     "orchestration-planning": "orchestration",
-    "teacher-trace-diagnostics": "teacher",
     "teacher-update-assets": "teacher",
     "teacher-update-guidance": "teacher",
     "build-flutter": "build",
@@ -216,32 +210,6 @@ def _load_agent_context(agent_name: str) -> dict:
         except (yaml.YAMLError, IOError):
             pass
 
-    # Load process.mmd for orchestration agents
-    process_mmd = agent_dir / "process.mmd"
-    if process_mmd.exists() and not context["process_steps"]:
-        try:
-            content = process_mmd.read_text()
-            # Extract GOAL from MMD comments
-            for line in content.split("\n"):
-                if line.strip().startswith("%% GOAL:"):
-                    context["role"] = context["role"] or line.replace("%% GOAL:", "").strip()
-                    break
-            # Extract node names as step summary
-            for line in content.split("\n"):
-                line = line.strip()
-                if "-->" in line and "[" in line:
-                    # Extract node label like [Load Context Inputs]
-                    start = line.find("[")
-                    end = line.find("]", start)
-                    if start > 0 and end > start:
-                        label = line[start+1:end]
-                        if len(label) < 60 and label not in context["process_steps"]:
-                            context["process_steps"].append(label)
-                if len(context["process_steps"]) >= 8:
-                    break
-        except IOError:
-            pass
-
     # Load inputs.yml
     inputs_path = agent_dir / "inputs.yml"
     if inputs_path.exists():
@@ -314,12 +282,12 @@ def _load_agent_context(agent_name: str) -> dict:
     # Build next commands
     context["next_commands"] = [
         f"agentic context bootstrap --role {agent_name} -j  # Get full seed context",
-        "agentic plan task current -j                       # Get current task details",
+        "agentic agent epic ticket current -j               # Get current task details",
     ]
 
     context["next_commands"].extend([
-        "agentic plan task update <id> --status completed   # Mark task done",
-        "agentic plan task list                             # Show all tasks",
+        "agentic agent epic ticket update <id> --status completed  # Mark task done",
+        "agentic agent epic ticket list                     # Show all tasks",
         "agentic entrypoint list                            # List available entrypoints",
         "agentic entrypoint execute <name>                  # Execute an entrypoint",
     ])
@@ -391,7 +359,7 @@ def _load_agent_bootstrap_context(agent_name: str) -> dict:
     context["agent_path"] = str(agent_dir.resolve())
 
     # Build guidance_files list with all agent files
-    for gf_name in ["manifest.yml", "process.yml", "process.mmd", "inputs.yml", "outputs.yml"]:
+    for gf_name in ["manifest.yml", "process.yml", "inputs.yml", "outputs.yml"]:
         gf_path = agent_dir / gf_name
         if gf_path.exists():
             context["guidance_files"].append({
@@ -457,42 +425,6 @@ def _load_agent_bootstrap_context(agent_name: str) -> dict:
                     if isinstance(guideline, str):
                         context["guidelines"].append(guideline[:300])
         except (yaml.YAMLError, IOError):
-            pass
-
-    # Load process.mmd for orchestration agents
-    process_mmd = agent_dir / "process.mmd"
-    if process_mmd.exists() and not context["process_steps"]:
-        # Set process_path to .mmd if no .yml was found
-        if not context["process_path"]:
-            context["process_path"] = str(process_mmd.resolve())
-        try:
-            content = process_mmd.read_text()
-            # Extract GOAL from MMD comments
-            for line in content.split("\n"):
-                if line.strip().startswith("%% GOAL:"):
-                    context["process_goal"] = line.replace("%% GOAL:", "").strip()
-                    context["role"] = context["role"] or context["process_goal"]
-                    break
-
-            # Extract node names as step summary with more context
-            step_num = 1
-            for line in content.split("\n"):
-                line = line.strip()
-                if "-->" in line and "[" in line:
-                    start = line.find("[")
-                    end = line.find("]", start)
-                    if start > 0 and end > start:
-                        label = line[start+1:end]
-                        if len(label) < 80:
-                            context["process_steps"].append({
-                                "number": step_num,
-                                "name": label,
-                                "description": "",
-                            })
-                            step_num += 1
-                if len(context["process_steps"]) >= 15:
-                    break
-        except IOError:
             pass
 
     # Load inputs.yml with FULL details and existence checks
@@ -616,13 +548,13 @@ def _load_agent_bootstrap_context(agent_name: str) -> dict:
     # Build next commands
     context["next_commands"] = [
         f"agentic context bootstrap --role {agent_name} -j  # Get full seed context (workflow integration)",
-        "agentic plan task current -j                       # Get current task details",
+        "agentic agent epic ticket current -j               # Get current task details",
     ]
 
     context["next_commands"].extend([
-        "agentic plan task update <id> --status in_progress # Start working on task",
-        "agentic plan task update <id> --status completed   # Mark task done",
-        "agentic plan task list                             # Show all tasks",
+        "agentic agent epic ticket update <id> --status in_progress  # Start working on task",
+        "agentic agent epic ticket update <id> --status completed     # Mark task done",
+        "agentic agent epic ticket list                     # Show all tasks",
         "agentic entrypoint list                            # List available entrypoints",
         "agentic entrypoint execute <name>                  # Execute an entrypoint",
     ])

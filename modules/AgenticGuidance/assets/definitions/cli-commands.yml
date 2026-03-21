@@ -262,11 +262,11 @@ cli_commands:
         -j: "Output in JSON format"
       note: "NOTE: Old path 'agentic context inputs ...' has been removed. Use 'agentic agent context inputs ...'."
 
-  session:
-    # Session management commands for spawning and managing Claude Code sessions
+  orchestrate:
+    # Orchestration commands for spawning and managing sessions and epics
     # Sessions enable parallel execution across multiple directories/contexts
-    spawn:
-      command: "agentic session spawn --role <agent-role> [--directory <path>] [--epic <epic-folder>] [--ticket <ticket-id>] [-b] [-j]"
+    session_spawn:
+      command: "agentic orchestrate session spawn --role <agent-role> [--directory <path>] [--epic <epic-folder>] [--ticket <ticket-id>] [-b] [-j]"
       description: |
         Spawn a new Claude Code session for parallel agent execution.
         Sessions run in isolated contexts and can target specific directories.
@@ -296,20 +296,20 @@ cli_commands:
         2: "Directory path does not exist"
         3: "Session spawn failed"
       examples:
-        - "agentic session spawn --role build-python -j"
-        - "agentic session spawn --role test-runner --directory /home/code/MyProject -b"
-        - "agentic session spawn --role orchestration-executor --epic 260127XX_feature --dangerously-skip-permissions"
+        - "agentic orchestrate session spawn --role build-python -j"
+        - "agentic orchestrate session spawn --role test-runner --directory /home/code/MyProject -b"
+        - "agentic orchestrate session spawn --role orchestration-executor --epic 260127XX_feature --dangerously-skip-permissions"
 
-    list:
-      command: "agentic session list [-j]"
+    session_list:
+      command: "agentic orchestrate session list [-j]"
       description: "List all active Claude Code sessions"
       parameters:
         -j: "Output in JSON format"
       json_output:
         sessions: "Array of session objects with id, role, status, started_at"
 
-    stop:
-      command: "agentic session stop <session-id>"
+    session_stop:
+      command: "agentic orchestrate session stop <session-id>"
       description: "Stop a running Claude Code session"
       parameters:
         session-id: "Session ID to stop (from session list or spawn output)"
@@ -318,8 +318,8 @@ cli_commands:
         1: "Session not found"
         2: "Session already stopped"
 
-    healthcheck:
-      command: "agentic session healthcheck <session-id> [-j]"
+    health:
+      command: "agentic orchestrate health <session-id> [-j]"
       description: "Get detailed health status of a specific session"
       parameters:
         session-id: "Session ID to query"
@@ -332,75 +332,38 @@ cli_commands:
         last_activity: "Last activity timestamp"
         output_summary: "Summary of session output/progress"
 
-  loop:
-    # Ralph Loop management commands for iterative agent workflows
-    # Loops are prompt-driven with configurable iteration limits
-    # NOTE: Loop commands are accessed via `agentic session orchestrate ralph <subcommand>`
-    start:
-      command: "agentic session orchestrate ralph start --prompt <text> [--entrypoint <name>] [--max-iterations <n>] [--completion-promise <text>] [-b] [-d <dir>] [-j]"
-      description: |
-        Start a Ralph Loop for iterative agent execution.
-        Loops are driven by a prompt (or entrypoint) rather than a loop-type positional arg.
-
-        The prompt defines the iteration goal, and --completion-promise sets the
-        exit condition text that must appear in output to terminate the loop.
+    debug_logs:
+      command: "agentic orchestrate debug logs <session-id>"
+      description: "Get session output logs"
       parameters:
-        --prompt/-p: "Direct prompt string for the loop"
-        --prompt-file/-f: "Read prompt from file instead of inline"
-        --entrypoint/-e: "Entrypoint reference (alternative to --prompt)"
-        --max-iterations/-m: "Maximum iterations before stopping (default: 10)"
-        --completion-promise/-c: "Text that must appear in output to complete loop"
-        --background/-b: "Run loop in background"
-        --directory/-d: "Working directory for the loop"
-        --output/-o: "Output file path"
-        --dangerously-skip-permissions: "Skip permission prompts"
-        -j: "Output in JSON format"
-      json_output:
-        loop_id: "Unique identifier for the loop instance"
-        max_iterations: "Maximum iterations configured"
-        status: "Loop status (running, pending)"
-      exit_codes:
-        0: "Success - loop started"
-        1: "Missing prompt/entrypoint"
-        3: "Loop start failed"
+        session-id: "Session ID to retrieve logs for"
+
+    debug_state:
+      command: "agentic orchestrate debug state <subcommand>"
+      description: "Session state inspection"
+      subcommands:
+        list: "List all session states"
+        show: "Show state for a specific session"
+        clear: "Clear session state"
+        cleanup: "Clean up stale session states"
+
+    session_plan:
+      command: "agentic orchestrate session plan [--plan <epic-folder>]"
+      description: "Create orchestration plan for an epic (spawns planner agents)"
+      parameters:
+        --plan: "Scope to a specific epic folder (optional, processes all unplanned epics if omitted)"
       examples:
-        - "agentic session orchestrate ralph start --prompt 'Run tests and fix failures' --max-iterations 5 -j"
-        - "agentic session orchestrate ralph start --entrypoint test-fix --completion-promise 'All tests pass' -b"
-        - "agentic session orchestrate ralph start --prompt-file loop_prompt.md -m 3 -d /home/code/MyProject"
+        - "agentic orchestrate session plan --plan docs/epics/live/260127XX_feature"
+        - "agentic orchestrate session plan"
 
-    stop:
-      command: "agentic session orchestrate ralph stop <loop-id> [--force]"
-      description: "Stop a running Ralph Loop"
+    session_implement:
+      command: "agentic orchestrate session implement [--plan <epic-folder>]"
+      description: "Execute phases for an epic via agents"
       parameters:
-        loop-id: "Loop ID to stop (required)"
-        --force/-f: "Force kill the loop"
-      exit_codes:
-        0: "Success - loop stopped"
-        1: "Loop not found"
-        2: "Loop already stopped"
-
-    status:
-      command: "agentic session orchestrate ralph status <loop-id> [-j]"
-      description: "Get status of a specific loop"
-      parameters:
-        loop-id: "Loop ID to check (required)"
-        -j: "Output in JSON format"
-      json_output:
-        loop_id: "Loop identifier"
-        status: "Current status (running, completed, failed, stopped)"
-        current_iteration: "Current iteration number"
-        max_iterations: "Maximum iterations allowed"
-
-    history:
-      command: "agentic session orchestrate ralph history [--active] [--status <filter>] [--limit <n>] [-j]"
-      description: "Show past loop executions"
-      parameters:
-        --active/-a: "Show only active loops"
-        --status/-s: "Filter by loop status"
-        --limit/-l: "Max loops to show (default: 20)"
-        -j: "Output in JSON format"
-      json_output:
-        entries: "Array of loop history entries with id, status, iterations, timestamps"
+        --plan: "Scope to a specific epic folder (optional, processes all ready epics if omitted)"
+      examples:
+        - "agentic orchestrate session implement --plan docs/epics/live/260127XX_feature"
+        - "agentic orchestrate session implement"
 
   entrypoint:
     # Entrypoint management commands for session context bootstrapping
@@ -522,4 +485,3 @@ usage_notes:
     - "JSON output (-j flag) available for machine-parseable responses"
     - "CCI context commands (agent context bootstrap, agent context role, etc.) provide deterministic context retrieval"
     - "Session commands enable parallel Claude Code execution across different directories"
-    - "Loop commands (agentic session orchestrate ralph start/stop/status/history) manage iterative workflows via prompt-driven iteration"
