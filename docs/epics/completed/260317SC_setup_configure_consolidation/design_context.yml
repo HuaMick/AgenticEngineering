@@ -1,0 +1,575 @@
+design_version: "1.0"
+epic: 260317SC_setup_configure_consolidation
+objective: |
+  Consolidate Setup & Configure command groups — eliminate redundant nesting,
+  merge duplicated preferences/config APIs, promote key commands to top-level,
+  and reclassify operational commands under their correct groups.
+
+affected_stories: [US-001, US-002, US-003, US-004, US-005, US-006, US-007]
+
+# =============================================================================
+# STORY-TO-PHASE TRACEABILITY MATRIX
+# =============================================================================
+story_to_phase_map:
+  forward:
+    US-001:  # Merged config command
+      - "Explore"                      # P1.3: catalog duplication
+      - "Build - Command Consolidation" # P2.1: merge prefs, P2.2: promote config
+      - "Test"                         # P4.1: test config, P4.2: test merged prefs
+      - "Cleanup"                      # P5.1: remove duplicate code
+      - "UAT"                          # P7.1: end-to-end config validation
+    US-002:  # Top-level health
+      - "Explore"                      # P1.2: map health references
+      - "Build - Command Consolidation" # P2.3: promote health, P2.8: setup health alias
+      - "Test"                         # P4.3: test health
+      - "UAT"                          # P7.1: end-to-end health validation
+    US-003:  # Session state
+      - "Build - Command Consolidation" # P2.4: move state to session
+      - "Test"                         # P4.4: test session state
+      - "UAT"                          # P7.1: end-to-end state validation
+    US-004:  # Backward compat
+      - "Explore"                      # P1.1: map configure references
+      - "Build - Command Consolidation" # P2.6: aliases, P2.7: prefs alias, P2.8: health alias
+      - "Test"                         # P4.5: test backward compat
+      - "Audit"                        # P6.1: audit backward compat
+      - "UAT"                          # P7.2: end-to-end backward compat
+    US-005:  # Updated guidance
+      - "Explore"                      # P1.4: identify guidance files
+      - "Build - Documentation"        # P3.1: CLAUDE.md, P3.2: guidance, P3.3: help text
+      - "Audit"                        # P6.3: audit doc consistency
+      - "UAT"                          # P7.3: help text discoverability
+    US-006:  # Eliminate duplicates
+      - "Explore"                      # P1.3: catalog duplication
+      - "Build - Command Consolidation" # P2.1: merge prefs (eliminate source of duplication)
+      - "Test"                         # P4.2: test merged prefs, P4.7: full regression
+      - "Cleanup"                      # P5.1: remove dead code, P5.2: clean imports, P5.3: update tests
+      - "Audit"                        # P6.2: audit test coverage
+    US-007:  # Config env
+      - "Build - Command Consolidation" # P2.5: keep env under config
+      - "Test"                         # P4.6: test config env
+      - "UAT"                          # P7.1: end-to-end env validation
+
+  reverse:
+    "Explore":                         [US-001, US-002, US-004, US-005, US-006]
+    "Build - Command Consolidation":   [US-001, US-002, US-003, US-004, US-006, US-007]
+    "Build - Documentation":           [US-005]
+    "Test":                            [US-001, US-002, US-003, US-004, US-006, US-007]
+    "Cleanup":                         [US-001, US-006]
+    "Audit":                           [US-004, US-005, US-006]
+    "UAT":                             [US-001, US-002, US-003, US-004, US-005, US-007]
+
+# =============================================================================
+# STORY-TO-TICKET DETAILED MAPPING
+# =============================================================================
+story_to_ticket_map:
+  US-001: [P1.3, P2.1, P2.2, P4.1, P4.2, P4.7, P5.1, P7.1, P7.3]
+  US-002: [P1.2, P2.3, P2.8, P4.3, P4.7, P7.1]
+  US-003: [P2.4, P4.4, P4.7, P7.1]
+  US-004: [P1.1, P2.6, P2.7, P2.8, P4.5, P6.1, P7.2]
+  US-005: [P1.4, P3.1, P3.2, P3.3, P6.3, P7.3]
+  US-006: [P1.3, P2.1, P4.2, P4.7, P5.1, P5.2, P5.3, P6.2]
+  US-007: [P2.5, P4.6, P4.7, P7.1]
+
+# =============================================================================
+# CURRENT STATE (as-is)
+# =============================================================================
+current_state:
+  command_hierarchy:
+    configure:
+      config: [show, init, get, set, list, delete, clear, show-path, set-path]
+      preferences: [get, set, list, delete, clear]
+      state: [list, show, clear, cleanup]
+      env: [show, export, run]
+    setup:
+      commands: [init, health, update, rebuild]
+    session:
+      commands: [spawn, list, stop, healthcheck, logs]
+      orchestrate: [planning, executing, ralph]
+
+  duplication_issues:
+    - description: "config.py contains cmd_prefs_get/set/list/delete (lines 255-376) that duplicate preferences.py"
+      files: [commands/config.py, commands/preferences.py]
+    - description: "config get/set/list/delete in CLI routes to config.py duplicate prefs functions, not preferences.py"
+      files: [cli.py]
+
+  misclassifications:
+    - command: "configure state"
+      current_parent: configure
+      reason: "State is a process registry (runtime), not configuration"
+      correct_parent: session
+    - command: "setup health"
+      current_parent: setup
+      reason: "Health is a diagnostic run anytime, not a one-time setup step"
+      correct_parent: top-level
+
+  nesting_depth_issue: |
+    `agentic configure config get <key>` is 4 levels deep.
+    Target: `agentic config get <key>` at 3 levels.
+
+# =============================================================================
+# TARGET STATE (to-be)
+# =============================================================================
+target_state:
+  command_hierarchy:
+    config: [show, get, set, list, delete, clear, init, show-path, set-path]
+    config_env: [show, export, run]
+    health: []  # top-level command, no subcommands
+    setup: [init, update, rebuild]  # health removed
+    session:
+      commands: [spawn, list, stop, healthcheck, logs]
+      state: [list, show, clear, cleanup]  # moved from configure
+      orchestrate: [planning, executing, ralph]
+
+  backward_compat_aliases:
+    - old_path: "agentic configure config *"
+      new_path: "agentic config *"
+      type: hidden_deprecated
+    - old_path: "agentic configure preferences *"
+      new_path: "agentic config *"
+      type: hidden_deprecated
+    - old_path: "agentic configure state *"
+      new_path: "agentic session state *"
+      type: hidden_deprecated
+    - old_path: "agentic configure env *"
+      new_path: "agentic config env *"
+      type: hidden_deprecated
+    - old_path: "agentic setup health"
+      new_path: "agentic health"
+      type: hidden_deprecated
+    - old_path: "agentic config prefs *"
+      new_path: "agentic config *"
+      type: hidden_alias
+
+# =============================================================================
+# PHASE SKELETON
+# =============================================================================
+phase_skeleton:
+  - phase_id: "Explore"
+    name: "Phase 1: Explore"
+    purpose: |
+      Map all references to configure and setup health across the codebase.
+      Catalog duplication between preferences.py and config.py.
+      Identify all agent guidance and CLAUDE.md sections needing updates.
+      This phase produces the complete impact map that all subsequent phases consume.
+    tickets: [P1.1, P1.2, P1.3, P1.4]
+    suggested_agent: explore
+    estimated_complexity: low
+    contracts:
+      produces:
+        - "Complete reference map of all configure/setup health paths in source"
+        - "Duplication catalog between preferences.py and config.py"
+        - "List of guidance/doc files needing old-path updates"
+      requires: []
+
+  - phase_id: "Build - Command Consolidation"
+    name: "Phase 2: Build - Command Consolidation"
+    purpose: |
+      Execute the core CLI restructuring: merge preferences into config,
+      promote config and health to top-level, move state under session,
+      and add backward compatibility aliases with deprecation warnings.
+    tickets: [P2.1, P2.2, P2.3, P2.4, P2.5, P2.6, P2.7, P2.8]
+    suggested_agent: build-python
+    estimated_complexity: high
+    execution_ordering:
+      - group: "Core merges (sequential)"
+        tickets: [P2.1, P2.2]
+        rationale: "P2.1 merges preferences into config; P2.2 promotes the merged config to top-level. Must be sequential."
+      - group: "Independent promotions (parallel-safe)"
+        tickets: [P2.3, P2.4, P2.5]
+        rationale: "Health promotion, state move, and env retention are independent of each other."
+      - group: "Backward compat (after all promotions)"
+        tickets: [P2.6, P2.7, P2.8]
+        rationale: "Aliases depend on new paths being registered first."
+    contracts:
+      produces:
+        - "Top-level config command group with merged preferences+config operations"
+        - "Top-level health command"
+        - "State commands under session group"
+        - "Env commands under config group"
+        - "Hidden deprecated aliases for all old paths"
+        - "All old Typer registrations removed or replaced"
+      requires:
+        - "Reference map from Explore phase (P1.1-P1.4 findings)"
+
+  - phase_id: "Build - Documentation"
+    name: "Phase 3: Build - Documentation"
+    purpose: |
+      Update all documentation, agent guidance, and CLI help text to reflect
+      the new command hierarchy. No code logic changes — text-only updates.
+    tickets: [P3.1, P3.2, P3.3]
+    suggested_agent: teacher-update-guidance
+    estimated_complexity: medium
+    contracts:
+      produces:
+        - "CLAUDE.md with all new command paths"
+        - "Agent guidance files with updated command references"
+        - "CLI help text reflecting new hierarchy"
+      requires:
+        - "New command registrations from Build - Command Consolidation (P2.x complete)"
+        - "Guidance/doc file list from Explore (P1.4 findings)"
+
+  - phase_id: "Test"
+    name: "Phase 4: Test"
+    purpose: |
+      Verify all new command paths work correctly, merged preferences operate
+      through config, backward compat aliases fire deprecation warnings,
+      and the full test suite passes without regressions.
+    tickets: [P4.1, P4.2, P4.3, P4.4, P4.5, P4.6, P4.7]
+    suggested_agent: test-runner
+    estimated_complexity: high
+    execution_ordering:
+      - group: "Feature tests (parallel-safe)"
+        tickets: [P4.1, P4.2, P4.3, P4.4, P4.5, P4.6]
+        rationale: "Each tests a different command path independently."
+      - group: "Regression suite (after feature tests)"
+        tickets: [P4.7]
+        rationale: "Full suite run after individual paths verified."
+    contracts:
+      produces:
+        - "Test results for all new command paths"
+        - "Test results for backward compat aliases"
+        - "Full regression suite results (pass/fail/skip counts)"
+      requires:
+        - "All Build - Command Consolidation tickets (P2.x) complete"
+        - "All Build - Documentation tickets (P3.x) complete"
+
+  - phase_id: "Cleanup"
+    name: "Phase 5: Cleanup"
+    purpose: |
+      Remove dead code: duplicate preferences handler functions from config.py,
+      unused imports and old registration code from cli.py, and migrate test
+      helpers from old command paths.
+    tickets: [P5.1, P5.2, P5.3]
+    suggested_agent: build-python
+    estimated_complexity: medium
+    contracts:
+      produces:
+        - "config.py without duplicate cmd_prefs_* functions"
+        - "cli.py without old configure_group registration remnants"
+        - "Test files using new command paths"
+      requires:
+        - "All Test tickets (P4.x) passing — cleanup must not break passing tests"
+
+  - phase_id: "Audit"
+    name: "Phase 6: Audit"
+    purpose: |
+      Systematic verification that backward compat works, test coverage is
+      complete, and documentation is consistent across all surfaces.
+    tickets: [P6.1, P6.2, P6.3]
+    suggested_agent: test-runner
+    estimated_complexity: low
+    contracts:
+      produces:
+        - "Backward compat audit report (all old paths resolve)"
+        - "Test coverage audit (all new paths have tests)"
+        - "Documentation consistency audit (all surfaces agree)"
+      requires:
+        - "Cleanup complete (P5.x) — audit the final state, not intermediate"
+
+  - phase_id: "UAT"
+    name: "Phase 7: UAT"
+    purpose: |
+      End-to-end user acceptance testing: exercise new commands as a user would,
+      verify old commands still work with deprecation warnings, and confirm
+      help text and discoverability are correct.
+    tickets: [P7.1, P7.2, P7.3]
+    suggested_agent: test-runner
+    estimated_complexity: low
+    contracts:
+      produces:
+        - "UAT pass/fail results for new command paths"
+        - "UAT pass/fail results for backward compat"
+        - "UAT pass/fail results for help text discoverability"
+      requires:
+        - "Audit complete (P6.x) — UAT is the final gate"
+
+# =============================================================================
+# CROSS-PHASE CONTRACTS
+# =============================================================================
+cross_phase_contracts:
+  - from_phase: "Explore"
+    to_phase: "Build - Command Consolidation"
+    contract:
+      outputs:
+        - "Reference map: all files importing/registering configure commands"
+        - "Duplication catalog: which config.py functions duplicate preferences.py"
+        - "Guidance file list: files needing path updates"
+      inputs:
+        - "Build needs reference map to know what to change"
+        - "Build needs duplication catalog to know what to merge vs delete"
+      validation: "P1.1-P1.4 tickets completed with findings documented"
+
+  - from_phase: "Explore"
+    to_phase: "Build - Documentation"
+    contract:
+      outputs:
+        - "List of guidance/doc files with old command path references (P1.4)"
+      inputs:
+        - "Documentation phase needs to know which files to update"
+      validation: "P1.4 ticket completed with file list"
+
+  - from_phase: "Build - Command Consolidation"
+    to_phase: "Build - Documentation"
+    contract:
+      outputs:
+        - "New command registration structure in cli.py"
+        - "Final command path mapping (old -> new)"
+      inputs:
+        - "Documentation must reference the actual new paths"
+      validation: |
+        agentic config --help shows merged commands
+        agentic health --help works
+        agentic session state --help works
+
+  - from_phase: "Build - Command Consolidation"
+    to_phase: "Test"
+    contract:
+      outputs:
+        - "All new command paths registered and functional"
+        - "All backward compat aliases registered"
+      inputs:
+        - "Tests exercise the actual registered commands"
+      validation: |
+        agentic config show exits 0
+        agentic health exits 0
+        agentic session state list exits 0
+        agentic configure config show exits 0 (backward compat)
+
+  - from_phase: "Build - Documentation"
+    to_phase: "Test"
+    contract:
+      outputs:
+        - "Updated help text in Typer command descriptions"
+      inputs:
+        - "Tests may verify help text content"
+      validation: "agentic --help shows config and health at top level"
+
+  - from_phase: "Test"
+    to_phase: "Cleanup"
+    contract:
+      outputs:
+        - "Passing test suite confirming new paths work"
+      inputs:
+        - "Cleanup must not break passing tests"
+      validation: "Full test suite passes before cleanup begins"
+
+  - from_phase: "Cleanup"
+    to_phase: "Audit"
+    contract:
+      outputs:
+        - "Clean codebase without dead code"
+        - "Tests updated to new paths"
+      inputs:
+        - "Audit examines final clean state"
+      validation: "Full test suite still passes after cleanup"
+
+  - from_phase: "Audit"
+    to_phase: "UAT"
+    contract:
+      outputs:
+        - "Audit reports confirming coverage and consistency"
+      inputs:
+        - "UAT is the final gate — only run after audit passes"
+      validation: "All three audit tickets (P6.1-P6.3) completed"
+
+# =============================================================================
+# TICKET-TO-PHASE TRACEABILITY MATRIX
+# =============================================================================
+ticket_to_phase_map:
+  forward:
+    P1.1: ["Explore"]
+    P1.2: ["Explore"]
+    P1.3: ["Explore"]
+    P1.4: ["Explore"]
+    P2.1: ["Build - Command Consolidation"]
+    P2.2: ["Build - Command Consolidation"]
+    P2.3: ["Build - Command Consolidation"]
+    P2.4: ["Build - Command Consolidation"]
+    P2.5: ["Build - Command Consolidation"]
+    P2.6: ["Build - Command Consolidation"]
+    P2.7: ["Build - Command Consolidation"]
+    P2.8: ["Build - Command Consolidation"]
+    P3.1: ["Build - Documentation"]
+    P3.2: ["Build - Documentation"]
+    P3.3: ["Build - Documentation"]
+    P4.1: ["Test"]
+    P4.2: ["Test"]
+    P4.3: ["Test"]
+    P4.4: ["Test"]
+    P4.5: ["Test"]
+    P4.6: ["Test"]
+    P4.7: ["Test"]
+    P5.1: ["Cleanup"]
+    P5.2: ["Cleanup"]
+    P5.3: ["Cleanup"]
+    P6.1: ["Audit"]
+    P6.2: ["Audit"]
+    P6.3: ["Audit"]
+    P7.1: ["UAT"]
+    P7.2: ["UAT"]
+    P7.3: ["UAT"]
+  reverse:
+    "Explore": [P1.1, P1.2, P1.3, P1.4]
+    "Build - Command Consolidation": [P2.1, P2.2, P2.3, P2.4, P2.5, P2.6, P2.7, P2.8]
+    "Build - Documentation": [P3.1, P3.2, P3.3]
+    "Test": [P4.1, P4.2, P4.3, P4.4, P4.5, P4.6, P4.7]
+    "Cleanup": [P5.1, P5.2, P5.3]
+    "Audit": [P6.1, P6.2, P6.3]
+    "UAT": [P7.1, P7.2, P7.3]
+
+# =============================================================================
+# PLANNER CONTEXT BLOCKS
+# =============================================================================
+planner_context_blocks:
+  planner-build:
+    scope: "Phases 2 and 5 (Build - Command Consolidation + Cleanup)"
+    phase_dependencies:
+      "Build - Command Consolidation":
+        depends_on: "Explore findings (P1.1-P1.4)"
+        produces: "New command registrations, merged handlers, backward compat aliases"
+      "Cleanup":
+        depends_on: "Test phase passing (P4.x)"
+        produces: "Dead code removed, tests migrated to new paths"
+    target_files:
+      primary:
+        - modules/AgenticCLI/src/agenticcli/cli.py
+        - modules/AgenticCLI/src/agenticcli/commands/config.py
+        - modules/AgenticCLI/src/agenticcli/commands/preferences.py
+        - modules/AgenticCLI/src/agenticcli/commands/health.py
+        - modules/AgenticCLI/src/agenticcli/commands/state.py
+        - modules/AgenticCLI/src/agenticcli/commands/env.py
+      secondary:
+        - modules/AgenticCLI/src/agenticcli/commands/setup.py
+    key_decisions:
+      merge_strategy: |
+        Use preferences.py as foundation (170 lines, clean ConfigWorkflow delegation).
+        Move UNIQUE functions from config.py into preferences.py: cmd_show, cmd_init,
+        cmd_show_path, cmd_set_path. DO NOT copy cmd_prefs_get/set/list/delete from
+        config.py — those are duplicates.
+      registration_pattern: |
+        Use app.add_typer() for top-level groups. Hidden aliases use same pattern
+        with hidden=True. Deprecation warnings via _stability_banner() or inline
+        warnings.warn() in command handlers.
+      ordering_constraint: |
+        P2.1 (merge prefs into config) MUST complete before P2.2 (promote config).
+        P2.3/P2.4/P2.5 are independent. P2.6/P2.7/P2.8 (aliases) after all promotions.
+    success_criteria:
+      - "agentic config show|get|set|list|delete|clear|init|show-path|set-path all work"
+      - "agentic health works as top-level command"
+      - "agentic session state list|show|clear|cleanup works"
+      - "agentic config env show|export|run works"
+      - "All backward compat aliases emit deprecation warnings"
+      - "No duplicate preference handler functions remain"
+
+  planner-test:
+    scope: "Phases 4, 6, and 7 (Test + Audit + UAT)"
+    phase_dependencies:
+      "Test":
+        depends_on: "Build phases (P2.x, P3.x) complete"
+        produces: "Per-command test results, regression suite results"
+      "Audit":
+        depends_on: "Cleanup (P5.x) complete"
+        produces: "Coverage audit, backward compat audit, doc consistency audit"
+      "UAT":
+        depends_on: "Audit (P6.x) complete"
+        produces: "End-to-end acceptance test results"
+    target_files:
+      - modules/AgenticCLI/tests/test_cli.py
+      - modules/AgenticCLI/tests/test_config_commands.py  # may need creation
+      - modules/AgenticCLI/tests/test_health_command.py   # may need creation
+    test_categories:
+      new_paths:
+        - "agentic config show/get/set/list/delete/clear/init/show-path/set-path"
+        - "agentic health"
+        - "agentic session state list/show/clear/cleanup"
+        - "agentic config env show/export/run"
+      backward_compat:
+        - "agentic configure config * -> deprecation warning + works"
+        - "agentic configure preferences * -> deprecation warning + works"
+        - "agentic configure state * -> deprecation warning + works"
+        - "agentic configure env * -> deprecation warning + works"
+        - "agentic setup health -> deprecation warning + works"
+      regression:
+        - "Full AgenticCLI test suite (expect ~1487 tests)"
+    success_criteria:
+      - "All new command paths return exit code 0 for valid inputs"
+      - "All backward compat aliases emit deprecation warnings"
+      - "Full test suite passes with 0 failures"
+      - "Help text at all levels shows correct command listings"
+
+  teacher-update-guidance:
+    scope: "Phase 3 (Build - Documentation)"
+    phase_dependencies:
+      "Build - Documentation":
+        depends_on: "Build - Command Consolidation (P2.x) complete"
+        produces: "Updated CLAUDE.md, agent guidance, CLI help text"
+    target_files:
+      - agents.md  # root-level agents documentation
+      - modules/AgenticCLI/src/agenticcli/commands/config.py   # help text in usage strings
+      - modules/AgenticCLI/src/agenticcli/commands/state.py    # help text in usage strings
+      - modules/AgenticCLI/src/agenticcli/commands/env.py      # help text in usage strings
+      - modules/AgenticCLI/src/agenticcli/commands/setup.py    # help text referencing old paths
+    replacement_map:
+      "agentic configure config": "agentic config"
+      "agentic configure preferences": "agentic config"
+      "agentic configure prefs": "agentic config"
+      "agentic configure state": "agentic session state"
+      "agentic configure env": "agentic config env"
+      "agentic setup health": "agentic health"
+    success_criteria:
+      - "No references to old command paths in CLAUDE.md"
+      - "No references to old command paths in agent guidance files"
+      - "CLI help text at all levels reflects new hierarchy"
+
+# =============================================================================
+# PHASE AGENT ASSIGNMENTS
+# =============================================================================
+phase_agent_assignments:
+  Explore:
+    agent: explore
+    rationale: "Read-only codebase scanning, no code changes"
+    max_turns: 50
+  "Build - Command Consolidation":
+    agent: build-python
+    rationale: "Core Python/Typer code changes in CLI registration and handlers"
+    max_turns: 200
+  "Build - Documentation":
+    agent: teacher-update-guidance
+    rationale: "Text-only updates to guidance, docs, and help strings"
+    max_turns: 100
+  Test:
+    agent: test-runner
+    rationale: "Test execution and validation"
+    max_turns: 150
+  Cleanup:
+    agent: build-python
+    rationale: "Code removal and refactoring"
+    max_turns: 100
+  Audit:
+    agent: test-runner
+    rationale: "Systematic verification and reporting"
+    max_turns: 100
+  UAT:
+    agent: test-runner
+    rationale: "End-to-end acceptance testing"
+    max_turns: 100
+
+# =============================================================================
+# RISK ASSESSMENT
+# =============================================================================
+risks:
+  - risk: "Backward compat aliases may not fire deprecation warnings correctly"
+    impact: medium
+    mitigation: "Test phase P4.5 specifically validates deprecation warnings"
+
+  - risk: "Merging preferences into config may break ConfigWorkflow delegation"
+    impact: high
+    mitigation: "P2.1 guidance specifies exact merge approach — use preferences.py as foundation"
+
+  - risk: "Test files may still reference old paths after cleanup"
+    impact: low
+    mitigation: "P5.3 specifically addresses test file migration; P6.2 audits coverage"
+
+  - risk: "Session state commands may conflict with existing session subcommands"
+    impact: medium
+    mitigation: "P2.4 guidance specifies registering state_app as subgroup of session_group"

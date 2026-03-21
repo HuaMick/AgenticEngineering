@@ -10,7 +10,7 @@ process becomes a zombie and a second call silently kills the parent process.
 Tracked as SDK issues #434, #515, #573, #1089.
 
 **Impact:** The planning loop spawns 5+ agents sequentially (explore,
-story-generator, planner-build, planner-reviewer, planner-orchestration).
+story-writer, planner-build, planner-reviewer, planner-orchestration).
 Calling `query()` in a loop inside a single process caused the loop to die
 after the first agent.
 
@@ -181,7 +181,7 @@ Seven utility modules support the SDK-in-Tmux system:
 | `sdk_pane_runner.py`| Entry point for tmux panes — one `query()` per process     |
 | `transport.py`      | Transport selection logic (sdk-tmux > tmux > subprocess)   |
 | `session_state.py`  | State lifecycle helpers (make, mark_running/completed/failed)|
-| `spawn_command.py`  | Builds normalized `agentic session spawn` CLI commands      |
+| `spawn_command.py`  | Builds normalized `agentic orchestrate session spawn` CLI commands |
 | `session_id.py`     | Session UUID generation and tmux session naming             |
 | `context_file.py`   | Writes compiled context (prompt) to `~/.agentic/sessions/` |
 | `retry.py`          | Centralized retry with exponential and static backoff       |
@@ -203,7 +203,7 @@ WARNING: Using SDK-direct path (AGENTIC_FORCE_SDK_DIRECT=1) — zombie bug risk
 
 **Usage:**
 ```bash
-AGENTIC_FORCE_SDK_DIRECT=1 agentic session orchestrate planning ...
+AGENTIC_FORCE_SDK_DIRECT=1 agentic orchestrate session plan ...
 ```
 
 ## Fallback Behavior

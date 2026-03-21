@@ -1,0 +1,380 @@
+design_version: "1.0"
+epic: 260317DP_decommission_plan_command
+objective: >
+  Fully remove the `agentic plan` command tree and `agentic agent plan` command
+  tree from the CLI. The plan commands were replaced by `agentic epic` but ~50+
+  dead Typer registrations remain in cli.py routing to a handle() that just errors.
+
+affected_stories: [US-001, US-002, US-003, US-004, US-005, US-006, US-007]
+stories_file: stories.yml
+
+# ============================================================================
+# Story-to-Phase Traceability Matrix
+# ============================================================================
+story_to_phase_map:
+  forward:
+    US-001: ["Build - Remove CLI Tree"]
+    US-002: ["Build - Remove CLI Tree"]
+    US-003: ["Build - Stub and Clean Plan Module"]
+    US-004: ["Build - Stub and Clean Plan Module", "Cleanup"]
+    US-005: ["Test - Fix Tests"]
+    US-006: ["Cleanup"]
+    US-007: ["UAT"]
+  reverse:
+    "Build - Remove CLI Tree": [US-001, US-002]
+    "Build - Stub and Clean Plan Module": [US-003, US-004]
+    "Test - Fix Tests": [US-005]
+    "Cleanup": [US-004, US-006]
+    "UAT": [US-007]
+  ticket_level:
+    US-001: [P1-01, P1-02, P1-03, P1-04]
+    US-002: [P1-01, P1-02, P1-03, P1-04]
+    US-003: [P2-01, P2-02, P2-04]
+    US-004: [P2-03, P2-04, P4-01, P4-02]
+    US-005: [P3-01, P3-02, P3-03, P3-04, P3-05]
+    US-006: [P4-02]
+    US-007: [P5-01, P5-02]
+
+# ============================================================================
+# Phase Skeleton
+# ============================================================================
+phase_skeleton:
+  - name: "Build - Remove CLI Tree"
+    purpose: >
+      Remove all plan-related Typer app definitions, command registrations, and
+      routing helpers from cli.py. This is the primary deletion phase, removing
+      ~850 lines of dead CLI wrappers across plan_app (lines 1064-1502),
+      agent_plan_app (lines 2027-2432), question_app error redirects (lines
+      831-903), plan_question_app (lines 1505-1566), and the "plan" entry in
+      PROJECT_COMMANDS.
+    tickets: [P1-01, P1-02, P1-03, P1-04]
+    suggested_agent: build-python
+    estimated_complexity: medium
+    ordering_notes: >
+      P1-01 and P1-02 can execute in parallel (different line ranges in cli.py).
+      P1-03 depends on P1-01/P1-02 (cleanup of _plan_handle references).
+      P1-04 depends on P1-01 (plan_question_app nested under plan_app).
+    contracts:
+      produces:
+        - "cli.py with plan_app, agent_plan_app, question_app redirects removed"
+        - "plan_question_app block removed"
+        - "'plan' removed from PROJECT_COMMANDS set"
+        - "_plan_handle function removed"
+      requires: []
+
+  - name: "Build - Stub and Clean Plan Module"
+    purpose: >
+      Reduce plan.py from a full command module to a minimal stub containing
+      only find_plan_folder() and has_pending_questions() as compatibility
+      stubs for the two production callers (question.py and session.py).
+      Remove handle(), get_valid_agent_types(), get_valid_loop_types(), and
+      all associated caches/constants/imports.
+    tickets: [P2-01, P2-02, P2-03, P2-04]
+    suggested_agent: build-python
+    estimated_complexity: low
+    ordering_notes: >
+      P2-01 through P2-03 can execute in any order (independent function changes).
+      P2-04 is a verification step that follows P2-01 through P2-03.
+      Phase 2 can run in PARALLEL with Phase 1 (different files: plan.py vs cli.py).
+    contracts:
+      produces:
+        - "plan.py reduced to two stub functions"
+        - "find_plan_folder() prints error to stderr and sys.exit(1)"
+        - "has_pending_questions() always returns False"
+        - "handle(), get_valid_agent_types(), get_valid_loop_types() removed"
+      requires: []
+
+  - name: "Test - Fix Tests"
+    purpose: >
+      Update test files that import from plan.py to work with the new stubs.
+      Fix or delete tests that tested removed plan CLI commands. Rename
+      misleadingly-named test_plan_* files that actually test epic functionality.
+    tickets: [P3-01, P3-02, P3-03, P3-04, P3-05]
+    suggested_agent: build-python (P3-01 to P3-03, P3-05), test-runner (P3-04)
+    estimated_complexity: high
+    ordering_notes: >
+      P3-01 through P3-03 depend on Phase 2 (plan.py stubs must exist).
+      P3-04 (full test run) depends on P3-01 through P3-03 and Phases 1+2.
+      P3-05 (renames) is independent and can run in parallel with P3-01-03.
+      CROSS-MODULE: P3-03 touches AgenticGuidance (test_plan_resurrection.py).
+    contracts:
+      produces:
+        - "All test files import from correct modules (epic.py or mocked plan.py)"
+        - "AgenticCLI test suite passes with 0 failures"
+        - "AgenticGuidance test suite passes with 0 failures"
+        - "5 test files renamed from test_plan_* to test_epic_*"
+      requires:
+        - "plan.py stubs in place (from Phase 2)"
+        - "CLI plan commands removed (from Phase 1)"
+
+  - name: "Cleanup"
+    purpose: >
+      Remove orphaned imports, dead variable references, and stale string
+      literals that reference removed plan commands across the entire codebase.
+      Update question.py and session.py references to removed commands.
+    tickets: [P4-01, P4-02]
+    suggested_agent: build-python
+    estimated_complexity: low
+    ordering_notes: >
+      Phase 4 depends on Phases 1+2+3 completing. P4-01 and P4-02 can run
+      in parallel (different scopes: cli.py internals vs codebase-wide scan).
+    contracts:
+      produces:
+        - "No orphaned references to plan_app, agent_plan_app, _plan_handle"
+        - "question.py subprocess call to 'agentic plan question dashboard' removed/updated"
+        - "session.py reference to 'agentic question list' updated"
+        - "Agent guidance files updated to remove 'agentic plan' references"
+      requires:
+        - "CLI tree removed (Phase 1)"
+        - "Plan module stubbed (Phase 2)"
+        - "Tests fixed (Phase 3)"
+
+  - name: "UAT"
+    purpose: >
+      End-to-end verification that epic commands are unaffected and plan
+      commands are fully removed. Validates the decommission is complete.
+    tickets: [P5-01, P5-02]
+    suggested_agent: test-runner
+    estimated_complexity: low
+    ordering_notes: >
+      Phase 5 is the final gate. Depends on ALL previous phases completing.
+      P5-01 and P5-02 can run in parallel.
+    contracts:
+      produces:
+        - "Verification report: all epic commands functional"
+        - "Verification report: all plan commands removed"
+      requires:
+        - "All previous phases complete"
+
+# ============================================================================
+# Cross-Phase Contracts
+# ============================================================================
+cross_phase_contracts:
+  - from_phase: "Build - Remove CLI Tree"
+    to_phase: "Test - Fix Tests"
+    contract:
+      outputs:
+        - "plan_app Typer removed from cli.py"
+        - "agent_plan_app Typer removed from cli.py"
+        - "_plan_handle function removed"
+      inputs:
+        - "Tests that tested plan CLI commands can now be deleted"
+      validation: "python3 -c 'from agenticcli.cli import app' succeeds"
+
+  - from_phase: "Build - Stub and Clean Plan Module"
+    to_phase: "Test - Fix Tests"
+    contract:
+      outputs:
+        - "plan.py contains only find_plan_folder (exits) and has_pending_questions (returns False)"
+        - "get_valid_agent_types and get_valid_loop_types removed from plan.py"
+      inputs:
+        - "Tests importing from plan.py need updating for stubs"
+        - "Tests importing get_valid_agent_types should redirect to epic.py"
+      validation: "python3 -c 'from agenticcli.commands.plan import find_plan_folder, has_pending_questions' succeeds"
+
+  - from_phase: "Test - Fix Tests"
+    to_phase: "Cleanup"
+    contract:
+      outputs:
+        - "All tests pass in both AgenticCLI and AgenticGuidance"
+        - "No import errors from plan.py references"
+      inputs:
+        - "Cleanup can safely remove remaining string references"
+      validation: "pytest modules/AgenticCLI/tests/ and pytest modules/AgenticGuidance/tests/ both pass"
+
+  - from_phase: "Cleanup"
+    to_phase: "UAT"
+    contract:
+      outputs:
+        - "No stale references to plan commands in codebase"
+        - "question.py and session.py references updated"
+      inputs:
+        - "UAT can verify complete removal"
+      validation: "grep -r 'agentic plan ' modules/ returns 0 matches (excluding test mocks and comments)"
+
+# ============================================================================
+# Planner Context Blocks
+# ============================================================================
+planner_context_blocks:
+  planner-build:
+    description: >
+      Domain planner context for the build phases. This epic has no
+      implementation design decisions — it is pure code deletion and stubbing.
+    phases: ["Build - Remove CLI Tree", "Build - Stub and Clean Plan Module"]
+    target_files:
+      - modules/AgenticCLI/src/agenticcli/cli.py
+      - modules/AgenticCLI/src/agenticcli/commands/plan.py
+    key_constraints:
+      - "Do NOT touch agentic epic commands or epic.py"
+      - "Do NOT touch agentic agent question commands (lines 3112-3175 in cli.py)"
+      - "Keep _ns() function — used by 194+ other command handlers"
+      - "plan.py stubs are TEMPORARY — just enough for import compatibility"
+      - "get_valid_agent_types() and get_valid_loop_types() already exist in epic.py — safe to remove from plan.py"
+      - "has_pending_questions() also exists in epic.py (line 247) — plan.py version is a dead stub"
+    risk_areas:
+      - "cli.py is 3200 lines — large file, careful with line ranges after deletions"
+      - "plan_question_app (P1-04) routes to _question_handle not _plan_handle — different from other plan commands"
+      - "question.py:47 has subprocess call to 'agentic plan question dashboard' — will break after P1-04"
+
+  planner-test:
+    description: >
+      Domain planner context for test fix and rename phases.
+    phases: ["Test - Fix Tests"]
+    target_files:
+      - modules/AgenticCLI/tests/test_plan_bootstrap.py
+      - modules/AgenticCLI/tests/test_plan_movement.py
+      - modules/AgenticCLI/tests/test_plan_orchestration.py
+      - modules/AgenticCLI/tests/test_plan_question_gate.py
+      - modules/AgenticCLI/tests/test_plan_new.py
+      - modules/AgenticCLI/tests/test_plan_new_uat.py
+      - modules/AgenticCLI/tests/test_plan_phase.py
+      - modules/AgenticCLI/tests/test_plan_nested_tasks.py
+      - modules/AgenticCLI/tests/integration/test_plan_path_arguments.py
+      - modules/AgenticGuidance/tests/test_plan_resurrection.py
+    key_constraints:
+      - "test_plan_bootstrap.py: KEEP — tests that cmd_bootstrap was removed"
+      - "test_plan_movement.py: KEEP but mock find_plan_folder (7 imports)"
+      - "test_plan_orchestration.py: DELETE tests importing from plan.py; evaluate rest"
+      - "test_plan_question_gate.py: Update 4 imports for stubbed has_pending_questions"
+      - "test_plan_resurrection.py: CROSS-MODULE (AgenticGuidance) — mock find_plan_folder"
+      - "test_plan_new.py, test_plan_new_uat.py, test_plan_phase.py, test_plan_nested_tasks.py, integration/test_plan_path_arguments.py: RENAME to test_epic_* (no plan.py imports)"
+    import_dependency_map:
+      find_plan_folder:
+        source: "agenticcli.commands.plan"
+        used_by:
+          - "test_plan_movement.py (7 locations)"
+          - "test_plan_resurrection.py (3 locations, AgenticGuidance)"
+        stub_behavior: "sys.exit(1) with error message"
+        test_fix: "Mock in tests to return expected paths"
+      get_valid_agent_types:
+        source: "agenticcli.commands.plan"
+        used_by:
+          - "test_plan_orchestration.py (multiple locations)"
+        redirect_to: "agenticcli.commands.epic.get_valid_agent_types"
+      get_valid_loop_types:
+        source: "agenticcli.commands.plan"
+        used_by:
+          - "test_plan_orchestration.py (multiple locations)"
+        redirect_to: "agenticcli.commands.epic.get_valid_loop_types"
+      has_pending_questions:
+        source: "agenticcli.commands.plan"
+        used_by:
+          - "test_plan_question_gate.py (4 locations)"
+        stub_behavior: "Always returns False"
+        test_fix: "Update assertions to expect False"
+      _FALLBACK_AGENT_TYPES:
+        source: "agenticcli.commands.plan"
+        used_by:
+          - "test_plan_orchestration.py"
+        action: "Remove imports; use epic.py equivalents or inline values"
+      _FALLBACK_LOOP_TYPES:
+        source: "agenticcli.commands.plan"
+        used_by:
+          - "test_plan_orchestration.py"
+        action: "Remove imports; use epic.py equivalents or inline values"
+
+  planner-cleaning:
+    description: >
+      Domain planner context for the cleanup phase.
+    phases: ["Cleanup"]
+    target_files:
+      - modules/AgenticCLI/src/agenticcli/cli.py
+      - modules/AgenticCLI/src/agenticcli/commands/question.py
+      - modules/AgenticCLI/src/agenticcli/commands/session.py
+    scan_patterns:
+      - "grep -r 'agentic plan' modules/ --include='*.py' --include='*.md' --include='*.yml'"
+      - "grep -r '_plan_handle\\|plan_app\\|agent_plan_app' modules/AgenticCLI/src/"
+      - "grep -r 'from.*plan import' modules/ --include='*.py'"
+    known_stale_references:
+      - "question.py:47 — subprocess call to 'agentic plan question dashboard'"
+      - "question.py:104 — 'agentic question <...>' usage string"
+      - "session.py:864 — 'agentic question list' reference"
+      - "Agent guidance files may reference 'agentic plan' commands"
+
+# ============================================================================
+# Architecture Decisions
+# ============================================================================
+architecture_decisions:
+  - id: AD-01
+    decision: "Stub plan.py rather than delete it"
+    rationale: >
+      question.py (line 210) and session.py (line 862) import from plan.py.
+      test_plan_resurrection.py in AgenticGuidance also imports find_plan_folder.
+      Deleting plan.py would require cross-module changes. Stubs preserve import
+      compatibility with minimal risk. These stubs are explicitly temporary.
+
+  - id: AD-02
+    decision: "Remove plan_question_app entirely rather than migrating"
+    rationale: >
+      The objective states the question module is known-broken and will be
+      revisited later. Migrating 4 user-facing question commands to a new
+      location is wasted effort. Agent-facing question commands under
+      agentic agent question remain intact.
+
+  - id: AD-03
+    decision: "Redirect get_valid_agent_types/get_valid_loop_types to epic.py"
+    rationale: >
+      Both functions are already duplicated in epic.py (lines 30 and 85).
+      The epic.py versions are the production copies used by active code
+      (epic.py:4028). Tests should import from epic.py, not plan.py.
+
+  - id: AD-04
+    decision: "Rename test files to test_epic_* prefix"
+    rationale: >
+      5 test files have misleading test_plan_* names but actually test epic
+      functionality with no plan.py imports. Renaming improves discoverability
+      and prevents future confusion during maintenance.
+
+  - id: AD-05
+    decision: "has_pending_questions stub returns False rather than redirecting to epic.py"
+    rationale: >
+      While epic.py has a working has_pending_questions() at line 247,
+      the objective explicitly says to stub it to return False. The question
+      system is known-broken and will be overhauled. Redirecting to epic.py
+      would preserve broken functionality rather than disabling it cleanly.
+
+# ============================================================================
+# Execution Dependencies (DAG)
+# ============================================================================
+execution_dag:
+  # Phase 1 and Phase 2 can run in parallel
+  parallel_group_1:
+    - "Build - Remove CLI Tree"
+    - "Build - Stub and Clean Plan Module"
+  # Phase 3 depends on both phases in group 1
+  sequential_after_group_1:
+    - "Test - Fix Tests"
+  # Phase 4 depends on Phase 3
+  sequential_after_tests:
+    - "Cleanup"
+  # Phase 5 depends on Phase 4
+  final:
+    - "UAT"
+
+# ============================================================================
+# Risk Register
+# ============================================================================
+risks:
+  - id: R-01
+    description: "cli.py line numbers shift after P1-01 deletions"
+    mitigation: >
+      P1-02 and P1-03 should use semantic markers (function names, Typer variable
+      names) rather than hard-coded line numbers. Ticket guidance should emphasize
+      finding definitions by name, not line number.
+    severity: medium
+
+  - id: R-02
+    description: "Cross-module test breakage in AgenticGuidance"
+    mitigation: >
+      P3-03 explicitly handles test_plan_resurrection.py in AgenticGuidance.
+      The build-python agent for P3-03 must be aware it touches a different
+      module than all other tickets.
+    severity: low
+
+  - id: R-03
+    description: "question.py subprocess call to removed command"
+    mitigation: >
+      P4-02 explicitly lists question.py:47 as a known stale reference.
+      Since question module is known-broken, removing the subprocess call
+      is safe. No functional regression.
+    severity: low

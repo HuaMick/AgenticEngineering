@@ -39,7 +39,7 @@ Orchestrator (planner_loop.py or orchestration.py)
   ├─ wait_for_session(session_id)  # polls state store
   │
   ├─ tmux new-session -d -s agent-story
-  │     └─ python3 sdk_pane_runner.py --role story-generator --epic <folder>
+  │     └─ python3 sdk_pane_runner.py --role story-writer --epic <folder>
   │           └─ SDK query() → streams to terminal + writes SessionResult to state store
   │
   └─ ... (sequential, one at a time)
