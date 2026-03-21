@@ -23,7 +23,7 @@ def handle(args, ctx=None):
     elif args.state_command == "cleanup":
         cmd_cleanup(args, ctx)
     else:
-        print("Usage: agentic configure state <list|show|clear|cleanup>", file=sys.stderr)
+        print("Usage: agentic orchestrate debug state <list|show|clear|cleanup>", file=sys.stderr)
         sys.exit(1)
 
 

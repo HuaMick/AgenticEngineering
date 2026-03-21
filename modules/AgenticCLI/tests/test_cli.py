@@ -1,6 +1,11 @@
 """Tests for main CLI functionality."""
 
+import pytest
 
+pytestmark = pytest.mark.story("US-SET-001")
+
+
+@pytest.mark.story("US-SET-001")
 class TestCLIHelp:
     """Tests for CLI help output."""
 
@@ -9,7 +14,7 @@ class TestCLIHelp:
         stdout, stderr, code = cli_runner(["--help"])
         assert "AgenticCLI" in stdout
         assert "setup" in stdout
-        assert "session" in stdout
+        assert "orchestrate" in stdout
         assert code == 0
 
     def test_no_args_shows_help(self, cli_runner):
@@ -19,6 +24,7 @@ class TestCLIHelp:
         assert code == 0
 
 
+@pytest.mark.story("US-SET-001")
 class TestSubcommandHelp:
     """Tests for subcommand help output."""
 
@@ -34,6 +40,7 @@ class TestSubcommandHelp:
 
 
 
+@pytest.mark.story("US-SET-001")
 class TestCLIVersion:
     """Tests for CLI version output."""
 
@@ -44,6 +51,7 @@ class TestCLIVersion:
         assert code == 0
 
 
+@pytest.mark.story("US-SET-001")
 class TestCommandAliases:
     """Tests for command aliases."""
 
@@ -60,6 +68,7 @@ class TestCommandAliases:
 
 
 
+@pytest.mark.story("US-SET-007")
 class TestFlagShortcuts:
     """Tests for flag shortcuts."""
 
@@ -79,7 +88,7 @@ class TestFlagShortcuts:
         assert result.returncode == 0
         # Check user-facing top-level groups are visible
         assert "setup" in result.stdout
-        assert "session" in result.stdout
+        assert "orchestrate" in result.stdout
         assert "epic" in result.stdout
         # Check -j flag is documented
         assert "-j" in result.stdout or "--json" in result.stdout

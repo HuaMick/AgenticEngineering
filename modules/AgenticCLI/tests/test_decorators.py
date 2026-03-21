@@ -1,5 +1,7 @@
 """Tests for stability decorators and command metadata."""
 
+import pytest
+
 from agenticcli.decorators import (
     COMMAND_STABILITY,
     STABILITY_COLORS,
@@ -9,6 +11,8 @@ from agenticcli.decorators import (
     get_stability_banner_text,
     get_stability_color,
 )
+
+pytestmark = pytest.mark.story("US-SET-001")
 
 
 class TestStabilityLevels:

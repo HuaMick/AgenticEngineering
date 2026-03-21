@@ -2,7 +2,12 @@
 
 import json
 
+import pytest
 
+pytestmark = pytest.mark.story("US-SET-004")
+
+
+@pytest.mark.story("US-SET-004")
 class TestHealthCommand:
     """Tests for agentic health command."""
 

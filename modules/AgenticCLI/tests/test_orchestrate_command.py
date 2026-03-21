@@ -9,12 +9,15 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
+pytestmark = pytest.mark.story("US-PLN-053")
+
 
 # ---------------------------------------------------------------------------
 # cmd_orchestrate planning action tests
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-053")
 class TestOrchestratePlanningAction:
     """Test orchestrate command with planning action."""
 
@@ -129,8 +132,8 @@ class TestOrchestratePlanningAction:
         mock_popen.assert_called_once()
         cmd_args = mock_popen.call_args[0][0]
         assert "orchestrate" in cmd_args
-        # New format uses positional "planning" not --planning-loop
-        assert "planning" in cmd_args
+        # New format: orchestrate session plan
+        assert "plan" in cmd_args
         assert "--max-iterations" in cmd_args
         assert "5" in cmd_args
         assert "--plan" in cmd_args

@@ -17,7 +17,7 @@ import yaml
 
 from tests.conftest import populate_tinydb_from_yaml
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-007")]
 
 
 @pytest.fixture
@@ -99,6 +99,7 @@ def _get_phases_from_tinydb(db_path, epic_folder_name):
     return []
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseAddToEmptyPlan:
     """Tests for adding phases to an empty plan."""
 
@@ -138,6 +139,7 @@ class TestPhaseAddToEmptyPlan:
         assert phases[0].description == "Initialize project dependencies"
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseAddToExistingPhases:
     """Tests for adding phases to plans with existing phases."""
 
@@ -202,6 +204,7 @@ class TestPhaseAddToExistingPhases:
         assert "Nested Phase 2" in phase_names
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseListEmpty:
     """Tests for listing phases when plan has no phases."""
 
@@ -215,6 +218,7 @@ class TestPhaseListEmpty:
         assert "No phases" in stdout or "0 phases" in stdout.lower()
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseListWithPhases:
     """Tests for listing phases when plan has phases."""
 
@@ -266,6 +270,7 @@ class TestPhaseListWithPhases:
         assert "Nested Phase 1" in stdout
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseUpdateStatus:
     """Tests for updating phase status."""
 
@@ -336,6 +341,7 @@ class TestPhaseUpdateStatus:
         assert phase_p1.status == "pending"
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseUpdateName:
     """Tests for updating phase name."""
 
@@ -375,6 +381,7 @@ class TestPhaseUpdateName:
         assert code == 0
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseUpdateNotFound:
     """Tests for error handling when phase is not found."""
 
@@ -428,6 +435,7 @@ class TestPhaseUpdateNotFound:
         assert "not found" in stderr.lower() or "No phases" in stderr
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseUpdateNestedStructure:
     """Tests for updating phases in nested 'plan' key structure."""
 
@@ -469,6 +477,7 @@ class TestPhaseUpdateNestedStructure:
         assert code == 0
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseAddEdgeCases:
     """Edge case tests for phase add command."""
 
@@ -519,6 +528,7 @@ class TestPhaseAddEdgeCases:
         assert "plan_path" in result
 
 
+@pytest.mark.story("US-PLN-015")
 class TestPhaseListEdgeCases:
     """Edge case tests for phase list command."""
 

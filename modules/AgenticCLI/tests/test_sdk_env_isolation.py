@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-SES-001")]
 
 
 # ── Tests: _clean_claude_env context manager ─────────────────────────────

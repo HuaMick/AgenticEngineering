@@ -1,6 +1,9 @@
 """Tests for config commands."""
 
+import pytest
 import yaml
+
+pytestmark = pytest.mark.story("US-SET-005")
 
 
 class TestConfigShow:

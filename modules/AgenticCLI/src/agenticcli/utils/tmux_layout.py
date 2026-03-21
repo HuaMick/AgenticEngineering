@@ -192,7 +192,7 @@ def _create_new_session_layout(
 
         if not skip_commands:
             # Start the auto-refreshing session list in the status pane
-            session_list_cmd = ["watch", "-n", str(dashboard_refresh), "agentic", "session", "list"]
+            session_list_cmd = ["watch", "-n", str(dashboard_refresh), "agentic", "orchestrate", "session", "list"]
             subprocess.run(
                 ["tmux", "send-keys", "-t", status_pane_id, _shell_escape_cmd(session_list_cmd), "Enter"],
                 check=True,
@@ -325,7 +325,7 @@ def _create_inplace_layout(
 
         if not skip_commands:
             # Start the auto-refreshing session list in the status pane
-            session_list_cmd = ["watch", "-n", str(dashboard_refresh), "agentic", "session", "list"]
+            session_list_cmd = ["watch", "-n", str(dashboard_refresh), "agentic", "orchestrate", "session", "list"]
             subprocess.run(
                 ["tmux", "send-keys", "-t", status_pane_id, _shell_escape_cmd(session_list_cmd), "Enter"],
                 check=True,

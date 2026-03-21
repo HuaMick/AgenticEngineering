@@ -18,6 +18,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-001")
+
 
 # ── Fixtures: mock SDK message types ───────────────────────────────────
 
@@ -108,6 +110,7 @@ def _run(coro):
 
 # ── Tests: run_agent (async, tested via asyncio.run) ───────────────────
 
+@pytest.mark.story("US-SES-001")
 class TestRunAgent:
     """Tests for the async run_agent function."""
 
@@ -199,6 +202,7 @@ class TestRunAgent:
 
 # ── Tests: run_agent_sync ──────────────────────────────────────────────
 
+@pytest.mark.story("US-SES-001")
 class TestRunAgentSync:
     """Tests for the synchronous run_agent_sync wrapper."""
 
@@ -224,6 +228,7 @@ class TestRunAgentSync:
 
 # ── Tests: SessionResult ───────────────────────────────────────────────
 
+@pytest.mark.story("US-SES-001")
 class TestSessionResult:
     """Tests for SessionResult dataclass."""
 
@@ -256,6 +261,7 @@ class TestSessionResult:
 
 # ── Tests: SDK_008 — Timeout ───────────────────────────────────────────
 
+@pytest.mark.story("US-SES-001")
 class TestRunAgentTimeout:
     """Tests for timeout enforcement in run_agent() (SDK_008)."""
 
@@ -319,6 +325,7 @@ class TestRunAgentTimeout:
 
 # ── Tests: SDK_009 — Stall Detection ──────────────────────────────────
 
+@pytest.mark.story("US-SES-001")
 class TestRunAgentStallDetection:
     """Tests for stall/empty-result detection in run_agent() (SDK_009)."""
 
@@ -373,6 +380,7 @@ class TestRunAgentStallDetection:
 
 # ── Tests: SDK_016 — Tool Allow-Lists ─────────────────────────────────
 
+@pytest.mark.story("US-SES-001")
 class TestRoleToolAllowlist:
     """Tests for role-based tool allow-lists (SDK_016)."""
 
@@ -406,15 +414,6 @@ class TestRoleToolAllowlist:
         assert "Edit" in tools
         assert "Write" in tools
         assert "Bash" in tools
-
-    def test_reviewer_role_has_read_only_tools(self):
-        """planner-reviewer gets read-only tools (no Write or Edit)."""
-        from agenticcli.utils.sdk_runner import get_allowed_tools_for_role
-
-        tools = get_allowed_tools_for_role("planner-reviewer")
-        assert "Read" in tools
-        assert "Edit" not in tools
-        assert "Write" not in tools
 
     def test_unknown_role_returns_none(self):
         """Unknown role returns None (all tools allowed by default)."""

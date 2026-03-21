@@ -81,10 +81,6 @@ agentic agent plan phase add --id <id> --name <name> [--description <desc>] [--p
 agentic agent plan phase list [--plan <path>]
 agentic agent plan phase update <phase-id> [--status <status>] [--name <name>] [--plan <path>]
 
-# Orchestration (MMD workflow diagrams)
-agentic agent plan orchestration generate [--plan <path>] [--output <file>] [--force]
-agentic agent plan orchestration validate [--plan <path>] [--strict]
-
 # User stories management
 agentic agent plan stories list [--plan <path>]
 agentic agent plan stories test [--plan <path>] [--output <file>] [--format yaml|json]
@@ -114,7 +110,7 @@ agentic agent plan task list --verbose               # Show full ticket details
 agentic agent plan task current
 agentic agent plan task current --plan docs/epics/live/260128AB_feature
 
-# Mark a ticket as in_progress (requires orchestration_*.mmd to exist)
+# Mark a ticket as in_progress
 agentic agent plan task start build_01_001
 agentic agent plan task start build_01_001 --plan docs/epics/live/260128AB_feature
 
@@ -152,8 +148,6 @@ Returns the first `in_progress` ticket, or the first `pending` ticket if none ar
 **Options for `agent plan task start`:**
 - `task_id` (required): Ticket ID to mark as in_progress
 - `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
-
-Note: Requires an `orchestration_*.mmd` file to exist in the epic folder. Epics must be orchestrated before ticket execution begins.
 
 **Options for `agent plan task complete`:**
 - `task_id` (required): Ticket ID to mark as completed
@@ -213,39 +207,6 @@ agentic agent plan phase update P1 --name "Updated Phase Name" --status complete
 - `--name`, `-n`: New name for the phase
 - `--plan`, `-p`: Path to epic folder
 
-#### Orchestration Management
-
-Generate and validate Mermaid flowchart diagrams that define the execution order of epic phases:
-
-```bash
-# Generate orchestration MMD from epic YAML files
-agentic agent plan orchestration generate --plan docs/epics/live/260128AB_feature
-
-# Generate with custom output filename
-agentic agent plan orchestration generate --output orchestration_custom.mmd --force
-
-# Validate that MMD matches epic YAML structure
-agentic agent plan orchestration validate --plan docs/epics/live/260128AB_feature
-
-# Strict validation: treat warnings as errors
-agentic agent plan orchestration validate --strict
-```
-
-**Options for `agent plan orchestration generate`:**
-- `--plan`, `-p`: Path to epic folder (auto-detected if omitted)
-- `--output`, `-o`: Output filename (default: `orchestration_<plan_name>.mmd`)
-- `--force`, `-f`: Overwrite existing MMD file if present
-
-**Options for `agent plan orchestration validate`:**
-- `--plan`, `-p`: Path to epic folder
-- `--strict`: Treat warnings as errors (exit code 1 on warnings)
-
-The generated MMD includes:
-- Phase nodes from YAML with agent routing
-- Test-fix loop structure for test phases
-- Feedback triggers for failures
-- CLI commands in comments for agent execution
-
 #### User Stories Management
 
 List and test user stories defined in epic YAML files:
@@ -269,81 +230,6 @@ agentic agent plan stories test --output tests/story_tests.json --format json
 - `--plan`, `-p`: Path to epic folder
 - `--output`, `-o`: Output file path (default: stdout)
 - `--format`, `-f`: Output format - `yaml` (default) or `json`
-
-### langsmith (ls) - LangSmith Integration
-
-Query LangSmith traces, runs, and project statistics with advanced forensic analysis capabilities.
-
-```bash
-# List recent runs
-agentic langsmith runs [--project <name>] [--limit <n>] [--type llm|chain|tool|retriever] [--error]
-agentic ls runs -p my-project -l 50
-
-# Get details for a specific run (enhanced with hierarchy and timing)
-agentic langsmith run <run-id> [--url] [--tree] [--full] [--format json|yaml|table] [--timing]
-agentic ls run abc123 --url --tree --timing       # Show hierarchy and timing breakdown
-agentic ls run abc123 --full --format yaml        # Full inputs/outputs in YAML
-agentic ls run abc123 --tree                      # Show parent/child hierarchy
-
-# List all projects
-agentic langsmith projects [--detail]
-agentic ls projects -d
-
-# Show project statistics
-agentic langsmith stats --project <name> [--since YYYY-MM-DD] [--until YYYY-MM-DD]
-agentic ls stats -p my-project --since 2026-01-01
-
-# Analyze friction patterns (enhanced with export and grouping)
-agentic langsmith friction --project <name> [--sessions <n>] [--since YYYY-MM-DD] [--limit <n>] [--lookback-days <n>] [--min-affected <n>] [--recommend] [--validate|--no-validate] [--export json|markdown|yaml] [--group-by severity|type|session] [--json]
-agentic ls friction -p my-project -r                                    # With recommendations
-agentic ls friction -p my-project --sessions 5 --min-affected 2         # Session-based filtering
-agentic ls friction -p my-project --export markdown --group-by severity # Export to markdown
-agentic ls friction -p my-project --export yaml --group-by type         # Export grouped by type
-
-# List recent sessions with run counts
-agentic langsmith sessions --project <name> [--limit <n>] [--since YYYY-MM-DD] [--json]
-agentic ls sessions -p my-project -l 20
-
-# Analyze a specific session (NEW)
-agentic langsmith session-analyze <session-id> [--project <name>] [--export json|csv|markdown]
-agentic ls session-analyze abc123 --export csv     # Export session timeline to CSV
-agentic ls session-analyze abc123 --export markdown # Export session report to markdown
-agentic ls session-analyze abc123 -p my-project   # Analyze with project validation
-
-# Search runs by pattern (NEW)
-agentic langsmith batch-search <pattern> --project <name> [--field inputs|outputs|error|all] [--type llm|chain|tool|retriever] [--status success|error|running] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--limit <n>] [--group-by session|type|status|none] [--export json|csv]
-agentic ls batch-search "timeout.*exceeded" -p my-project                        # Search for timeout errors
-agentic ls batch-search "retry" -p my-project --field error --export csv         # Search errors, export CSV
-agentic ls batch-search "user_id" -p my-project --field inputs --group-by session # Group by session
-```
-
-**Enhanced Features:**
-
-- **Run Inspection**: `--tree` shows parent/child hierarchy, `--full` displays complete inputs/outputs, `--timing` provides detailed timing breakdown
-- **Friction Analysis**: Export to markdown/YAML/JSON, group patterns by severity/type/session for better organization
-- **Session Analysis**: Dedicated command to analyze individual sessions with timeline and statistics
-- **Batch Search**: Regex-based search across runs with flexible filtering and grouping
-
-**Environment Variables:**
-- `LANGSMITH_API_KEY` - Required for all LangSmith commands
-- `CC_LANGSMITH_PROJECT` - Default project for friction analysis
-
-**Troubleshooting:**
-
-If you encounter "LANGSMITH_API_KEY not found":
-```bash
-# Set API key in environment
-export LANGSMITH_API_KEY=your_key_here
-
-# Or configure in CLI config
-agentic config set langsmith.api_key your_key_here
-```
-
-If commands fail with "agenticlangsmith package not installed":
-```bash
-cd modules/AgenticLangSmith
-uv pip install -e .
-```
 
 ### question - Question Queue Management
 
@@ -615,7 +501,7 @@ agentic agent ep execute plan_build --compile
 
 When `--compile` is specified, the command builds a complete context bundle by:
 1. Reading and processing the entrypoint file with variable substitution
-2. Finding and including the orchestration file (process.mmd) referenced by the entrypoint
+2. Finding and including the orchestration file (process.yml) referenced by the entrypoint
 3. Locating and including the inputs.yml file for the orchestration
 4. Resolving all `location:` references in inputs.yml and including those files
 
@@ -675,116 +561,130 @@ agentic update    # Reinstall from source (uv sync)
 agentic rebuild   # Full rebuild and reinstall
 ```
 
-### session - Claude Code Session Management
+### orchestrate - Orchestration and Session Management
 
-Spawn, monitor, and manage Claude Code sessions. Sessions can run in the foreground or background, with full tracking of status, output logs, and process lifecycle.
+Orchestrate epics and manage Claude Code sessions. Sessions can run in the foreground or background, with full tracking of status, output logs, and process lifecycle.
 
 ```bash
+# Plan an epic (spawns planner agents)
+agentic orchestrate session plan --plan <epic-folder>
+agentic orchestrate session plan  # Plan all unplanned epics
+
+# Implement an epic (execute phases via agents)
+agentic orchestrate session implement --plan <epic-folder>
+agentic orchestrate session implement  # Execute all ready epics
+
 # Spawn a new Claude Code session
-agentic session spawn --prompt "Implement the feature"
-agentic session spawn -p "Fix the bug in auth.py" --max-turns 10
+agentic orchestrate session spawn --prompt "Implement the feature"
+agentic orchestrate session spawn -p "Fix the bug in auth.py" --max-turns 10
 
 # Spawn in background mode (returns immediately)
-agentic session spawn --prompt "Run tests" --background
-agentic session spawn -p "Build docs" --background --directory /path/to/project
+agentic orchestrate session spawn --prompt "Run tests" --background
+agentic orchestrate session spawn -p "Build docs" --background --directory /path/to/project
 
 # List all sessions
-agentic session list
-agentic session list --active  # Only show running sessions
+agentic orchestrate session list
+agentic orchestrate session list --active  # Only show running sessions
 
 # Get health check of a session
-agentic session healthcheck <session-id>
+agentic orchestrate health <session-id>
 
 # Get session output logs
-agentic session logs abc123
+agentic orchestrate debug logs abc123
 
 # Stop a running session
-agentic session stop <session-id>
-agentic session stop abc123 --force  # Force kill (SIGKILL)
+agentic orchestrate session stop <session-id>
+agentic orchestrate session stop abc123 --force  # Force kill (SIGKILL)
+
+# State inspection
+agentic orchestrate debug state list
+agentic orchestrate debug state show <session-id>
+agentic orchestrate debug state clear
+agentic orchestrate debug state cleanup
 ```
 
 #### Subcommand Details
 
-**spawn** - Start a new Claude Code session
+**session spawn** - Start a new Claude Code session
 
 Launches the `claude` CLI with the specified prompt. In foreground mode, waits for completion and displays output. In background mode, returns immediately and logs output to files.
 
 ```bash
 # Basic foreground session
-agentic session spawn --prompt "Analyze the codebase and suggest improvements"
+agentic orchestrate session spawn --prompt "Analyze the codebase and suggest improvements"
 
 # Background session with turn limit
-agentic session spawn -p "Refactor the utils module" --max-turns 5 --background
+agentic orchestrate session spawn -p "Refactor the utils module" --max-turns 5 --background
 
 # Session in a specific directory
-agentic session spawn -p "Fix failing tests" --directory /home/code/project
+agentic orchestrate session spawn -p "Fix failing tests" --directory /home/code/project
 ```
 
-**Options for `session spawn`:**
+**Options for `orchestrate session spawn`:**
 - `--prompt`, `-p` (required): The prompt to send to Claude Code
 - `--max-turns`: Maximum number of conversation turns (passed to claude CLI)
 - `--background`: Run session in background, return immediately
 - `--directory`: Working directory for the session (default: current directory)
 
-**list** - Display all Claude Code sessions
+**session list** - Display all Claude Code sessions
 
 Shows a table of all tracked sessions with their status, PID, start time, and prompt summary.
 
 ```bash
 # List all sessions
-agentic session list
+agentic orchestrate session list
 
 # List only running sessions
-agentic session list --active
+agentic orchestrate session list --active
 
 # JSON output for scripting
-agentic -j session list
+agentic -j orchestrate session list
 ```
 
-**Options for `session list`:**
+**Options for `orchestrate session list`:**
 - `--active`: Filter to show only running sessions
 
-**stop** - Stop a running session
+**session stop** - Stop a running session
 
 Sends a termination signal to the session process. By default uses SIGTERM for graceful shutdown.
 
 ```bash
 # Graceful stop (SIGTERM)
-agentic session stop abc123
+agentic orchestrate session stop abc123
 
 # Force kill (SIGKILL)
-agentic session stop abc123 --force
+agentic orchestrate session stop abc123 --force
 ```
 
-**Options for `session stop`:**
+**Options for `orchestrate session stop`:**
 - `session_id` (required): Full or partial session UUID
 - `--force`: Use SIGKILL instead of SIGTERM
 
-**healthcheck** - Get session health information
+**health** - Get session health information
 
 Displays health and status information about a session. Use `--diagnose` to auto-spawn diagnostics.
 
 ```bash
 # Get session health check
-agentic session healthcheck abc123
+agentic orchestrate health abc123
 
 # Auto-spawn diagnostics on unhealthy session
-agentic session healthcheck abc123 --diagnose
+agentic orchestrate health abc123 --diagnose
 
 # JSON output
-agentic -j session healthcheck abc123
+agentic -j orchestrate health abc123
 ```
 
-**logs** - Get session output logs
+**debug logs** - Get session output logs
 
 Displays the output logs of a session.
 
 ```bash
 # Get session logs
-agentic session logs abc123
+agentic orchestrate debug logs abc123
 ```
 
-**Options for `session healthcheck`:**
+**Options for `orchestrate health`:**
 - `session_id` (required): Full or partial session UUID
 - `--diagnose`: Auto-spawn diagnostics if the session is unhealthy
 
@@ -794,145 +694,6 @@ Sessions are tracked in `~/.agentic/sessions/`:
 - Session metadata: `~/.agentic/sessions/<session-id>.json`
 - Output logs: `~/.agentic/sessions/logs/<session-id>.stdout.log`
 - Error logs: `~/.agentic/sessions/logs/<session-id>.stderr.log`
-
-### session orchestrate ralph - Ralph Loop Management
-
-Start, stop, and monitor Ralph Loop executions. A Ralph Loop is an iterative execution cycle where an agent repeatedly processes a prompt until a completion condition is met or max iterations are reached.
-
-```bash
-# Start a Ralph Loop with inline prompt
-agentic session orchestrate ralph start --prompt "Fix all failing tests"
-agentic session orchestrate ralph start -p "Implement the feature" --max-iterations 20
-
-# Start from entrypoint or file
-agentic session orchestrate ralph start --entrypoint _orchestrate
-agentic session orchestrate ralph start --prompt-file task.txt --background
-
-# Stop a running loop
-agentic session orchestrate ralph stop <loop-id>
-agentic session orchestrate ralph stop abc123 --force
-
-# Get detailed loop status
-agentic session orchestrate ralph status <loop-id>
-
-# Show loop execution history
-agentic session orchestrate ralph history
-agentic session orchestrate ralph history --active
-agentic session orchestrate ralph history --status completed --limit 50
-```
-
-#### Subcommand Details
-
-**start** - Start a new Ralph Loop
-
-Launches a Ralph Loop that iteratively executes a prompt until completion. Prompts can be provided inline, from a file, or via an entrypoint reference.
-
-```bash
-# Basic loop with inline prompt
-agentic session orchestrate ralph start --prompt "Run tests and fix any failures"
-
-# From entrypoint with custom max iterations
-agentic session orchestrate ralph start -e _orchestrate -m 20
-
-# From file, background mode, with completion detection
-agentic session orchestrate ralph start -f prompt.txt -b -c "All done"
-
-# With specific working directory and output file
-agentic session orchestrate ralph start -p "Build feature" -d /path/to/project -o results.txt
-```
-
-**Options for `session orchestrate ralph start`:**
-- `--prompt`, `-p`: Direct prompt string to execute in the loop
-- `--prompt-file`, `-f`: Path to file containing the prompt (supports .txt and .md)
-- `--entrypoint`, `-e`: Entrypoint reference to load as the prompt (e.g., `_orchestrate`, `plan_build`)
-- `--max-iterations`, `-m`: Maximum number of loop iterations before automatic termination (default: 10)
-- `--completion-promise`, `-c`: Text pattern that signals loop completion (e.g., "All tasks complete")
-- `--background`, `-b`: Run the loop in the background with output logged to files
-- `--directory`, `-d`: Working directory for the loop (default: current directory)
-- `--output`, `-o`: Output file path to write loop results
-
-**Prompt Source Priority:**
-1. `--entrypoint` - Loads and executes an entrypoint file
-2. `--prompt-file` - Reads prompt content from a file
-3. `--prompt` - Uses the inline prompt string
-
-**stop** - Stop a running Ralph Loop
-
-Sends a termination signal to the loop process. By default uses SIGTERM for graceful shutdown.
-
-```bash
-# Graceful stop (allows current iteration to complete)
-agentic session orchestrate ralph stop abc123
-
-# Force kill (immediate termination)
-agentic session orchestrate ralph stop abc123 --force
-
-# Stop using partial ID match
-agentic session orchestrate ralph stop abc
-```
-
-**Options for `session orchestrate ralph stop`:**
-- `loop_id` (required): Full or partial loop UUID
-- `--force`, `-f`: Use SIGKILL instead of SIGTERM for immediate termination
-
-**status** - Display detailed loop information
-
-Shows comprehensive information about a loop including status, iteration progress, timing, and any errors.
-
-```bash
-# Get loop status
-agentic session orchestrate ralph status abc123
-
-# Use partial ID match
-agentic session orchestrate ralph status abc
-
-# JSON output for scripting
-agentic -j session orchestrate ralph status abc123
-```
-
-**Options for `session orchestrate ralph status`:**
-- `loop_id` (required): Full or partial loop UUID
-
-**Status Information Displayed:**
-- Loop ID and creation timestamp
-- Current iteration / max iterations
-- Runtime duration
-- Status (running, completed, failed, stopped)
-- Prompt source (inline, file, or entrypoint)
-- Completion promise if set
-- Iteration history table
-
-**history** - Show past loop executions
-
-Lists all Ralph Loop executions with their status, sorted by start time (most recent first).
-
-```bash
-# Show all recent loops
-agentic session orchestrate ralph history
-
-# Show only running loops
-agentic session orchestrate ralph history --active
-
-# Filter by status
-agentic session orchestrate ralph history --status running
-agentic session orchestrate ralph history --status completed
-
-# Increase result limit
-agentic session orchestrate ralph history --limit 50
-
-# JSON output for scripting
-agentic -j session orchestrate ralph history
-```
-
-**Options for `session orchestrate ralph history`:**
-- `--active`, `-a`: Show only active (running) loops
-- `--status`, `-s`: Filter by status (running, completed, failed, stopped)
-- `--limit`, `-l`: Maximum number of loops to show (default: 20)
-
-**Loop Storage:**
-
-Loops are tracked in `~/.agentic/loops/`:
-- Loop metadata: `~/.agentic/loops/<loop-id>.json`
 
 ### Additional Project Commands
 
@@ -1005,7 +766,7 @@ agentic template generate build \
 | `build` | Implementation epic for building new features with phased tickets |
 | `test` | Test epic with unit, integration, and e2e test phases |
 | `cleanup` | Audit and cleanup epic for code review and documentation |
-| `guidance` | Guidance improvement epic for agent friction analysis |
+| `guidance` | Guidance improvement epic for agent guidance quality |
 
 **Options for `template generate`:**
 - `type` (required): Template type (build, test, cleanup, guidance)
@@ -1018,8 +779,8 @@ agentic template generate build \
 
 | Category | Scope | Commands |
 |----------|-------|----------|
-| **Global** | Any directory | setup, health, config, prefs, update, rebuild, state, env, session, session orchestrate ralph |
-| **Project** | Requires .git or .agenticcli.yml | worktree, plan, agent (context, entrypoint, stories, manifest, question), langsmith, inputs, template |
+| **Global** | Any directory | setup, health, config, prefs, update, rebuild, orchestrate |
+| **Project** | Requires .git or .agenticcli.yml | worktree, plan, agent (context, entrypoint, stories, manifest, question), inputs, template |
 
 Project commands require being in a git repository or having a `.agenticcli.yml` file in the directory tree.
 
@@ -1051,8 +812,7 @@ AgenticCLI/
 │   │   ├── worktree.py     # Worktree management
 │   │   ├── context.py      # CCI context injection
 │   │   ├── entrypoint.py   # Workflow entrypoints
-│   │   ├── langsmith.py    # LangSmith integration
-│   │   ├── session.py      # Session management (includes orchestrate ralph subcommands)
+│   │   ├── orchestrate.py  # Orchestrate command (session, health, debug subcommands)
 │   │   ├── config.py       # Configuration
 │   │   ├── preferences.py  # Preferences
 │   │   ├── setup.py        # Setup wizard
@@ -1082,7 +842,7 @@ Commands validate inputs before executing. Error messages explain what went wron
 
 ### Evidence-Based Inclusion
 
-Commands are added when LangSmith traces show repeated friction patterns. Hypothetical needs don't justify new commands.
+Commands are added when evidence shows repeated patterns. Hypothetical needs don't justify new commands.
 
 ## CLI vs Agent Architecture
 
@@ -1106,7 +866,7 @@ Add a CLI command when:
 
 1. **Established pattern exists** - The operation follows documented conventions that don't require interpretation
 2. **Mechanical operation** - The work is repetitive and rule-based
-3. **LangSmith traces show friction** - Agents repeatedly struggle with the same deterministic task
+3. **Repeated agent struggles observed** - Agents repeatedly struggle with the same deterministic task
 4. **Verification can be eliminated** - CLI enforcement removes the need for verification agents
 
 Do NOT add a CLI command when:
@@ -1135,7 +895,7 @@ CLI Implementation       Offload to CLI, agent invokes tool
 **Example: Epic Folder Naming**
 
 1. Initially, agents interpreted naming conventions from documentation
-2. LangSmith traces showed naming drift and verification loops
+2. Agent traces showed naming drift and verification loops
 3. Convention was documented: `YYMMDDXX_description`
 4. `agentic agent plan init` now enforces naming programmatically
 5. Agents call CLI - no interpretation, no verification needed

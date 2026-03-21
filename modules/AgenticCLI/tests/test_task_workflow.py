@@ -8,10 +8,11 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-008")]
 import yaml
 
 
+@pytest.mark.story("US-PLN-011")
 class TestPresetLoadResult:
     """Tests for PresetLoadResult dataclass."""
 
@@ -58,6 +59,7 @@ class TestPresetLoadResult:
         assert result.tasks == []
 
 
+@pytest.mark.story("US-PLN-011")
 class TestTaskPresetWorkflow:
     """Tests for TicketPresetWorkflow class (TaskPresetWorkflow is an alias)."""
 

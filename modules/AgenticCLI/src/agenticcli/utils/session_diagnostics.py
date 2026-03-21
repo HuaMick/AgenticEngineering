@@ -240,6 +240,43 @@ def failure_summary(diagnosis: SessionDiagnosis) -> dict:
     }
 
 
+def diagnose_quick_exit(session_id: str) -> Optional[SessionDiagnosis]:
+    """Run session diagnostics on a quick-exit session.
+
+    Diagnoses the session and persists ``failure_reason`` and
+    ``error_code`` back into the session state record so
+    operators can inspect the structured failure data.
+
+    Args:
+        session_id: Session UUID to diagnose.
+
+    Returns:
+        SessionDiagnosis or None if diagnostics unavailable.
+    """
+    if not session_id:
+        return None
+    try:
+        from agenticcli.utils.state_store import StateStore
+
+        store = StateStore("sessions")
+        data = store.load(session_id)
+        if data:
+            diagnosis = diagnose_session_state(data)
+            if diagnosis:
+                summary = failure_summary(diagnosis)
+                data["error_code"] = summary["error_code"]
+                data["failure_reason"] = summary
+                store.save(data)
+                logger.info(
+                    "Session %s diagnosed: error_code=%s, retryable=%s",
+                    session_id[:8], summary["error_code"], summary["retryable"],
+                )
+            return diagnosis
+    except Exception as e:
+        logger.debug("Failed to diagnose session %s: %s", session_id[:8], e)
+    return None
+
+
 def _read_log_safely(path: Optional[str | Path]) -> str:
     """Read a log file safely, returning empty string on any error.
 

@@ -10,7 +10,9 @@ import logging
 import time
 from typing import Optional
 
+from agenticcli.utils.epic_lock import acquire_epic_lock, release_epic_lock
 from agenticcli.utils.retry import SPAWN_RETRY_BACKOFF, static_backoff
+from agenticcli.utils.session_diagnostics import diagnose_quick_exit
 from agenticcli.utils.session_state import read_sdk_metrics
 from agenticcli.utils.spawn_command import build_spawn_command
 from agenticcli.workflows.planner_loop import PlannerLoopWorkflow, PlannerLoopRunner
@@ -296,28 +298,42 @@ class ExecutionRunner:
 
         all_success = True
         for plan in plans_to_process:
-            logger.info("Starting execution for plan: %s", plan)
-            # Mark epic as in_progress when execution begins
-            try:
-                repo_exec = self.workflow._get_repository()
-                if repo_exec:
-                    repo_exec.update_epic(plan, {"status": "in_progress"})
-            except Exception:
-                pass  # Non-fatal — status update is best-effort
-            try:
-                success = self._execute_plan(plan, max_iterations)
-            except Exception as e:
-                logger.error("Execution raised exception for %s: %s", plan, e)
-                self.state["errors"].append(f"Exception for {plan}: {e}")
-                success = False
-
-            if success:
-                self.state["plans_processed"].append(plan)
-                logger.info("Execution completed for plan: %s", plan)
-            else:
+            if not acquire_epic_lock(plan):
+                logger.error(
+                    "Cannot execute %s — another orchestration process holds the lock", plan,
+                )
+                self.state["errors"].append(
+                    f"Lock held by another process for {plan}"
+                )
                 self.state["plans_failed"].append(plan)
-                logger.error("Execution failed for plan: %s", plan)
                 all_success = False
+                continue
+
+            try:
+                logger.info("Starting execution for plan: %s", plan)
+                # Mark epic as in_progress when execution begins
+                try:
+                    repo_exec = self.workflow._get_repository()
+                    if repo_exec:
+                        repo_exec.update_epic(plan, {"status": "in_progress"})
+                except Exception:
+                    pass  # Non-fatal — status update is best-effort
+                try:
+                    success = self._execute_plan(plan, max_iterations)
+                except Exception as e:
+                    logger.error("Execution raised exception for %s: %s", plan, e)
+                    self.state["errors"].append(f"Exception for {plan}: {e}")
+                    success = False
+
+                if success:
+                    self.state["plans_processed"].append(plan)
+                    logger.info("Execution completed for plan: %s", plan)
+                else:
+                    self.state["plans_failed"].append(plan)
+                    logger.error("Execution failed for plan: %s", plan)
+                    all_success = False
+            finally:
+                release_epic_lock(plan)
 
         if all_success:
             print(promise)
@@ -622,9 +638,8 @@ class ExecutionRunner:
     def _diagnose_quick_exit(self, session_id: Optional[str]):
         """Run session diagnostics on a quick-exit session.
 
-        Diagnoses the session and persists ``failure_reason`` and
-        ``error_code`` back into the session state record so Ralph and
-        operators can inspect the structured failure data (P6_001/P6_002/P6_003).
+        Delegates to the shared ``diagnose_quick_exit()`` free function
+        in ``agenticcli.utils.session_diagnostics``.
 
         Args:
             session_id: Session UUID to diagnose.
@@ -632,34 +647,7 @@ class ExecutionRunner:
         Returns:
             SessionDiagnosis or None if diagnostics unavailable.
         """
-        if not session_id:
-            return None
-        try:
-            from agenticcli.utils.session_diagnostics import (
-                diagnose_session_state,
-                failure_summary,
-            )
-            from agenticcli.utils.state_store import StateStore
-
-            store = StateStore("sessions")
-            data = store.load(session_id)
-            if data:
-                diagnosis = diagnose_session_state(data)
-                if diagnosis:
-                    # Persist structured failure info into session state
-                    # so Ralph StateStore and `agentic session status` can surface it
-                    summary = failure_summary(diagnosis)
-                    data["error_code"] = summary["error_code"]
-                    data["failure_reason"] = summary
-                    store.save(data)
-                    logger.info(
-                        "Session %s diagnosed: error_code=%s, retryable=%s",
-                        session_id[:8], summary["error_code"], summary["retryable"],
-                    )
-                return diagnosis
-        except Exception as e:
-            logger.debug("Failed to diagnose session %s: %s", session_id[:8], e)
-        return None
+        return diagnose_quick_exit(session_id) if session_id else None
 
     def _check_feedback_triggers_tinydb(
         self,

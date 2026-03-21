@@ -2,11 +2,16 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+pytestmark = pytest.mark.story("US-SES-005")
+
 from agenticcli.utils.session_state import (
     mark_failed,
 )
 
 
+@pytest.mark.story("US-SES-005")
 class TestMarkFailed:
     def test_basic(self):
         data = {"session_id": "abc", "status": "running"}
@@ -23,6 +28,7 @@ class TestMarkFailed:
         assert data["failure_reason"]["suggested_action"] == "escalate"
 
 
+@pytest.mark.story("US-SES-006")
 class TestReadSdkMetrics:
     """Direct unit tests for the read_sdk_metrics() function."""
 

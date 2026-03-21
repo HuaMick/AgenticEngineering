@@ -81,7 +81,7 @@ def _run_planning_loop(args, ctx=None):
         # NOTE: The actual Claude agent invocations inside the loop use the SDK
         # (via PlannerLoopWorkflow._run_role_agent). This subprocess is just
         # the process-control wrapper that allows background detachment.
-        cmd = [sys.executable, "-m", "agenticcli.entry", "session", "orchestrate", "planning"]
+        cmd = [sys.executable, "-m", "agenticcli.entry", "orchestrate", "session", "plan"]
         cmd.extend(["--max-iterations", str(max_iterations)])
         if completion_promise:
             cmd.extend(["--completion-promise", completion_promise])
@@ -314,7 +314,7 @@ def _run_executing_loop(args, ctx=None):
         # NOTE: The actual Claude agent invocations inside the loop use the SDK
         # (via OrchestrationWorkflow). This subprocess is just the process-control
         # wrapper that allows background detachment.
-        cmd = [sys.executable, "-m", "agenticcli.entry", "session", "orchestrate", "executing"]
+        cmd = [sys.executable, "-m", "agenticcli.entry", "orchestrate", "session", "implement"]
         cmd.extend(["--max-iterations", str(max_iterations)])
         if completion_promise:
             cmd.extend(["--completion-promise", completion_promise])

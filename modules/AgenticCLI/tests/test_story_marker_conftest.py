@@ -15,6 +15,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+pytestmark = pytest.mark.story("US-STR-009")
+
 
 def _load_conftest_module():
     """Import conftest.py helpers via importlib (not a regular module)."""
@@ -29,6 +31,7 @@ def _load_conftest_module():
 # Tests for _find_repo_root_from_tests
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-GDN-077")
 class TestFindRepoRootCLI:
     """Test repo root discovery from AgenticCLI conftest location."""
 
@@ -59,6 +62,7 @@ class TestFindRepoRootCLI:
 # Tests for _load_valid_story_ids
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-GDN-077")
 class TestLoadValidStoryIdsCLI:
     """Test story ID loading from docs/userstories/ via CLI conftest."""
 
@@ -230,6 +234,7 @@ class TestLoadValidStoryIdsCLI:
 # Tests for pytest_configure (marker registration)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-GDN-077")
 class TestMarkerRegistrationCLI:
     """Test that the story marker is registered in AgenticCLI tests."""
 
@@ -241,8 +246,8 @@ class TestMarkerRegistrationCLI:
 
     def test_story_marker_with_multiple_ids(self):
         """Verify marker supports multiple story IDs."""
-        marker = pytest.mark.story("US-CLI-110", "US-CLI-111")
-        assert marker.args == ("US-CLI-110", "US-CLI-111")
+        marker = pytest.mark.story("US-STR-001", "US-STR-002")
+        assert marker.args == ("US-STR-001", "US-STR-002")
 
     def test_story_marker_with_no_ids(self):
         """Verify marker can be created with no IDs (validation happens at collection)."""
@@ -254,6 +259,7 @@ class TestMarkerRegistrationCLI:
 # Tests for pytest_collection_modifyitems (validation plugin)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-GDN-078")
 class TestCollectionValidationCLI:
     """Test the collection plugin validates story markers at collection time."""
 
@@ -272,7 +278,7 @@ class TestCollectionValidationCLI:
         mock_config.getini.return_value = False
 
         # Provide known valid IDs so the fake ID is definitely unknown
-        valid_ids = frozenset({"US-CLI-110", "US-CLI-111"})
+        valid_ids = frozenset({"US-STR-001", "US-STR-002"})
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
             mod.pytest_collection_modifyitems(mock_config, [mock_item])
             mock_item.warn.assert_called_once()
@@ -292,7 +298,7 @@ class TestCollectionValidationCLI:
 
         mock_config = MagicMock()
         mock_config.getini.return_value = False
-        valid_ids = frozenset({"US-CLI-110"})
+        valid_ids = frozenset({"US-STR-001"})
 
         # Should NOT raise — only warn
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
@@ -348,7 +354,7 @@ class TestCollectionValidationCLI:
         mock_config = MagicMock()
         mock_config.getini.return_value = False
 
-        valid_ids = frozenset({"US-CLI-110", "US-CLI-111"})
+        valid_ids = frozenset({"US-STR-001", "US-STR-002"})
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
             mod.pytest_collection_modifyitems(mock_config, [mock_item])
             mock_item.warn.assert_called_once()
@@ -361,13 +367,13 @@ class TestCollectionValidationCLI:
 
         mock_item = MagicMock()
         mock_marker = MagicMock()
-        mock_marker.args = ("US-CLI-110",)
+        mock_marker.args = ("US-STR-001",)
         mock_item.iter_markers.return_value = [mock_marker]
 
         mock_config = MagicMock()
         mock_config.getini.return_value = False
 
-        valid_ids = frozenset({"US-CLI-110", "US-CLI-111"})
+        valid_ids = frozenset({"US-STR-001", "US-STR-002"})
         with patch.object(mod, "_VALID_STORY_IDS", valid_ids):
             mod.pytest_collection_modifyitems(mock_config, [mock_item])
             mock_item.warn.assert_not_called()
@@ -395,11 +401,11 @@ class TestCollectionValidationCLI:
 # A sample test with story marker (proves the infrastructure works end-to-end)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-FAKE-998")
+@pytest.mark.story("US-GDN-077")
 def test_story_marker_does_not_block_cli_test_execution():
-    """This test uses a non-existent story ID. It should still execute.
+    """This test uses a real story ID to validate end-to-end marker infrastructure.
 
-    The conftest plugin should issue a warning but not prevent execution.
-    This validates that the story marker infrastructure is advisory, not blocking.
+    With story_strict = true, invalid IDs cause test failure at collection time.
+    This validates that valid story markers pass through without blocking.
     """
     assert True

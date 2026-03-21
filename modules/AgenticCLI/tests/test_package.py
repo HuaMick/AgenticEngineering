@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SET-002")
+
 
 class TestUpdateCommand:
     """Tests for 'agentic update' command."""

@@ -7,6 +7,8 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+pytestmark = pytest.mark.story("US-PLN-007")
+
 
 def _populate_tinydb_for_movement(db_path, epic_folder_name, tickets):
     """Populate TinyDB with ticket data for movement workflow tests.
@@ -70,6 +72,7 @@ def plan_folder(temp_repo):
     return plan_path
 
 
+@pytest.mark.story("US-PLN-007")
 class TestPlanMovementWorkflow:
     """Tests for PlanMovementWorkflow class."""
 
@@ -156,6 +159,7 @@ class TestPlanMovementWorkflow:
         assert all(t["status"] == "completed" for t in completed)
 
 
+@pytest.mark.story("US-PLN-007")
 class TestGitSafetyChecker:
     """Tests for GitSafetyChecker class."""
 
@@ -214,6 +218,7 @@ class TestGitSafetyChecker:
         assert "newfile.txt" in changes
 
 
+@pytest.mark.story("US-PLN-084")
 class TestFolderArchive:
     """Tests for folder archival."""
 
@@ -266,6 +271,7 @@ class TestFolderArchive:
         assert result2.destination == "(TinyDB status=completed)"
 
 
+@pytest.mark.story("US-PLN-007")
 class TestMoveCommands:
     """Tests for plan move CLI commands."""
 
@@ -293,6 +299,7 @@ class TestMoveCommands:
         assert code in (1, 2)
 
 
+@pytest.mark.story("US-PLN-084")
 class TestArchiveSourceRemoval:
     """Tests for archive removing source folder after successful archive."""
 
@@ -444,6 +451,7 @@ class TestArchiveSourceRemoval:
         assert not dest.exists(), "Destination should NOT exist in dry-run mode"
 
 
+@pytest.mark.story("US-PLN-007")
 class TestTaskMoveSourceRemoval:
     """Tests for move_task_to_completed with TinyDB-backed ticket status."""
 

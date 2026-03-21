@@ -1,4 +1,9 @@
-"""Configuration and preferences commands.
+"""Unified configuration and preferences handler.
+
+This is the single source of truth for both `agentic config` and
+`agentic prefs` commands. Preference subcommands (get/set/list/delete/clear)
+delegate to ConfigWorkflow for consistent behavior. Configuration subcommands
+(show/init/show-path/set-path/clear) handle config file management directly.
 
 Handles user configuration stored in ~/.config/agenticcli/.
 """
@@ -29,6 +34,26 @@ def ensure_config_dir() -> Path:
     return config_dir
 
 
+def _get_workflow(ctx):
+    """Get ConfigWorkflow from context or defaults.
+
+    This is the canonical way to obtain a ConfigWorkflow for preference
+    operations. Used by both this module and preferences.py.
+    """
+    from agenticguidance.services import ConfigWorkflow
+
+    if ctx and ctx.config_dir:
+        return ConfigWorkflow(ctx.config_dir)
+
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config:
+        config_dir = Path(xdg_config) / "agenticcli"
+    else:
+        config_dir = Path.home() / ".config" / "agenticcli"
+
+    return ConfigWorkflow(config_dir)
+
+
 def handle(args, ctx=None):
     """Route config subcommands.
 
@@ -55,7 +80,7 @@ def handle(args, ctx=None):
     elif args.config_command == "clear":
         cmd_clear(args, ctx)
     else:
-        print("Usage: agentic configure config <show|init|get|set|list|delete|show-path|set-path|clear>", file=sys.stderr)
+        print("Usage: agentic config <show|init|get|set|list|delete|show-path|set-path|clear>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -210,67 +235,21 @@ def cmd_init(args, ctx=None):
             print_success(f"Created preferences: {prefs_file}")
 
 
-def _get_nested_value(data: dict, key: str):
-    """Get a value using dot notation (e.g., 'worktree.default_base')."""
-    keys = key.split(".")
-    value = data
-    for k in keys:
-        if isinstance(value, dict) and k in value:
-            value = value[k]
-        else:
-            return None
-    return value
-
-
-def _set_nested_value(data: dict, key: str, value):
-    """Set a value using dot notation (e.g., 'worktree.default_base')."""
-    keys = key.split(".")
-    target = data
-    for k in keys[:-1]:
-        if k not in target:
-            target[k] = {}
-        target = target[k]
-    target[keys[-1]] = value
-
-
-def _delete_nested_value(data: dict, key: str) -> bool:
-    """Delete a value using dot notation (e.g., 'worktree.default_base').
-
-    Returns True if the key was found and deleted, False otherwise.
-    """
-    keys = key.split(".")
-    target = data
-    for k in keys[:-1]:
-        if isinstance(target, dict) and k in target:
-            target = target[k]
-        else:
-            return False
-
-    if isinstance(target, dict) and keys[-1] in target:
-        del target[keys[-1]]
-        return True
-    return False
-
-
 def cmd_prefs_get(args, ctx=None):
-    """Get a preference value."""
+    """Get a preference value (delegates to ConfigWorkflow)."""
     from agenticcli.console import console, is_json_output, print_error, print_json
 
-    config_dir = ctx.config_dir if ctx else get_config_dir()
-    prefs_file = config_dir / "preferences.yml"
+    workflow = _get_workflow(ctx)
+    result = workflow.get_pref(args.key)
 
-    if not prefs_file.exists():
-        print_error("No preferences found. Run 'agentic configure config init' to create them.")
+    if not result.success:
+        if is_json_output():
+            print_json({"error": result.message, "key": args.key})
+        else:
+            print_error(result.message)
         sys.exit(1)
 
-    prefs = yaml.safe_load(prefs_file.read_text())
-    if not prefs:
-        prefs = {}
-
-    value = _get_nested_value(prefs, args.key)
-    if value is None:
-        print_error(f"Key not found: {args.key}")
-        sys.exit(1)
+    value = result.data["value"]
 
     if is_json_output():
         print_json({"key": args.key, "value": value})
@@ -281,41 +260,20 @@ def cmd_prefs_get(args, ctx=None):
 
 
 def cmd_prefs_set(args, ctx=None):
-    """Set a preference value."""
+    """Set a preference value (delegates to ConfigWorkflow)."""
     from agenticcli.console import is_json_output, print_json, print_success
 
-    if ctx:
-        config_dir = ctx.ensure_config_dir()
-    else:
-        config_dir = ensure_config_dir()
-    prefs_file = config_dir / "preferences.yml"
-
-    if prefs_file.exists():
-        prefs = yaml.safe_load(prefs_file.read_text())
-        if not prefs:
-            prefs = {}
-    else:
-        prefs = {}
-
-    # Parse value (try JSON first, then use as string)
-    try:
-        value = json.loads(args.value)
-    except json.JSONDecodeError:
-        value = args.value
-
-    _set_nested_value(prefs, args.key, value)
-
-    with open(prefs_file, "w") as f:
-        yaml.dump(prefs, f, default_flow_style=False)
+    workflow = _get_workflow(ctx)
+    result = workflow.set_pref(args.key, args.value)
 
     if is_json_output():
-        print_json({"key": args.key, "value": value, "set": True})
+        print_json({"key": args.key, "value": result.data["value"], "set": True})
     else:
-        print_success(f"Set {args.key} = {args.value}")
+        print_success(f"Set {args.key} = {result.data['value']}")
 
 
 def cmd_prefs_list(args, ctx=None):
-    """List all preferences."""
+    """List all preferences (delegates to ConfigWorkflow)."""
     from agenticcli.console import (
         console,
         is_json_output,
@@ -325,22 +283,22 @@ def cmd_prefs_list(args, ctx=None):
         print_tree,
     )
 
-    config_dir = ctx.config_dir if ctx else get_config_dir()
-    prefs_file = config_dir / "preferences.yml"
+    workflow = _get_workflow(ctx)
+    result = workflow.list_prefs()
 
-    if not prefs_file.exists():
+    if not result.success:
         if is_json_output():
-            print_json({"error": "No preferences found", "hint": "Run 'agentic configure config init'"})
+            print_json({"error": result.message})
         else:
-            print_info("No preferences found. Run 'agentic configure config init' to create them.")
+            print_info(result.message)
         return
 
-    prefs = yaml.safe_load(prefs_file.read_text())
+    prefs = result.data["preferences"]
 
     if is_json_output():
-        print_json({"path": str(prefs_file), "preferences": prefs or {}})
+        print_json({"path": result.data["path"], "preferences": prefs})
     else:
-        print_header(f"Preferences: {prefs_file}")
+        print_header(f"Preferences: {result.data['path']}")
         if prefs:
             print_tree("preferences", prefs)
         else:
@@ -348,26 +306,18 @@ def cmd_prefs_list(args, ctx=None):
 
 
 def cmd_prefs_delete(args, ctx=None):
-    """Delete a preference value."""
+    """Delete a preference value (delegates to ConfigWorkflow)."""
     from agenticcli.console import is_json_output, print_error, print_json, print_success
 
-    config_dir = ctx.config_dir if ctx else get_config_dir()
-    prefs_file = config_dir / "preferences.yml"
+    workflow = _get_workflow(ctx)
+    result = workflow.delete_pref(args.key)
 
-    if not prefs_file.exists():
-        print_error("No preferences found. Run 'agentic configure config init' to create them.")
+    if not result.success:
+        if is_json_output():
+            print_json({"error": result.message, "key": args.key})
+        else:
+            print_error(result.message)
         sys.exit(1)
-
-    prefs = yaml.safe_load(prefs_file.read_text())
-    if not prefs:
-        prefs = {}
-
-    if not _delete_nested_value(prefs, args.key):
-        print_error(f"Key not found: {args.key}")
-        sys.exit(1)
-
-    with open(prefs_file, "w") as f:
-        yaml.dump(prefs, f, default_flow_style=False)
 
     if is_json_output():
         print_json({"key": args.key, "deleted": True})
@@ -459,8 +409,45 @@ def cmd_set_path(args, ctx=None):
         print_success(f"Custom config path set: {custom_path}")
 
 
+def cmd_prefs_clear(args, ctx=None):
+    """Clear all preferences (delegates to ConfigWorkflow).
+
+    Used by both `agentic prefs clear` and `agentic config clear`
+    when the intent is to remove preference data (not config files).
+    """
+    from agenticcli.console import console, is_json_output, print_json, print_success, print_warning
+
+    workflow = _get_workflow(ctx)
+
+    # Confirm before clearing (unless JSON mode or --force)
+    if not is_json_output() and not getattr(args, "force", False):
+        console.print("[yellow]This will delete all preferences.[/yellow]")
+        response = input("Are you sure? [y/N] ")
+        if response.lower() != "y":
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+    result = workflow.clear_prefs()
+
+    if not result.success:
+        if is_json_output():
+            print_json({"error": result.message})
+        else:
+            print_warning(result.message)
+        return
+
+    if is_json_output():
+        print_json({"cleared": True})
+    else:
+        print_success("All preferences cleared.")
+
+
 def cmd_clear(args, ctx=None):
-    """Clear configuration (requires --force)."""
+    """Clear configuration files (requires --force).
+
+    Note: this clears config.yml and config_path.txt — not preferences.
+    To clear preferences, use cmd_prefs_clear or `agentic prefs clear`.
+    """
     from agenticcli.console import is_json_output, print_error, print_json, print_success
 
     if not getattr(args, "force", False):

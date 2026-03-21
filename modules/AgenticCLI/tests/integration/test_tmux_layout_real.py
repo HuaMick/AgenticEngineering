@@ -182,7 +182,7 @@ class TestCleanupKillsOrphanedSessions:
 class TestDryRunCreatesAndDestroysLayout:
     def test_dry_run_creates_and_destroys_layout(self, tmux_session_cleanup):
         result = subprocess.run(
-            ["agentic", "session", "orchestrate", "planning", "--dry-run"],
+            ["agentic", "orchestrate", "session", "plan", "--dry-run"],
             capture_output=True, text=True, timeout=15,
         )
         assert result.returncode == 0, f"dry-run failed: {result.stderr}"

@@ -70,12 +70,9 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
     "planner-cleaning": ["Read", "Glob", "Grep", "Bash"],
     "planner-guidance-testing": ["Read", "Glob", "Grep", "Bash"],
     "planner-sdk": ["Read", "Glob", "Grep", "Bash"],
-    "planner-reviewer": ["Read", "Glob", "Grep"],
     "planner-orchestration": ["Read", "Glob", "Grep", "Bash"],
     "planner-audit": ["Read", "Glob", "Grep", "Bash"],
-    # ── Planning phase: design and story agents need Bash for CLI commands ──
-    "planner-design": ["Read", "Glob", "Grep", "Bash"],
-    "story-generator": ["Read", "Glob", "Grep", "Bash", "Write"],
+    "story-writer": ["Read", "Glob", "Grep", "Bash", "Write"],
     # ── Execution phase: full access ──
     "test-runner": ["Read", "Glob", "Grep", "Bash", "Edit"],
     "build-python": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
@@ -89,15 +86,13 @@ ROLE_TIMEOUT_SECONDS: dict[str, int] = {
     "epic-creator": 600,           # 10 min — CLI scaffolding only
     "planner-explore": 900,        # 15 min — codebase exploration + ticket updates
     "explore": 600,               # 10 min — lightweight codebase analysis
-    "story-generator": 600,        # 10 min — story generation (lightweight planning)
-    "planner-design": 1800,
+    "story-writer": 600,           # 10 min — story generation (lightweight planning)
     "planner-build": 1800,
     "planner-test": 1800,
     "planner-guidance": 1800,
     "planner-cleaning": 1800,
     "planner-guidance-testing": 1800,
     "planner-sdk": 1800,
-    "planner-reviewer": 1800,
     "planner-orchestration": 3600, # 60 min — orchestration
     "build-python": 1800,
     "build-flutter": 1800,

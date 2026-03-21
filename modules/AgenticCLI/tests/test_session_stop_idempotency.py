@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-003")
+
 
 @pytest.fixture
 def sessions_dir(tmp_path):

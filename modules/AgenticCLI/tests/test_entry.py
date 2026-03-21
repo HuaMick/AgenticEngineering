@@ -5,7 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SET-001")
 
+
+@pytest.mark.story("US-SET-001")
 class TestEntryPoint:
     """Tests for the main entry point."""
 
@@ -69,6 +72,7 @@ class TestEntryPoint:
             assert exc_info.value.code == 0
 
 
+@pytest.mark.story("US-SET-003")
 class TestAgentNamePositionalRouting:
     """Tests for CCI positional agent name routing in entry point."""
 
@@ -148,6 +152,7 @@ class TestAgentNamePositionalRouting:
             mock_run.assert_called()
 
 
+@pytest.mark.story("US-SET-001")
 class TestEntryPointImports:
     """Test that entry point handles imports correctly."""
 

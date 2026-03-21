@@ -14,6 +14,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-001")
+
 
 @pytest.fixture
 def sessions_dir(tmp_path):
@@ -108,6 +110,7 @@ def sample_session_data():
     }
 
 
+@pytest.mark.story("US-SES-001")
 class TestSessionHelperFunctions:
     """Tests for session module helper functions."""
 
@@ -203,6 +206,7 @@ class TestSessionHelperFunctions:
         assert result["ended_at"] is not None
 
 
+@pytest.mark.story("US-SES-001")
 class TestSessionSpawnCommand:
     """Tests for the session spawn command."""
 
@@ -362,6 +366,7 @@ class TestSessionSpawnCommand:
         assert output["background"] is True
 
 
+@pytest.mark.story("US-SES-002")
 class TestSessionListCommand:
     """Tests for the session list command."""
 
@@ -578,6 +583,7 @@ class TestSessionListCommand:
         assert sessions_list[0].get("transport") == "sdk-tmux"
 
 
+@pytest.mark.story("US-SES-003")
 class TestSessionStopCommand:
     """Tests for the session stop command."""
 
@@ -687,6 +693,7 @@ class TestSessionStopCommand:
         assert "already exited" in captured.out
 
 
+@pytest.mark.story("US-SES-001")
 class TestSessionHandleRouting:
     """Tests for the session handle function routing."""
 
@@ -733,6 +740,7 @@ class TestSessionHandleRouting:
         assert "Usage:" in captured.err
 
 
+@pytest.mark.story("US-SES-001")
 class TestResolvePlanFolder:
     """Tests for _resolve_epic_folder helper."""
 
@@ -773,6 +781,7 @@ class TestResolvePlanFolder:
         assert result is None
 
 
+@pytest.mark.story("US-SES-001")
 class TestBuildRolePrompt:
     """Tests for _build_role_prompt helper."""
 
@@ -797,6 +806,7 @@ class TestBuildRolePrompt:
         assert "epic ticket list" in prompt
 
 
+@pytest.mark.story("US-SES-001")
 class TestBuildTaskPrompt:
     """Tests for _build_task_prompt helper."""
 
@@ -852,6 +862,7 @@ class TestBuildTaskPrompt:
         assert prompt is None
 
 
+@pytest.mark.story("US-SES-001")
 class TestSpawnWithRoleAndPlan:
     """Tests for spawn with --role and --plan flags."""
 
@@ -1115,6 +1126,7 @@ class TestSpawnWithRoleAndPlan:
         assert "Hello world" in context_file.read_text()
 
 
+@pytest.mark.story("US-SES-004")
 class TestCheckSessionHealth:
     """Tests for _check_session_health helper function."""
 
@@ -1227,6 +1239,7 @@ class TestCheckSessionHealth:
         assert health["stale"] is False
 
 
+@pytest.mark.story("US-SES-004")
 class TestSessionHealthcheckCommand:
     """Tests for cmd_healthcheck command."""
 
@@ -1360,6 +1373,7 @@ class TestSessionHealthcheckCommand:
         assert "No session found" in captured.err
 
 
+@pytest.mark.story("US-SES-004")
 class TestSessionLogsCommand:
     """Tests for cmd_logs command."""
 
@@ -1470,6 +1484,7 @@ class TestSessionLogsCommand:
         assert "No session found" in captured.err
 
 
+@pytest.mark.story("US-SES-002")
 class TestStaleWarningInList:
     """Tests for stale warning integration in session list."""
 
@@ -1550,6 +1565,7 @@ class TestStaleWarningInList:
         assert "-" in captured.out
 
 
+@pytest.mark.story("US-SES-001")
 class TestCheckTmuxSession:
     """Tests for _check_tmux_session helper."""
 
@@ -1600,6 +1616,7 @@ class TestCheckTmuxSession:
         assert result is None
 
 
+@pytest.mark.story("US-SES-001")
 class TestSessionHandleRoutingNewCommands:
     """Tests for handle routing of new commands."""
 
@@ -1628,6 +1645,7 @@ class TestSessionHandleRoutingNewCommands:
         assert "No session found" in captured.err
 
 
+@pytest.mark.story("US-SES-004")
 class TestDiagnosticAutoSpawn:
     """Tests for diagnostic auto-spawn in healthcheck (requires --diagnose)."""
 
@@ -1755,6 +1773,7 @@ class TestDiagnosticAutoSpawn:
         assert output.get("diagnostic_spawned") == "new-diag-9999"
 
 
+@pytest.mark.story("US-SES-001")
 class TestLogFileDescriptorManagement:
     """Tests for log file descriptor management in background spawn (TSM_003)."""
 
@@ -1924,6 +1943,7 @@ class TestLogFileDescriptorManagement:
         assert len(closed_files) == 2
 
 
+@pytest.mark.story("US-SES-001", "US-SES-004")
 class TestTmuxHealthIntegration:
     """Tests for tmux signal in health check (TSM_007)."""
 
@@ -2033,202 +2053,7 @@ class TestTmuxHealthIntegration:
         assert "tmux_session" not in signal_names
 
 
-class TestCaptureLangSmithTrace:
-    """Tests for _capture_langsmith_trace post-completion trace capture."""
-
-    def test_captures_trace_from_json_output(
-        self, mock_sessions_dir, mock_logs_dir, sample_session_data, tmp_path, monkeypatch
-    ):
-        """Verify trace is captured from --output-format json stdout log."""
-        from agenticcli.commands import session
-
-        claude_sid = "abc12345-1234-5678-9abc-def012345678"
-        # Create stdout log with JSON output from claude --print --output-format json
-        stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
-        stdout_log.write_text(json.dumps({
-            "type": "result",
-            "session_id": claude_sid,
-            "result": "done",
-        }))
-        sample_session_data["stdout_log"] = str(stdout_log)
-        sample_session_data["background"] = True
-        sample_session_data["working_dir"] = str(tmp_path)
-
-        # Create a fake transcript
-        project_hash = str(tmp_path).replace("/", "-")
-        transcript_dir = tmp_path / ".claude_projects" / project_hash
-        transcript_dir.mkdir(parents=True)
-        transcript_path = transcript_dir / f"{claude_sid}.jsonl"
-        transcript_path.write_text('{"type":"test"}\n')
-
-        # Mock Path.home() for transcript search and hook path
-        hook_path = tmp_path / "hook.sh"
-        hook_path.write_text("#!/bin/bash\nexit 0\n")
-        hook_path.chmod(0o755)
-
-        mock_hook_path = tmp_path / ".claude" / "hooks" / "stop_hook.sh"
-        mock_hook_path.parent.mkdir(parents=True, exist_ok=True)
-        mock_hook_path.write_text("#!/bin/bash\nexit 0\n")
-
-        # Mock subprocess.run to verify the hook is called
-        run_calls = []
-        original_run = subprocess.run
-
-        def mock_run(*args, **kwargs):
-            if args and isinstance(args[0], list) and "stop_hook" in str(args[0]):
-                run_calls.append((args, kwargs))
-                return MagicMock(returncode=0)
-            return original_run(*args, **kwargs)
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
-
-        # Mock the transcript search to find our fake transcript
-        claude_projects = tmp_path / ".claude" / "projects"
-        proj_dir = claude_projects / project_hash
-        proj_dir.mkdir(parents=True)
-        fake_transcript = proj_dir / f"{claude_sid}.jsonl"
-        fake_transcript.write_text('{"type":"test"}\n')
-
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-
-        result = session._capture_langsmith_trace(sample_session_data)
-
-        assert result is True
-        assert len(run_calls) == 1
-        # Verify the hook input contains session_id and transcript_path
-        call_kwargs = run_calls[0][1]
-        hook_input = json.loads(call_kwargs["input"])
-        assert hook_input["session_id"] == claude_sid
-
-    def test_skips_if_already_captured(
-        self, mock_sessions_dir, sample_session_data
-    ):
-        """Verify trace capture is skipped if already done."""
-        from agenticcli.commands import session
-
-        sample_session_data["trace_captured"] = True
-        result = session._capture_langsmith_trace(sample_session_data)
-        assert result is True
-
-    def test_returns_false_if_no_stdout_log(
-        self, mock_sessions_dir, sample_session_data
-    ):
-        """Verify returns False if stdout_log is missing."""
-        from agenticcli.commands import session
-
-        sample_session_data["stdout_log"] = "/nonexistent/path.log"
-        result = session._capture_langsmith_trace(sample_session_data)
-        assert result is False
-
-    def test_returns_false_if_no_session_id_in_output(
-        self, mock_sessions_dir, mock_logs_dir, sample_session_data
-    ):
-        """Verify returns False if Claude output has no session_id."""
-        from agenticcli.commands import session
-
-        stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
-        stdout_log.write_text("Just plain text output, no JSON")
-        sample_session_data["stdout_log"] = str(stdout_log)
-
-        result = session._capture_langsmith_trace(sample_session_data)
-        assert result is False
-
-    def test_update_status_triggers_trace_capture(
-        self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch
-    ):
-        """Verify _update_session_status calls trace capture for completed bg sessions."""
-        from agenticcli.commands import session
-
-        sample_session_data["status"] = "running"
-        sample_session_data["background"] = True
-        sample_session_data["pid"] = 99999
-        session._store.save(sample_session_data)
-
-        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
-
-        capture_calls = []
-        monkeypatch.setattr(
-            session, "_capture_langsmith_trace",
-            lambda data: capture_calls.append(data) or False
-        )
-
-        session._update_session_status(sample_session_data)
-
-        assert sample_session_data["status"] == "completed"
-        assert len(capture_calls) == 1
-
-    def test_update_status_skips_trace_for_foreground(
-        self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch
-    ):
-        """Verify _update_session_status does NOT call trace capture for foreground sessions."""
-        from agenticcli.commands import session
-
-        sample_session_data["status"] = "running"
-        sample_session_data["background"] = False
-        sample_session_data["pid"] = 99999
-        session._store.save(sample_session_data)
-
-        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
-
-        capture_calls = []
-        monkeypatch.setattr(
-            session, "_capture_langsmith_trace",
-            lambda data: capture_calls.append(data) or False
-        )
-
-        session._update_session_status(sample_session_data)
-
-        assert sample_session_data["status"] == "completed"
-        assert len(capture_calls) == 0
-
-    def test_spawn_adds_output_format_json_for_background(
-        self, mock_sessions_dir, mock_logs_dir, monkeypatch
-    ):
-        """Verify spawn adds --output-format json flag for background sessions."""
-        from agenticcli.commands import session
-
-        captured_cmds = []
-
-        def mock_popen(cmd, **kwargs):
-            captured_cmds.append(cmd)
-            mock_proc = MagicMock()
-            mock_proc.pid = 12345
-            return mock_proc
-
-        monkeypatch.setattr(subprocess, "Popen", mock_popen)
-        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
-
-        args = SimpleNamespace(
-            prompt="test prompt",
-            role=None,
-            task=None,
-            plan=None,
-            max_turns=5,
-            background=True,
-            directory=None,
-            dangerously_skip_permissions=False,
-        )
-
-        # Mock builtins.open for log files
-        import builtins
-        original_open = builtins.open
-
-        def mock_open(path, *a, **kw):
-            if "stdout.log" in str(path) or "stderr.log" in str(path):
-                return MagicMock()
-            return original_open(path, *a, **kw)
-
-        monkeypatch.setattr(builtins, "open", mock_open)
-        monkeypatch.setattr("agenticcli.console.is_json_output", lambda: False)
-
-        session.cmd_spawn(args)
-
-        assert len(captured_cmds) == 1
-        cmd = captured_cmds[0]
-        assert "--output-format" in cmd
-        assert "json" in cmd
-
-
+@pytest.mark.story("US-SES-001")
 class TestTmuxFlagParsing:
     """TT_001: Tests for --tmux flag parsing and propagation in cmd_spawn."""
 
@@ -2355,6 +2180,7 @@ class TestTmuxFlagParsing:
 # ── TT_002: Test tmux session creation in cmd_spawn ───────────────────
 
 
+@pytest.mark.story("US-SES-001")
 class TestTmuxSessionCreation:
     """TT_002: Tests for tmux session creation path when --tmux is set."""
 
@@ -2609,6 +2435,7 @@ class TestTmuxSessionCreation:
 # ── TT_003: Test tmux fallback when tmux unavailable ──────────────────
 
 
+@pytest.mark.story("US-SES-001")
 class TestTmuxFallback:
     """TT_003: Tests for graceful degradation when tmux is not available."""
 
@@ -2721,6 +2548,7 @@ class TestTmuxFallback:
 # ── TT_006: Test session stop kills tmux session ──────────────────────
 
 
+@pytest.mark.story("US-SES-003")
 class TestSessionStopTmux:
     """TT_006: Tests that session stop properly kills tmux sessions."""
 

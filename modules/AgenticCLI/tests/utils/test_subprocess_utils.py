@@ -2,6 +2,8 @@ import os
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SET-001")
+
 from agenticcli.utils.subprocess_utils import get_clean_env
 
 

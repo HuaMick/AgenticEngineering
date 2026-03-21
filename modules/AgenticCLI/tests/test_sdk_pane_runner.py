@@ -20,6 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-001")
+
 from agenticcli.utils.sdk_runner import DEFAULT_TIMEOUT_SECONDS
 from agenticcli.utils.sdk_pane_runner import (
     ROLE_TIMEOUT_SECONDS,

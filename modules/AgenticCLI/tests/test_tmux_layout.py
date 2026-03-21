@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-001")
+
 from agenticcli.utils.tmux_layout import (
     OrchestrationLayout,
     _create_inplace_layout,

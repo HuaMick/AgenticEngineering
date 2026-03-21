@@ -154,98 +154,6 @@ def _compile_spawn_context(
     return "\n".join(sections)
 
 
-def _capture_langsmith_trace(session_data: dict) -> bool:
-    """Capture LangSmith trace for a completed background session.
-
-    Reads the stdout log to extract the Claude Code session_id,
-    finds the transcript path, and calls the stop hook to submit traces.
-    This is needed because --print mode sessions don't fire Stop hooks.
-
-    Args:
-        session_data: Session data dict with stdout_log path.
-
-    Returns:
-        True if trace was captured, False otherwise.
-    """
-    if session_data.get("trace_captured"):
-        return True
-
-    stdout_log = session_data.get("stdout_log")
-    if not stdout_log or not Path(stdout_log).exists():
-        return False
-
-    # Extract Claude Code session_id from JSON output in stdout log
-    claude_session_id = None
-    try:
-        with open(stdout_log) as f:
-            content = f.read().strip()
-        if content:
-            # The last line of --output-format json output is the result JSON
-            for line in reversed(content.splitlines()):
-                line = line.strip()
-                if line.startswith("{"):
-                    try:
-                        result = json.loads(line)
-                        claude_session_id = result.get("session_id")
-                        if claude_session_id:
-                            break
-                    except json.JSONDecodeError:
-                        continue
-    except OSError:
-        return False
-
-    if not claude_session_id:
-        return False
-
-    # Find transcript path
-    # Claude Code stores transcripts at ~/.claude/projects/<project-hash>/<session-id>.jsonl
-    working_dir = session_data.get("working_dir", os.getcwd())
-    # Convert working dir to Claude Code project hash format
-    project_hash = working_dir.replace("/", "-")
-    if project_hash.startswith("-"):
-        project_hash = project_hash  # Keep leading dash
-    transcript_dir = Path.home() / ".claude" / "projects" / project_hash
-    transcript_path = transcript_dir / f"{claude_session_id}.jsonl"
-
-    if not transcript_path.exists():
-        # Try common project paths
-        claude_projects = Path.home() / ".claude" / "projects"
-        if claude_projects.exists():
-            for proj_dir in claude_projects.iterdir():
-                candidate = proj_dir / f"{claude_session_id}.jsonl"
-                if candidate.exists():
-                    transcript_path = candidate
-                    break
-
-    if not transcript_path.exists():
-        return False
-
-    # Call the stop hook with the session data
-    hook_path = Path.home() / ".claude" / "hooks" / "stop_hook.sh"
-    if not hook_path.exists():
-        return False
-
-    hook_input = json.dumps({
-        "session_id": claude_session_id,
-        "transcript_path": str(transcript_path),
-        "hook_event_name": "Stop",
-        "stop_hook_active": False,
-    })
-
-    try:
-        subprocess.run(
-            ["bash", str(hook_path)],
-            input=hook_input,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        session_data["trace_captured"] = True
-        session_data["claude_session_id"] = claude_session_id
-        _store.save(session_data)
-        return True
-    except (subprocess.TimeoutExpired, OSError):
-        return False
 
 
 def _update_session_status(session_data: dict) -> dict:
@@ -263,9 +171,6 @@ def _update_session_status(session_data: dict) -> dict:
             session_data["status"] = "completed"
             session_data["ended_at"] = datetime.now().isoformat()
             _store.save(session_data)
-            # Capture trace for background sessions
-            if session_data.get("background"):
-                _capture_langsmith_trace(session_data)
     return session_data
 
 
@@ -547,7 +452,7 @@ def handle(args, ctx=None):
     elif args.session_command == "logs":
         cmd_logs(args, ctx)
     else:
-        print("Usage: agentic session <spawn|list|stop|healthcheck|logs>", file=sys.stderr)
+        print("Usage: agentic orchestrate session <spawn|list|stop|plan|implement>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -587,7 +492,7 @@ do NOT work around it silently. Instead:
 2. If a relevant epic exists, add a ticket to it or start working on the gap ticket.
 3. If no epic exists, create one: agentic epic list (check docs/epics/live/ for existing epics)
 4. Then spawn a subagent to implement the fix:
-   agentic session spawn --role build-python --epic <epic_folder> -b
+   agentic orchestrate session spawn --role build-python --epic <epic_folder> -b
 5. Continue your original work once the gap is resolved.
 This ensures gaps are tracked and fixed systematically rather than patched ad-hoc.
 """.strip()
@@ -600,13 +505,11 @@ _PLANNING_PHASE_ROLES_SESSION = frozenset({
     "planner-explore",
     "explore",
     "story-writer",
-    "planner-design",
     "planner-build",
     "planner-test",
     "planner-guidance",
     "planner-cleaning",
     "planner-audit",
-    "planner-reviewer",
     "planner-orchestration",
     "planner-sdk",
     "planner-guidance-testing",
@@ -937,7 +840,6 @@ def cmd_spawn(args, ctx=None):
     cmd = list(cmd_base)
     if background:
         # Use JSON output for background sessions to capture Claude Code session_id
-        # This enables post-completion LangSmith trace capture
         cmd.extend(["--output-format", "json"])
     cmd.extend(["-p", short_prompt])
 
@@ -1628,7 +1530,7 @@ def cmd_list(args, ctx=None):
     console.print(table)
 
     if stale_count > 0:
-        console.print(f"\n[yellow]Warning: {stale_count} session(s) appear stale. Use 'agentic session healthcheck <id>' for details.[/yellow]")
+        console.print(f"\n[yellow]Warning: {stale_count} session(s) appear stale. Use 'agentic orchestrate health <id>' for details.[/yellow]")
 
     # Status summary
     from collections import Counter
@@ -1730,10 +1632,6 @@ def cmd_stop(args, ctx=None):
         session["ended_at"] = datetime.now().isoformat()
         _store.save(session)
 
-        # Capture trace before reporting success
-        if session.get("background"):
-            _capture_langsmith_trace(session)
-
         if is_json_output():
             print_json({
                 "session_id": session["session_id"],
@@ -1749,9 +1647,6 @@ def cmd_stop(args, ctx=None):
         session["status"] = "completed"
         session["ended_at"] = datetime.now().isoformat()
         _store.save(session)
-        # Capture trace for background sessions
-        if session.get("background"):
-            _capture_langsmith_trace(session)
         if is_json_output():
             print_json({
                 "session_id": session["session_id"],

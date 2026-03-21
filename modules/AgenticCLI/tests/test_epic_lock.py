@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-PLN-082")
+
 from agenticcli.utils.epic_lock import acquire_epic_lock, release_epic_lock
 
 
@@ -19,6 +21,7 @@ def lock_dir(tmp_path, monkeypatch):
     return lock_dir
 
 
+@pytest.mark.story("US-PLN-082")
 class TestAcquireEpicLock:
     def test_acquires_fresh_lock(self, lock_dir):
         assert acquire_epic_lock("test_epic") is True
@@ -57,6 +60,7 @@ class TestAcquireEpicLock:
         assert acquire_epic_lock("epic_b") is True
 
 
+@pytest.mark.story("US-PLN-082")
 class TestReleaseEpicLock:
     def test_removes_lock_file(self, lock_dir):
         acquire_epic_lock("test_epic")

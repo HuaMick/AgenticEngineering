@@ -8,12 +8,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-PLN-053")
+
 
 # ---------------------------------------------------------------------------
 # PlanningRunner tests
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.story("US-PLN-053")
 class TestPlanningRunner:
     """Test PlanningRunner class."""
 
@@ -158,6 +161,7 @@ class TestPlanningRunner:
 # ── TT_004: Test _run_phase passes --tmux flag ────────────────────────
 
 
+@pytest.mark.story("US-PLN-059", "US-PLN-060")
 class TestRunPhaseTmux:
     """TT_004: Tests that ExecutionRunner._run_phase() includes --tmux."""
 
@@ -257,6 +261,7 @@ class TestRunPhaseTmux:
 # ── TT_007: Test full spawn chain with CLAUDECODE env isolation ──────
 
 
+@pytest.mark.story("US-PLN-059", "US-PLN-060")
 class TestSpawnChainEnvIsolation:
     """TT_007: Tests the _run_phase -> cmd_spawn -> tmux -> wait_for_session chain.
 
@@ -440,6 +445,7 @@ class TestSpawnChainEnvIsolation:
 # ── TestSDKMetricsReading: SDK metrics reading via ExecutionRunner ───────────
 
 
+@pytest.mark.story("US-PLN-059")
 class TestSDKMetricsReading:
     """Tests for read_sdk_metrics() and its integration in ExecutionRunner."""
 

@@ -80,8 +80,8 @@ def handle(args, ctx=None):
         console.print(f"  Config location: {config_dir}")
         console.print("")
         console.print("[dim]You can modify settings anytime with:[/dim]")
-        console.print("  agentic configure preferences set <key> <value>")
-        console.print("  agentic configure config show")
+        console.print("  agentic config set <key> <value>")
+        console.print("  agentic config show")
     else:
         console.print(f"[red]Setup failed: {result.message}[/red]")
         sys.exit(1)

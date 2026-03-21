@@ -21,6 +21,8 @@ import pytest
 
 from agenticguidance.services.epic_repository import EpicRepository
 
+pytestmark = pytest.mark.story("US-STR-009")
+
 
 # ---------------------------------------------------------------------------
 # Helper fixtures
@@ -62,6 +64,7 @@ def epic_repo(tmp_path, _isolate_tinydb):
 # Tests for cmd_task_add with --story-ids
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-011")
 class TestCmdTaskAddStoryIds:
     """Test cmd_task_add correctly handles the --story-ids flag."""
 
@@ -178,6 +181,7 @@ class TestCmdTaskAddStoryIds:
 # Tests for cmd_task_update with --story-ids
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-011")
 class TestCmdTaskUpdateStoryIds:
     """Test cmd_task_update correctly handles the --story-ids flag."""
 

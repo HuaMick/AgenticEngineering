@@ -13,12 +13,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-SES-001")]
 
 
 # ── FX_007: ExecutionRunner max_turns propagation ─────────────────────────
 
 
+@pytest.mark.story("US-SES-001")
 class TestExecutionRunnerMaxTurns:
     """Verify _run_phase passes --max-turns to the spawn command."""
 
@@ -94,6 +95,7 @@ class TestExecutionRunnerMaxTurns:
         assert DEFAULT_PHASE_MAX_TURNS >= 100  # should be at least a substantial session
 
 
+@pytest.mark.story("US-SES-001")
 class TestExecutePlanMaxTurnsWiring:
     """Verify _execute_plan reads PhaseData.max_turns and passes it to _run_phase."""
 
@@ -160,6 +162,7 @@ class TestExecutePlanMaxTurnsWiring:
 # ── FX_009: cmd_spawn background default max_turns ─────────────────────────
 
 
+@pytest.mark.story("US-SES-001")
 class TestCmdSpawnDefaultMaxTurns:
     """Verify cmd_spawn applies default max_turns for background/tmux sessions.
 
@@ -249,6 +252,7 @@ class TestCmdSpawnDefaultMaxTurns:
 # ── FX_009 continued: Quick-exit detection ─────────────────────────────
 
 
+@pytest.mark.story("US-PLN-061")
 class TestQuickExitDetection:
     """Verify wait_for_session warns on suspiciously fast session exits."""
 

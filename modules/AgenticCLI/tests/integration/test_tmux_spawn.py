@@ -12,6 +12,7 @@ import uuid
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-001")
 
 requires_tmux = pytest.mark.skipif(
     not shutil.which("tmux"),

@@ -15,11 +15,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-STR-009")
+
 
 # ---------------------------------------------------------------------------
 # AST Scanner Tests
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-009")
 class TestExtractStoryIdsFromDecorators:
     """Test _extract_story_ids_from_decorators() helper."""
 
@@ -34,20 +37,20 @@ class TestExtractStoryIdsFromDecorators:
     def test_single_marker(self):
         from agenticcli.commands.stories import _extract_story_ids_from_decorators
         node = self._parse_func('''
-            @pytest.mark.story("US-CLI-110")
+            @pytest.mark.story("US-STR-001")
             def test_foo():
                 pass
         ''')
-        assert _extract_story_ids_from_decorators(node) == {"US-CLI-110"}
+        assert _extract_story_ids_from_decorators(node) == {"US-STR-001"}
 
     def test_multiple_ids_in_one_marker(self):
         from agenticcli.commands.stories import _extract_story_ids_from_decorators
         node = self._parse_func('''
-            @pytest.mark.story("US-CLI-110", "US-CLI-111")
+            @pytest.mark.story("US-STR-001", "US-STR-002")
             def test_foo():
                 pass
         ''')
-        assert _extract_story_ids_from_decorators(node) == {"US-CLI-110", "US-CLI-111"}
+        assert _extract_story_ids_from_decorators(node) == {"US-STR-001", "US-STR-002"}
 
     def test_no_markers(self):
         from agenticcli.commands.stories import _extract_story_ids_from_decorators
@@ -71,13 +74,14 @@ class TestExtractStoryIdsFromDecorators:
         from agenticcli.commands.stories import _extract_story_ids_from_decorators
         node = self._parse_func('''
             @pytest.mark.slow
-            @pytest.mark.story("US-CLI-110")
+            @pytest.mark.story("US-STR-001")
             def test_foo():
                 pass
         ''')
-        assert _extract_story_ids_from_decorators(node) == {"US-CLI-110"}
+        assert _extract_story_ids_from_decorators(node) == {"US-STR-001"}
 
 
+@pytest.mark.story("US-STR-009")
 class TestScanPytestStoryMarkersDetailed:
     """Test _scan_pytest_story_markers_detailed() full scanner."""
 
@@ -91,11 +95,11 @@ class TestScanPytestStoryMarkersDetailed:
         (test_dir / "test_example.py").write_text(textwrap.dedent('''
             import pytest
 
-            @pytest.mark.story("US-CLI-110")
+            @pytest.mark.story("US-STR-001")
             def test_one():
                 pass
 
-            @pytest.mark.story("US-CLI-110", "US-CLI-111")
+            @pytest.mark.story("US-STR-001", "US-STR-002")
             def test_two():
                 pass
 
@@ -108,10 +112,10 @@ class TestScanPytestStoryMarkersDetailed:
             with patch.object(Path, "cwd", return_value=tmp_path):
                 mappings = _scan_pytest_story_markers_detailed()
 
-        assert "US-CLI-110" in mappings
-        assert len(mappings["US-CLI-110"]) == 2
-        assert "US-CLI-111" in mappings
-        assert len(mappings["US-CLI-111"]) == 1
+        assert "US-STR-001" in mappings
+        assert len(mappings["US-STR-001"]) == 2
+        assert "US-STR-002" in mappings
+        assert len(mappings["US-STR-002"]) == 1
 
     def test_handles_class_markers(self, tmp_path):
         from agenticcli.commands.stories import _scan_pytest_story_markers_detailed
@@ -122,7 +126,7 @@ class TestScanPytestStoryMarkersDetailed:
         (test_dir / "test_class.py").write_text(textwrap.dedent('''
             import pytest
 
-            @pytest.mark.story("US-CLI-200")
+            @pytest.mark.story("US-STR-003")
             class TestMyFeature:
                 def test_method_a(self):
                     pass
@@ -137,9 +141,9 @@ class TestScanPytestStoryMarkersDetailed:
         with patch.object(Path, "cwd", return_value=tmp_path):
             mappings = _scan_pytest_story_markers_detailed()
 
-        assert "US-CLI-200" in mappings
+        assert "US-STR-003" in mappings
         # Only test_ methods, not helper
-        assert len(mappings["US-CLI-200"]) == 2
+        assert len(mappings["US-STR-003"]) == 2
 
     def test_empty_test_dir(self, tmp_path):
         from agenticcli.commands.stories import _scan_pytest_story_markers_detailed
@@ -157,6 +161,7 @@ class TestScanPytestStoryMarkersDetailed:
 # CLI Command Tests (cmd_sync, cmd_coverage, cmd_run)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.story("US-STR-009")
 class TestCmdSync:
     """Test cmd_sync command."""
 
@@ -167,13 +172,13 @@ class TestCmdSync:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
         mock_mappings = {
-            "US-CLI-110": ["tests/test_a.py::test_1"],
-            "US-CLI-111": ["tests/test_b.py::test_2"],
+            "US-STR-001": ["tests/test_a.py::test_1"],
+            "US-STR-002": ["tests/test_b.py::test_2"],
         }
 
         with patch("agenticcli.commands.stories._scan_pytest_story_markers_detailed", return_value=mock_mappings), \
              patch("agenticcli.commands.stories._collect_all_stories", return_value=[
-                 {"id": "US-CLI-110"}, {"id": "US-CLI-111"}, {"id": "US-CLI-112"}
+                 {"id": "US-STR-001"}, {"id": "US-STR-002"}, {"id": "US-STR-003"}
              ]), \
              patch("agenticcli.commands.stories._get_repo_db_path", return_value=db_path), \
              patch("agenticcli.console.is_json_output", return_value=True), \
@@ -187,6 +192,7 @@ class TestCmdSync:
         assert result["orphan_markers"] == []
 
 
+@pytest.mark.story("US-STR-010")
 class TestCmdCoverage:
     """Test cmd_coverage command."""
 
@@ -199,11 +205,11 @@ class TestCmdCoverage:
         # Populate TinyDB
         from agenticguidance.services.epic_repository import EpicRepository
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-        repo.sync_story_tests({"US-CLI-110": ["tests/test_a.py::test_1"]})
+        repo.sync_story_tests({"US-STR-001": ["tests/test_a.py::test_1"]})
         repo.close()
 
         with patch("agenticcli.commands.stories._collect_all_stories", return_value=[
-                 {"id": "US-CLI-110"}, {"id": "US-CLI-111"}
+                 {"id": "US-STR-001"}, {"id": "US-STR-002"}
              ]), \
              patch("agenticcli.commands.stories._get_repo_db_path", return_value=db_path), \
              patch("agenticcli.console.is_json_output", return_value=True), \
@@ -214,7 +220,7 @@ class TestCmdCoverage:
         assert result["total_stories"] == 2
         assert result["covered"] == 1
         assert result["uncovered_count"] == 1
-        assert "US-CLI-111" in result["uncovered"]
+        assert "US-STR-002" in result["uncovered"]
         assert result["coverage_pct"] == 50.0
 
     def test_coverage_exit_code_on_low_coverage(self, tmp_path):
@@ -224,7 +230,7 @@ class TestCmdCoverage:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
         with patch("agenticcli.commands.stories._collect_all_stories", return_value=[
-                 {"id": "US-CLI-110"}, {"id": "US-CLI-111"}
+                 {"id": "US-STR-001"}, {"id": "US-STR-002"}
              ]), \
              patch("agenticcli.commands.stories._get_repo_db_path", return_value=db_path), \
              patch("agenticcli.console.is_json_output", return_value=True), \
@@ -234,6 +240,7 @@ class TestCmdCoverage:
             assert exc_info.value.code == 1
 
 
+@pytest.mark.story("US-STR-009")
 class TestCmdRun:
     """Test cmd_run command."""
 
@@ -258,7 +265,7 @@ class TestCmdRun:
 
         from agenticguidance.services.epic_repository import EpicRepository
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-        repo.sync_story_tests({"US-CLI-110": ["tests/test_a.py::test_1"]})
+        repo.sync_story_tests({"US-STR-001": ["tests/test_a.py::test_1"]})
         repo.close()
 
         (tmp_path / ".git").mkdir()
@@ -267,7 +274,7 @@ class TestCmdRun:
              patch.object(Path, "cwd", return_value=tmp_path), \
              patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
             with pytest.raises(SystemExit) as exc_info:
-                cmd_run(SimpleNamespace(story_id="US-CLI-110", module=None, testmon=False))
+                cmd_run(SimpleNamespace(story_id="US-STR-001", module=None, testmon=False))
             assert exc_info.value.code == 0
 
         mock_run.assert_called_once()

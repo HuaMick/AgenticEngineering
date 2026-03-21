@@ -40,7 +40,7 @@ def _list_orch_sessions():
 class TestOrchestrateDryRunPlanning:
     def test_orchestrate_dry_run_planning(self, tmux_session_cleanup):
         result = subprocess.run(
-            ["agentic", "session", "orchestrate", "planning", "--dry-run"],
+            ["agentic", "orchestrate", "session", "plan", "--dry-run"],
             capture_output=True, text=True, timeout=15,
         )
         assert result.returncode == 0, f"Exit code {result.returncode}: {result.stderr}"
@@ -58,7 +58,7 @@ class TestOrchestrateDryRunWithDifferentActions:
     def test_orchestrate_dry_run_ignores_action(self, tmux_session_cleanup):
         """--dry-run should work regardless of the action argument."""
         result = subprocess.run(
-            ["agentic", "session", "orchestrate", "planning", "--dry-run"],
+            ["agentic", "orchestrate", "session", "plan", "--dry-run"],
             capture_output=True, text=True, timeout=15,
         )
         assert result.returncode == 0
@@ -69,7 +69,7 @@ class TestOrchestrateDryRunWithDifferentActions:
 class TestOrchestrateDryRunPaneDetails:
     def test_dry_run_pane_titles(self, tmux_session_cleanup):
         result = subprocess.run(
-            ["agentic", "session", "orchestrate", "planning", "--dry-run"],
+            ["agentic", "orchestrate", "session", "plan", "--dry-run"],
             capture_output=True, text=True, timeout=15,
         )
         assert result.returncode == 0
@@ -84,7 +84,7 @@ class TestOrchestrateDryRunPaneDetails:
 class TestOrchestrateDryRunDistinctPanes:
     def test_dry_run_distinct_pane_ids(self, tmux_session_cleanup):
         result = subprocess.run(
-            ["agentic", "session", "orchestrate", "planning", "--dry-run"],
+            ["agentic", "orchestrate", "session", "plan", "--dry-run"],
             capture_output=True, text=True, timeout=15,
         )
         assert result.returncode == 0
@@ -102,7 +102,7 @@ class TestOrchestrateDryRunDistinctPanes:
 class TestOrchestrateDryRunJsonOutput:
     def test_dry_run_valid_json_fields(self, tmux_session_cleanup):
         result = subprocess.run(
-            ["agentic", "session", "orchestrate", "planning", "--dry-run"],
+            ["agentic", "orchestrate", "session", "plan", "--dry-run"],
             capture_output=True, text=True, timeout=15,
         )
         assert result.returncode == 0
@@ -124,7 +124,7 @@ class TestNoOrphanedSessionsAfterDryRun:
         """Run --dry-run 3 times, verify no orphaned sessions remain."""
         for _ in range(3):
             result = subprocess.run(
-                ["agentic", "session", "orchestrate", "planning", "--dry-run"],
+                ["agentic", "orchestrate", "session", "plan", "--dry-run"],
                 capture_output=True, text=True, timeout=15,
             )
             assert result.returncode == 0

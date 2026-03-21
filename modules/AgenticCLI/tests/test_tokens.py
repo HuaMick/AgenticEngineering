@@ -1,5 +1,8 @@
 """Tests for token estimation utilities."""
 import pytest
+
+pytestmark = pytest.mark.story("US-SET-015")
+
 from agenticcli.utils.tokens import (
     estimate_tokens,
     context_usage_percent,

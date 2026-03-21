@@ -1,8 +1,8 @@
 """Planner Loop workflow for automated orchestration planning.
 
 Encapsulates the orchestration planner logic: discovers epics needing
-planning (no phases in TinyDB), spawns specialized planners, runs review
-loops, and updates task status.
+planning (no phases in TinyDB), spawns specialized planners, validates
+planning output, and updates task status.
 
 Uses the Claude Agent SDK (when available) for direct agent invocation,
 falling back to subprocess spawning when the SDK is not installed.
@@ -17,9 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from agenticcli.utils.context_file import write_context_file
+from agenticcli.utils.epic_lock import acquire_epic_lock, release_epic_lock
 from agenticcli.utils.session_id import generate_session_id
-from agenticcli.utils.retry import exponential_backoff
+from agenticcli.utils.retry import SPAWN_RETRY_BACKOFF, static_backoff
+from agenticcli.utils.session_diagnostics import diagnose_quick_exit
+from agenticcli.utils.transport import determine_transport, SDK_DIRECT, SDK_TMUX
 from agenticcli.utils.sdk_runner import (
     SDK_AVAILABLE,
     SessionResult,
@@ -52,14 +54,12 @@ _PLANNING_PHASE_ROLES = frozenset({
     "epic-creator",
     "planner-explore",
     "explore",
-    "story-generator",
-    "planner-design",
+    "story-writer",
     "planner-build",
     "planner-test",
     "planner-guidance",
     "planner-cleaning",
     "planner-audit",
-    "planner-reviewer",
     "planner-orchestration",
     "planner-sdk",
     "planner-guidance-testing",
@@ -254,7 +254,7 @@ class PlannerLoopWorkflow:
     # in one pass. See _process_plan() for the new flow.
     # ── SDK-first agent execution ──────────────────────────────────────
 
-    def _run_role_agent(self, role: str, epic_folder: str) -> SessionResult:
+    def _run_role_agent(self, role: str, epic_folder: str, extra_prompt: Optional[str] = None) -> SessionResult:
         """Run an agent with the given role via the SDK.
 
         Builds the prompt and options, invokes run_agent_sync(), and
@@ -265,26 +265,33 @@ class PlannerLoopWorkflow:
         Args:
             role: Agent role identifier.
             epic_folder: Epic folder name.
+            extra_prompt: Optional per-call extra instructions (e.g. category scope).
+                Appended after self.prompt if both are present.
 
         Returns:
             SessionResult with status and metadata.
         """
         session_id = generate_session_id()
-        prompt = _build_agent_prompt(role, epic_folder, extra_prompt=self.prompt)
+        # Merge loop-level prompt with per-call extra_prompt
+        combined_extra: Optional[str]
+        if self.prompt and extra_prompt:
+            combined_extra = f"{self.prompt}\n\n{extra_prompt}"
+        elif extra_prompt:
+            combined_extra = extra_prompt
+        else:
+            combined_extra = self.prompt
+        prompt = _build_agent_prompt(role, epic_folder, extra_prompt=combined_extra)
 
-        # This function intentionally does NOT use determine_transport() from
-        # agenticcli.utils.transport — it has special AGENTIC_FORCE_SDK_DIRECT
-        # override logic and SDK-direct fallbacks that differ from the standard
-        # priority order (sdk-tmux > tmux > subprocess).
-        import shutil
-        force_sdk_direct = os.environ.get("AGENTIC_FORCE_SDK_DIRECT") == "1"
+        force_sdk = os.environ.get("AGENTIC_FORCE_SDK_DIRECT") == "1"
+        transport = determine_transport(sdk_available=SDK_AVAILABLE, force_sdk_direct=force_sdk)
 
-        if force_sdk_direct and SDK_AVAILABLE:
+        if transport == SDK_DIRECT:
             logger.warning("Using SDK-direct path (AGENTIC_FORCE_SDK_DIRECT=1) — zombie bug risk")
             return self._run_via_sdk(session_id, role, epic_folder, prompt)
-        elif SDK_AVAILABLE and shutil.which("tmux"):
+        elif transport == SDK_TMUX:
             return self._run_via_tmux_sdk(session_id, role, epic_folder, prompt)
         elif SDK_AVAILABLE:
+            # SDK available but no tmux — fallback to SDK-direct
             logger.warning("tmux not available, falling back to SDK-direct (zombie bug risk)")
             return self._run_via_sdk(session_id, role, epic_folder, prompt)
         else:
@@ -340,7 +347,7 @@ class PlannerLoopWorkflow:
         result: SessionResult = SessionResult(status="failed", result="No attempt made")
         for attempt in range(1, max_retries + 1):
             if attempt > 1:
-                backoff = exponential_backoff(attempt - 1)  # 2s, 4s, 8s, ...
+                backoff = static_backoff(attempt - 1, SPAWN_RETRY_BACKOFF)
                 logger.info(
                     "Retrying SDK agent (attempt %d/%d): %s — waiting %ds",
                     attempt, max_retries, result.result[:100], backoff,
@@ -402,10 +409,9 @@ class PlannerLoopWorkflow:
         """
         timeout = get_timeout_for_role(role)
 
-        # Write context file for the pane runner
-        write_context_file(session_id, prompt)
-
-        # Record session start
+        # Record session start (context file written by cmd_spawn via
+        # _compile_spawn_context which includes role process, inputs, and
+        # current ticket — richer than our prompt-only write)
         session_data = {
             "session_id": session_id,
             "pid": None,
@@ -426,9 +432,10 @@ class PlannerLoopWorkflow:
         )
 
         result = SessionResult(status="failed", result="No attempt made")
+        spawned_session_id = session_id  # Default until spawn output overrides
         for attempt in range(1, max_retries + 1):
             if attempt > 1:
-                backoff = exponential_backoff(attempt - 1)
+                backoff = static_backoff(attempt - 1, SPAWN_RETRY_BACKOFF)
                 logger.info(
                     "Retrying sdk-tmux agent (attempt %d/%d): %s — waiting %ds",
                     attempt, max_retries, result.result[:100], backoff,
@@ -436,7 +443,6 @@ class PlannerLoopWorkflow:
                 time.sleep(backoff)
                 # New session_id for retry (new tmux pane)
                 session_id = generate_session_id()
-                write_context_file(session_id, prompt)
                 session_data["session_id"] = session_id
                 session_data["status"] = "running"
                 session_data["started_at"] = datetime.now().isoformat()
@@ -503,12 +509,32 @@ class PlannerLoopWorkflow:
             final_status = self.wait_for_session(spawned_session_id, timeout=timeout)
             elapsed = time.monotonic() - start_wait
 
-            # Quick-exit detection (< 30s)
+            # Quick-exit detection (< 30s) with structured diagnostics
             if elapsed < 30 and final_status != "completed":
                 logger.warning(
-                    "Quick exit detected for %s/%s (%.1fs) — may be retryable",
+                    "Quick exit detected for %s/%s (%.1fs) — running diagnostics",
                     role, epic_folder, elapsed,
                 )
+                diagnosis = diagnose_quick_exit(spawned_session_id)
+                if diagnosis and not diagnosis.retryable:
+                    logger.error(
+                        "Quick exit for %s/%s is not retryable (%s): %s",
+                        role, epic_folder, diagnosis.error_type.value,
+                        diagnosis.detail[:200],
+                    )
+                    # Build a final result and break — no point retrying
+                    sdk_metrics = read_sdk_metrics(spawned_session_id)
+                    result = SessionResult(
+                        status="failed",
+                        result=f"Non-retryable quick exit: {diagnosis.error_type.value}",
+                        cost_usd=sdk_metrics["cost_usd"],
+                        duration_ms=sdk_metrics["duration_ms"],
+                        session_id=sdk_metrics["sdk_session_id"] or spawned_session_id,
+                        num_turns=sdk_metrics["num_turns"],
+                        usage=sdk_metrics["usage"],
+                        is_error=True,
+                    )
+                    break
 
             # Read SDK metrics from session state
             sdk_metrics = read_sdk_metrics(spawned_session_id)
@@ -625,7 +651,7 @@ class PlannerLoopWorkflow:
         return self._run_role_agent("explore", epic_folder)
 
     def spawn_story_agent(self, epic_folder: str) -> SessionResult:
-        """Run a story-generator agent for user story generation.
+        """Run a story-writer agent for user story generation.
 
         Args:
             epic_folder: Epic folder name.
@@ -633,21 +659,7 @@ class PlannerLoopWorkflow:
         Returns:
             SessionResult with completion status.
         """
-        return self._run_role_agent("story-generator", epic_folder)
-
-    def spawn_design_agent(self, epic_folder: str) -> SessionResult:
-        """Run a planner-design agent for solution architecture scaffolding.
-
-        Maps user stories to phases, defines cross-phase contracts, and outputs
-        structured design_context.yml for downstream planners.
-
-        Args:
-            epic_folder: Epic folder name.
-
-        Returns:
-            SessionResult with completion status.
-        """
-        return self._run_role_agent("planner-design", epic_folder)
+        return self._run_role_agent("story-writer", epic_folder)
 
     def spawn_epic_creator(self, epic_folder: str) -> SessionResult:
         """Run epic-creator agent to scaffold phases and skeleton tickets.
@@ -663,70 +675,86 @@ class PlannerLoopWorkflow:
         """
         return self._run_role_agent("epic-creator", epic_folder)
 
-    def spawn_explore_agents(self, epic_folder: str) -> SessionResult:
-        """Run planner-explore agent(s) to analyze codebase and enrich tickets.
+    def _build_category_prompt(self, category: dict) -> str:
+        """Build category-scoped prompt for an explore agent.
 
-        Spawns a planning-aware explore agent that updates skeleton tickets
-        with target-files, guidance, and success criteria.
+        Args:
+            category: Category dict with keys: name, description, codebase_scope, story_ids.
+
+        Returns:
+            Prompt string scoping the agent to this category.
+        """
+        parts = [
+            f"CATEGORY SCOPE: You are exploring category '{category['name']}'.",
+            f"Description: {category.get('description', 'N/A')}",
+        ]
+        if category.get("codebase_scope"):
+            scope_paths = ", ".join(category["codebase_scope"])
+            parts.append(f"Focus your exploration on these paths: {scope_paths}")
+        if category.get("story_ids"):
+            ids = ", ".join(category["story_ids"])
+            parts.append(f"Relevant story IDs: {ids}")
+        parts.append("Only update tickets related to stories in your category.")
+        return "\n".join(parts)
+
+    def spawn_explore_agents(self, epic_folder: str, categories: list[dict] | None = None) -> SessionResult:
+        """Spawn explore agents — one per category if provided, else single agent.
+
+        Uses ThreadPoolExecutor for parallel spawning. Each agent runs in its own
+        tmux pane via sdk-tmux transport (safe for concurrent use).
 
         Args:
             epic_folder: Epic folder name.
+            categories: Optional list of category dicts from stories.yml. When
+                provided and contains more than one entry, one agent is spawned
+                per category in parallel.
 
         Returns:
-            SessionResult with completion status.
+            SessionResult with completion status (aggregated when parallel).
         """
-        return self._run_role_agent("planner-explore", epic_folder)
+        if not categories or len(categories) <= 1:
+            extra = None
+            if categories and len(categories) == 1:
+                extra = self._build_category_prompt(categories[0])
+            return self._run_role_agent("planner-explore", epic_folder, extra_prompt=extra)
 
-    def parse_design_status(self, result: SessionResult) -> str:
-        """Parse design agent's status from its output.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        Looks for DESIGN_STATUS: line in the agent's result text.
-        Valid statuses: approved, needs_explore, needs_stories.
+        results = []
+        with ThreadPoolExecutor(max_workers=len(categories)) as executor:
+            futures = {
+                executor.submit(
+                    self._run_role_agent, "planner-explore", epic_folder,
+                    self._build_category_prompt(cat)
+                ): cat["name"]
+                for cat in categories
+            }
+            for future in as_completed(futures):
+                cat_name = futures[future]
+                try:
+                    result = future.result()
+                    logger.info("Explore agent for category '%s' completed: %s", cat_name, result.status)
+                    results.append(result)
+                except Exception as e:
+                    logger.error("Explore agent for category '%s' failed: %s", cat_name, e)
+                    results.append(SessionResult(
+                        status="failed", result=str(e), cost_usd=0.0,
+                        duration_ms=0, is_error=True
+                    ))
 
-        Args:
-            result: SessionResult from the design agent.
+        # Aggregate results
+        any_failed = any(r.status != "completed" for r in results)
+        total_cost = sum(r.cost_usd for r in results)
+        max_duration = max((r.duration_ms for r in results), default=0)
+        completed = sum(1 for r in results if r.status == "completed")
 
-        Returns:
-            Status string. Defaults to "approved" if no status found.
-        """
-        for line in result.result.splitlines():
-            if line.startswith("DESIGN_STATUS:"):
-                return line.split(":", 1)[1].strip()
-        return "approved"  # Default to approved if no status found
-
-    def parse_review_status(self, result: SessionResult) -> str:
-        """Parse reviewer agent's status from its output.
-
-        Looks for REVIEW_STATUS: line in the agent's result text.
-        Valid statuses: APPROVED, REJECTED, NEEDS_REVISION.
-
-        Args:
-            result: SessionResult from the reviewer agent.
-
-        Returns:
-            Status string. Defaults to "APPROVED" if no status found.
-        """
-        for line in result.result.splitlines():
-            if line.startswith("REVIEW_STATUS:"):
-                return line.split(":", 1)[1].strip().upper()
-        # Legacy: check for decision keywords in output
-        text = result.result.upper()
-        if "REJECT" in text:
-            return "REJECTED"
-        if "NEEDS_REVISION" in text or "NEEDS REVISION" in text:
-            return "NEEDS_REVISION"
-        return "APPROVED"
-
-    def spawn_reviewer(self, epic_folder: str) -> SessionResult:
-        """Run planner-reviewer agent for an epic.
-
-        Args:
-            epic_folder: Epic folder name.
-
-        Returns:
-            SessionResult with completion status.
-        """
-        return self._run_role_agent("planner-reviewer", epic_folder)
+        return SessionResult(
+            status="completed" if not any_failed else "failed",
+            result=f"Parallel explore: {completed}/{len(results)} categories completed",
+            cost_usd=total_cost,
+            duration_ms=max_duration,
+            is_error=any_failed,
+        )
 
     def spawn_orchestration_agent(self, epic_folder: str) -> SessionResult:
         """Run planner-orchestration agent to create TinyDB phase records.
@@ -954,45 +982,6 @@ class PlannerLoopWorkflow:
         status = self._get_session_status(session_id)
         return status in ("running", "starting")
 
-    def run_review_cycle(self, epic_folder: str, max_reviews: int = 3) -> tuple[bool, int, str]:
-        """Run review loop: run reviewer agent, handle approve/reject.
-
-        Parses the reviewer's output for REVIEW_STATUS: APPROVED/REJECTED/NEEDS_REVISION.
-        On NEEDS_REVISION, loops back to re-run the reviewer (up to max_reviews).
-        On REJECTED, returns immediately with failure.
-
-        Args:
-            epic_folder: Epic folder name.
-            max_reviews: Maximum review iterations.
-
-        Returns:
-            Tuple of (approved, iterations_used, feedback).
-        """
-        for attempt in range(1, max_reviews + 1):
-            logger.info("Review cycle %d/%d for %s", attempt, max_reviews, epic_folder)
-
-            result = self.spawn_reviewer(epic_folder)
-            if result.status != "completed":
-                return False, attempt, f"Reviewer session ended with status: {result.status}"
-
-            review_status = self.parse_review_status(result)
-            if review_status == "APPROVED":
-                logger.info("Review cycle %d approved for %s", attempt, epic_folder)
-                return True, attempt, "approved"
-            elif review_status == "REJECTED":
-                logger.warning("Review cycle %d rejected for %s", attempt, epic_folder)
-                return False, attempt, f"Reviewer rejected: {result.result[:200]}"
-            else:
-                # NEEDS_REVISION — loop back
-                logger.info(
-                    "Review cycle %d needs revision for %s — looping back",
-                    attempt, epic_folder,
-                )
-                continue
-
-        logger.warning("Max review iterations reached for %s", epic_folder)
-        return False, max_reviews, "Max review iterations reached"
-
     def update_task_status(self, task_id: str, action: str, epic_folder: str) -> bool:
         """Update task status via CLI.
 
@@ -1157,8 +1146,8 @@ class PlannerLoopWorkflow:
 class PlannerLoopRunner:
     """Orchestrates the full planning loop.
 
-    Discovers epics without TinyDB phases, spawns planners, runs reviews,
-    and tracks state throughout execution.
+    Discovers epics without TinyDB phases, spawns planners, validates
+    planning output, and tracks state throughout execution.
     """
 
     def __init__(
@@ -1180,50 +1169,6 @@ class PlannerLoopRunner:
             "errors": [],
             "current_plan": None,
         }
-
-    def _acquire_epic_lock(self, epic_folder: str) -> bool:
-        """Acquire a file-based lock to prevent concurrent orchestration.
-
-        Args:
-            epic_folder: Epic folder name.
-
-        Returns:
-            True if lock acquired, False if another process holds it.
-        """
-        lock_dir = Path.home() / ".agentic" / "locks"
-        lock_dir.mkdir(parents=True, exist_ok=True)
-        lock_file = lock_dir / f"orchestrate_{epic_folder}.lock"
-        if lock_file.exists():
-            try:
-                data = json.loads(lock_file.read_text())
-                pid = data.get("pid")
-                if pid and is_process_running(pid):
-                    logger.error(
-                        "Epic %s already being orchestrated by PID %d (started %s)",
-                        epic_folder, pid, data.get("started_at", "unknown"),
-                    )
-                    return False
-                # Stale lock — owner process is dead
-                logger.warning(
-                    "Clearing stale lock for %s (PID %d no longer running)",
-                    epic_folder, pid,
-                )
-            except (json.JSONDecodeError, OSError):
-                pass  # Corrupt lock file — overwrite it
-        lock_file.write_text(json.dumps({
-            "pid": os.getpid(),
-            "started_at": datetime.now().isoformat(),
-        }))
-        return True
-
-    def _release_epic_lock(self, epic_folder: str):
-        """Release the file-based orchestration lock.
-
-        Args:
-            epic_folder: Epic folder name.
-        """
-        lock_file = Path.home() / ".agentic" / "locks" / f"orchestrate_{epic_folder}.lock"
-        lock_file.unlink(missing_ok=True)
 
     def _track_cost(self, result) -> bool:
         """Accumulate cost from a SessionResult and check budget.
@@ -1358,17 +1303,41 @@ class PlannerLoopRunner:
         logger.warning("Max iterations (%d) reached without completion", max_iterations)
         return False
 
+    def _parse_story_categories(self, epic_folder: str) -> list[dict]:
+        """Read categories from stories.yml in the epic folder.
+
+        Args:
+            epic_folder: Epic folder name.
+
+        Returns:
+            List of category dicts, or empty list if not found/parseable.
+        """
+        import yaml
+        stories_path = self.workflow.epics_dir / epic_folder / "stories.yml"
+        if not stories_path.exists():
+            logger.warning("No stories.yml found for %s — single explore agent", epic_folder)
+            return []
+        try:
+            with open(stories_path) as f:
+                data = yaml.safe_load(f)
+            categories = data.get("categories", [])
+            if not categories:
+                logger.info("No categories in stories.yml for %s — single explore agent", epic_folder)
+            return categories
+        except Exception as e:
+            logger.warning("Failed to parse stories.yml for %s: %s", epic_folder, e)
+            return []
+
     def _process_plan(self, epic_folder: str) -> bool:
         """Process a single epic through the full planning workflow.
 
-        Epic-creator-first architecture (7 steps):
-        1. Epic Creator    → scaffold phases + skeleton tickets (ALL types)
-        2. Story Generator → generate user stories
-        3. Explore         → analyze codebase, update tickets via CLI
-        4. Design          → review gate: tie stories to tickets, can loop back
-        5. Review          → validate completeness
-        6. Orchestration   → add agent routing to phases
-        7. Ticket Promotion → proposed → pending
+        Pipeline (5 steps + promotion):
+        1. Epic Creator    → scaffold phases + skeleton tickets
+        2. Story Writer    → generate user stories + categories → stories.yml
+        3. Parallel Explore → N agents, one per category
+        4. Pre-flight      → Python validation (advisory, replaces design+review)
+        5. Orchestration   → add agent routing to phases
+        6. Ticket Promotion → proposed → pending
 
         Uses SDK-first agent execution — no spawn+wait pattern needed.
         Each agent call blocks until completion and returns a SessionResult.
@@ -1379,7 +1348,7 @@ class PlannerLoopRunner:
         Returns:
             True if epic was processed successfully.
         """
-        if not self._acquire_epic_lock(epic_folder):
+        if not acquire_epic_lock(epic_folder):
             self.state["errors"].append({
                 "plan": epic_folder,
                 "error": "Another orchestration process is already running for this epic",
@@ -1390,10 +1359,98 @@ class PlannerLoopRunner:
         try:
             return self._process_plan_inner(epic_folder)
         finally:
-            self._release_epic_lock(epic_folder)
+            release_epic_lock(epic_folder)
+
+    def _validate_planning_output(self, epic_folder: str) -> tuple[bool, list[str]]:
+        """Pre-flight validation replacing planner-design and planner-reviewer.
+
+        Checks ticket quality after explore agents finish. Advisory only —
+        always returns valid=True with warnings logged. Does NOT block the pipeline.
+
+        Args:
+            epic_folder: Epic folder name.
+
+        Returns:
+            Tuple of (valid, warnings). valid is always True.
+        """
+        warnings: list[str] = []
+        repo = self.workflow._get_repository()
+        if not repo:
+            warnings.append("No repository available — skipping validation")
+            return True, warnings
+
+        epic_data = repo.get_epic(epic_folder)
+        if not epic_data:
+            warnings.append(f"Epic {epic_folder} not found in TinyDB")
+            return True, warnings
+
+        tickets = epic_data.tasks
+        if not tickets:
+            warnings.append(f"No tickets found for {epic_folder}")
+            return True, warnings
+
+        # Check target_files
+        for t in tickets:
+            target_files = getattr(t, "target_files", None) or getattr(t, "target_file", None)
+            if not target_files:
+                warnings.append(f"Ticket {t.id} missing target_files")
+
+        # Check guidance/success_criteria
+        for t in tickets:
+            guidance = getattr(t, "guidance", None) or ""
+            criteria = getattr(t, "success_criteria", None) or ""
+            if not guidance.strip() and not criteria.strip():
+                warnings.append(f"Ticket {t.id} missing both guidance and success_criteria")
+
+        # Check agent_type references
+        known_agents = {
+            "build-python", "build-flutter", "test-runner", "test-builder",
+            "test-audit", "test-user-simulator", "test-service", "test-final-output",
+            "test-guidance-simulator", "teacher-update-guidance", "teacher-update-assets",
+            "planner-audit", "deploy-cicd",
+        }
+        for t in tickets:
+            agent = getattr(t, "agent", None) or getattr(t, "agent_type", None) or ""
+            if agent and agent not in known_agents:
+                warnings.append(f"Ticket {t.id} references unknown agent '{agent}'")
+
+        # Check story references against stories.yml
+        import yaml
+        stories_path = self.workflow.epics_dir / epic_folder / "stories.yml"
+        if stories_path.exists():
+            try:
+                with open(stories_path) as f:
+                    stories_data = yaml.safe_load(f) or {}
+                story_ids = {s.get("id") for s in stories_data.get("stories", [])}
+                for t in tickets:
+                    refs = getattr(t, "story_ids", None) or []
+                    for sid in refs:
+                        if sid not in story_ids:
+                            warnings.append(f"Ticket {t.id} references orphan story '{sid}'")
+            except Exception:
+                pass  # Non-fatal
+
+        for w in warnings:
+            logger.warning("Pre-flight validation: %s", w)
+
+        if not warnings:
+            logger.info("Pre-flight validation passed for %s", epic_folder)
+        else:
+            logger.info("Pre-flight validation: %d warnings for %s", len(warnings), epic_folder)
+
+        return True, warnings
 
     def _process_plan_inner(self, epic_folder: str) -> bool:
-        """Inner implementation of _process_plan (lock already held)."""
+        """Inner implementation of _process_plan (lock already held).
+
+        Pipeline (5 steps + promotion):
+        1. Epic Creator    → scaffold phases + skeleton tickets
+        2. Story Writer    → generate user stories + categories → stories.yml
+        3. Parallel Explore → N agents, one per category
+        4. Pre-flight      → Python validation (advisory, replaces design+review)
+        5. Orchestration   → create TinyDB phase records with agent routing
+        6. Ticket Promotion → proposed → pending
+        """
         logger.info("Processing epic: %s", epic_folder)
 
         # Auto-register epic in TinyDB if folder exists on disk but isn't registered
@@ -1449,7 +1506,7 @@ class PlannerLoopRunner:
 
         # 2. Story generation: run story agent
         story_result = self.workflow.spawn_story_agent(epic_folder)
-        self.workflow._validate_result(story_result, "story-generator")
+        self.workflow._validate_result(story_result, "story-writer")
         if self._track_cost(story_result):
             return False
         if story_result.status != "completed":
@@ -1460,73 +1517,27 @@ class PlannerLoopRunner:
             })
             return False
 
-        # 3-4. Explore + Design (with loop-back support)
-        max_design_loops = 2
-        for design_iter in range(max_design_loops + 1):
-            # 3. Explore: run planner-explore to analyze codebase and enrich tickets
-            explore_result = self.workflow.spawn_explore_agents(epic_folder)
-            self.workflow._validate_result(explore_result, "planner-explore")
-            if self._track_cost(explore_result):
-                return False
-            if explore_result.status != "completed":
-                self.state["errors"].append({
-                    "plan": epic_folder,
-                    "error": f"Explore agent failed: {explore_result.result[:200]}",
-                    "phase": "explore",
-                })
-                return False
+        # Parse categories from stories.yml (written by the story agent).
+        # Used to spawn one parallel explore agent per category.
+        story_categories = self._parse_story_categories(epic_folder)
 
-            # 4. Design (review gate): validate story-to-ticket mapping
-            design_result = self.workflow.spawn_design_agent(epic_folder)
-            self.workflow._validate_result(design_result, "planner-design")
-            if self._track_cost(design_result):
-                return False
-            if design_result.status != "completed":
-                self.state["errors"].append({
-                    "plan": epic_folder,
-                    "error": f"Design agent failed: {design_result.result[:200]}",
-                    "phase": "design",
-                })
-                return False  # Design is now fatal
-
-            design_status = self.workflow.parse_design_status(design_result)
-            if design_status == "approved":
-                logger.info("Design gate approved for %s on iteration %d", epic_folder, design_iter + 1)
-                break
-            elif design_status == "needs_stories" and design_iter < max_design_loops:
-                logger.info(
-                    "Design gate needs stories for %s — re-running story generator (iteration %d)",
-                    epic_folder, design_iter + 1,
-                )
-                self.workflow.spawn_story_agent(epic_folder)
-                continue
-            elif design_status == "needs_explore" and design_iter < max_design_loops:
-                logger.info(
-                    "Design gate needs more exploration for %s — looping back (iteration %d)",
-                    epic_folder, design_iter + 1,
-                )
-                continue
-            else:
-                # Max loops reached or unknown status — proceed anyway
-                logger.warning(
-                    "Design gate not fully approved after %d iterations for %s (status=%s)",
-                    design_iter + 1, epic_folder, design_status,
-                )
-                break
-
-        # 5. Review cycle
-        approved, review_iters, feedback = self.workflow.run_review_cycle(epic_folder)
-        if not approved:
-            logger.warning("Epic %s not approved after %d reviews: %s",
-                           epic_folder, review_iters, feedback)
+        # 3. Explore: run planner-explore to analyze codebase and enrich tickets
+        explore_result = self.workflow.spawn_explore_agents(epic_folder, categories=story_categories)
+        self.workflow._validate_result(explore_result, "planner-explore")
+        if self._track_cost(explore_result):
+            return False
+        if explore_result.status != "completed":
             self.state["errors"].append({
                 "plan": epic_folder,
-                "error": f"Review rejected: {feedback}",
-                "phase": "review",
+                "error": f"Explore agent failed: {explore_result.result[:200]}",
+                "phase": "explore",
             })
             return False
 
-        # 6. Orchestration: create TinyDB phase records with agent routing
+        # 4. Pre-flight validation (advisory — replaces design+review agents)
+        _valid, _warnings = self._validate_planning_output(epic_folder)
+
+        # 5. Orchestration: create TinyDB phase records with agent routing
         #    Without this step, discover_plans_needing_orchestration() will
         #    keep finding this epic (no phases with agent field) → infinite loop.
         orch_result = self.workflow.spawn_orchestration_agent(epic_folder)
@@ -1541,7 +1552,7 @@ class PlannerLoopRunner:
             })
             return False
 
-        # 7. Promote all "proposed" tickets to "pending" to signal planning is done.
+        # 6. Promote all "proposed" tickets to "pending" to signal planning is done.
         # Without this, the loop's termination check (all tickets proposed → re-plan)
         # would rediscover this epic and create an infinite re-planning loop.
         if self.workflow._repository:

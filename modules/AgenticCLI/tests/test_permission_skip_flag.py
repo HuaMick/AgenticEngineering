@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-001")
+
 
 @pytest.fixture
 def sessions_dir(tmp_path):

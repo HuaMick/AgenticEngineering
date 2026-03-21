@@ -3,12 +3,15 @@
 Find, filter, and track test status of user stories.
 """
 
+import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+
+from agenticguidance.services.story import Story, StoryService
 
 
 def handle(args, ctx=None):
@@ -44,6 +47,13 @@ def handle(args, ctx=None):
 
 def _find_userstories_dir() -> Path | None:
     """Find the userstories directory."""
+    # Check AGENTIC_REPO_ROOT env var first
+    env_root = os.environ.get("AGENTIC_REPO_ROOT")
+    if env_root:
+        candidate = Path(env_root) / "docs" / "userstories"
+        if candidate.is_dir():
+            return candidate
+
     # Look in common locations
     search_paths = [
         Path.cwd() / "docs" / "userstories",
@@ -54,6 +64,19 @@ def _find_userstories_dir() -> Path | None:
     for path in search_paths:
         if path.exists():
             return path
+
+    # Fallback: walk up from cwd looking for .git to find repo root
+    current = Path.cwd()
+    for _ in range(5):
+        if (current / ".git").exists():
+            userstories = current / "docs" / "userstories"
+            if userstories.is_dir():
+                return userstories
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
 
     return None
 
@@ -116,17 +139,23 @@ def _parse_story_file(story_file: Path, userstories_dir: Path | None = None) -> 
     try:
         content = yaml.safe_load(story_file.read_text())
         if content and isinstance(content, dict):
-            # Handle user_stories array format
-            if "user_stories" in content and isinstance(content["user_stories"], list):
+            # Handle stories/user_stories array format
+            story_list = None
+            for key in ("stories", "user_stories"):
+                if key in content and isinstance(content[key], list):
+                    story_list = content[key]
+                    break
+
+            if story_list is not None:
                 stories = []
-                for story in content["user_stories"]:
+                for story in story_list:
                     if isinstance(story, dict):
                         stories.append(
                             {
                                 "file": story_file.name,
                                 "path": str(story_file),
                                 "id": story.get("id", story_file.stem),
-                                "title": story.get("name", story.get("title", "")),
+                                "title": story.get("title", story.get("name", "")),
                                 "project": story.get("project", project),
                                 "status": story.get("status", ""),
                                 "tags": story.get("tags", []),
@@ -146,6 +175,7 @@ def _parse_story_file(story_file: Path, userstories_dir: Path | None = None) -> 
                     "project": content.get("project", project),
                     "status": content.get("status", ""),
                     "tags": content.get("tags", []),
+                    "category": content.get("category", ""),
                 }
             ]
     except yaml.YAMLError:
@@ -162,56 +192,78 @@ def _parse_story_file(story_file: Path, userstories_dir: Path | None = None) -> 
     ]
 
 
+def _story_to_dict(s: Story) -> dict:
+    """Convert a Story dataclass to the dict format expected by report/untested commands."""
+    return {
+        "id": s.id,
+        "title": s.title,
+        "category": s.category,
+        "priority": s.priority,
+        "description": s.description,
+        "project": s.project,
+        "path": s.source_file,
+        "file": s.source_file,
+        "status": s.test_status or "untested",
+        "test_status": s.test_status or "untested",
+        "last_tested": s.last_tested or None,
+        "tested_by_plan": s.tested_by_plan or None,
+        "related_stories": s.related_stories,
+        "related_commands": s.related_commands,
+    }
+
+
 def _collect_all_stories(project_filter: str | None = None) -> list[dict]:
     """Collect all stories from userstories directory and plan story dirs.
 
     Each returned dict includes test metadata fields and file path info.
+    Uses StoryService for the main userstories directory and falls back
+    to manual parsing for plan-local story directories.
     """
     userstories_dir = _find_userstories_dir()
-    story_files = []
-    if userstories_dir:
-        story_files.extend(list(userstories_dir.glob("**/*.yml")))
-    for d in _find_plan_stories_dirs():
-        story_files.extend(list(d.glob("*.yml")))
+    plan_story_dirs = _find_plan_stories_dirs()
 
-    all_stories = []
-    for f in story_files:
-        # Skip metadata files
-        if f.name == "00_metadata.yml":
-            continue
-        try:
-            content = yaml.safe_load(f.read_text())
-        except yaml.YAMLError:
-            continue
-        if not content or not isinstance(content, dict):
-            continue
+    if userstories_dir is None and not plan_story_dirs:
+        print(
+            "Warning: No userstories directory found. Run from repo root or set AGENTIC_REPO_ROOT.",
+            file=sys.stderr,
+        )
 
-        # Determine project
-        project = ""
-        if userstories_dir:
-            project = _get_project_from_path(f, userstories_dir)
-        if f.parent.name == "user_stories":
-            project = f.parent.parent.name
+    # Load main stories via StoryService
+    svc = StoryService(userstories_dir)
+    all_stories = [_story_to_dict(s) for s in svc.load_all()]
 
-        # Process stories from either format
-        for key in ("stories", "user_stories"):
-            items = content.get(key, [])
-            if not isinstance(items, list):
+    # Also scan plan-local story dirs (epic user_stories/ folders)
+    for d in plan_story_dirs:
+        for f in d.glob("*.yml"):
+            if f.name == "00_metadata.yml":
                 continue
-            for story in items:
-                if not isinstance(story, dict):
+            try:
+                content = yaml.safe_load(f.read_text())
+            except yaml.YAMLError:
+                continue
+            if not content or not isinstance(content, dict):
+                continue
+
+            project = d.parent.name
+
+            for key in ("stories", "user_stories"):
+                items = content.get(key, [])
+                if not isinstance(items, list):
                     continue
-                entry = {
-                    "id": story.get("id", f.stem),
-                    "title": story.get("title", story.get("name", "")),
-                    "project": story.get("project", project),
-                    "file": str(f),
-                    "test_status": story.get("test_status", "untested"),
-                    "last_tested": story.get("last_tested"),
-                    "test_notes": story.get("test_notes", ""),
-                    "tested_by_plan": story.get("tested_by_plan"),
-                }
-                all_stories.append(entry)
+                for story in items:
+                    if not isinstance(story, dict):
+                        continue
+                    entry = {
+                        "id": story.get("id", f.stem),
+                        "title": story.get("title", story.get("name", "")),
+                        "project": story.get("project", project),
+                        "file": str(f),
+                        "test_status": story.get("test_status", "untested"),
+                        "last_tested": story.get("last_tested"),
+                        "test_notes": story.get("test_notes", ""),
+                        "tested_by_plan": story.get("tested_by_plan"),
+                    }
+                    all_stories.append(entry)
 
     if project_filter:
         pf = project_filter.lower()
@@ -219,46 +271,6 @@ def _collect_all_stories(project_filter: str | None = None) -> list[dict]:
 
     return all_stories
 
-
-def _find_story_in_file(story_file: Path, story_id: str) -> tuple[dict | None, str | None]:
-    """Find a story by ID in a YAML file.
-
-    Returns (story_dict, list_key) where list_key is 'stories' or 'user_stories'.
-    """
-    try:
-        content = yaml.safe_load(story_file.read_text())
-    except yaml.YAMLError:
-        return None, None
-    if not content or not isinstance(content, dict):
-        return None, None
-
-    for key in ("stories", "user_stories"):
-        items = content.get(key, [])
-        if not isinstance(items, list):
-            continue
-        for story in items:
-            if isinstance(story, dict) and story.get("id") == story_id:
-                return story, key
-
-    return None, None
-
-
-def _find_story_file_by_id(story_id: str) -> Path | None:
-    """Find the file containing a story with the given ID."""
-    userstories_dir = _find_userstories_dir()
-    story_files = []
-    if userstories_dir:
-        story_files.extend(list(userstories_dir.glob("**/*.yml")))
-    for d in _find_plan_stories_dirs():
-        story_files.extend(list(d.glob("*.yml")))
-
-    for f in story_files:
-        if f.name == "00_metadata.yml":
-            continue
-        story, _ = _find_story_in_file(f, story_id)
-        if story is not None:
-            return f
-    return None
 
 
 def _categorize_stories(stories: list[dict]) -> dict:
@@ -305,43 +317,75 @@ def cmd_find(args):
             console.print("  [dim]- userstories/[/dim]")
         sys.exit(1)
 
-    # Find all story files
-    story_files = []
-    if userstories_dir:
-        story_files.extend(list(userstories_dir.glob("**/*.yml")))
+    # Load stories from main userstories dir via StoryService
+    svc = StoryService(userstories_dir)
+    all_stories = [
+        {
+            "id": s.id, "title": s.title, "category": s.category,
+            "priority": s.priority, "description": s.description,
+            "project": s.project, "path": s.source_file,
+            "status": s.test_status,
+        }
+        for s in svc.load_all()
+    ]
 
+    # Also scan plan-local story dirs (epic user_stories/ folders)
     plan_story_dirs = _find_plan_stories_dirs()
     for d in plan_story_dirs:
-        story_files.extend(list(d.glob("*.yml")))
-
-    # Parse files (each file may contain multiple stories)
-    all_stories = []
-    for f in story_files:
-        # Determine appropriate project name for plan-local stories
-        p_dir = f.parent
-        if p_dir.name == "user_stories":
-            project = p_dir.parent.name
-        else:
-            project = _get_project_from_path(f, userstories_dir) if userstories_dir else ""
-
-        parsed = _parse_story_file(f, userstories_dir)
-        for s in parsed:
-            if project:
+        for f in d.glob("*.yml"):
+            if f.name == "00_metadata.yml":
+                continue
+            project = d.parent.name
+            parsed = _parse_story_file(f, userstories_dir)
+            for s in parsed:
                 s["project"] = project
-            all_stories.append(s)
+                all_stories.append(s)
 
     stories = all_stories
+
+    # Filter by query if specified (matches ID, title, or description)
+    if getattr(args, "query", None):
+        query_lower = args.query.lower()
+        stories = [
+            s
+            for s in stories
+            if query_lower in s.get("id", "").lower()
+            or query_lower in s.get("title", "").lower()
+            or query_lower in s.get("description", "").lower()
+            or query_lower in s.get("category", "").lower()
+        ]
 
     # Filter by project if specified
     if args.project:
         project_filter = args.project.lower()
         stories = [s for s in stories if project_filter in s.get("project", "").lower()]
 
+    # Filter by tag if specified
+    if getattr(args, "tag", None):
+        tag_lower = args.tag.lower()
+        stories = [
+            s
+            for s in stories
+            if tag_lower in [t.lower() for t in s.get("tags", [])]
+        ]
+
     # Filter by changed files if specified
-    if args.changes:
-        # Match stories that might be affected by changed files
-        # Look for file paths in story content or category matching
-        changed_paths = args.changes if isinstance(args.changes, list) else [args.changes]
+    if getattr(args, "changes", None):
+        # Resolve 'git' shorthand to actual changed files from git diff
+        raw_changes = args.changes
+        if raw_changes == "git":
+            import subprocess
+
+            result = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD"],
+                capture_output=True,
+                text=True,
+            )
+            changed_paths = [p.strip() for p in result.stdout.splitlines() if p.strip()]
+        elif isinstance(raw_changes, list):
+            changed_paths = raw_changes
+        else:
+            changed_paths = [p.strip() for p in raw_changes.split(",") if p.strip()]
         changed_lower = [p.lower() for p in changed_paths]
 
         def story_matches_changes(story: dict) -> bool:
@@ -406,11 +450,14 @@ def cmd_init(args):
 
     target_dir = Path.cwd()
     if args.plan:
-        plan_dir = Path.cwd() / "docs" / "plans" / "live" / args.plan
-        if not plan_dir.exists():
-            print_error(f"Plan directory not found: {plan_dir}")
+        epic_dir = Path.cwd() / "docs" / "epics" / "live" / args.plan
+        if not epic_dir.exists():
+            # Fallback to legacy path
+            epic_dir = Path.cwd() / "docs" / "plans" / "live" / args.plan
+        if not epic_dir.exists():
+            print_error(f"Epic directory not found: {args.plan}")
             sys.exit(1)
-        target_dir = plan_dir / "user_stories"
+        target_dir = epic_dir / "user_stories"
         target_dir.mkdir(exist_ok=True)
 
     file_path = target_dir / f"{args.id}.yml"
@@ -438,7 +485,14 @@ def cmd_cat(args):
     """Display a user story's content."""
     from agenticcli.console import console, print_error
 
-    # Find the story
+    # Fast path: look up by ID via StoryService
+    svc = StoryService(_find_userstories_dir())
+    found = svc.get_by_id(args.id)
+    if found and found.source_file:
+        console.print(Path(found.source_file).read_text())
+        return
+
+    # Fallback: scan plan-local story dirs and filename matching
     userstories_dir = _find_userstories_dir()
     story_files = []
     if userstories_dir:
@@ -452,7 +506,7 @@ def cmd_cat(args):
         if f.stem == args.id or f.name == args.id or args.id in f.stem:
             target_story = f
             break
-        
+
         # Check ID inside YAML
         try:
             stories = _parse_story_file(f)
@@ -474,28 +528,24 @@ def cmd_status(args):
     from agenticcli.console import console, is_json_output, print_error, print_header, print_json
 
     story_id = args.id
-    story_file = _find_story_file_by_id(story_id)
+    svc = StoryService(_find_userstories_dir())
+    story_obj = svc.get_by_id(story_id)
 
-    if not story_file:
+    if story_obj is None:
         if is_json_output():
             print_json({"error": f"Story not found: {story_id}"})
         else:
             print_error(f"Story not found: {story_id}")
         sys.exit(1)
 
-    story, _ = _find_story_in_file(story_file, story_id)
-    if story is None:
-        print_error(f"Story not found in file: {story_id}")
-        sys.exit(1)
-
     status_data = {
-        "id": story.get("id", story_id),
-        "title": story.get("title", story.get("name", "")),
-        "test_status": story.get("test_status", "untested"),
-        "last_tested": story.get("last_tested"),
-        "test_notes": story.get("test_notes", ""),
-        "tested_by_plan": story.get("tested_by_plan"),
-        "file": str(story_file),
+        "id": story_obj.id,
+        "title": story_obj.title,
+        "test_status": story_obj.test_status or "untested",
+        "last_tested": story_obj.last_tested or None,
+        "test_notes": story_obj.test_notes,
+        "tested_by_plan": story_obj.tested_by_plan or None,
+        "file": story_obj.source_file,
     }
 
     if is_json_output():
@@ -534,55 +584,38 @@ def cmd_update(args):
     from agenticcli.console import is_json_output, print_error, print_json, print_success
 
     story_id = args.id
-    story_file = _find_story_file_by_id(story_id)
+    svc = StoryService(_find_userstories_dir())
 
-    if not story_file:
+    # Verify story exists before attempting update
+    story_obj = svc.get_by_id(story_id)
+    if story_obj is None:
         if is_json_output():
             print_json({"error": f"Story not found: {story_id}"})
         else:
             print_error(f"Story not found: {story_id}")
         sys.exit(1)
 
-    # Read and modify the file
-    try:
-        content = yaml.safe_load(story_file.read_text())
-    except yaml.YAMLError as e:
-        print_error(f"YAML parse error: {e}")
-        sys.exit(1)
+    now = datetime.now(timezone.utc).isoformat()
+    tested_by = (args.plan if hasattr(args, "plan") and args.plan else "")
+    notes = args.notes if args.notes else ""
 
-    if not content or not isinstance(content, dict):
-        print_error(f"Invalid story file: {story_file}")
-        sys.exit(1)
-
-    updated = False
-    for key in ("stories", "user_stories"):
-        items = content.get(key, [])
-        if not isinstance(items, list):
-            continue
-        for story in items:
-            if isinstance(story, dict) and story.get("id") == story_id:
-                story["test_status"] = args.status
-                story["last_tested"] = datetime.now(timezone.utc).isoformat()
-                if args.notes:
-                    story["test_notes"] = args.notes
-                if hasattr(args, "plan") and args.plan:
-                    story["tested_by_plan"] = args.plan
-                updated = True
-                break
-        if updated:
-            break
+    updated = svc.update_test_status(
+        story_id,
+        args.status,
+        tested_by=tested_by,
+        test_notes=notes,
+        last_tested=now,
+    )
 
     if not updated:
-        print_error(f"Could not find story {story_id} in {story_file}")
+        print_error(f"Could not update story {story_id}")
         sys.exit(1)
-
-    story_file.write_text(yaml.dump(content, sort_keys=False, default_flow_style=False))
 
     if is_json_output():
         print_json({
             "updated": story_id,
             "test_status": args.status,
-            "file": str(story_file),
+            "file": story_obj.source_file,
         })
     else:
         print_success(f"Updated {story_id}: test_status={args.status}")
@@ -641,7 +674,7 @@ def _scan_pytest_story_markers_detailed() -> dict[str, list[str]]:
 
     Returns:
         Dict mapping story_id to list of pytest-style nodeids
-        (e.g. {"US-CLI-110": ["modules/AgenticCLI/tests/test_foo.py::test_bar"]}).
+        (e.g. {"US-STR-001": ["modules/AgenticCLI/tests/test_foo.py::test_bar"]}).
     """
     import ast
 
@@ -910,45 +943,22 @@ def cmd_batch_update(args):
     updated = []
     errors = []
     now = datetime.now(timezone.utc).isoformat()
+    notes = args.notes if args.notes else ""
+
+    svc = StoryService(_find_userstories_dir())
 
     for story_id in story_ids:
-        story_file = _find_story_file_by_id(story_id)
-        if not story_file:
-            errors.append({"id": story_id, "error": "Story not found"})
-            continue
-
-        try:
-            content = yaml.safe_load(story_file.read_text())
-        except yaml.YAMLError:
-            errors.append({"id": story_id, "error": "YAML parse error"})
-            continue
-
-        if not content or not isinstance(content, dict):
-            errors.append({"id": story_id, "error": "Invalid file"})
-            continue
-
-        found = False
-        for key in ("stories", "user_stories"):
-            items = content.get(key, [])
-            if not isinstance(items, list):
-                continue
-            for story in items:
-                if isinstance(story, dict) and story.get("id") == story_id:
-                    story["test_status"] = args.status
-                    story["last_tested"] = now
-                    story["tested_by_plan"] = plan_folder
-                    if args.notes:
-                        story["test_notes"] = args.notes
-                    found = True
-                    break
-            if found:
-                break
-
-        if found:
-            story_file.write_text(yaml.dump(content, sort_keys=False, default_flow_style=False))
+        ok = svc.update_test_status(
+            story_id,
+            args.status,
+            tested_by=plan_folder,
+            test_notes=notes,
+            last_tested=now,
+        )
+        if ok:
             updated.append(story_id)
         else:
-            errors.append({"id": story_id, "error": "ID not found in file"})
+            errors.append({"id": story_id, "error": "Story not found or could not be updated"})
 
     if is_json_output():
         print_json({
@@ -1033,25 +1043,21 @@ def cmd_affected(args):
             print_error(f"No affected_stories found for plan: {plan_folder}")
         sys.exit(1)
 
+    svc = StoryService(_find_userstories_dir())
     results = []
     for story_id in story_ids:
-        story_file = _find_story_file_by_id(story_id)
-        if not story_file:
+        story_obj = svc.get_by_id(story_id)
+        if story_obj is None:
             results.append({"id": story_id, "title": "(not found)", "test_status": "unknown", "file": None})
-            continue
-
-        story, _ = _find_story_in_file(story_file, story_id)
-        if story:
-            results.append({
-                "id": story_id,
-                "title": story.get("title", story.get("name", "")),
-                "test_status": story.get("test_status", "untested"),
-                "last_tested": story.get("last_tested"),
-                "tested_by_plan": story.get("tested_by_plan"),
-                "file": str(story_file),
-            })
         else:
-            results.append({"id": story_id, "title": "(not found)", "test_status": "unknown", "file": str(story_file)})
+            results.append({
+                "id": story_obj.id,
+                "title": story_obj.title,
+                "test_status": story_obj.test_status or "untested",
+                "last_tested": story_obj.last_tested or None,
+                "tested_by_plan": story_obj.tested_by_plan or None,
+                "file": story_obj.source_file,
+            })
 
     if is_json_output():
         print_json({

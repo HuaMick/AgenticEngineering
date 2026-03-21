@@ -2,6 +2,10 @@
 
 import json
 
+import pytest
+
+pytestmark = pytest.mark.story("US-SET-014")
+
 
 class TestJsonOutputMode:
     """Tests for JSON output mode."""

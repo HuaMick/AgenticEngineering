@@ -19,7 +19,10 @@ from agenticcli.utils.transport import (
     determine_transport,
 )
 
+pytestmark = pytest.mark.story("US-SES-001")
 
+
+@pytest.mark.story("US-SES-001")
 def test_transport_constants():
     assert SDK_TMUX == "sdk-tmux"
     assert TMUX == "tmux"
@@ -27,6 +30,7 @@ def test_transport_constants():
     assert SDK_DIRECT == "sdk"
 
 
+@pytest.mark.story("US-SES-001")
 def test_determine_transport_sdk_tmux(monkeypatch):
     """SDK available + tmux exists + tmux_requested -> sdk-tmux."""
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/tmux" if name == "tmux" else None)
@@ -34,6 +38,7 @@ def test_determine_transport_sdk_tmux(monkeypatch):
     assert result == SDK_TMUX
 
 
+@pytest.mark.story("US-SES-001")
 def test_determine_transport_tmux_only(monkeypatch):
     """SDK not available + tmux exists + tmux_requested -> tmux."""
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/tmux" if name == "tmux" else None)
@@ -41,6 +46,7 @@ def test_determine_transport_tmux_only(monkeypatch):
     assert result == TMUX
 
 
+@pytest.mark.story("US-SES-001")
 def test_determine_transport_subprocess(monkeypatch):
     """SDK not available + no tmux -> subprocess."""
     monkeypatch.setattr(shutil, "which", lambda name: None)
@@ -48,6 +54,7 @@ def test_determine_transport_subprocess(monkeypatch):
     assert result == SUBPROCESS
 
 
+@pytest.mark.story("US-SES-001")
 def test_determine_transport_sdk_no_tmux(monkeypatch):
     """SDK available + no tmux + tmux_requested -> subprocess."""
     monkeypatch.setattr(shutil, "which", lambda name: None)
@@ -55,6 +62,7 @@ def test_determine_transport_sdk_no_tmux(monkeypatch):
     assert result == SUBPROCESS
 
 
+@pytest.mark.story("US-SES-001")
 def test_determine_transport_not_requested(monkeypatch):
     """tmux_requested=False -> subprocess regardless of availability."""
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/tmux" if name == "tmux" else None)
@@ -62,6 +70,7 @@ def test_determine_transport_not_requested(monkeypatch):
     assert result == SUBPROCESS
 
 
+@pytest.mark.story("US-SES-001")
 def test_force_sdk_direct_returns_sdk(monkeypatch):
     """force_sdk_direct=True + sdk_available=True -> SDK_DIRECT."""
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/tmux" if name == "tmux" else None)
@@ -69,6 +78,7 @@ def test_force_sdk_direct_returns_sdk(monkeypatch):
     assert result == SDK_DIRECT
 
 
+@pytest.mark.story("US-SES-001")
 def test_force_sdk_direct_ignored_without_sdk(monkeypatch):
     """force_sdk_direct=True + sdk_available=False -> falls through to normal priority."""
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/tmux" if name == "tmux" else None)
@@ -76,6 +86,7 @@ def test_force_sdk_direct_ignored_without_sdk(monkeypatch):
     assert result == TMUX
 
 
+@pytest.mark.story("US-SES-001")
 def test_force_sdk_direct_false_no_effect(monkeypatch):
     """force_sdk_direct=False doesn't change normal behavior."""
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/tmux" if name == "tmux" else None)
@@ -126,6 +137,7 @@ def _make_workflow(tmp_path, epic_folder_name="260309XX_transport_test"):
     return workflow
 
 
+@pytest.mark.story("US-SES-001")
 class TestForceSDKDirectOverride:
     """Test AGENTIC_FORCE_SDK_DIRECT=1 env var forces SDK-direct path."""
 

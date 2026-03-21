@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.story("US-PLN-002")
+
 from agenticcli.utils.naming import (
     generate_epic_folder_name,
     get_worktree_id,

@@ -1,9 +1,14 @@
 """Tests for session ID generation and tmux session naming (Bug 2 — naming fix)."""
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.story("US-SES-002")
+
 from agenticcli.utils.session_id import generate_session_id, tmux_session_name
 
 
+@pytest.mark.story("US-SES-001")
 class TestGenerateSessionId:
     """Basic tests for generate_session_id."""
 
@@ -18,6 +23,7 @@ class TestGenerateSessionId:
         assert generate_session_id() != generate_session_id()
 
 
+@pytest.mark.story("US-SES-002")
 class TestTmuxSessionName:
     """Tests for tmux_session_name function (Bug 2 — collision fix)."""
 

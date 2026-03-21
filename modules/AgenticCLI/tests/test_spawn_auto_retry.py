@@ -15,12 +15,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-SES-001")]
 
 
 # ── Tests: session_diagnostics module ────────────────────────────────────
 
 
+@pytest.mark.story("US-SES-001")
 class TestDiagnoseSessionLog:
     """Verify session log parsing detects known error patterns."""
 
@@ -149,6 +150,7 @@ class TestDiagnoseSessionLog:
         assert diagnosis.error_type == ErrorType.NESTED_SESSION
 
 
+@pytest.mark.story("US-SES-001")
 class TestDiagnoseSessionState:
     """Verify session state dict diagnosis."""
 
@@ -180,6 +182,7 @@ class TestDiagnoseSessionState:
 # ── Tests: ExecutionRunner auto-retry ────────────────────────────────────
 
 
+@pytest.mark.story("US-PLN-066")
 class TestExecutionRunnerAutoRetry:
     """Verify _run_phase auto-retries on quick exit."""
 
@@ -333,6 +336,7 @@ class TestExecutionRunnerAutoRetry:
         assert sleep_calls == RETRY_BACKOFF_SECONDS[:len(sleep_calls)]
 
 
+@pytest.mark.story("US-SES-001")
 class TestSpawnRetryConstants:
     """Verify retry configuration constants exist and are reasonable."""
 

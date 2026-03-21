@@ -11,14 +11,14 @@ def build_spawn_command(
     use_tmux: bool = True,
     json_output: bool = True,
 ) -> list[str]:
-    """Build a normalized 'agentic session spawn' command.
+    """Build a normalized 'agentic orchestrate session spawn' command.
 
     All callers should use this to ensure consistent flag handling.
     """
     cmd = ["agentic"]
     if json_output:
         cmd.append("-j")
-    cmd.extend(["session", "spawn", "--role", role, "--epic", epic_folder])
+    cmd.extend(["orchestrate", "session", "spawn", "--role", role, "--epic", epic_folder])
     if background:
         cmd.append("-b")
     if use_tmux:

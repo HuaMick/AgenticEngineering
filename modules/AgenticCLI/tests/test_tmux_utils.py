@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.story("US-SES-001")
+
 from agenticcli.utils.tmux import (
     get_current_session_name,
     get_or_create_notification_pane,
