@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-001")
+pytestmark = pytest.mark.story("US-PLN-001", "US-PLN-026", "US-PLN-027", "US-PLN-004")
 
 
 # ---------------------------------------------------------------------------
@@ -105,20 +105,16 @@ def _populate_tinydb_for_mock_planner(plan_folder_path, db_path=None):
     This simulates what a real planner agent would do: add tickets to TinyDB
     so cmd_new's validation check (tickets beyond IM_001 stub) passes.
 
-    db_path: if provided, use this path. Otherwise call _get_repo_db_path()
-             via the agenticcli.commands.epic module (respects monkeypatching).
+    Uses EpicRepository() with no args so it picks up the _isolate_tinydb
+    fixture's patched default path.
     """
     try:
-        import agenticcli.commands.epic as _epic_mod
         from agenticguidance.services.epic_repository import EpicRepository
 
         plan_folder = Path(plan_folder_path)
         plan_folder_name = plan_folder.name
 
-        if db_path is None:
-            db_path = _epic_mod._get_repo_db_path()
-
-        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        repo = EpicRepository(db_path=db_path) if db_path else EpicRepository()
 
         # Add a mock phase if not present already
         phase_name = "Mock Phase 1"
@@ -184,7 +180,7 @@ def mock_claude_subprocess():
 
 
 @pytest.mark.usefixtures("mock_claude_subprocess")
-@pytest.mark.story("US-PLN-002")
+@pytest.mark.story("US-PLN-002", "US-GDN-084", "US-GDN-085")
 class TestPlanNew:
     """Tests for 'agentic plan new' command."""
 
@@ -440,6 +436,7 @@ class TestBuildPlannerPrompt:
         assert "STORY DISCOVERY" in prompt
         assert "docs/userstories/" in prompt
 
+    @pytest.mark.story("US-PLN-070", "US-PLN-074", "US-PLN-079")
     def test_prompt_includes_uat_fence_reference(self, tmp_path):
         """Test prompt references UAT mandatory fence."""
         from agenticcli.utils.planner_prompt import build_planner_prompt
@@ -481,6 +478,7 @@ class TestBuildPlannerPrompt:
         # Prompt should instruct planner to create tickets - either via YAML file or TinyDB CLI
         assert "ticket" in prompt.lower() or "TinyDB" in prompt
 
+    @pytest.mark.story("US-PLN-073", "US-PLN-075")
     def test_prompt_includes_story_first_fence(self, tmp_path):
         """Test prompt includes STORY-FIRST PLANNING fence."""
         from agenticcli.utils.planner_prompt import build_planner_prompt
@@ -686,7 +684,7 @@ class TestPlanNewPlannerSpawn:
 
 
 @pytest.mark.usefixtures("mock_claude_subprocess")
-@pytest.mark.story("US-PLN-002")
+@pytest.mark.story("US-PLN-002", "US-PLN-016", "US-GDN-097")
 class TestPlanNewOrchestration:
     """Tests for orchestration generation in plan new (Phase 3)."""
 
@@ -799,7 +797,7 @@ class TestPlanNewOrchestration:
 
 
 @pytest.mark.usefixtures("mock_claude_subprocess")
-@pytest.mark.story("US-PLN-002")
+@pytest.mark.story("US-PLN-002", "US-GDN-097", "US-GDN-098")
 class TestPlanNewBuilderSpawning:
     """Tests for builder spawning with --execute flag (Phase 4)."""
 

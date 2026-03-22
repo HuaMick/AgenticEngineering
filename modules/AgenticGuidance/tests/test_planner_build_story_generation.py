@@ -9,7 +9,7 @@ import pytest
 import yaml
 from pathlib import Path
 
-pytestmark = pytest.mark.story("US-PLN-091")
+pytestmark = pytest.mark.story("US-PLN-027", "US-PLN-029", "US-PLN-030", "US-PLN-073", "US-PLN-091", "US-STR-012", "US-GDN-048", "US-GDN-052")
 
 
 @pytest.fixture
@@ -55,6 +55,7 @@ def test_planner_build_has_story_generation_step():
         "Missing required story field specifications"
 
 
+@pytest.mark.story("US-PLN-073")
 def test_story_generation_fence_blocks_without_stories():
     """
     Test that story generation guidance blocks plans without stories.
@@ -68,7 +69,7 @@ def test_story_generation_fence_blocks_without_stories():
         content = f.read()
 
     # Check that guidance mentions the fence behavior
-    assert "If `agentic agent stories find` returns no stories" in content, \
+    assert "If `agentic stories find` returns no stories" in content, \
         "Missing guidance for when story discovery returns empty"
 
     # Check that guidance requires story generation

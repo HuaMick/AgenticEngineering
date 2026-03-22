@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-002")
+pytestmark = [pytest.mark.story("US-PLN-002"), pytest.mark.story("US-GDN-085", "US-GDN-100")]
 
 from agenticcli.utils.naming import (
     generate_epic_folder_name,

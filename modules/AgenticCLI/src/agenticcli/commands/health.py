@@ -157,6 +157,60 @@ def handle(args, ctx=None):
             }
         )
 
+    # Check 8: Story Test Coverage
+    try:
+        from pathlib import Path
+        from agenticcli.commands.stories import _collect_all_stories
+        from agenticguidance.services.epic_repository import EpicRepository
+
+        stories = _collect_all_stories()
+        all_story_ids = {s["id"] for s in stories}
+        total = len(all_story_ids)
+
+        if total == 0:
+            checks.append({
+                "name": "story_coverage",
+                "status": "info",
+                "message": "No stories found",
+                "value": {"total": 0, "covered": 0, "uncovered_count": 0, "uncovered": [], "coverage_pct": 0},
+            })
+        else:
+            db_path = Path.home() / ".agentic" / "epics.db"
+            repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+            uncovered = repo.get_uncovered_stories(all_story_ids)
+            repo.close()
+
+            covered_count = total - len(uncovered)
+            pct = round(covered_count / total * 100, 1)
+
+            if uncovered:
+                msg = f"Story coverage: {covered_count}/{total} ({pct}%) — {len(uncovered)} uncovered"
+                status = "fail"
+                all_passed = False
+            else:
+                msg = f"All {total} stories covered"
+                status = "pass"
+
+            checks.append({
+                "name": "story_coverage",
+                "status": status,
+                "message": msg,
+                "value": {
+                    "total": total,
+                    "covered": covered_count,
+                    "uncovered_count": len(uncovered),
+                    "uncovered": uncovered,
+                    "coverage_pct": pct,
+                },
+            })
+    except Exception:
+        checks.append({
+            "name": "story_coverage",
+            "status": "info",
+            "message": "Story coverage check unavailable",
+            "value": None,
+        })
+
     # Output
     if is_json_output():
         print_json(

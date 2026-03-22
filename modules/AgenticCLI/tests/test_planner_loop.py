@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-053")
+pytestmark = pytest.mark.story("US-PLN-053", "US-PLN-041", "US-PLN-042", "US-GDN-061", "US-GDN-063", "US-PLN-039")
 
 from agenticcli.utils.sdk_runner import SessionResult
 
@@ -95,7 +95,7 @@ def _setup_tinydb_for_workflow(tmp_path, epic_folder_name, *, agent_type=None,
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-053", "US-PLN-041")
 class TestDiscoverPlansNeedingOrchestration:
     """Test discover_plans_needing_orchestration method.
 
@@ -169,7 +169,7 @@ class TestDiscoverPlansNeedingOrchestration:
         assert result == []
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-053", "US-PLN-037", "US-GDN-101")
 class TestRunHealthCheck:
     """Test run_health_check method."""
 
@@ -221,7 +221,7 @@ class TestRunHealthCheck:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-027", "US-PLN-028", "US-PLN-038", "US-PLN-047", "US-PLN-053")
 class TestPlannerLoopRunner:
     """Test PlannerLoopRunner orchestration.
 
@@ -238,6 +238,7 @@ class TestPlannerLoopRunner:
                 ["test_plan"] for backward compatibility.
         """
         import tempfile
+        import yaml
         from pathlib import Path
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
 
@@ -249,11 +250,39 @@ class TestPlannerLoopRunner:
             (tmp_epics_dir / folder).mkdir(exist_ok=True)
 
         workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
+
+        # Story file writer: ensures stories.yml exists (stories are required).
+        # Wraps any provided spawn_story override so it also writes the file.
+        def _write_stories_yml(pf):
+            epic_dir = tmp_epics_dir / pf
+            epic_dir.mkdir(parents=True, exist_ok=True)
+            stories_path = epic_dir / "stories.yml"
+            if not stories_path.exists():
+                stories_path.write_text(yaml.dump({
+                    "stories": [{"id": "US-001", "title": "Test story"}],
+                    "categories": [{"name": "default", "story_ids": ["US-001"]}],
+                }))
+
+        def _default_spawn_story(pf):
+            _write_stories_yml(pf)
+            return _ok_result(session_id="story-session-default")
+
+        # If caller provided a custom spawn_story, wrap it to also write stories.yml
+        # (only on success — failed story agents don't produce output)
+        custom_story = overrides.get("spawn_story")
+        if custom_story is not None:
+            _original = custom_story
+            def _wrapped_spawn_story(pf, _orig=_original):
+                result = _orig(pf)
+                if result.status == "completed":
+                    _write_stories_yml(pf)
+                return result
+            overrides["spawn_story"] = _wrapped_spawn_story
+
         # Also mock get_plan_status so archive loop doesn't fail on missing plans
         monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "in_progress")
         # Default mocks: all spawn methods return successful SessionResult
         monkeypatch.setattr(workflow, "run_health_check", overrides.get("health_check", lambda: None))
-        monkeypatch.setattr(workflow, "compile_bootstrap_context", overrides.get("bootstrap", lambda role="orchestration-planning": {}))
         monkeypatch.setattr(workflow, "discover_plans_needing_orchestration",
                             overrides.get("discover", lambda: []))
         monkeypatch.setattr(workflow, "spawn_epic_creator",
@@ -261,13 +290,14 @@ class TestPlannerLoopRunner:
         monkeypatch.setattr(workflow, "spawn_explore_agents",
                             overrides.get("spawn_explore", lambda pf, **kw: _ok_result()))
         monkeypatch.setattr(workflow, "spawn_story_agent",
-                            overrides.get("spawn_story", lambda pf: _ok_result()))
-        monkeypatch.setattr(workflow, "discover_stories",
-                            overrides.get("stories", lambda pf, project=None: []))
+                            overrides.get("spawn_story", _default_spawn_story))
         monkeypatch.setattr(workflow, "spawn_orchestration_agent",
                             overrides.get("spawn_orchestration", lambda pf: _ok_result()))
 
-        return PlannerLoopRunner(workflow=workflow)
+        runner = PlannerLoopRunner(workflow=workflow)
+        # Mock validation to pass (these tests don't have a TinyDB repo)
+        monkeypatch.setattr(runner, "_validate_planning_output", lambda pf: (True, []))
+        return runner
 
     def test_completes_when_no_plans(self, monkeypatch, capsys):
         """Runner exits successfully when no plans need work."""
@@ -413,7 +443,7 @@ class TestPlannerLoopRunner:
         assert result is False
         assert any("unhealthy" in e.get("error", "") for e in runner.state["errors"])
 
-@pytest.mark.story("US-PLN-055")
+@pytest.mark.story("US-PLN-050", "US-PLN-055")
 class TestRunRoleAgent:
     """Test the _run_role_agent SDK integration method."""
 
@@ -452,27 +482,26 @@ class TestRunRoleAgent:
         assert saved_data["role"] == "explore"
         assert saved_data["cost_usd"] == 0.03
 
-    def test_subprocess_fallback_when_sdk_unavailable(self, monkeypatch):
-        """Falls back to subprocess when SDK is not available."""
+    def test_sdk_direct_fallback_when_tmux_unavailable(self, monkeypatch):
+        """Falls back to SDK-direct when tmux is not available."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-        monkeypatch.setattr("agenticcli.workflows.planner_loop.SDK_AVAILABLE", False)
+        called_path = {"path": None}
 
-        def mock_run(cmd, **kwargs):
-            return subprocess.CompletedProcess(
-                cmd, 0,
-                stdout='{"session_id": "subprocess-session-123"}',
-                stderr="",
-            )
-
-        monkeypatch.setattr(subprocess, "run", mock_run)
+        def mock_sdk_direct(session_id, role, epic_folder, prompt, **kwargs):
+            called_path["path"] = "sdk-direct"
+            from agenticcli.utils.sdk_runner import SessionResult
+            return SessionResult(status="completed", result="done")
 
         workflow = PlannerLoopWorkflow()
-        monkeypatch.setattr(workflow, "wait_for_session", lambda sid, **kw: "completed")
+        monkeypatch.setattr(workflow, "_run_via_sdk", mock_sdk_direct)
+
+        # SDK available but tmux not available (determine_transport returns something other than SDK_TMUX)
+        monkeypatch.setattr("agenticcli.workflows.planner_loop.SDK_AVAILABLE", True)
+        monkeypatch.setattr("agenticcli.utils.transport.shutil.which", lambda cmd: None)  # no tmux
 
         result = workflow._run_role_agent("explore", "test_plan")
         assert result.status == "completed"
-        assert result.session_id == "subprocess-session-123"
 
 
 @pytest.mark.story("US-PLN-053")
@@ -673,7 +702,7 @@ class TestGetPlanStatus:
         assert workflow.get_plan_status("empty_plan") == "pending"
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-051", "US-PLN-053")
 class TestProcessPlanPlanningTransition:
     """Verify _process_plan sets status=planning at the start."""
 
@@ -706,7 +735,6 @@ class TestProcessPlanPlanningTransition:
         monkeypatch.setattr(real_repo, "update_epic", tracking_update)
         monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "active")
         monkeypatch.setattr(workflow, "run_health_check", lambda: None)
-        monkeypatch.setattr(workflow, "compile_bootstrap_context", lambda role="orchestration-planning": {})
 
         # Make epic-creator fail so _process_plan returns early after setting planning
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda pf: _fail_result(duration_ms=100))
@@ -851,7 +879,7 @@ class TestRunViaSdkRetry:
         assert captured_timeouts["last"] == ROLE_TIMEOUT_SECONDS["planner-orchestration"]  # 3600
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-053", "US-PLN-062")
 class TestValidateResult:
     """Test _validate_result observability helper (SDK_011)."""
 
@@ -922,6 +950,7 @@ class TestValidateResult:
     def test_validate_result_called_in_process_plan(self, monkeypatch):
         """_process_plan calls _validate_result after each agent execution."""
         import tempfile
+        import yaml
         from pathlib import Path
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
 
@@ -940,14 +969,26 @@ class TestValidateResult:
         workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
         monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "in_progress")
         monkeypatch.setattr(workflow, "run_health_check", lambda: None)
-        monkeypatch.setattr(workflow, "compile_bootstrap_context", lambda role="orchestration-planning": {})
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda pf: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "spawn_explore_agents", lambda pf, **kw: _ok_result(duration_ms=100))
-        monkeypatch.setattr(workflow, "spawn_story_agent", lambda pf: _ok_result(duration_ms=100))
+
+        # Story mock: writes stories.yml (stories are required)
+        def _story_mock(pf):
+            story_dir = tmp_epics_dir / pf
+            story_dir.mkdir(parents=True, exist_ok=True)
+            (story_dir / "stories.yml").write_text(yaml.dump({
+                "stories": [{"id": "US-001", "title": "Test story"}],
+                "categories": [{"name": "default", "story_ids": ["US-001"]}],
+            }))
+            return _ok_result(duration_ms=100)
+
+        monkeypatch.setattr(workflow, "spawn_story_agent", _story_mock)
         monkeypatch.setattr(workflow, "spawn_orchestration_agent", lambda pf: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "_validate_result", tracking_validate_result)
 
         runner = PlannerLoopRunner(workflow=workflow)
+        # Mock validation to pass (this test verifies _validate_result, not validation logic)
+        monkeypatch.setattr(runner, "_validate_planning_output", lambda pf: (True, []))
         call_count = {"n": 0}
 
         def one_shot_discover():
@@ -970,7 +1011,7 @@ class TestValidateResult:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-055")
+@pytest.mark.story("US-PLN-050", "US-PLN-055")
 class TestBuildSdkOptionsWithRole:
     """Test that _build_sdk_options passes allowed_tools per role (SDK_016)."""
 
@@ -1329,7 +1370,7 @@ class TestWaitForSessionTmux:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-040", "US-PLN-048", "US-PLN-053", "US-PLN-056", "US-PLN-062", "US-GDN-079")
 class TestValidatePlanningOutput:
     """Tests for _validate_planning_output pre-flight validation."""
 
@@ -1347,11 +1388,12 @@ class TestValidatePlanningOutput:
         return runner
 
     def test_valid_tickets_no_warnings(self, tmp_path, monkeypatch):
-        """Tickets with target_files and guidance produce no warnings."""
+        """Tickets with target_files, guidance, and story_ids produce no warnings."""
         runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
             {"task_id": "T1", "name": "Build X", "status": "proposed",
              "agent": "build-python", "target_files": ["src/foo.py"],
-             "guidance": "Implement foo", "success_criteria": "Tests pass"},
+             "guidance": "Implement foo", "success_criteria": "Tests pass",
+             "story_ids": ["US-CLI-001"]},
         ])
         valid, warnings = runner._validate_planning_output("test_epic")
         assert valid is True
@@ -1361,7 +1403,8 @@ class TestValidatePlanningOutput:
         """Tickets without target_files produce a warning."""
         runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
             {"task_id": "T1", "name": "Build X", "status": "proposed",
-             "agent": "build-python", "guidance": "Do stuff"},
+             "agent": "build-python", "guidance": "Do stuff",
+             "story_ids": ["US-CLI-001"]},
         ])
         valid, warnings = runner._validate_planning_output("test_epic")
         assert valid is True  # Advisory only
@@ -1371,14 +1414,15 @@ class TestValidatePlanningOutput:
         """Tickets without guidance or success_criteria produce a warning."""
         runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
             {"task_id": "T1", "name": "Build X", "status": "proposed",
-             "agent": "build-python", "target_files": ["src/foo.py"]},
+             "agent": "build-python", "target_files": ["src/foo.py"],
+             "story_ids": ["US-CLI-001"]},
         ])
         valid, warnings = runner._validate_planning_output("test_epic")
         assert valid is True
         assert any("guidance" in w for w in warnings)
 
-    def test_no_tickets_warns(self, tmp_path, monkeypatch):
-        """Epic with no tickets produces a warning."""
+    def test_no_tickets_blocks(self, tmp_path, monkeypatch):
+        """Epic with no tickets returns valid=False (blocking)."""
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
         from agenticguidance.services.epic_repository import EpicRepository
 
@@ -1393,28 +1437,92 @@ class TestValidatePlanningOutput:
         workflow._repository = EpicRepository(db_path=db_path, auto_bootstrap=False)
         runner = PlannerLoopRunner(workflow=workflow)
 
-        valid, warnings = runner._validate_planning_output("empty_epic")
-        assert valid is True
-        assert any("No tickets" in w for w in warnings)
+        valid, errors = runner._validate_planning_output("empty_epic")
+        assert valid is False
+        assert any("No tickets" in e for e in errors)
 
     def test_unknown_agent_warns(self, tmp_path, monkeypatch):
         """Tickets with unknown agent type produce a warning."""
         runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
             {"task_id": "T1", "name": "Build X", "status": "proposed",
              "agent": "nonexistent-agent", "target_files": ["src/foo.py"],
-             "guidance": "Do stuff"},
+             "guidance": "Do stuff", "story_ids": ["US-CLI-001"]},
         ])
         valid, warnings = runner._validate_planning_output("test_epic")
         assert valid is True
         assert any("nonexistent-agent" in w for w in warnings)
 
 
+    def test_no_story_refs_blocks(self, tmp_path, monkeypatch):
+        """Tickets without story_ids return valid=False (stories are required)."""
+        runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
+            {"task_id": "T1", "name": "Build X", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/foo.py"],
+             "guidance": "Implement foo"},
+        ])
+        valid, errors = runner._validate_planning_output("test_epic")
+        assert valid is False
+        assert any("story_ids" in e for e in errors)
+
+
 @pytest.mark.story("US-PLN-053")
+class TestParseStoryCategories:
+    """Tests for _parse_story_categories — stories are required."""
+
+    def _make_runner(self, tmp_path):
+        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_path)
+        return PlannerLoopRunner(workflow=workflow)
+
+    def test_missing_stories_yml_returns_none(self, tmp_path):
+        """Missing stories.yml returns None (not empty list)."""
+        epic_folder = "my_epic"
+        (tmp_path / epic_folder).mkdir()
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+        assert result is None
+
+    def test_empty_categories_returns_none(self, tmp_path):
+        """stories.yml with no categories returns None."""
+        import yaml
+        epic_folder = "my_epic"
+        (tmp_path / epic_folder).mkdir()
+        stories_path = tmp_path / epic_folder / "stories.yml"
+        stories_path.write_text(yaml.dump({"stories": [{"id": "US-001"}], "categories": []}))
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+        assert result is None
+
+    def test_valid_categories_returned(self, tmp_path):
+        """stories.yml with categories returns the list."""
+        import yaml
+        epic_folder = "my_epic"
+        (tmp_path / epic_folder).mkdir()
+        categories = [{"name": "cli", "story_ids": ["US-001"]}]
+        stories_path = tmp_path / epic_folder / "stories.yml"
+        stories_path.write_text(yaml.dump({"stories": [], "categories": categories}))
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+        assert result == categories
+
+    def test_invalid_yaml_returns_none(self, tmp_path):
+        """Unparseable stories.yml returns None."""
+        epic_folder = "my_epic"
+        (tmp_path / epic_folder).mkdir()
+        stories_path = tmp_path / epic_folder / "stories.yml"
+        stories_path.write_text(": invalid: yaml: [")
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+        assert result is None
+
+
+@pytest.mark.story("US-PLN-048", "US-PLN-053", "US-PLN-057")
 class TestTicketPromotion:
     """Tests for ticket promotion step in _process_plan (Bug 1 fix)."""
 
     def _make_runner(self, tmp_path, monkeypatch, epic_folder_name, tickets=None):
         """Helper: build a PlannerLoopRunner with a real TinyDB and mocked agents."""
+        import yaml as _yaml
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
         from agenticguidance.services.epic_repository import EpicRepository
 
@@ -1422,19 +1530,32 @@ class TestTicketPromotion:
             tmp_path,
             epic_folder_name,
             tickets=tickets or [
-                {"task_id": "T001", "name": "Test ticket", "status": "proposed", "agent": "build-python"},
+                {"task_id": "T001", "name": "Test ticket", "status": "proposed",
+                 "agent": "build-python", "story_ids": ["US-001"]},
             ],
         )
 
-        workflow = PlannerLoopWorkflow(epics_dir=tmp_path / "docs" / "epics" / "live")
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True, exist_ok=True)
+        workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         workflow._repository = EpicRepository(db_path=db_path, auto_bootstrap=False)
 
         # Prevent early-exit guard: epic status is "active" (not "completed")
         monkeypatch.setattr(workflow, "get_plan_status", lambda f: "active")
 
+        # Story mock: writes stories.yml (stories are required)
+        def _story_mock(pf):
+            story_dir = epics_dir / pf
+            story_dir.mkdir(parents=True, exist_ok=True)
+            (story_dir / "stories.yml").write_text(_yaml.dump({
+                "stories": [{"id": "US-001", "title": "Test story"}],
+                "categories": [{"name": "default", "story_ids": ["US-001"]}],
+            }))
+            return _ok_result()
+
         # Mock all agent spawn steps to succeed
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda f: _ok_result())
-        monkeypatch.setattr(workflow, "spawn_story_agent", lambda f: _ok_result())
+        monkeypatch.setattr(workflow, "spawn_story_agent", _story_mock)
         monkeypatch.setattr(workflow, "spawn_explore_agents", lambda f, **kw: _ok_result())
         monkeypatch.setattr(workflow, "spawn_orchestration_agent", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "_validate_result", lambda result, name: None)
@@ -1597,7 +1718,7 @@ class TestTmuxSdkSessionRecords:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-053", "US-PLN-054")
 class TestProcessPlanAutoRegister:
     """Test auto-registration of epic folders in _process_plan."""
 
@@ -1676,12 +1797,12 @@ class TestAgentPromptIncludesEpicFlag:
     """Test _build_agent_prompt includes --epic flag."""
 
     def test_agent_prompt_includes_epic_flag(self):
-        """Verify prompt contains --epic <folder>."""
+        """Verify prompt contains --epic <folder> and role identifier."""
         from agenticcli.workflows.planner_loop import _build_agent_prompt
 
         prompt = _build_agent_prompt("build-python", "260311PB_my_epic")
         assert "--epic 260311PB_my_epic" in prompt
-        assert "--role build-python" in prompt
+        assert "build-python" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -1689,7 +1810,7 @@ class TestAgentPromptIncludesEpicFlag:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-053", "US-PLN-058")
 class TestBudgetEnforcement:
     """Test cost budget halts processing."""
 

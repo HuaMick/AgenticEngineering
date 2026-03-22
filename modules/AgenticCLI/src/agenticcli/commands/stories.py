@@ -36,8 +36,6 @@ def handle(args, ctx=None):
         cmd_affected(args)
     elif args.stories_command == "sync":
         cmd_sync(args)
-    elif args.stories_command == "coverage":
-        cmd_coverage(args)
     elif args.stories_command == "run":
         cmd_run(args)
     elif args.stories_command == "promote":
@@ -49,7 +47,7 @@ def handle(args, ctx=None):
     elif args.stories_command == "code":
         cmd_code(args)
     else:
-        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected|sync|coverage|run|promote|deprecate|archive|code]", file=sys.stderr)
+        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected|sync|run|promote|deprecate|archive|code]", file=sys.stderr)
         sys.exit(1)
 
 
@@ -90,12 +88,7 @@ def _find_userstories_dir() -> Path | None:
 
 
 def _get_repo_db_path() -> Path:
-    """Derive the repo-local TinyDB path (.agentic/epics.db under repo root)."""
-    current = Path.cwd()
-    while current != current.parent:
-        if (current / ".git").exists():
-            return current / ".agentic" / "epics.db"
-        current = current.parent
+    """Return the global TinyDB path (~/.agentic/epics.db)."""
     return Path.home() / ".agentic" / "epics.db"
 
 
@@ -734,6 +727,14 @@ def _scan_pytest_story_markers_detailed() -> dict[str, list[str]]:
 
             rel_path = str(test_file.relative_to(repo_root))
 
+            # Extract module-level pytestmark story IDs
+            # Handles: pytestmark = pytest.mark.story(...)
+            #          pytestmark = [pytest.mark.unit, pytest.mark.story(...)]
+            module_story_ids = _extract_pytestmark_story_ids(tree)
+
+            # Collect all test nodeids in the file (for module-level markers)
+            all_test_nodeids: list[str] = []
+
             # Process top-level functions and classes
             for node in ast.iter_child_nodes(tree):
                 if isinstance(node, ast.FunctionDef):
@@ -742,21 +743,90 @@ def _scan_pytest_story_markers_detailed() -> dict[str, list[str]]:
                         nodeid = f"{rel_path}::{node.name}"
                         for sid in story_ids:
                             mappings.setdefault(sid, []).append(nodeid)
+                    if node.name.startswith("test_"):
+                        all_test_nodeids.append(f"{rel_path}::{node.name}")
 
                 elif isinstance(node, ast.ClassDef):
-                    # Check class-level markers (apply to all methods)
+                    # Check class-level markers (decorators + pytestmark attribute)
                     class_story_ids = _extract_story_ids_from_decorators(node)
+                    class_story_ids |= _extract_pytestmark_story_ids(node)
 
                     for method in ast.iter_child_nodes(node):
                         if isinstance(method, ast.FunctionDef) and method.name.startswith("test_"):
                             method_story_ids = _extract_story_ids_from_decorators(method)
                             all_ids = class_story_ids | method_story_ids
+                            nodeid = f"{rel_path}::{node.name}::{method.name}"
+                            all_test_nodeids.append(nodeid)
                             if all_ids:
-                                nodeid = f"{rel_path}::{node.name}::{method.name}"
                                 for sid in all_ids:
                                     mappings.setdefault(sid, []).append(nodeid)
 
+            # Apply module-level pytestmark story IDs to all tests in the file
+            if module_story_ids and all_test_nodeids:
+                for sid in module_story_ids:
+                    existing = set(mappings.get(sid, []))
+                    for nodeid in all_test_nodeids:
+                        if nodeid not in existing:
+                            mappings.setdefault(sid, []).append(nodeid)
+
     return mappings
+
+
+def _extract_pytestmark_story_ids(tree) -> set[str]:
+    """Extract story IDs from pytestmark assignments (module or class level).
+
+    Handles:
+    - pytestmark = pytest.mark.story("US-XXX-NNN", ...)
+    - pytestmark = [pytest.mark.unit, pytest.mark.story("US-XXX-NNN", ...)]
+    """
+    import ast
+
+    story_ids: set[str] = set()
+
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        # Check if target is 'pytestmark'
+        if not any(
+            isinstance(t, ast.Name) and t.id == "pytestmark"
+            for t in node.targets
+        ):
+            continue
+
+        # Extract story IDs from the value
+        calls_to_check: list[ast.Call] = []
+        if isinstance(node.value, ast.Call):
+            calls_to_check.append(node.value)
+        elif isinstance(node.value, ast.List):
+            for elt in node.value.elts:
+                if isinstance(elt, ast.Call):
+                    calls_to_check.append(elt)
+
+        for call in calls_to_check:
+            if _is_story_marker_call(call):
+                for arg in call.args:
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        story_ids.add(arg.value)
+
+    return story_ids
+
+
+def _is_story_marker_call(call: "ast.Call") -> bool:
+    """Check if an ast.Call is a pytest.mark.story(...) or story(...) call."""
+    import ast
+
+    func = call.func
+    # pytest.mark.story(...)
+    if (isinstance(func, ast.Attribute) and func.attr == "story"
+            and isinstance(func.value, ast.Attribute) and func.value.attr == "mark"):
+        return True
+    # story(...)
+    if isinstance(func, ast.Name) and func.id == "story":
+        return True
+    # markers.story(...)
+    if isinstance(func, ast.Attribute) and func.attr == "story":
+        return True
+    return False
 
 
 def _extract_story_ids_from_decorators(node: "ast.FunctionDef | ast.ClassDef") -> set[str]:
@@ -1333,55 +1403,6 @@ def cmd_sync(args):
             console.print(f"    [dim]- {sid}[/dim]")
         if len(orphan_markers) > 10:
             console.print(f"    [dim]... and {len(orphan_markers) - 10} more[/dim]")
-
-
-def cmd_coverage(args):
-    """Show story-to-test coverage from the TinyDB index."""
-    from agenticcli.console import console, is_json_output, print_header, print_json
-
-    project_filter = getattr(args, "project", None)
-    min_pct = getattr(args, "min_pct", None)
-    exit_code_mode = getattr(args, "exit_code", False)
-
-    stories = _collect_all_stories(project_filter=project_filter)
-    all_story_ids = {s["id"] for s in stories}
-
-    db_path = _get_repo_db_path()
-    from agenticguidance.services.epic_repository import EpicRepository
-    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-    uncovered = repo.get_uncovered_stories(all_story_ids)
-    repo.close()
-
-    covered_count = len(all_story_ids) - len(uncovered)
-    total = len(all_story_ids)
-    pct = (covered_count / total * 100) if total else 0
-
-    if is_json_output():
-        print_json({
-            "total_stories": total,
-            "covered": covered_count,
-            "uncovered_count": len(uncovered),
-            "uncovered": uncovered,
-            "coverage_pct": round(pct, 1),
-            "project_filter": project_filter,
-        })
-    else:
-        title = "Story Test Coverage"
-        if project_filter:
-            title += f" (project: {project_filter})"
-        print_header(title)
-        console.print(f"  [green]Covered:[/green]   {covered_count}/{total} ({pct:.1f}%)")
-        if uncovered:
-            console.print(f"  [red]Uncovered:[/red] {len(uncovered)} stories")
-            for sid in uncovered[:20]:
-                console.print(f"    [dim]- {sid}[/dim]")
-            if len(uncovered) > 20:
-                console.print(f"    [dim]... and {len(uncovered) - 20} more[/dim]")
-        else:
-            console.print("  [green]All stories have linked tests![/green]")
-
-    if exit_code_mode and min_pct is not None and pct < min_pct:
-        sys.exit(1)
 
 
 def cmd_run(args):

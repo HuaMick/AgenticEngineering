@@ -15,7 +15,7 @@ from agenticguidance.services.config import (
     TieredConfigLoader,
 )
 
-pytestmark = pytest.mark.story("US-SET-005")
+pytestmark = pytest.mark.story("US-SET-005", "US-SET-026", "US-GDN-099")
 
 
 @pytest.mark.story("US-SET-005")
@@ -147,7 +147,7 @@ class TestTieredConfigLoader:
         assert result.value == "AE"
 
 
-@pytest.mark.story("US-SET-005")
+@pytest.mark.story("US-SET-005", "US-SET-006")
 class TestConfigWorkflow:
     """Tests for ConfigWorkflow class."""
 

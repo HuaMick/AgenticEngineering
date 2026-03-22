@@ -52,7 +52,7 @@ Success threshold: >15% improvement over baseline
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-PLN-053")
+pytestmark = pytest.mark.story("US-PLN-053", "US-GDN-083")
 
 
 class TestBlindTreatment:

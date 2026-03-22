@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-053")
+pytestmark = pytest.mark.story("US-PLN-053", "US-PLN-041", "US-PLN-042")
 
 
 # ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ pytestmark = pytest.mark.story("US-PLN-053")
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-052", "US-PLN-053")
 class TestOrchestratePlanningAction:
     """Test orchestrate command with planning action."""
 

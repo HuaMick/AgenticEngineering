@@ -17,7 +17,7 @@ import yaml
 
 from tests.conftest import populate_tinydb_from_yaml
 
-pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-007")]
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-007", "US-PLN-028")]
 
 
 @pytest.fixture

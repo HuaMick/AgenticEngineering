@@ -3,7 +3,10 @@
 import tempfile
 from pathlib import Path
 
+import pytest
 import yaml
+
+pytestmark = pytest.mark.story("US-STR-005")
 
 from agenticguidance.services.story import (
     LIFECYCLE_STATES,

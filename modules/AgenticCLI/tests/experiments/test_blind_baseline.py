@@ -41,7 +41,7 @@ This experiment measures completion rates for commonly forgotten items:
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-PLN-053")
+pytestmark = pytest.mark.story("US-PLN-053", "US-GDN-083")
 
 
 class TestBlindBaseline:

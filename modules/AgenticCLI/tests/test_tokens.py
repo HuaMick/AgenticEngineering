@@ -1,7 +1,7 @@
 """Tests for token estimation utilities."""
 import pytest
 
-pytestmark = pytest.mark.story("US-SET-015")
+pytestmark = pytest.mark.story("US-SET-015", "US-SET-016")
 
 from agenticcli.utils.tokens import (
     estimate_tokens,

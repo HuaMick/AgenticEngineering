@@ -12,6 +12,9 @@ process:
   inputs:
     - location: "modules/AgenticGuidance/agents/build/build-flutter/inputs.yml"
       description: "Core build agent inputs and guidelines"
+    - name: "affected_stories"
+      source: "ticket.inputs.affected_stories"
+      description: "List of story IDs (US-XXX-NNN) from the ticket that this build should satisfy"
 
   outputs:
     - name: "components_built"
@@ -46,10 +49,10 @@ process:
 
       ```bash
       # Get seed context (objective, process summary, inputs)
-      agentic agent context bootstrap --role build-flutter -j
+      agentic epic status --epic <epic_folder>
 
       # Get current ticket if working from an epic
-      agentic agent epic ticket current -j
+      agentic epic ticket current -j
       ```
 
       CLI output provides your objective, process summary, input file paths.
@@ -59,6 +62,26 @@ process:
       Review all inputs if an input cannot be found do not proceed.
       If an input is found in a different location, update the path and flag
       the discrepancy in your output.
+    - |
+      Load affected stories from ticket inputs. Cross-reference story acceptance
+      criteria when implementing. Each story ID (US-XXX-NNN) represents a
+      user-visible behavior that this ticket should satisfy. Use story criteria
+      to validate implementation choices.
+
+      Stories are REQUIRED for build epics per planning-standard.yml
+      FENCE: STORY-FIRST PLANNING. If no affected_stories are present in the
+      ticket, flag this in your output as a blocking issue.
+
+      GUIDELINE: When implementing story-tracked code, tag the primary widget or
+      class with a comment linking to the story ID:
+      ```dart
+      /// @story US-XXX-NNN
+      class MyFeatureWidget extends StatelessWidget {
+        ...
+      }
+      ```
+      This enables production code traceability via `agentic stories sync` and
+      `agentic stories code <story_id>`.
     - |
       Determine which worktree to work from:
       - Execute `pwd` to check your current directory

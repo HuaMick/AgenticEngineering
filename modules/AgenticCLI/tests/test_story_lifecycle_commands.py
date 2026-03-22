@@ -7,6 +7,8 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+pytestmark = pytest.mark.story("US-STR-005")
+
 
 @pytest.fixture
 def story_dir(tmp_path):

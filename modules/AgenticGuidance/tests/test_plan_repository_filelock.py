@@ -16,7 +16,7 @@ import pytest
 
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = pytest.mark.story("US-PLN-082")
+pytestmark = pytest.mark.story("US-PLN-082", "US-PLN-063")
 
 
 @pytest.fixture

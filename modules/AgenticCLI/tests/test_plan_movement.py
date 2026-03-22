@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-PLN-007")
+pytestmark = pytest.mark.story("US-PLN-007", "US-SET-025")
 
 
 def _populate_tinydb_for_movement(db_path, epic_folder_name, tickets):
@@ -218,7 +218,7 @@ class TestGitSafetyChecker:
         assert "newfile.txt" in changes
 
 
-@pytest.mark.story("US-PLN-084")
+@pytest.mark.story("US-PLN-084", "US-PLN-006")
 class TestFolderArchive:
     """Tests for folder archival."""
 

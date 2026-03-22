@@ -19,7 +19,7 @@ import pytest
 
 from tests.conftest import populate_tinydb_from_yaml
 
-pytestmark = pytest.mark.story("US-PLN-002")
+pytestmark = pytest.mark.story("US-PLN-002", "US-PLN-087", "US-PLN-088")
 
 
 @pytest.fixture
@@ -225,7 +225,7 @@ class TestTaskList:
                         assert task["status"] == "pending"
 
 
-@pytest.mark.story("US-PLN-010")
+@pytest.mark.story("US-PLN-010", "US-PLN-088")
 class TestTaskCurrent:
     """Tests for plan task current command."""
 
@@ -252,7 +252,7 @@ class TestTaskCurrent:
                 assert data["status"] == "in_progress"
 
 
-@pytest.mark.story("US-PLN-011")
+@pytest.mark.story("US-PLN-011", "US-PLN-087")
 class TestTaskUpdate:
     """Tests for plan task update command."""
 

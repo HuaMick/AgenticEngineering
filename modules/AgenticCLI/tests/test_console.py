@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SET-014")
+pytestmark = pytest.mark.story("US-SET-014", "US-SET-016")
 
 
 class TestJsonOutputMode:

@@ -24,7 +24,9 @@ import pytest
 
 from agenticcli.utils.sdk_runner import SessionResult
 
-pytestmark = pytest.mark.story("US-PLN-091")
+pytestmark = [
+    pytest.mark.story("US-PLN-027", "US-PLN-028", "US-PLN-038", "US-PLN-041", "US-PLN-046", "US-PLN-047", "US-PLN-055", "US-PLN-091"),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -143,31 +145,61 @@ class TestPlannerLoopE2E:
         """Create a PlannerLoopRunner with selected methods monkeypatched.
 
         All spawn methods default to returning _ok_result() unless overridden.
+        Story mocks auto-write stories.yml (stories are required).
         """
+        import yaml
         from agenticcli.workflows.planner_loop import PlannerLoopRunner
 
         monkeypatch.setattr(workflow, "run_health_check",
                             overrides.get("health_check", lambda: None))
-        monkeypatch.setattr(workflow, "compile_bootstrap_context",
-                            overrides.get("bootstrap", lambda role="orchestration-planning": {}))
         monkeypatch.setattr(workflow, "get_plan_status",
                             overrides.get("plan_status", lambda pf: "in_progress"))
 
         if "discover" in overrides:
             monkeypatch.setattr(workflow, "discover_plans_needing_orchestration",
                                 overrides["discover"])
+
+        # Story file writer: ensures stories.yml exists (stories are required)
+        def _write_stories_yml(pf):
+            epic_dir = workflow.epics_dir / pf
+            epic_dir.mkdir(parents=True, exist_ok=True)
+            stories_path = epic_dir / "stories.yml"
+            if not stories_path.exists():
+                stories_path.write_text(yaml.dump({
+                    "stories": [{"id": "US-001", "title": "Test story"}],
+                    "categories": [{"name": "default", "story_ids": ["US-001"]}],
+                }))
+
+        def _default_spawn_story(pf):
+            _write_stories_yml(pf)
+            return _ok_result()
+
+        # If caller provided a custom spawn_story, wrap it to write stories.yml on success
+        custom_story = overrides.get("spawn_story")
+        if custom_story is not None:
+            _original = custom_story
+            def _wrapped(pf, _orig=_original):
+                result = _orig(pf)
+                if result.status == "completed":
+                    _write_stories_yml(pf)
+                return result
+            overrides["spawn_story"] = _wrapped
+
         # Always patch spawn methods — defaults to _ok_result() unless overridden
         monkeypatch.setattr(workflow, "spawn_epic_creator",
                             overrides.get("spawn_epic_creator", lambda pf: _ok_result()))
         monkeypatch.setattr(workflow, "spawn_explore_agents",
                             overrides.get("spawn_explore", lambda pf, categories=None: _ok_result()))
         monkeypatch.setattr(workflow, "spawn_story_agent",
-                            overrides.get("spawn_story", lambda pf: _ok_result()))
+                            overrides.get("spawn_story", _default_spawn_story))
         if "spawn_orchestration" in overrides:
             monkeypatch.setattr(workflow, "spawn_orchestration_agent",
                                 overrides["spawn_orchestration"])
 
-        return PlannerLoopRunner(workflow=workflow)
+        runner = PlannerLoopRunner(workflow=workflow)
+        # Mock validation to pass (e2e tests don't set up full TinyDB for validation)
+        monkeypatch.setattr(runner, "_validate_planning_output", lambda pf: (True, []))
+        return runner
 
     # ------------------------------------------------------------------ #
     # Test: all expected roles are invoked                                 #
@@ -496,17 +528,12 @@ class TestPlannerLoopE2E:
             called_path["path"] = "sdk-direct"
             return _ok_result()
 
-        def mock_subprocess(session_id, role, epic_folder):
-            called_path["path"] = "subprocess"
-            return _ok_result()
-
         with (
             patch("agenticcli.workflows.planner_loop.SDK_AVAILABLE", True),
             patch("shutil.which", return_value="/usr/bin/tmux"),
             patch.dict("os.environ", {}, clear=False),
             patch.object(workflow, "_run_via_tmux_sdk", side_effect=mock_tmux_sdk),
             patch.object(workflow, "_run_via_sdk", side_effect=mock_sdk_direct),
-            patch.object(workflow, "_run_via_subprocess", side_effect=mock_subprocess),
         ):
             # Ensure AGENTIC_FORCE_SDK_DIRECT is not set
             import os

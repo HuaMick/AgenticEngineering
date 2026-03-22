@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-082")
+pytestmark = pytest.mark.story("US-PLN-036", "US-PLN-040", "US-PLN-043", "US-PLN-044", "US-PLN-082", "US-PLN-085")
 
 from agenticguidance.services.epic import EpicService
 
@@ -117,41 +117,37 @@ class TestEpicServiceIntegration:
         if failures:
             pytest.fail("Epic validation failed:\n" + "\n".join(f"  - {f}" for f in failures))
 
-    def test_list_completed_epics(self, service, repo_root):
-        """Test list_epics returns completed epics if they exist."""
-        completed_dir = repo_root / "docs" / "epics" / "completed"
+    def test_list_completed_epics(self, service, repo_root, _isolate_tinydb):
+        """Test list_epics returns completed epics from TinyDB."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        if not completed_dir.exists():
-            pytest.skip("No docs/epics/completed directory in repository")
+        # Populate TinyDB with a completed epic
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        repo.create_epic({
+            "epic_folder_name": "260101TE_completed_test",
+            "epic_folder": str(repo_root / "docs" / "epics" / "completed" / "260101TE_completed_test"),
+            "status": "completed",
+        })
+        repo.close()
 
         epics = service.list_epics(status="completed")
+        assert len(epics) > 0, "Should return completed epics from TinyDB"
 
-        # If there are completed folders, we should get results
-        actual_folders = [
-            d.name for d in completed_dir.iterdir()
-            if d.is_dir() and "_" in d.name
-        ]
+    def test_list_deferred_epics(self, service, repo_root, _isolate_tinydb):
+        """Test list_epics returns deferred epics from TinyDB."""
+        from agenticguidance.services.epic_repository import EpicRepository
 
-        if actual_folders:
-            assert len(epics) > 0, "Should return completed epics"
-
-    def test_list_deferred_epics(self, service, repo_root):
-        """Test list_epics returns deferred epics if they exist."""
-        deferred_dir = repo_root / "docs" / "epics" / "deferred"
-
-        if not deferred_dir.exists():
-            pytest.skip("No docs/epics/deferred directory in repository")
+        # Populate TinyDB with a deferred epic
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        repo.create_epic({
+            "epic_folder_name": "260101TE_deferred_test",
+            "epic_folder": str(repo_root / "docs" / "epics" / "deferred" / "260101TE_deferred_test"),
+            "status": "deferred",
+        })
+        repo.close()
 
         epics = service.list_epics(status="deferred")
-
-        # If there are deferred folders, we should get results
-        actual_folders = [
-            d.name for d in deferred_dir.iterdir()
-            if d.is_dir() and "_" in d.name
-        ]
-
-        if actual_folders:
-            assert len(epics) > 0, "Should return deferred epics"
+        assert len(epics) > 0, "Should return deferred epics from TinyDB"
 
     def test_get_epic_tickets_from_real_epic(self, service, repo_root):
         """Test get_epic_tickets extracts tickets from a real epic."""

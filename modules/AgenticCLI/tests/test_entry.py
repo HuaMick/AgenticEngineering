@@ -152,7 +152,7 @@ class TestAgentNamePositionalRouting:
             mock_run.assert_called()
 
 
-@pytest.mark.story("US-SET-001")
+@pytest.mark.story("US-SET-001", "US-GDN-094")
 class TestEntryPointImports:
     """Test that entry point handles imports correctly."""
 

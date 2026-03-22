@@ -12,7 +12,7 @@ import pytest
 from agenticguidance.services.epic import TicketData
 from agenticguidance.services.ticket import Ticket, TicketStatus
 
-pytestmark = pytest.mark.story("US-STR-009")
+pytestmark = pytest.mark.story("US-STR-009", "US-SET-029")
 
 
 # ---------------------------------------------------------------------------

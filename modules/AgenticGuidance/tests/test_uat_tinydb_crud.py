@@ -21,7 +21,7 @@ import pytest
 
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = pytest.mark.story("US-PLN-082")
+pytestmark = pytest.mark.story("US-PLN-082", "US-GDN-053", "US-GDN-073", "US-PLN-087", "US-PLN-088", "US-SET-018", "US-SET-020")
 
 
 # ---------------------------------------------------------------------------
@@ -597,7 +597,7 @@ class TestGetTicket:
         assert ticket.phase_name == "Setup Phase"
 
 
-@pytest.mark.story("US-PLN-086")
+@pytest.mark.story("US-PLN-086", "US-PLN-087")
 class TestUpdateTicketStatus:
     """GD-201-US: update_ticket_status transitions ticket status and sets completed_date."""
 
@@ -641,7 +641,7 @@ class TestUpdateTicketStatus:
         assert repo.get_ticket("260203EE_lifecycle", "T1").status == "completed"
 
 
-@pytest.mark.story("US-PLN-086")
+@pytest.mark.story("US-PLN-086", "US-PLN-088")
 class TestGetTickets:
     """GD-201-GTS: get_tickets retrieves tickets with optional status filtering."""
 
@@ -693,7 +693,7 @@ class TestGetTickets:
         assert tickets_a[0].id == "T1"
 
 
-@pytest.mark.story("US-PLN-086")
+@pytest.mark.story("US-PLN-086", "US-PLN-088")
 class TestGetCurrentTicket:
     """GD-201-GCT: get_current_ticket returns first in_progress then first pending."""
 
@@ -736,7 +736,7 @@ class TestGetCurrentTicket:
         assert isinstance(current, TicketData)
 
 
-@pytest.mark.story("US-PLN-085")
+@pytest.mark.story("US-PLN-085", "US-PLN-089")
 class TestTicketCountsAndCompletion:
     """GD-201-TC: get_ticket_counts and check_all_tickets_complete work correctly."""
 

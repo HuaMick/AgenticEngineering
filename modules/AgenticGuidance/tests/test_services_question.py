@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-GDN-021")
+pytestmark = pytest.mark.story("US-GDN-021", "US-PLN-090")
 
 from agenticguidance.models.question import (
     Answer,

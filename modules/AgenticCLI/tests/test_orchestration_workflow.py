@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-053")
+pytestmark = pytest.mark.story("US-PLN-053", "US-PLN-028", "US-PLN-041", "US-GDN-097", "US-GDN-098", "US-PLN-068", "US-PLN-069", "US-PLN-077")
 
 
 # ---------------------------------------------------------------------------
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.story("US-PLN-053")
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-046", "US-PLN-053", "US-PLN-058", "US-PLN-067")
 class TestPlanningRunner:
     """Test PlanningRunner class."""
 
@@ -161,7 +161,7 @@ class TestPlanningRunner:
 # ── TT_004: Test _run_phase passes --tmux flag ────────────────────────
 
 
-@pytest.mark.story("US-PLN-059", "US-PLN-060")
+@pytest.mark.story("US-PLN-049", "US-PLN-059", "US-PLN-060", "US-PLN-065")
 class TestRunPhaseTmux:
     """TT_004: Tests that ExecutionRunner._run_phase() includes --tmux."""
 
@@ -261,7 +261,7 @@ class TestRunPhaseTmux:
 # ── TT_007: Test full spawn chain with CLAUDECODE env isolation ──────
 
 
-@pytest.mark.story("US-PLN-059", "US-PLN-060")
+@pytest.mark.story("US-PLN-049", "US-PLN-059", "US-PLN-060", "US-PLN-065", "US-PLN-066")
 class TestSpawnChainEnvIsolation:
     """TT_007: Tests the _run_phase -> cmd_spawn -> tmux -> wait_for_session chain.
 
@@ -445,7 +445,7 @@ class TestSpawnChainEnvIsolation:
 # ── TestSDKMetricsReading: SDK metrics reading via ExecutionRunner ───────────
 
 
-@pytest.mark.story("US-PLN-059")
+@pytest.mark.story("US-PLN-051", "US-PLN-059")
 class TestSDKMetricsReading:
     """Tests for read_sdk_metrics() and its integration in ExecutionRunner."""
 

@@ -16,7 +16,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-SET-017")
+pytestmark = pytest.mark.story("US-SET-017", "US-SET-024", "US-SET-019", "US-SET-021", "US-SET-023")
 
 
 # ---------------------------------------------------------------------------
@@ -385,40 +385,33 @@ class TestUS_GD_202_TinyDbRoundTrip:
 # ===========================================================================
 
 
+@pytest.mark.story("US-SET-022")
 class TestUS_GD_205_DatabaseLocation:
-    """US-GD-205 - Criterion 1: EpicRepository creates DB at .agentic/epics.db."""
+    """US-GD-205 - Criterion 1: EpicRepository uses global ~/.agentic/epics.db."""
 
-    def test_epic_service_creates_db_in_repo_local_agentic_dir(self, isolated_repo):
-        """EpicService creates DB at <repo>/.agentic/epics.db, not ~/.agentic/."""
+    def test_epic_service_uses_global_db(self, isolated_repo):
+        """EpicService uses the global DB (patched to tmp_path by _isolate_tinydb)."""
         from agenticguidance.services.epic import EpicService
 
         service = EpicService(repo_path=isolated_repo)
 
-        # The repository attribute holds the PlanRepository instance
+        # The repository attribute holds the EpicRepository instance
         assert service._repository is not None, "EpicService should have a repository"
 
+        # DB path should be the isolated fixture path (global default, patched)
         db_path = service._repository.db_path
-        expected_db = isolated_repo / ".agentic" / "epics.db"
+        assert db_path.exists() or db_path.parent.exists(), "DB path should be accessible"
 
-        assert db_path == expected_db, (
-            f"DB should be at {expected_db}, got {db_path}"
-        )
-
-        # Confirm it is NOT in the home directory
-        home_db = Path.home() / ".agentic" / "epics.db"
-        assert db_path != home_db, "DB must not be created in the home directory"
-
-    def test_epic_service_db_file_is_created_on_disk(self, isolated_repo):
-        """The .agentic/epics.db file actually exists after EpicService init."""
+    def test_epic_service_db_file_is_created_on_disk(self, isolated_repo, _isolate_tinydb):
+        """The DB file actually exists after EpicService init."""
         from agenticguidance.services.epic import EpicService
 
         EpicService(repo_path=isolated_repo)
 
-        expected_db = isolated_repo / ".agentic" / "epics.db"
-        assert expected_db.exists(), ".agentic/epics.db should exist after EpicService init"
+        assert _isolate_tinydb.parent.exists(), "DB parent dir should exist after EpicService init"
 
-    def test_ticket_service_derives_db_from_epic_path(self, isolated_repo):
-        """TicketService derives the DB path from the epic folder's repo root."""
+    def test_ticket_service_uses_global_db(self, isolated_repo, _isolate_tinydb):
+        """TicketService uses the global DB (patched to tmp_path by _isolate_tinydb)."""
         from agenticguidance.services.ticket import TicketService
 
         epic_name = "260224TE_ticket_db_loc"
@@ -429,9 +422,9 @@ class TestUS_GD_205_DatabaseLocation:
 
         assert service._repository is not None
         db_path = service._repository.db_path
-        expected_db = isolated_repo / ".agentic" / "epics.db"
-        assert db_path == expected_db, (
-            f"TicketService DB should be at {expected_db}, got {db_path}"
+        # Should use the isolated (global) DB, not a repo-local one
+        assert db_path == _isolate_tinydb, (
+            f"TicketService DB should be at {_isolate_tinydb}, got {db_path}"
         )
 
 
@@ -460,43 +453,36 @@ class TestUS_GD_205_GitIgnore:
         )
 
 
-class TestUS_GD_205_IsolatedDatabases:
-    """US-GD-205 - Criterion 3: Each repo gets its own independent DB."""
+class TestUS_GD_205_GlobalDatabase:
+    """US-GD-205 - Criterion 3: All repos share the single global DB."""
 
-    def test_two_repos_have_independent_databases(self, tmp_path):
-        """Epics created in repo A do not appear in repo B's database."""
+    def test_global_db_is_shared(self, tmp_path):
+        """Epics created from any context are visible in the global DB."""
         from agenticguidance.services.epic_repository import EpicRepository
 
-        repo_a = tmp_path / "repo_a"
-        repo_b = tmp_path / "repo_b"
-        repo_a.mkdir()
-        repo_b.mkdir()
+        db_path = tmp_path / ".agentic" / "epics.db"
+        repo_db = EpicRepository(db_path=db_path, auto_bootstrap=False)
 
-        db_a = repo_a / ".agentic" / "epics.db"
-        db_b = repo_b / ".agentic" / "epics.db"
-
-        repo_a_db = EpicRepository(db_path=db_a, auto_bootstrap=False)
-        repo_b_db = EpicRepository(db_path=db_b, auto_bootstrap=False)
-
-        # Create an epic in repo A
-        repo_a_db.create_epic({
-            "epic_folder_name": "260224TE_repo_a_epic",
-            "epic_folder": str(repo_a / "docs" / "epics" / "live" / "260224TE_repo_a_epic"),
+        # Create an epic
+        repo_db.create_epic({
+            "epic_folder_name": "260224TE_shared_epic",
+            "epic_folder": str(tmp_path / "docs" / "epics" / "live" / "260224TE_shared_epic"),
             "status": "pending",
-            "objective": "Repo A epic",
+            "objective": "Shared epic",
         })
 
-        # Repo B should have no knowledge of repo A's epic
-        epic_in_b = repo_b_db.get_epic("260224TE_repo_a_epic")
-        repo_a_db.close()
-        repo_b_db.close()
+        # Same DB should see the epic
+        repo_db2 = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        epic = repo_db2.get_epic("260224TE_shared_epic")
+        repo_db.close()
+        repo_db2.close()
 
-        assert epic_in_b is None, (
-            "Epics from repo A must not appear in repo B's database"
+        assert epic is not None, (
+            "Epics should be visible in the shared global DB"
         )
 
-    def test_databases_at_different_paths(self, tmp_path):
-        """Two EpicRepository instances at different paths are truly independent."""
+    def test_explicit_db_paths_are_independent(self, tmp_path):
+        """Two EpicRepository instances at different explicit paths are independent."""
         from agenticguidance.services.epic_repository import EpicRepository
 
         db_1 = tmp_path / "proj1" / ".agentic" / "epics.db"

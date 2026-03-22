@@ -12,7 +12,7 @@ import yaml
 import tempfile
 import shutil
 
-pytestmark = pytest.mark.story("US-PLN-091")
+pytestmark = pytest.mark.story("US-PLN-027", "US-PLN-034", "US-PLN-076", "US-PLN-091", "US-STR-012", "US-GDN-081")
 
 
 @pytest.fixture
@@ -90,6 +90,7 @@ def test_planning_workflow_generates_stories_when_none_found(temp_epic_folder, t
 
 
 @pytest.mark.integration
+@pytest.mark.story("US-STR-014")
 def test_orchestration_validates_story_content_before_uat(temp_epic_folder, temp_userstories_dir):
     """
     Integration test: Verify orchestration validates story content exists before UAT.
@@ -175,6 +176,7 @@ def test_orchestration_validates_story_content_before_uat(temp_epic_folder, temp
 
 
 @pytest.mark.integration
+@pytest.mark.story("US-STR-013", "US-STR-015")
 def test_planner_test_creates_uat_tasks_from_stories(temp_epic_folder):
     """
     Integration test: Verify planner-test creates UAT tasks that map to stories.

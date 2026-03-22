@@ -182,7 +182,7 @@ class TestDiagnoseSessionState:
 # ── Tests: ExecutionRunner auto-retry ────────────────────────────────────
 
 
-@pytest.mark.story("US-PLN-066")
+@pytest.mark.story("US-PLN-066", "US-PLN-065")
 class TestExecutionRunnerAutoRetry:
     """Verify _run_phase auto-retries on quick exit."""
 

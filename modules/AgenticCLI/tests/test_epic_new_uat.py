@@ -115,7 +115,7 @@ def mock_claude_subprocess(_isolate_tinydb):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-074")
+@pytest.mark.story("US-PLN-074", "US-PLN-079", "US-GDN-084", "US-GDN-085", "US-GDN-088")
 class TestUSORCH001InitiatePlanning:
     """UAT for US-ORCH-001: Initiate Implementation Planning.
 
@@ -251,7 +251,7 @@ class TestUSORCH001InitiatePlanning:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-074")
+@pytest.mark.story("US-PLN-074", "US-GDN-085")
 class TestUSORCH002PlanCreation:
     """UAT for plan creation workflow.
 
@@ -285,7 +285,7 @@ class TestUSORCH002PlanCreation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-074")
+@pytest.mark.story("US-PLN-074", "US-GDN-097", "US-GDN-098")
 class TestUSORCH005OrchestrationPhases:
     """UAT for US-ORCH-005: Orchestration phase tracking via TinyDB.
 

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SES-001")
+pytestmark = pytest.mark.story("US-SES-001", "US-SES-010", "US-SES-011")
 
 
 @pytest.fixture
@@ -177,6 +177,7 @@ class TestSessionHelperFunctions:
 
         assert result == []
 
+    @pytest.mark.story("US-SES-008")
     def test_is_process_running_for_current_process(self):
         """Test is_process_running for the current process."""
         from agenticcli.commands import session
@@ -184,6 +185,7 @@ class TestSessionHelperFunctions:
         # Current process should be running
         assert session.is_process_running(os.getpid()) is True
 
+    @pytest.mark.story("US-SES-008")
     def test_is_process_running_for_nonexistent_process(self):
         """Test is_process_running for a nonexistent process."""
         from agenticcli.commands import session
@@ -191,6 +193,7 @@ class TestSessionHelperFunctions:
         # Very high PID unlikely to exist
         assert session.is_process_running(99999999) is False
 
+    @pytest.mark.story("US-SES-008", "US-SES-009")
     def test_update_session_status_marks_completed(self, mock_sessions_dir, sample_session_data):
         """Test that update_session_status marks dead processes as completed."""
         from agenticcli.commands import session
@@ -745,27 +748,35 @@ class TestResolvePlanFolder:
     """Tests for _resolve_epic_folder helper."""
 
     def test_resolve_existing_plan(self, tmp_path, monkeypatch):
-        """Test resolving an existing epic folder in docs/epics/live/."""
+        """Test resolving an existing epic folder via TinyDB."""
         from agenticcli.commands import session
 
         live_dir = tmp_path / "docs" / "epics" / "live"
         plan_dir = live_dir / "260207TA_cli_task_spawn"
         plan_dir.mkdir(parents=True)
 
-        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+        # Mock find_epic_folder to return the expected path (TinyDB-based)
+        monkeypatch.setattr(
+            "agenticcli.commands.epic.find_epic_folder",
+            lambda name: plan_dir,
+        )
 
         result = session._resolve_epic_folder("260207TA_cli_task_spawn")
         assert result == plan_dir
 
     def test_resolve_completed_plan(self, tmp_path, monkeypatch):
-        """Test resolving an epic in docs/epics/completed/."""
+        """Test resolving a completed epic folder via TinyDB."""
         from agenticcli.commands import session
 
         completed_dir = tmp_path / "docs" / "epics" / "completed"
         plan_dir = completed_dir / "260203TS_task_service"
         plan_dir.mkdir(parents=True)
 
-        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+        # Mock find_epic_folder to return the expected path (TinyDB-based)
+        monkeypatch.setattr(
+            "agenticcli.commands.epic.find_epic_folder",
+            lambda name: plan_dir,
+        )
 
         result = session._resolve_epic_folder("260203TS_task_service")
         assert result == plan_dir
@@ -774,8 +785,16 @@ class TestResolvePlanFolder:
         """Test resolving an epic folder that doesn't exist."""
         from agenticcli.commands import session
 
-        (tmp_path / "docs" / "epics" / "live").mkdir(parents=True)
-        monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+        # find_epic_folder raises SystemExit for not-found (via sys.exit(1))
+        import sys
+
+        def raise_exit(name):
+            raise SystemExit(1)
+
+        monkeypatch.setattr(
+            "agenticcli.commands.epic.find_epic_folder",
+            raise_exit,
+        )
 
         result = session._resolve_epic_folder("nonexistent_plan")
         assert result is None
@@ -791,7 +810,7 @@ class TestBuildRolePrompt:
 
         prompt = session._build_role_prompt("build-python", None)
         assert "build-python" in prompt
-        assert "context bootstrap" in prompt
+        assert "epic list" in prompt
 
     def test_role_prompt_with_plan(self, tmp_path):
         """Test building a role prompt with plan context."""
@@ -877,6 +896,8 @@ class TestSpawnWithRoleAndPlan:
         plan_dir = live_dir / "260207TA_test"
         plan_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+        # Mock find_epic_folder since filesystem fallback was removed
+        monkeypatch.setattr("agenticcli.commands.epic.find_epic_folder", lambda name: plan_dir)
 
         mock_is_running.return_value = True
         mock_process = MagicMock()
@@ -1047,7 +1068,8 @@ class TestSpawnWithRoleAndPlan:
         plan_dir = live_dir / "260207TA_test"
         plan_dir.mkdir(parents=True)
 
-        # No TinyDB entry - cmd_spawn reads from TinyDB for ticket lookup
+        # Mock find_epic_folder since filesystem fallback was removed
+        monkeypatch.setattr("agenticcli.commands.epic.find_epic_folder", lambda name: plan_dir)
         monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
 
         args = SimpleNamespace(
@@ -1181,6 +1203,7 @@ class TestCheckSessionHealth:
         assert health["stale"] is True
         assert health["stale_minutes"] >= 10
 
+    @pytest.mark.story("US-SES-008")
     def test_dead_pid(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch):
         """Test health check for a session with dead PID."""
         from agenticcli.commands import session
@@ -1272,44 +1295,11 @@ class TestSessionHealthcheckCommand:
 
         monkeypatch.setattr(session, "is_process_running", lambda pid: True)
 
-        spawn_called = []
-        monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
-
         args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
         session.cmd_healthcheck(args)
 
         captured = capsys.readouterr()
         assert "STALE" in captured.out
-        assert len(spawn_called) == 0  # No diagnostic spawn without --diagnose
-
-    def test_healthcheck_stale_session_with_diagnose(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
-        """Test healthcheck spawns diagnostic when --diagnose is set for stale sessions."""
-        import time as time_mod
-        from agenticcli.commands import session
-
-        session._store.save(sample_session_data)
-        stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
-        stdout_log.write_text("Old output")
-        old_time = time_mod.time() - (20 * 60)
-        os.utime(stdout_log, (old_time, old_time))
-
-        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
-
-        spawned_ids = []
-
-        def mock_spawn(s):
-            new_id = "diag-1234-5678"
-            spawned_ids.append(new_id)
-            return new_id
-
-        monkeypatch.setattr(session, "_spawn_diagnostic_planner", mock_spawn)
-
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], diagnose=True)
-        session.cmd_healthcheck(args)
-
-        captured = capsys.readouterr()
-        assert "STALE" in captured.out
-        assert len(spawned_ids) == 1
 
     def test_healthcheck_unhealthy_session(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys):
         """Test healthcheck command displays UNHEALTHY verdict."""
@@ -1643,134 +1633,6 @@ class TestSessionHandleRoutingNewCommands:
 
         captured = capsys.readouterr()
         assert "No session found" in captured.err
-
-
-@pytest.mark.story("US-SES-004")
-class TestDiagnosticAutoSpawn:
-    """Tests for diagnostic auto-spawn in healthcheck (requires --diagnose)."""
-
-    def test_spawns_diagnostic_for_stale_session_with_diagnose(
-        self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
-    ):
-        """Test that cmd_healthcheck auto-spawns diagnostic for stale sessions when --diagnose is set."""
-        import time as time_mod
-        from agenticcli.commands import session
-
-        session._store.save(sample_session_data)
-        stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
-        stdout_log.write_text("Old output")
-        old_time = time_mod.time() - (20 * 60)
-        os.utime(stdout_log, (old_time, old_time))
-
-        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
-
-        spawned_ids = []
-
-        def mock_spawn(s):
-            new_id = "diag-1234-5678"
-            spawned_ids.append(new_id)
-            return new_id
-
-        monkeypatch.setattr(session, "_spawn_diagnostic_planner", mock_spawn)
-
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], diagnose=True)
-        session.cmd_healthcheck(args)
-
-        captured = capsys.readouterr()
-        assert "STALE" in captured.out
-        assert len(spawned_ids) == 1
-        assert "diag-123" in captured.out  # Truncated to 8 chars
-
-    def test_no_diagnostic_without_diagnose_flag(
-        self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
-    ):
-        """Test that diagnostic is NOT spawned without --diagnose even for stale sessions."""
-        import time as time_mod
-        from agenticcli.commands import session
-
-        session._store.save(sample_session_data)
-        stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
-        stdout_log.write_text("Old output")
-        old_time = time_mod.time() - (20 * 60)
-        os.utime(stdout_log, (old_time, old_time))
-
-        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
-
-        spawn_called = []
-        monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
-
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8])
-        session.cmd_healthcheck(args)
-
-        captured = capsys.readouterr()
-        assert "STALE" in captured.out
-        assert len(spawn_called) == 0
-
-    def test_diagnostic_spawns_only_once(
-        self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
-    ):
-        """Test that diagnostic is not spawned if already spawned."""
-        from agenticcli.commands import session
-
-        # Mark session as already having a diagnostic spawned
-        sample_session_data["diagnostic_spawned"] = True
-        sample_session_data["diagnostic_session_id"] = "existing-diag-id-1234"
-        session._store.save(sample_session_data)
-
-        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
-
-        spawn_called = []
-        monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
-
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], diagnose=True)
-        session.cmd_healthcheck(args)
-
-        captured = capsys.readouterr()
-        assert len(spawn_called) == 0
-        assert "already spawned" in captured.out.lower()
-        assert "existing" in captured.out
-
-    def test_no_diagnostic_for_healthy_session(
-        self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
-    ):
-        """Test that diagnostic is NOT spawned for healthy sessions even with --diagnose."""
-        from agenticcli.commands import session
-
-        session._store.save(sample_session_data)
-        stdout_log = mock_logs_dir / f"{sample_session_data['session_id']}.stdout.log"
-        stdout_log.write_text("Some output")
-
-        monkeypatch.setattr(session, "is_process_running", lambda pid: True)
-
-        spawn_called = []
-        monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: spawn_called.append(1))
-
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], diagnose=True)
-        session.cmd_healthcheck(args)
-
-        captured = capsys.readouterr()
-        assert "HEALTHY" in captured.out
-        assert len(spawn_called) == 0
-
-    @patch("agenticcli.console.is_json_output")
-    def test_diagnostic_in_json_output(
-        self, mock_json, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch, capsys
-    ):
-        """Test diagnostic spawn info appears in JSON healthcheck output when --diagnose is set."""
-        from agenticcli.commands import session
-
-        mock_json.return_value = True
-        session._store.save(sample_session_data)
-
-        monkeypatch.setattr(session, "is_process_running", lambda pid: False)
-        monkeypatch.setattr(session, "_spawn_diagnostic_planner", lambda s: "new-diag-9999")
-
-        args = SimpleNamespace(session_id=sample_session_data["session_id"][:8], json_output=True, diagnose=True)
-        session.cmd_healthcheck(args)
-
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-        assert output.get("diagnostic_spawned") == "new-diag-9999"
 
 
 @pytest.mark.story("US-SES-001")
@@ -2548,7 +2410,7 @@ class TestTmuxFallback:
 # ── TT_006: Test session stop kills tmux session ──────────────────────
 
 
-@pytest.mark.story("US-SES-003")
+@pytest.mark.story("US-SES-003", "US-GDN-087")
 class TestSessionStopTmux:
     """TT_006: Tests that session stop properly kills tmux sessions."""
 

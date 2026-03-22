@@ -65,6 +65,7 @@ class TestSessionConfig:
         assert config.max_sessions == 0
 
 
+@pytest.mark.story("US-GDN-084", "US-GDN-100")
 class TestSessionNamingConvention:
     """Tests for SessionNamingConvention class."""
 

@@ -5,9 +5,14 @@ import pytest
 pytestmark = pytest.mark.story("US-SET-001")
 
 
-@pytest.mark.story("US-SET-001")
+@pytest.mark.story("US-SET-001", "US-SET-012", "US-SET-013")
 class TestCLIHelp:
-    """Tests for CLI help output."""
+    """Tests for CLI help output.
+
+    Also covers US-SET-012 (Install Shell Auto-Completion) and
+    US-SET-013 (Show Completion Script) — no dedicated completion tests
+    exist; CLI help is the closest related coverage.
+    """
 
     def test_main_help(self, cli_runner):
         """Test main --help output."""

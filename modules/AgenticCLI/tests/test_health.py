@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SET-004")
+pytestmark = pytest.mark.story("US-SET-004", "US-GDN-062", "US-GDN-090", "US-GDN-101", "US-GDN-091")
 
 
 @pytest.mark.story("US-SET-004")

@@ -50,7 +50,7 @@ def _yaml_files_in(path: Path) -> list:
     return found
 
 
-@pytest.mark.story("US-PLN-082", "US-PLN-086")
+@pytest.mark.story("US-PLN-082", "US-PLN-086", "US-GDN-073", "US-GDN-076")
 class TestFullLifecycleNoYaml:
     """Complete epic lifecycle using only TinyDB storage."""
 

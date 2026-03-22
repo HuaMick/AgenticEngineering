@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-STR-009")
+pytestmark = [pytest.mark.story("US-STR-009"), pytest.mark.story("US-GDN-079"), pytest.mark.story("US-PLN-081"), pytest.mark.story("US-STR-001", "US-STR-002", "US-STR-003")]
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ class TestScanPytestStoryMarkersDetailed:
 # CLI Command Tests (cmd_sync, cmd_coverage, cmd_run)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-STR-009")
+@pytest.mark.story("US-STR-009", "US-STR-006")
 class TestCmdSync:
     """Test cmd_sync command."""
 
@@ -192,55 +192,7 @@ class TestCmdSync:
         assert result["orphan_markers"] == []
 
 
-@pytest.mark.story("US-STR-010")
-class TestCmdCoverage:
-    """Test cmd_coverage command."""
-
-    def test_coverage_reports_stats(self, tmp_path):
-        from agenticcli.commands.stories import cmd_coverage
-
-        db_path = tmp_path / ".agentic" / "epics.db"
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Populate TinyDB
-        from agenticguidance.services.epic_repository import EpicRepository
-        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-        repo.sync_story_tests({"US-STR-001": ["tests/test_a.py::test_1"]})
-        repo.close()
-
-        with patch("agenticcli.commands.stories._collect_all_stories", return_value=[
-                 {"id": "US-STR-001"}, {"id": "US-STR-002"}
-             ]), \
-             patch("agenticcli.commands.stories._get_repo_db_path", return_value=db_path), \
-             patch("agenticcli.console.is_json_output", return_value=True), \
-             patch("agenticcli.console.print_json") as mock_print:
-            cmd_coverage(SimpleNamespace(project=None, min_pct=None, exit_code=False))
-
-        result = mock_print.call_args[0][0]
-        assert result["total_stories"] == 2
-        assert result["covered"] == 1
-        assert result["uncovered_count"] == 1
-        assert "US-STR-002" in result["uncovered"]
-        assert result["coverage_pct"] == 50.0
-
-    def test_coverage_exit_code_on_low_coverage(self, tmp_path):
-        from agenticcli.commands.stories import cmd_coverage
-
-        db_path = tmp_path / ".agentic" / "epics.db"
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with patch("agenticcli.commands.stories._collect_all_stories", return_value=[
-                 {"id": "US-STR-001"}, {"id": "US-STR-002"}
-             ]), \
-             patch("agenticcli.commands.stories._get_repo_db_path", return_value=db_path), \
-             patch("agenticcli.console.is_json_output", return_value=True), \
-             patch("agenticcli.console.print_json"):
-            with pytest.raises(SystemExit) as exc_info:
-                cmd_coverage(SimpleNamespace(project=None, min_pct=80.0, exit_code=True))
-            assert exc_info.value.code == 1
-
-
-@pytest.mark.story("US-STR-009")
+@pytest.mark.story("US-STR-009", "US-STR-004", "US-GDN-080")
 class TestCmdRun:
     """Test cmd_run command."""
 

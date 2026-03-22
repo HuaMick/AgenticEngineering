@@ -98,12 +98,14 @@ class TestPlanWorkflowSequence:
 
         os.chdir(original_cwd)
 
+    @pytest.mark.story("US-PLN-003")
     def test_plan_status_workflow(self, cli_in_repo, integration_repo):
         """Test: check status with validate flag."""
         # Epic status works even without epic arg (auto-detect)
         stdout, stderr, code = cli_in_repo("epic", "status")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
+    @pytest.mark.story("US-PLN-003", "US-PLN-005")
     def test_plan_status_validate(self, cli_in_repo, integration_repo):
         """Test: epic status --validate runs validation checks."""
         stdout, stderr, code = cli_in_repo("epic", "status", "--validate")
@@ -367,7 +369,7 @@ class TestErrorRecoverySequence:
 class TestStateWorkflowSequence:
     """Test state management workflows."""
 
-    pytestmark = pytest.mark.story("US-PLN-001")
+    pytestmark = pytest.mark.story("US-PLN-001", "US-SES-009")
 
     @pytest.fixture
     def state_repo(self):
@@ -440,6 +442,7 @@ class TestStateWorkflowSequence:
 
         os.chdir(original_cwd)
 
+    @pytest.mark.story("US-SES-007", "US-SES-008", "US-SES-009")
     def test_state_list_cleanup_workflow(self, state_cli):
         """Test: list state -> cleanup stale entries."""
         stdout, stderr, code = state_cli("configure", "state", "list")
@@ -448,6 +451,7 @@ class TestStateWorkflowSequence:
         stdout, stderr, code = state_cli("configure", "state", "cleanup")
         assert code == 0
 
+    @pytest.mark.story("US-SES-009")
     def test_state_json_output(self, state_cli):
         """Test state commands with JSON output."""
         stdout, stderr, code = state_cli("--json", "configure", "state", "list")
@@ -459,7 +463,8 @@ class TestStateWorkflowSequence:
 class TestEnvWorkflowSequence:
     """Test environment variable management workflows."""
 
-    pytestmark = pytest.mark.story("US-PLN-001")
+    # US-SET-010 (env run) has no dedicated test; closest coverage is here
+    pytestmark = pytest.mark.story("US-PLN-001", "US-SET-010", "US-SET-011")
 
     @pytest.fixture
     def env_repo(self):
@@ -532,11 +537,13 @@ class TestEnvWorkflowSequence:
 
         os.chdir(original_cwd)
 
+    @pytest.mark.story("US-SET-008")
     def test_env_show_workflow(self, env_cli):
         """Test showing environment configuration."""
         stdout, stderr, code = env_cli("configure", "env", "show")
         assert code == 0
 
+    @pytest.mark.story("US-SET-009")
     def test_env_export_workflow(self, env_cli):
         """Test exporting environment variables."""
         stdout, stderr, code = env_cli("configure", "env", "export")

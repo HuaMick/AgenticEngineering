@@ -13,7 +13,7 @@ Covers:
 import pytest
 import yaml
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.story("US-PLN-064")]
 
 
 class TestNoAutoArchiveOnCompletion:
