@@ -55,7 +55,7 @@ agentic orchestrate session implement --plan <epic-folder>
 agentic orchestrate session implement
 ```
 
-The ExecutionRunner reads TinyDB phases, routes each to the correct agent (build-python, test-runner, etc.), and tracks status.
+The ExecutionRunner reads TinyDB phases, routes each to the correct agent (build-python, test-builder, etc.), and tracks status.
 
 ### 3. Manual Ticket Management
 
@@ -95,9 +95,9 @@ Agents are defined in `modules/AgenticGuidance/agents/<category>/<agent-name>/` 
 | Category | Agents | Purpose |
 |----------|--------|---------|
 | **orchestration** | orchestration-planning, orchestration-executor, orchestration-loop | Route work to planners/builders, execute TinyDB phases |
-| **planner** | planner-build, planner-test, planner-guidance, planner-cleaning, planner-audit, planner-reviewer, planner-orchestration, planner-guidance-testing, planner-sdk | Generate ticket files and plans |
-| **build** | build-python, build-flutter | Implement code changes |
-| **test** | test-runner, test-builder, test-audit, test-guidance-simulator, test-user-simulator, test-service, test-final-output, test-cleaner | Validate implementations |
+| **planner** | epic-creator, planner-audit, planner-build, planner-explore, planner-orchestration, planner-test | Generate ticket files and plans |
+| **build** | build-python, build-flutter, build-story-writer, build-docs-writer | Implement code changes |
+| **test** | test-builder, test-audit, test-uat, trace-explorer | Validate implementations |
 | **teacher** | teacher-update-guidance, teacher-update-assets | Improve agent guidance |
 | **deploy** | deploy-cicd | CI/CD pipeline management |
 
@@ -109,15 +109,14 @@ Agents are defined in `modules/AgenticGuidance/agents/<category>/<agent-name>/` 
 4. **Complete** — When all tickets done, epic auto-archives to `docs/epics/completed/`
 
 Epic folders contain:
-- `ticket_build.yml`, `ticket_test.yml` — Phase/ticket definitions (YAML, root-level keys)
+- `epic.md` — Epic description and context (phases/tickets are in TinyDB)
 
 ## Key Conventions
 
 - **Python**: Use `python3` (not `python`)
 - **Tests**: `pytest` with `tmp_path`, `monkeypatch`, mock subprocess
-- **Ticket YAML**: Root-level keys (`phases:`, `tickets:`), NOT nested under `plan:`
 - **Services**: Domain → Workflow → Entrypoint pattern
-- **TinyDB is primary** data store (YAML being decommissioned)
+- **TinyDB is the sole** data store for epics, tickets, and phases
 - **Epic naming**: `YYMMDDXX_description` (date + 2-letter code + description)
 - **CLI flags**: Use `--json` or `-j` for machine-readable output
 
@@ -131,6 +130,46 @@ When asked to do work, follow this logic:
 4. **No phases yet?** → Run `agentic orchestrate session plan`
 5. **No epic yet?** → Help the user create one, then plan it
 6. **Small/ad-hoc task?** → Handle directly, but consider if it belongs in an epic
+
+## Implementation Tracking (IMPORTANT)
+
+When you implement work — whether from a plan, a user request, or your own initiative — **always track progress against the epic system**. This applies to manual implementation, not just orchestrated sessions.
+
+### Before starting implementation:
+
+1. Run `agentic epic list` to check for relevant epics
+2. If a matching epic exists, run `agentic epic ticket list --epic <folder>` to see its tickets
+3. If no epic exists for non-trivial work, create one:
+   ```bash
+   agentic epic new "<description>"
+   ```
+
+### While implementing:
+
+1. **Get your current ticket**: `agentic epic ticket current --epic <folder> -j`
+2. **Mark it started**: `agentic epic ticket start <id> --epic <folder>`
+3. Implement the work described in the ticket
+4. **Mark it complete**: `agentic epic ticket complete <id> --epic <folder>`
+5. Move to the next ticket and repeat
+
+### After plan mode:
+
+When you exit plan mode with an approved plan, **bridge it into the epic system**:
+
+1. Create an epic: `agentic epic new "<plan summary>"`
+2. Add tickets for each plan step:
+   ```bash
+   agentic epic ticket add --epic <folder> --title "<step>" --description "<details>"
+   ```
+3. Add a phase to group the tickets:
+   ```bash
+   agentic epic phase add --epic <folder> --name "<phase>" --agent build-python
+   ```
+4. Then implement by working through tickets sequentially, marking each started/completed
+
+### Key principle:
+
+The epic system is the **source of truth for work status**. If you do work without tracking it, the user loses visibility. Always prefer updating tickets over silently completing tasks.
 
 ## Session Spawning
 

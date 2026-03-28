@@ -25,7 +25,7 @@ This matrix organizes agents by their category, showing how sub-agents fit withi
 |---------|------|--------|----------------------------|
 | **planner-build** | Create implementation plans | Objectives, architecture, explore findings, user stories, agent manifest | Produce Live Plans with IMPLEMENTATION phases, file-level inputs, context routing for other agents |
 | **planner-test** | Create test validation plans | Implementation plan, test strategies, user stories, loop definitions | Produce test phases with test-fix-loop and audit-test-fix-loop patterns; validate US-INSTALL-* stories |
-| **planner-cleaning** | Create finalization plans | Live plan, user stories, loop definitions | Add cleanup, audit, user story validation, and documentation phases to finalize implementation |
+| **planner-audit** | Audit compliance and create finalization plans | Live plan, user stories, loop definitions | Audit epic folder compliance, identify files to archive/complete/remove, create cleanup phases |
 
 ---
 
@@ -69,14 +69,10 @@ This matrix organizes agents by their category, showing how sub-agents fit withi
 
 | Subtype | Role | Inputs | Scope (in-scope work only) |
 |---------|------|--------|----------------------------|
-| **test-builder** | Create Python tests | Plan directives, code under test, test patterns | Write pytest tests (unit/integration/E2E) in `tests/` only; syntax check only, no execution |
-| **test-runner** | Execute Python tests | Test directory, test markers, environment specs | Run pytest, capture output, count PASS/FAIL/SKIP, extract errors; no debugging or fixing |
+| **test-builder** | Create and execute Python tests | Plan directives, code under test, test patterns | Write pytest tests (unit/integration/E2E), execute via pytest, capture results |
 | **test-audit** | Review test quality | Assigned test package, test results XML, source code | Audit for silent failures, reward hacking, unjustified skips; flag gaps, no fixes |
-| **test-user-simulator** | Simulate user journeys | User story, README/architecture docs only | Execute actual commands in local + Docker; report pass/fail per step; reject excessive context |
-| **test-service** | Validate service lifecycle | Service specs, health endpoints | Start service, HTTP health checks, log analysis for errors; report status, no fixes |
-| **test-final-output** | Interrogate execution data | Live plan, execution data, critical questions | Verify accuracy/completeness, validate evidence, escalate gaps; produce final summary when satisfied |
-| **test-flutter-builder** | Create Flutter tests | Plan directives, Flutter code, test patterns | Write flutter_test tests in `test/` only; run `dart analyze`, no execution |
-| **test-flutter-runner** | Execute Flutter tests | Test directory, project structure | Run `flutter test`, capture output, count results, extract errors; no fixing |
+| **test-uat** | Simulate user acceptance journeys | User story, README/architecture docs only | Execute actual commands in local + Docker; report pass/fail per step; reject excessive context |
+| **trace-explorer** | Analyze execution traces | Execution logs, tmux output, agent trace data | Inspect trace data to identify failures, gaps, and anomalies; produce friction reports |
 
 ---
 

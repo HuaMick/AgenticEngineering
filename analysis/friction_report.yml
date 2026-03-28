@@ -1,0 +1,355 @@
+metadata:
+  epic_folder: null
+  analysis_date: "2026-03-28"
+  analyst: trace-explorer
+  agents_analysed:
+    - epic-creator
+    - build-story-writer
+    - planner-build
+    - planner-loop (PlannerLoopRunner)
+  investigation_scope: "Epic creation flow — why disk folders are still created despite TinyDB-first intent"
+
+# ============================================================
+# DECISION HISTORY
+# ============================================================
+# The user has requested TinyDB-only epic creation across multiple sessions.
+# Evidence from git history and user story definitions confirms this intent
+# was stated but only partially implemented.
+#
+# Key commits in chronological order:
+#
+#   53c58d4  feat: make TinyDB first-class planning datastore with filelock concurrency
+#   c3b1933  feat: complete TinyDB-first migration for CLI plan commands
+#   6f910c1  feat: complete epic/ticket migration and worktree deprecation
+#   165f5c7  fix: atexit tmux cleanup kills background spawns + YAML decommission
+#   ce22ca7  feat: remove MMD files completely — TinyDB is sole orchestration source
+#   ac04277  feat: simplify epic command group from ~30 to 13 commands
+#
+# The YAML and MMD elimination work (260305AG, 260307EO epics) explicitly set
+# the direction: TinyDB is the sole data store. However, disk folder creation
+# was never explicitly removed from the epic creation path — it was simply
+# replaced from "create folder + write YAML file inside" to "create folder +
+# write TinyDB record" with the folder creation step left in place as dead weight.
+# ============================================================
+
+friction_points:
+
+  - id: FP-001
+    type: guidance_gap
+    severity: high
+    agent: planner-build
+    guidance_file: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+    description: >
+      planner-build has an explicit FENCE that requires the epic folder to exist
+      on disk before planning proceeds. The fence reads: "FENCE: EPIC FOLDER MUST
+      EXIST BEFORE PLANNING — The epic folder MUST already exist at
+      docs/epics/live/YYMMDDXX_description/." This fence directly contradicts the
+      TinyDB-first design encoded in US-PLN-001 step 8, US-PLN-002 step 5, and
+      US-PLN-054 step 7, all of which state disk folders should be created lazily.
+    evidence:
+      file: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+      line_range: "119-139"
+      quote: |
+        FENCE: EPIC FOLDER MUST EXIST BEFORE PLANNING
+        The epic folder MUST already exist at docs/epics/live/YYMMDDXX_description/.
+        ...
+        If the folder does NOT exist, STOP immediately...
+    recommendation: >
+      Remove the filesystem existence check from planner-build's fence. Replace
+      with a TinyDB presence check: "Verify the epic exists in TinyDB via
+      `agentic epic status --epic {epic_folder_name} -j`. If not found, stop and
+      instruct the caller to run `agentic epic init`." The disk folder should not
+      be a gate; TinyDB presence is the authoritative check.
+
+  - id: FP-002
+    type: guidance_gap
+    severity: high
+    agent: epic-creator
+    guidance_file: "modules/AgenticGuidance/agents/planner/epic-creator/process.yml"
+    description: >
+      epic-creator's "Read epic README" step instructs the agent to read
+      docs/epics/live/{epic_folder}/README.md from disk. However, cmd_init
+      (the `agentic epic init` command) does NOT create a README.md on disk —
+      it only writes a TinyDB record with a `context` field. This means
+      epic-creator will fail its README read step on freshly created epics
+      that have no disk folder yet, creating a catch-22: the folder must exist
+      for epic-creator to read it, but folders are supposed to be created lazily.
+    evidence:
+      - file: "modules/AgenticGuidance/agents/planner/epic-creator/process.yml"
+        line: 44
+        quote: "The README is at: docs/epics/live/{epic_folder}/README.md"
+      - file: "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+        line_range: "985-1054"
+        note: "cmd_init has comment '# Compute plan path (no folder creation — TinyDB is the sole data store)' but still computes plan_path pointing at docs/epics/live/ and outputs 'Created epic folder at {plan_path}' (misleading, folder is NOT created)"
+      - note: "TinyDB record for 260327AG has context='Mandatory ticket-story binding...' but no README on disk; epic creator would read from docs/epics/live/ and fail or find nothing"
+    recommendation: >
+      Add a step to epic-creator that reads the epic objective from TinyDB via
+      `agentic -j epic status --epic {epic_folder}` and extracts the `context`
+      or `objective` field. The README.md read should be a fallback if the file
+      exists, not the primary source. This removes the disk dependency for the
+      objective read step.
+
+  - id: FP-003
+    type: guidance_gap
+    severity: high
+    agent: build-story-writer
+    guidance_file: "modules/AgenticGuidance/agents/build/build-story-writer/process.yml"
+    description: >
+      build-story-writer writes stories.yml to docs/epics/live/{epic_folder}/stories.yml
+      via the Write tool. This is the primary reason the epic folder must exist on
+      disk — the story writer needs a place to write. The PlannerLoopRunner explicitly
+      creates the disk folder (mkdir) before spawning build-story-writer at line 1455
+      of planner_loop.py precisely because of this dependency.
+    evidence:
+      - file: "modules/AgenticGuidance/agents/build/build-story-writer/process.yml"
+        quote: |
+          Target path: `docs/epics/live/{epic_folder}/stories.yml`
+          ...
+          Your only output is stories.yml, written via the Write tool.
+      - file: "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+        line: 1453
+        quote: |
+          # Ensure epic folder exists on disk for build-story-writer output
+          epic_path = self.workflow.epics_dir / epic_folder
+          epic_path.mkdir(parents=True, exist_ok=True)
+    recommendation: >
+      The mkdir at line 1455 is the correct place for lazy folder creation —
+      it is called immediately before the story-writer agent runs. This is
+      acceptable as a transitional pattern. The long-term fix is to store
+      stories data in TinyDB (not as a YAML file on disk). Until that TinyDB
+      schema change is made, the mkdir call is the least-bad option and should
+      remain but be explicitly documented as "lazy creation for story artifact."
+      The key fix is to remove the planner-build fence (FP-001) that requires
+      the folder to exist before the planning pipeline even starts.
+
+  - id: FP-004
+    type: guidance_gap
+    severity: medium
+    agent: build-story-writer
+    guidance_file: "modules/AgenticGuidance/agents/build/build-story-writer/process.yml"
+    description: >
+      build-story-writer reads the epic objective from README.md or objective.md
+      on disk. Neither file is guaranteed to exist for newly created epics.
+      cmd_init stores the objective in TinyDB's `context` field but does not
+      create any disk file. The story writer will silently fall back to reading
+      ticket descriptions alone (per its guidelines), which loses the richer
+      objective text stored in TinyDB.
+    evidence:
+      - file: "modules/AgenticGuidance/agents/build/build-story-writer/process.yml"
+        line_range: "43-44"
+        quote: |
+          1. `docs/epics/live/{epic_folder}/objective.md`
+          2. `docs/epics/live/{epic_folder}/README.md`
+      - note: >
+          TinyDB record for 260329AG has context='Fix story parsing race condition...'
+          but docs/epics/live/260329AG_.../README.md was created separately —
+          not by cmd_init. Who creates README.md is unclear from code inspection.
+    recommendation: >
+      Add a step before the README read: run `agentic -j epic status --epic
+      {epic_folder}` and extract the `context` field as the primary objective
+      source. README.md on disk becomes an optional enrichment. This makes the
+      story-writer resilient to missing disk files.
+
+  - id: FP-005
+    type: backtracking
+    severity: medium
+    agent: PlannerLoopRunner
+    guidance_file: "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+    description: >
+      The planner loop contains a TinyDB-first path at line 1399-1404
+      (_ensure_epic_in_db) that attempts to register the epic from disk into
+      TinyDB, AND a separate mkdir at line 1455 that creates the folder for
+      story-writer output. The _ensure_epic_in_db call takes a plan_path derived
+      from epics_dir/epic_folder — which is a disk path. If the folder does not
+      exist yet (TinyDB-only epic), this call does nothing useful (plan_path.is_dir()
+      is False). The logic then proceeds to create the folder via mkdir. This is
+      a two-step process that was originally designed for disk-first and patched
+      toward TinyDB-first without fully completing the transition.
+    evidence:
+      - file: "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+        line_range: "1399-1455"
+        note: >
+          _ensure_epic_in_db is called with a path that may not yet exist,
+          which makes it a no-op for TinyDB-only epics. Then mkdir creates
+          the folder anyway. The guard at line 1415-1426 ("not found in
+          TinyDB — cannot plan") is TinyDB-first. So the logic is: require
+          TinyDB presence (good) but also create disk folder (contradicts lazy intent).
+    recommendation: >
+      The mkdir at line 1455 should remain as the single canonical lazy-creation
+      point. Remove or make conditional the _ensure_epic_in_db call at line
+      1403 — it should only be called if the folder already exists (i.e., it
+      should be an optional resync, not a required step). Document that lazy
+      folder creation happens exactly once, immediately before story-writer runs.
+
+  - id: FP-006
+    type: guidance_gap
+    severity: low
+    agent: cmd_init
+    guidance_file: "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+    description: >
+      cmd_init has a comment "# Compute plan path (no folder creation — TinyDB is
+      the sole data store)" at line 985, but the console output at line 1045 reads
+      "Created epic folder at {plan_path}" — which is false. No folder is created.
+      This misleading output causes downstream confusion: agents and humans reading
+      this output may believe the disk folder exists when it does not.
+    evidence:
+      - file: "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+        line: 1045
+        quote: "console.print(f'  [green]Created epic folder[/green] at {plan_path}')"
+      - note: "The folder at plan_path is NOT created by cmd_init — only a TinyDB record is written."
+    recommendation: >
+      Change line 1045 to read "Epic record registered in TinyDB (folder at
+      {plan_path} will be created lazily)" or simply "Epic created: {plan_folder_name}".
+      This aligns output with actual behavior and removes false signals about disk state.
+
+# ============================================================
+# STORY COMPLIANCE
+# ============================================================
+
+story_compliance:
+
+  - story_id: US-PLN-001
+    status: partial
+    evidence: >
+      Step 8 ("Disk folders in docs/epics/live/ are created lazily only when agents
+      need to write artifacts") is NOT met. The planner_loop.py creates the folder
+      eagerly at line 1455 before story-writer runs — this is technically lazy
+      relative to epic init, but it is not conditional on agent need. More critically,
+      planner-build's fence (FP-001) requires the folder to exist before planning,
+      which forces eager creation in some flows. cmd_init does NOT create the folder
+      (step 8 partially met for init command), but the planning pipeline creates it
+      unconditionally (step 8 not met for planning).
+
+  - story_id: US-PLN-002
+    status: non_compliant
+    evidence: >
+      Step 5 ("A disk folder in docs/epics/live/ is only created when an agent first
+      writes an artifact to it") is not met for the planning pipeline. The planner
+      loop creates the folder at line 1455 regardless of whether the story-writer
+      succeeds or produces any output. The `agentic epic scaffold` command referenced
+      in steps 1-3 does not appear to exist as a distinct command — scaffold is
+      implemented but appears to be an alias or variant of init.
+
+  - story_id: US-PLN-053
+    status: non_compliant
+    evidence: >
+      Step 4 ("An epic record is created in TinyDB with YYMMDDXX_description naming
+      (no disk folder required at this point)") is partially met by cmd_init (TinyDB
+      record written, no folder created). However, the planner-build guidance fence
+      (FP-001) immediately reverses this by requiring the folder to exist before
+      planning begins, creating implicit pressure to create the folder at init time.
+
+  - story_id: US-PLN-054
+    status: non_compliant
+    evidence: >
+      Step 7 ("Disk folders in docs/epics/live/ are created lazily when agents write
+      artifacts (stories.yml, README.md)") is not met. Folders are created by the
+      PlannerLoopRunner mkdir call before the story-writer runs, not after the first
+      successful artifact write. The folder is created even if story-writer subsequently
+      fails, leaving orphan disk folders.
+
+# ============================================================
+# CURRENT STATE SUMMARY (code paths that create disk folders)
+# ============================================================
+#
+# 1. PlannerLoopRunner._process_plan_inner() — planner_loop.py:1455
+#    epic_path.mkdir(parents=True, exist_ok=True)
+#    Called before spawn_story_agent(). This is the PRIMARY disk folder creator
+#    in the planning pipeline.
+#
+# 2. planner-build process.yml fence — lines 119-139
+#    Not code, but agent guidance that blocks planning if folder absent.
+#    Agents following this fence will create implicit pressure to have folder early.
+#
+# 3. build-story-writer process.yml — "Write tool" output to stories.yml
+#    Requires the folder to exist on disk. Currently satisfied by (1).
+#
+# 4. build-story-writer process.yml — reads README.md / objective.md from disk
+#    No code creates these files at epic init time.
+#
+# 5. epic-creator process.yml — reads README.md from disk
+#    Same problem as (4).
+#
+# 6. _ensure_epic_in_db() — epic.py:119-152
+#    Only creates TinyDB record from disk (disk → TinyDB direction).
+#    Does not create disk folders. Not a blocker.
+#
+# FILES THAT STILL WRITE TO DISK (blockers for full TinyDB-first):
+#   - stories.yml: written by build-story-writer agent (Write tool)
+#   - README.md: written by agents manually (not by any automated step at init)
+#   - epic.md: present in live folders (260327AG has epic.md) — unclear origin,
+#     not created by cmd_init, likely created by a build agent or manually.
+# ============================================================
+
+summary:
+  total_friction_points: 6
+  by_severity:
+    high: 3
+    medium: 2
+    low: 1
+  by_type:
+    guidance_gap: 5
+    backtracking: 1
+    excessive_iteration: 0
+    input_resolution_failure: 0
+    story_drift: 0
+    tool_misuse: 0
+    context_overflow: 0
+
+  story_compliance_summary:
+    compliant: 0
+    partial: 1
+    non_compliant: 3
+    stories_checked:
+      - US-PLN-001
+      - US-PLN-002
+      - US-PLN-053
+      - US-PLN-054
+
+  top_recommendations:
+    - id: REC-1
+      priority: 1
+      target: planner-build/process.yml
+      action: >
+        Remove the "FENCE: EPIC FOLDER MUST EXIST BEFORE PLANNING" disk check.
+        Replace with a TinyDB check: `agentic -j epic status --epic {epic_folder_name}`
+        must return a valid epic record. This is the single highest-leverage change —
+        it removes the gate that forces disk folder creation before the planning pipeline.
+
+    - id: REC-2
+      priority: 2
+      target: epic-creator/process.yml and build-story-writer/process.yml
+      action: >
+        Add a TinyDB context read step before any disk file read. Use
+        `agentic -j epic status --epic {epic_folder}` to extract the `context`
+        field as the primary objective source. README.md on disk becomes an
+        optional enrichment fallback. This makes both agents robust to
+        disk-folder-free epics.
+
+    - id: REC-3
+      priority: 3
+      target: planner_loop.py line 1455
+      action: >
+        Keep the mkdir at line 1455 but document it as the single canonical
+        lazy-creation point ("create folder lazily, immediately before the first
+        agent that writes a disk artifact runs"). Remove or conditionalize the
+        _ensure_epic_in_db call at line 1403 to only run when plan_path.is_dir().
+        Long-term: move stories.yml storage to TinyDB to eliminate this mkdir entirely.
+
+    - id: REC-4
+      priority: 4
+      target: epic.py cmd_init line 1045
+      action: >
+        Fix the misleading console output. Change "Created epic folder at {plan_path}"
+        to "Epic registered in TinyDB: {plan_folder_name}" to accurately reflect
+        that no disk folder is created at init time.
+
+    - id: REC-5
+      priority: 5
+      target: stories.yml (long-term)
+      action: >
+        To fully eliminate disk folder creation from the planning pipeline, stories.yml
+        content must move into TinyDB. This is a schema change: add a `stories` field
+        to the TinyDB epic record, and update build-story-writer to write via a CLI
+        command (e.g., `agentic epic stories set`) rather than the Write tool. Until
+        this change is made, the disk folder will always be required for planning.

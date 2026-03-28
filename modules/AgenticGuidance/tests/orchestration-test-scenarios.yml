@@ -249,7 +249,7 @@ test_scenarios:
       Validates that the orchestration executor correctly resolves agent types
       from AGENT_ROUTING metadata and spawns the appropriate agents. Tests
       the mapping from abstract agent types (builder, tester) to concrete
-      agents (build-python, test-runner) and validates manifest fence compliance.
+      agents (build-python, test-builder) and validates manifest fence compliance.
 
     test_cases:
       route_builder:
@@ -279,8 +279,8 @@ test_scenarios:
 
       route_tester:
         id: "ROUTE_002"
-        name: "Route 'tester' type spawns test-runner"
-        description: "Verify tester routing resolves to test-runner agent"
+        name: "Route 'tester' type spawns test-builder"
+        description: "Verify tester routing resolves to test-builder agent"
         inputs:
           phase_name: "Integration_Test"
           agent_routing:
@@ -289,16 +289,16 @@ test_scenarios:
             task_type: "execute_tests"
           orchestrator_manifest:
             spawns:
-              - "test-runner"
               - "test-builder"
+              - "test-audit"
         expected_outputs:
-          resolved_agent: "test-runner"
+          resolved_agent: "test-builder"
           spawn_success: true
-          resolution_reason: "Task type is 'execute_tests', routing to test-runner"
+          resolution_reason: "Task type is 'execute_tests', routing to test-builder"
         validation_criteria:
-          - "Agent type 'tester' correctly resolved to test-runner"
+          - "Agent type 'tester' correctly resolved to test-builder"
           - "Resolution considers task_type context"
-          - "test-runner receives test execution tasks"
+          - "test-builder receives test execution tasks"
 
       route_teacher:
         id: "ROUTE_003"
@@ -335,7 +335,7 @@ test_scenarios:
           orchestrator_manifest:
             spawns:
               - "build-python"
-              - "test-runner"
+              - "test-builder"
         expected_outputs:
           resolved_agent: null
           spawn_success: false
@@ -364,7 +364,7 @@ test_scenarios:
             name: "orchestration-build"
             spawns:
               - "build-python"
-              - "test-runner"
+              - "test-builder"
               # Note: deploy-cicd is NOT in spawns
         expected_outputs:
           resolved_agent: "deploy-cicd"
@@ -564,20 +564,20 @@ test_scenarios:
             affected_agents:
               - "build-python"
           planning_delegation:
-            target_agent: "planner-guidance"
+            target_agent: "planner-build"
             context:
               friction_report: "full_report_included"
               gap_category: "guidance"
               affected_agents:
                 - "build-python"
           remediation_path:
-            - "planner-guidance creates remediation plan"
+            - "planner-build creates remediation plan"
             - "teacher-update-guidance executes fixes"
             - "guidance validation re-runs"
         validation_criteria:
           - "GUIDANCE_GAP trigger detected"
           - "Friction points categorized by severity"
-          - "planner-guidance receives friction report"
+          - "planner-build receives friction report"
           - "Teaching loop initiated for remediation"
           - "Re-validation scheduled after fixes"
 
@@ -609,7 +609,7 @@ test_scenarios:
           handling_sequence:
             - step: 1
               trigger: "GUIDANCE_GAP"
-              action: "Route to planner-guidance"
+              action: "Route to planner-build"
             - step: 2
               trigger: "TEST_FAILURE"
               action: "Re-evaluate after guidance fix (may resolve)"
@@ -631,7 +631,7 @@ test_scenarios:
       test_data_requirements:
         - "Sample agent outputs with various failure patterns"
         - "Iteration history records for max-iteration scenarios"
-        - "Friction reports from test-guidance-simulator"
+        - "Friction reports from trace-explorer"
       related_spec_sections:
         - "orchestration-executor-specification.yml#feedback_triggers"
         - "orchestration-executor-specification.yml#feedback_triggers.max_iterations_handling"

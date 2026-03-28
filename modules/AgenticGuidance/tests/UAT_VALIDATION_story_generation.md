@@ -145,8 +145,8 @@ All acceptance criteria validated successfully.
 4. Each UAT task includes acceptance criteria copied from story
 5. Each UAT task includes verification steps (what to check, what to look for)
 6. Each UAT task includes evidence collection requirements
-7. orchestration-executor spawns test-user-simulator per story
-8. test-user-simulator validates against story acceptance criteria
+7. orchestration-executor spawns test-uat per story
+8. test-uat validates against story acceptance criteria
 9. Results recorded via `agentic stories update <id> --status pass/fail`
 
 ### Acceptance Criteria

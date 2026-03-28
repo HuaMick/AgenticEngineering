@@ -136,10 +136,10 @@ Testers likely don't need:
 
 - `/modules/AgenticGuidance/assets/inputs/planner-core-guidelines.yml` (created)
 - `/modules/AgenticGuidance/assets/inputs/planner-core-system.yml` (created)
-- `/modules/AgenticGuidance/agents/planner/planner-cleaning/inputs.yml` (updated)
+- `/modules/AgenticGuidance/agents/planner/planner-audit/inputs.yml` (updated)
 - `/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml` (updated)
 - `/modules/AgenticGuidance/agents/planner/planner-test/inputs.yml` (updated)
-- `/modules/AgenticGuidance/agents/planner/planner-guidance/inputs.yml` (updated)
+- `/modules/AgenticGuidance/agents/planner/planner-build/inputs.yml` (updated)
 
 ## Audit Source
 

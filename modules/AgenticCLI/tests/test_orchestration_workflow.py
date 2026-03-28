@@ -211,7 +211,7 @@ class TestRunPhaseTmux:
                 stdout=json.dumps({"session_id": "abc-123"}),
                 stderr="",
             )
-            runner._run_phase("test_plan", "phase1", "test-runner", {})
+            runner._run_phase("test_plan", "phase1", "test-builder", {})
 
         # subprocess.run should NOT have env= parameter (env isolation is in tmux)
         call_kwargs = mock_run.call_args[1]
@@ -571,7 +571,7 @@ class TestSDKMetricsReading:
 
                 # Run 3 phases
                 runner._run_phase("test_plan", "phase1", "build-python", {})
-                runner._run_phase("test_plan", "phase2", "test-runner", {})
+                runner._run_phase("test_plan", "phase2", "test-builder", {})
                 runner._run_phase("test_plan", "phase3", "build-python", {})
 
         expected_total = 0.01 + 0.02 + 0.03

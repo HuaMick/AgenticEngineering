@@ -78,7 +78,7 @@ class TestEpicRepositoryPhaseMaxTurnsRoundTrip:
             "name": "Test",
             "phase_id": "P2",
             "status": "pending",
-            "agent": "test-runner",
+            "agent": "test-builder",
             "max_turns": 75,
         })
 
@@ -154,7 +154,7 @@ class TestEpicRepositoryPhaseMaxTurnsRoundTrip:
             "name": "Test",
             "phase_id": "P2",
             "status": "pending",
-            "agent": "test-runner",
+            "agent": "test-builder",
             "max_turns": 50,
         })
         repo.add_phase("test_epic", {

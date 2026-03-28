@@ -923,7 +923,7 @@ class TestValidateResult:
         result = SessionResult(status="completed", result="some output", duration_ms=0)
 
         with caplog.at_level(logging.WARNING, logger="agenticcli.workflows.planner_loop"):
-            workflow._validate_result(result, "story-writer")
+            workflow._validate_result(result, "build-story-writer")
 
         warning_messages = [r.message for r in caplog.records if r.levelname == "WARNING"]
         assert any("zero duration" in m.lower() or "duration" in m.lower() for m in warning_messages)
@@ -999,9 +999,9 @@ class TestValidateResult:
 
         runner.run(max_iterations=5)
 
-        # epic-creator, story-writer, planner-explore, and planner-orchestration should all be validated
+        # epic-creator, build-story-writer, planner-explore, and planner-orchestration should all be validated
         assert "epic-creator" in validated_roles
-        assert "story-writer" in validated_roles
+        assert "build-story-writer" in validated_roles
         assert "planner-explore" in validated_roles
         assert "planner-orchestration" in validated_roles
 
@@ -1567,38 +1567,65 @@ class TestTicketPromotion:
         return runner, workflow
 
     def test_promotion_only_counts_successful_updates(self, tmp_path, monkeypatch):
-        """When update_ticket returns False, promoted count stays 0 and _process_plan returns False."""
+        """When update_ticket returns False on every attempt, _process_plan still returns True.
+
+        The new retry logic (added in promotion step 6) performs a best-effort force-retry
+        when proposed tickets remain after the first pass.  _process_plan no longer treats
+        a stuck promotion as a hard failure — it logs a warning and returns True so the
+        caller can continue to the next epic.
+        """
         epic = "260311PB_test_promo_fail"
         runner, workflow = self._make_runner(tmp_path, monkeypatch, epic)
 
-        # Force update_ticket to fail for all tickets
+        update_calls = []
+
+        def _failing_update(folder, tid, data):
+            update_calls.append((folder, tid, data))
+            return False
+
+        # Force update_ticket to fail for all tickets (both initial pass and force-retry)
         monkeypatch.setattr(
             workflow._repository, "update_ticket",
-            lambda folder, tid, data: False,
+            _failing_update,
         )
 
         result = runner._process_plan(epic)
 
-        # With no successful promotions and proposed tickets still present,
-        # _process_plan should detect stuck tickets and return False.
-        assert result is False
+        # New behaviour: best-effort retry; _process_plan always returns True
+        assert result is True
+        # update_ticket was called at least once (initial promotion attempt)
+        assert len(update_calls) >= 1
 
     def test_promotion_verification_catches_zero_pending(self, tmp_path, monkeypatch):
-        """Post-promotion verification detects proposed tickets that weren't promoted."""
+        """Post-promotion force-retry is triggered when proposed tickets remain after first pass.
+
+        When update_ticket fails on the initial pass the runner detects still_proposed > 0
+        and issues a second (force-retry) round of update_ticket calls.  Both passes fail
+        in this test, so the tickets remain in 'proposed' state, but _process_plan still
+        returns True (best-effort — no hard failure on stuck promotion).
+        """
         epic = "260311PB_test_promo_verify"
         runner, workflow = self._make_runner(tmp_path, monkeypatch, epic)
 
-        # update_ticket fails → promoted stays 0 → verification sees proposed tickets → False
+        update_calls = []
+
+        def _failing_update(folder, tid, data):
+            update_calls.append((folder, tid, data))
+            return False
+
+        # update_ticket always fails → force-retry is triggered but also fails
         monkeypatch.setattr(
             workflow._repository, "update_ticket",
-            lambda folder, tid, data: False,
+            _failing_update,
         )
 
         result = runner._process_plan(epic)
 
-        # The post-promotion check catches still_proposed > 0 and promoted == 0
-        assert result is False
-        # No tickets should have been changed to pending
+        # Best-effort: _process_plan returns True even when promotion fails
+        assert result is True
+        # The force-retry means update_ticket is called at least twice (once per pass)
+        assert len(update_calls) >= 2
+        # Tickets remain proposed because every update_ticket call returned False
         epic_data = workflow._repository.get_epic(epic)
         proposed_count = sum(1 for t in epic_data.tasks if t.status == "proposed")
         assert proposed_count == 1

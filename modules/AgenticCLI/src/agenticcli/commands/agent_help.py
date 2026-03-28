@@ -1,8 +1,8 @@
 """Agent-specific help command handler.
 
 Provides quick help output for agent names as positional arguments:
-  agentic planner-guidance
   agentic build-python
+  agentic planner-build
 
 This is the PRIMARY entrypoint for agents - no file exploration needed.
 """
@@ -17,27 +17,18 @@ import yaml
 
 # All known agents - ordered by category
 KNOWN_AGENTS = [
-    # Planners (11)
+    # Planners (6)
     "epic-creator",
     "planner-audit",
     "planner-build",
-    "planner-cleaning",
     "planner-explore",
-    "planner-guidance",
-    "planner-guidance-testing",
     "planner-orchestration",
-    "planner-sdk",
     "planner-test",
-    "story-writer",
-    # Test agents (8)
+    # Test agents (4)
     "test-audit",
     "test-builder",
-    "test-cleaner",
-    "test-final-output",
-    "test-guidance-simulator",
-    "test-runner",
-    "test-service",
-    "test-user-simulator",
+    "test-uat",
+    "trace-explorer",
     # Orchestration agents (3)
     "orchestration-executor",
     "orchestration-loop",
@@ -45,10 +36,11 @@ KNOWN_AGENTS = [
     # Teacher agents (2)
     "teacher-update-assets",
     "teacher-update-guidance",
-    # Build agents (3)
-    "build-agentic-docs",
+    # Build agents (4)
+    "build-docs-writer",
     "build-flutter",
     "build-python",
+    "build-story-writer",
     # Deploy agents (1)
     "deploy-cicd",
 ]
@@ -58,30 +50,22 @@ AGENT_CATEGORIES = {
     "epic-creator": "planner",
     "planner-audit": "planner",
     "planner-build": "planner",
-    "planner-cleaning": "planner",
     "planner-explore": "planner",
-    "planner-guidance": "planner",
-    "planner-guidance-testing": "planner",
     "planner-orchestration": "planner",
-    "planner-sdk": "planner",
     "planner-test": "planner",
-    "story-writer": "planner",
     "test-audit": "test",
     "test-builder": "test",
-    "test-cleaner": "test",
-    "test-final-output": "test",
-    "test-guidance-simulator": "test",
-    "test-runner": "test",
-    "test-service": "test",
-    "test-user-simulator": "test",
+    "test-uat": "test",
+    "trace-explorer": "test",
     "orchestration-executor": "orchestration",
     "orchestration-loop": "orchestration",
     "orchestration-planning": "orchestration",
     "teacher-update-assets": "teacher",
     "teacher-update-guidance": "teacher",
-    "build-agentic-docs": "build",
+    "build-docs-writer": "build",
     "build-flutter": "build",
     "build-python": "build",
+    "build-story-writer": "build",
     "deploy-cicd": "deploy",
 }
 
@@ -102,7 +86,7 @@ def get_agent_name(arg: str) -> Optional[str]:
     """Get agent name if argument matches a known agent.
 
     Args:
-        arg: Command line argument (positional, e.g., planner-guidance).
+        arg: Command line argument (positional, e.g., planner-build).
 
     Returns:
         Agent name or None if not a valid agent name.
@@ -119,7 +103,7 @@ def show_agent_help(agent_name: str, json_output: bool = False, bootstrap: bool 
     an agent needs to start working without file exploration.
 
     Args:
-        agent_name: The agent name (e.g., planner-guidance).
+        agent_name: The agent name (e.g., planner-build).
         json_output: Whether to output as JSON.
         bootstrap: Whether to include full bootstrap context (expanded details).
     """
@@ -297,13 +281,13 @@ def _load_agent_context(agent_name: str) -> dict:
 
     # Build next commands
     context["next_commands"] = [
-        f"agentic context bootstrap --role {agent_name} -j  # Get full seed context",
-        "agentic agent epic ticket current -j               # Get current task details",
+        f"agentic epic status --role {agent_name} -j  # Get full seed context",
+        "agentic epic ticket current -j               # Get current task details",
     ]
 
     context["next_commands"].extend([
-        "agentic agent epic ticket update <id> --status completed  # Mark task done",
-        "agentic agent epic ticket list                     # Show all tasks",
+        "agentic epic ticket update <id> --status completed  # Mark task done",
+        "agentic epic ticket list                     # Show all tasks",
         "agentic entrypoint list                            # List available entrypoints",
         "agentic entrypoint execute <name>                  # Execute an entrypoint",
     ])
@@ -563,14 +547,14 @@ def _load_agent_bootstrap_context(agent_name: str) -> dict:
 
     # Build next commands
     context["next_commands"] = [
-        f"agentic context bootstrap --role {agent_name} -j  # Get full seed context (workflow integration)",
-        "agentic agent epic ticket current -j               # Get current task details",
+        f"agentic epic status --role {agent_name} -j  # Get full seed context (workflow integration)",
+        "agentic epic ticket current -j               # Get current task details",
     ]
 
     context["next_commands"].extend([
-        "agentic agent epic ticket update <id> --status in_progress  # Start working on task",
-        "agentic agent epic ticket update <id> --status completed     # Mark task done",
-        "agentic agent epic ticket list                     # Show all tasks",
+        "agentic epic ticket update <id> --status in_progress  # Start working on task",
+        "agentic epic ticket update <id> --status completed     # Mark task done",
+        "agentic epic ticket list                     # Show all tasks",
         "agentic entrypoint list                            # List available entrypoints",
         "agentic entrypoint execute <name>                  # Execute an entrypoint",
     ])
@@ -900,6 +884,6 @@ def get_agent_flags_for_help() -> str:
             lines.append(f"  {category.title()} agents: {', '.join(agents[:3])}{'...' if len(agents) > 3 else ''}")
 
     lines.append("")
-    lines.append("Example: agentic planner-guidance  # Show help for planner-guidance agent")
+    lines.append("Example: agentic build-python  # Show help for build-python agent")
 
     return "\n".join(lines)

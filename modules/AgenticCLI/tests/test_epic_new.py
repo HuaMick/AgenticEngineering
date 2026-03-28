@@ -516,7 +516,7 @@ class TestBuildPlannerPrompt:
 
         prompt = build_planner_prompt(objective, plan_folder)
 
-        assert "test-user-simulator" in prompt
+        assert "test-uat" in prompt
         assert "guidance-blind-test" in prompt
         assert "documentation-loop" in prompt
         assert "manual" in prompt

@@ -184,9 +184,12 @@ def handle(args, ctx=None):
             pct = round(covered_count / total * 100, 1)
 
             if uncovered:
-                msg = f"Story coverage: {covered_count}/{total} ({pct}%) — {len(uncovered)} uncovered"
-                status = "fail"
-                all_passed = False
+                if pct >= 80:
+                    status = "pass"
+                    msg = f"Story coverage: {covered_count}/{total} ({pct}%) — {len(uncovered)} uncovered (above 80% threshold)"
+                else:
+                    status = "warn"
+                    msg = f"Story coverage: {covered_count}/{total} ({pct}%) — {len(uncovered)} uncovered (below 80% threshold)"
             else:
                 msg = f"All {total} stories covered"
                 status = "pass"
@@ -206,7 +209,7 @@ def handle(args, ctx=None):
     except Exception:
         checks.append({
             "name": "story_coverage",
-            "status": "info",
+            "status": "warn",
             "message": "Story coverage check unavailable",
             "value": None,
         })

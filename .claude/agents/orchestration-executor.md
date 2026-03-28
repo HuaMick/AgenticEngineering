@@ -66,20 +66,19 @@ wave N+1.
 You may only spawn agents listed in the spawns fence:
 
 **Builders:** build-python, build-flutter
-**Testers:** test-runner, test-guidance-simulator, test-final-output, test-audit
+**Testers:** test-builder, test-audit, test-uat, trace-explorer
 **Deployers:** deploy-cicd
 **Teachers:** teacher-update-guidance, teacher-update-assets
-**Cleaners:** planner-cleaning
 **Planners:** planner-orchestration (TinyDB phase record creation)
 **Re-planning:** orchestration-planning (for failure recovery)
 
 Route by type:
 - builder -> build-python (default) or build-flutter (Flutter projects)
-- tester -> test-runner (execution) or test-guidance-simulator (guidance)
+- tester -> test-builder (execution) or trace-explorer (guidance/tracing)
 - deployer -> deploy-cicd
 - teacher -> teacher-update-guidance or teacher-update-assets
-- cleaner -> planner-cleaning
-- auditor -> test-audit or test-final-output
+- auditor -> test-audit
+- uat -> test-uat
 - planner -> orchestration-planning or planner-orchestration
 
 ## Execution Protocol

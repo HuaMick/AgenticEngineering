@@ -229,14 +229,14 @@ def test_planner_test_creates_uat_tasks_from_stories(temp_epic_folder):
                         'name': 'Validate User can run help command',
                         'story_id': 'US-CLI-TEST-001',
                         'acceptance_criteria': ['Help text includes all commands', 'Exit code is 0'],
-                        'verification_method': 'test-user-simulator'
+                        'verification_method': 'test-uat'
                     },
                     {
                         'id': 'uat_US-CLI-TEST-002',
                         'name': 'Validate User can view version',
                         'story_id': 'US-CLI-TEST-002',
                         'acceptance_criteria': ['Version matches package.json', 'Format is semantic versioning'],
-                        'verification_method': 'test-user-simulator'
+                        'verification_method': 'test-uat'
                     }
                 ]
             }
@@ -299,7 +299,7 @@ def test_full_planning_workflow_with_story_generation():
         "planner-test: Validate story content exists (FENCE)",
         "planner-test: Create UAT phase with story references",
         "orchestration-executor: Validate stories before UAT (FENCE)",
-        "orchestration-executor: Spawn test-user-simulator per story"
+        "orchestration-executor: Spawn test-uat per story"
     ]
 
     assert len(workflow_steps) == 9, "Complete workflow has 9 key steps"

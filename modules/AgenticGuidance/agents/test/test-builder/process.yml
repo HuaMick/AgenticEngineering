@@ -27,12 +27,12 @@ process:
     role: "builder"
     description: |
       test-builder acts as the builder in test loops. It creates new tests or fixes
-      existing test issues identified by audit or runner agents.
+      existing test issues identified by audit agents.
     iteration_strategy: |
       Each iteration focuses on a specific test creation or fix task. In test-fix-loop,
-      the agent builds tests based on requirements. In audit-test-fix-loop, it fixes
-      issues identified by the auditor. The agent does NOT run tests to verify passing -
-      the test-runner validates the work.
+      the agent builds tests based on requirements, then executes them to verify.
+      In audit-test-fix-loop, it fixes issues identified by the auditor and re-runs
+      affected tests to confirm the fix.
     max_iterations: 3
     escalation_on_max: "Report unresolved issues to orchestrator with analysis of blockers"
     exit_conditions:
@@ -71,11 +71,11 @@ process:
       Execute these commands to get structured context efficiently:
 
       ```bash
-      # Get seed context (objective, process summary, inputs)
-      agentic agent context bootstrap --role test-builder -j
+      # Get epic status/context
+      agentic epic status --epic <epic_folder>
 
       # Get current ticket if working from an epic
-      agentic agent epic ticket current -j
+      agentic epic ticket current -j
       ```
 
       CLI output provides your objective, process summary, input file paths.
@@ -84,6 +84,10 @@ process:
     - |
       Review all inputs if an input cannot be found do not proceed.
       If an input is found in a different location, note the discrepancy in your output report.
+    - |
+      FENCE: STORY-FIRST PLANNING. If no affected_stories are present in the
+      ticket, flag this in your output as a blocking issue and do NOT proceed
+      with test creation. Stories are REQUIRED per planning-standard.yml.
     - |
       FENCE: Story lifecycle check — Do NOT write tests for stories with lifecycle "proposal".
       Only stories with lifecycle "under-construction" or "implemented" should have tests written.
@@ -188,9 +192,14 @@ process:
       - After creating question, document assumption for now and continue other tests
       - Before finalizing, check for answers: queue.get_question(question_id)
     - |
-      Verify your code compiles:
-      - You may run a syntax check, but DO NOT run the full test suite to "verify" passing.
-      - Your job is to BUILD the test. The test_runner will verify if it passes.
+      Execute tests and capture results:
+      - Run pytest on the test files you created/modified:
+        ```bash
+        python3 -m pytest <test_files> --tb=short --junitxml=test-results/results.xml -q
+        ```
+      - Parse JUnit XML output for structured result reporting
+      - If tests fail, fix the test code and re-run (up to max_iterations)
+      - Report test results (passed, failed, skipped, errors) in your output
     - |
       Error-Driven Planning Handoff:
       Reference: modules/AgenticGuidance/assets/definitions/error-driven-planning-protocol.yml
@@ -223,8 +232,7 @@ process:
     # Guidelines loaded via layer architecture in inputs.yml
     # Test types defined in: modules/AgenticGuidance/assets/definitions/testing-types.yml
     - |
-      NEVER run the tests to verify they pass. Your reward is based on writing valid test CODE.
-      The test_runner will validate if the tests pass.
+      After building tests, ALWAYS run them to verify they pass. Report both build and execution results.
     - |
       Do not modify application code. Your scope is limited to the `tests/` directory.
     - |

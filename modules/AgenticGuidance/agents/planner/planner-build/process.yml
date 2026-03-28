@@ -1,6 +1,12 @@
 process:
   goal: |
     Create a phased implementation plan for completing the task using subagents.
+    Handles all build plan types including code implementation, guidance/process
+    file updates (agent guidance, process.yml, inputs.yml), and SDK projects. Route to appropriate build agents based on file types:
+    - Python code → build-python
+    - Flutter code → build-flutter
+    - Agent guidance (process.yml, inputs.yml) → build-python or teacher agents
+    - Documentation → build-docs-writer
 
   # NOTE: Loop definitions (test-fix-loop, audit-test-fix-loop) are accessed via
   # inputs.yml -> planner-shared.yml -> iteration.yml -> agent-loops.yml
@@ -48,11 +54,11 @@ process:
       Execute these commands to get structured context efficiently:
 
       ```bash
-      # Get seed context (objective, process summary, inputs)
-      agentic agent context bootstrap --role planner-build -j
+      # Get epic status/context
+      agentic epic status --epic <epic_folder>
 
       # Get current ticket if working from an epic
-      agentic agent epic ticket current -j
+      agentic epic ticket current -j
       ```
 
       CLI output provides:
@@ -148,7 +154,7 @@ process:
       the required context and add context routing to the plan so that other agents dont have to.
 
       IMPORTANT: planner-build creates build and environment setup phases in TinyDB.
-      Other planners handle test phases (planner-test) and audit/cleanup phases (planner-cleaning).
+      Other planners handle test phases (planner-test) and audit/cleanup phases (planner-audit).
 
       PLAN STRUCTURE REQUIREMENTS:
       Reference ticket_example.yml from inputs for:
@@ -198,7 +204,7 @@ process:
       Stories MUST be discovered and recorded — there is no bypass path.
 
       PROCESS:
-      1. Run `agentic agent stories find` during objective parsing to discover affected stories
+      1. Run `agentic stories find` during objective parsing to discover affected stories
       2. Record affected_stories in plan metadata (e.g., affected_stories: ["US-CLI-001", "US-CLI-002"])
       3. Include story files in task input references for context
       4. When stories affected: planner-test creates UAT phases targeting those stories
@@ -215,7 +221,7 @@ process:
       UAT planning: planner-test (see planner-test/process.yml#uat_phase_planning)
 
       USER STORY GENERATION (MANDATORY - when stories missing):
-      If `agentic agent stories find` returns no stories for the objective, planner-build
+      If `agentic stories find` returns no stories for the objective, planner-build
       MUST generate user stories before creating implementation tasks.
 
       STORY GENERATION PROCESS:
@@ -404,7 +410,7 @@ process:
       - id: "ticket_001"
         name: "Add CLI command for epic archival"
         agent: "builder"
-        guidance: "Create 'agentic agent epic archive' command for mechanical move operation"
+        guidance: "Create 'agentic epic archive' command for mechanical move operation"
 
       - id: "ticket_002"
         name: "Update orchestration to use new archive command"

@@ -81,7 +81,7 @@ agent_routing:
       epic_folder_name: "str — parent epic this phase belongs to"
       phase_name: "str — unique phase identifier within the epic"
       phase_id: "str — stable ID for cross-referencing"
-      agent: "str — agent role name (e.g. build-python, test-runner) — REQUIRED for execution"
+      agent: "str — agent role name (e.g. build-python, test-builder) — REQUIRED for execution"
       status: "str — pending | in_progress | completed | failed | blocked"
       execution: "str — sequential | parallel (defaults to sequential)"
       loop_type: "str — optional loop strategy for this phase"
@@ -127,7 +127,7 @@ agent_routing:
 
       tester:
         category: "test"
-        resolves_to: "test-runner for execution, test-builder for test creation"
+        resolves_to: "test-builder for test creation and execution"
         reference: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#test"
 
       deployer:
@@ -153,7 +153,7 @@ agent_routing:
 
       auditor:
         category: "test"
-        resolves_to: "test-final-output or test-audit"
+        resolves_to: "test-audit"
         note: "Specialized tester role for quality audits"
 
   validation_rules:
@@ -172,9 +172,10 @@ agent_routing:
       enforcement: "HARD — unknown agent types cause phase failure"
       error_format: |
         ERROR: Unknown agent type '{type}' in TinyDB for phase '{phase}'.
-        Valid types: build-python, build-flutter, test-runner, test-builder,
+        Valid types: build-python, build-flutter, build-story-writer, build-docs-writer,
+                     test-builder, test-audit, test-uat, trace-explorer,
                      deploy-cicd, teacher-update-guidance, teacher-update-assets,
-                     test-final-output, test-audit, planner-build, planner-test
+                     planner-build, planner-test, planner-audit
 
   handling_missing_agent:
     behavior: |
@@ -189,8 +190,10 @@ agent_routing:
       ROUTING ERROR: Cannot execute phase '{phase_name}'
       Agent field is not set in TinyDB for this phase.
       Fix: agentic epic phase update {phase_name} --epic {epic_folder} --agent <agent-role>
-      Valid agent roles: build-python, test-runner, deploy-cicd, teacher-update-guidance,
-                         test-final-output, test-audit, planner-build, planner-test
+      Valid agent roles: build-python, build-flutter, build-story-writer, build-docs-writer,
+                         test-builder, test-audit, test-uat, trace-explorer,
+                         deploy-cicd, teacher-update-guidance, teacher-update-assets,
+                         planner-build, planner-test, planner-audit
 
 # =============================================================================
 # SECTION 3: FEEDBACK_TRIGGERS PATTERN
@@ -392,7 +395,7 @@ feedback_triggers:
           - "friction_points: [list]"
           - "gaps_found: true"
         simulator_output:
-          - "test-guidance-simulator reports friction"
+          - "trace-explorer reports friction"
           - "Agent unable to complete task without additional context"
 
       gap_categories:
@@ -406,11 +409,11 @@ feedback_triggers:
 
         guidance:
           description: "Agent guidance files need improvement"
-          route_to: "planner-guidance for guidance plan"
+          route_to: "planner-build for guidance plan"
 
       response_actions:
         categorize: |
-          1. Parse friction report from test-guidance-simulator
+          1. Parse friction report from trace-explorer
           2. Classify each gap by category (build_process, test_design, guidance)
           3. Group gaps for efficient remediation
 
@@ -440,7 +443,7 @@ feedback_triggers:
           - "quality_issues: [list]"
           - "completion_status: incomplete"
         auditor_output:
-          - "test-final-output reports issues"
+          - "test-audit reports issues"
           - "Required artifacts missing"
           - "Quality criteria not met"
 
@@ -465,7 +468,7 @@ feedback_triggers:
           1. Package AUDIT_FAILURE context:
              - failure_type: "AUDIT_FAILURE"
              - failure_category: missing_outputs | quality_issues | documentation_gaps
-             - audit_report: detailed findings from test-final-output
+             - audit_report: detailed findings from test-audit
              - affected_phases: which build phases produced failing outputs
              - epic_folder: current epic folder
           2. Invoke orchestration-planning with context
@@ -488,7 +491,7 @@ feedback_triggers:
           - "user_stories_passed: false"
           - "story_failures: [list]"
         simulator_output:
-          - "test-user-simulator reports story failure"
+          - "test-uat reports story failure"
           - "User journey could not be completed"
           - "Acceptance criteria not met"
 
@@ -510,7 +513,7 @@ feedback_triggers:
 
       response_actions:
         retry: |
-          1. Re-spawn test-user-simulator with failure context
+          1. Re-spawn test-uat with failure context
           2. Simulator re-attempts failed stories
           3. Increment iteration counter (max: 3)
 
@@ -570,7 +573,7 @@ feedback_triggers:
         create_remediation_plan: |
           1. If agent did not already create plan folder:
              - Generate plan name using standard naming: YYMMDDXX_<description>
-             - Create folder: agentic agent epic init <branch> --description <desc>
+             - Create folder: agentic epic new <branch> --description <desc>
              - Write seed file with error context
           2. Log remediation plan reference in current execution state
           3. If CRITICAL: Pause and ask user whether to continue or address first
@@ -794,8 +797,10 @@ fallback_behaviors:
         ROUTING ERROR: Cannot execute phase '{phase_name}' in {epic_folder}
         The phase has no agent field set in TinyDB.
         Fix: agentic epic phase update {phase_name} --epic {epic_folder} --agent <agent-role>
-        Valid agent roles: build-python, test-runner, deploy-cicd, teacher-update-guidance,
-                           test-final-output, test-audit, planner-build, planner-test
+        Valid agent roles: build-python, build-flutter, build-story-writer, build-docs-writer,
+                           test-builder, test-audit, test-uat, trace-explorer,
+                           deploy-cicd, teacher-update-guidance, teacher-update-assets,
+                           planner-build, planner-test, planner-audit
 
     prevention: |
       Planners must always set the agent field when creating phases via
@@ -1119,7 +1124,7 @@ examples:
         PhaseData(name="Domain_Build", agent="build-python", status="pending",
                   loop_max_iterations=5, max_turns=50, _order=2,
                   feedback_triggers={"DOMAIN_BUILD_FAILURE": "Domain_Build"}),
-        PhaseData(name="Integration_Test", agent="test-runner", status="pending",
+        PhaseData(name="Integration_Test", agent="test-builder", status="pending",
                   loop_max_iterations=3, max_turns=40, _order=3,
                   feedback_triggers={"INTEGRATION_TEST_FAILURE": "Domain_Build"}),
         PhaseData(name="CI_CD_Validation", agent="deploy-cicd", status="pending",

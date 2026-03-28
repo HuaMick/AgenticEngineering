@@ -224,39 +224,6 @@ class TestSubprocessTransportTracking:
         assert sessions[0]["transport"] == "subprocess"
 
 
-class TestDiagnosticPlannerUsesP:
-    """Verify the diagnostic planner spawn also uses -p instead of --print."""
-
-    @patch("agenticcli.commands.session.subprocess.Popen")
-    def test_diagnostic_planner_uses_dash_p(self, mock_popen, mock_env):
-        """_spawn_diagnostic_planner should use -p, not --print."""
-        from agenticcli.commands import session
-
-        mock_process = MagicMock()
-        mock_process.pid = 42004
-        mock_popen.return_value = mock_process
-
-        stuck_session = {
-            "session_id": "abcdefgh-1234-5678-9012-abcdefghijkl",
-            "pid": 99999,
-            "prompt": "Original prompt",
-            "started_at": "2026-03-08T12:00:00",
-            "status": "running",
-            "working_dir": str(mock_env),
-        }
-
-        result = session._spawn_diagnostic_planner(stuck_session)
-        assert result is not None  # Should have spawned
-
-        cmd = mock_popen.call_args[0][0]
-        assert "-p" in cmd, f"Expected -p in diagnostic cmd: {cmd}"
-        assert "--print" not in cmd, f"--print should not be in diagnostic cmd: {cmd}"
-        # -p should be followed by the diagnostic prompt
-        p_idx = cmd.index("-p")
-        assert p_idx + 1 < len(cmd), "Missing prompt argument after -p"
-        assert "DIAGNOSTIC PLANNER" in cmd[p_idx + 1]
-
-
 class TestSubprocessCmdConsistency:
     """Verify subprocess and tmux paths build consistent commands."""
 

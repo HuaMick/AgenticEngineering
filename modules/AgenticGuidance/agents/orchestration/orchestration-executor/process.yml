@@ -45,11 +45,11 @@ process:
         Execute these commands to get structured context efficiently:
 
         ```bash
-        # Get seed context (objective, process summary, inputs)
-        agentic agent context bootstrap --role orchestration-executor -j
+        # Get epic status/context
+        agentic epic status --epic <epic_folder>
 
         # Get current ticket if working from an epic
-        agentic agent epic ticket current -j
+        agentic epic ticket current -j
         ```
 
         CLI output provides:
@@ -77,10 +77,9 @@ process:
         When starting a session with pre-defined context, use entrypoint commands:
         ```bash
         # Execute entrypoint to load session context
-        agentic agent entrypoint execute <entrypoint_name> [--vars KEY=VAL]
+        agentic orchestrate session spawn --role <entrypoint_name> --epic <epic_folder>
         ```
-        Entrypoints provide templated context for common agent session patterns.
-        Use `agentic agent entrypoint list` to see available entrypoints.
+        Use `agentic orchestrate session list` to see active sessions.
 
     # =========================================================================
     # PHASE 1: STARTUP SEQUENCE
@@ -245,7 +244,7 @@ process:
       name: "Transition Phase Status"
       description: |
         Update status from pending -> in_progress:
-        1. Update TinyDB phase status: `agentic agent epic ticket start <phase_id> --epic <folder>`
+        1. Update TinyDB phase status: `agentic epic ticket start <phase_id> --epic <folder>`
         2. Record started_at timestamp
 
         CONSTRAINT: Only ONE phase may be in_progress at a time.
@@ -257,11 +256,12 @@ process:
         1. Read phase.agent from TinyDB phase record (loaded in startup_load_phases)
         2. Resolve agent_type to specific agent:
            - builder -> build-python (default) or build-flutter (Flutter projects)
-           - tester -> test-runner (execution) or test-guidance-simulator (guidance)
+           - tester -> test-builder
            - deployer -> deploy-cicd
            - teacher -> teacher-update-guidance or teacher-update-assets
-           - cleaner -> planner-cleaning
-           - auditor -> test-audit or test-final-output
+           - auditor -> test-audit
+           - trace-analyst -> trace-explorer
+           - uat -> test-uat
            - planner -> orchestration-planning
 
         3. Validate resolved agent is in manifest spawns fence
@@ -435,7 +435,7 @@ process:
         Check for FEEDBACK_TRIGGER conditions:
 
         TEST_FAILURE:
-          - Condition: test-runner reports failing tests
+          - Condition: test-builder reports failing tests
           - Action: Check iteration count
             - If < MAX_ITERATIONS: Retry phase (delegate to planning for fix)
             - If >= MAX_ITERATIONS: Transition to blocked, ask user
@@ -448,12 +448,8 @@ process:
           - Condition: deploy-cicd reports CI/CD issues
           - Action: Delegate to orchestration-planning with CICD_FAILURE context
 
-        GUIDANCE_GAP:
-          - Condition: test-guidance-simulator reports missing guidance
-          - Action: Invoke guidance-test-loop per agent-loops.yml
-
         AUDIT_FAILURE:
-          - Condition: test-audit or test-final-output reports issues
+          - Condition: test-audit reports issues
           - Action: Invoke audit-test-fix-loop per agent-loops.yml
 
         STORY_REGRESSION:
@@ -514,7 +510,7 @@ process:
       description: |
         On successful agent completion with no triggers:
         1. Update TinyDB phase status to completed:
-           `agentic agent epic ticket complete <phase_id> --epic <folder>`
+           `agentic epic ticket complete <phase_id> --epic <folder>`
         2. Record completed_at timestamp
         3. Record agent_used
 
@@ -551,7 +547,7 @@ process:
 
         STORY VALIDATION CHECK (references planning-standard.yml#escape_hatch_rules):
         6. If plan has affected_stories (from design_context.yml in epic folder,
-           or via `agentic agent stories report --project <project> --coverage`):
+           or via `agentic stories report --project <project> --coverage`):
            a. FENCE: Filter affected_stories by lifecycle before coverage check.
               Only stories with lifecycle "under-construction" or "implemented" are checked.
               Stories with lifecycle "proposal", "deprecated", or "archived" are excluded.
@@ -787,20 +783,16 @@ process:
     - "All context retrieval should flow through CCI (CLI Context Injection) commands before any file exploration"
     # CLI MANDATE FOR TICKET MANAGEMENT
     - "NEVER use Edit tool to change ticket status in TinyDB epic files"
-    - "ALWAYS use `agentic agent epic ticket start <ticket_id> --epic <folder>` when beginning a ticket"
-    - "ALWAYS use `agentic agent epic ticket complete <ticket_id> --epic <folder>` when finishing a ticket"
+    - "ALWAYS use `agentic epic ticket start <ticket_id> --epic <folder>` when beginning a ticket"
+    - "ALWAYS use `agentic epic ticket complete <ticket_id> --epic <folder>` when finishing a ticket"
     - "CLI auto-archives epic when completing the last ticket - do NOT manually archive"
     - "NEVER use rm or mv commands on epic folders - CLI handles all file operations"
     # ORCHESTRATION WORKFLOW
     - "Standard workflow: get ticket → start → spawn agent → complete"
-    - "  1. `agentic agent epic ticket current --epic <folder>` to get next ticket"
-    - "  2. `agentic agent epic ticket start <ticket_id> --epic <folder>` before spawning agent"
+    - "  1. `agentic epic ticket current --epic <folder>` to get next ticket"
+    - "  2. `agentic epic ticket start <ticket_id> --epic <folder>` before spawning agent"
     - "  3. Spawn appropriate agent for the ticket"
-    - "  4. `agentic agent epic ticket complete <ticket_id> --epic <folder>` when agent succeeds"
-    # QUESTION WATCHING
-    - "Before starting phase execution loop, start question watcher daemon: `agentic agent question watch-daemon --epic <epic_folder_path>`"
-    - "This ensures agent-created questions trigger phone notifications and replies are auto-resolved"
-    - "After execution completes (shutdown), stop the watcher: `agentic agent question watch-stop`"
+    - "  4. `agentic epic ticket complete <ticket_id> --epic <folder>` when agent succeeds"
     # EXECUTION RULES
     - "Execute phases in order defined by TinyDB phase records (ordered by phase sequence)"
     - "Only spawn agents listed in manifest spawns fence"

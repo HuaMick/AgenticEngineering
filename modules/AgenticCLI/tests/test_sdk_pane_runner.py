@@ -134,7 +134,7 @@ class TestRoleConfig:
     def test_known_role_has_timeout(self):
         assert ROLE_TIMEOUT_SECONDS["explore"] == 600
         assert ROLE_TIMEOUT_SECONDS["planner-build"] == 1800
-        assert ROLE_TIMEOUT_SECONDS["planner-orchestration"] == 3600
+        assert ROLE_TIMEOUT_SECONDS["planner-orchestration"] == 900
 
     def test_unknown_role_uses_default_timeout(self):
         timeout = ROLE_TIMEOUT_SECONDS.get("unknown-role", DEFAULT_TIMEOUT_SECONDS)
@@ -142,7 +142,7 @@ class TestRoleConfig:
 
     def test_build_agents_have_timeouts(self):
         assert "build-python" in ROLE_TIMEOUT_SECONDS
-        assert "test-runner" in ROLE_TIMEOUT_SECONDS
+        assert "test-builder" in ROLE_TIMEOUT_SECONDS
 
 
 # ── SDK Query Result via run_pane Tests ───────────────────────────────

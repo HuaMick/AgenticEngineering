@@ -91,42 +91,38 @@ The CLI provides reliable primitives. Agents compose those primitives with judgm
 
 ## Agent Categories
 
-The module contains 6 implemented agent categories with 21 active agents (plus 2 deprecated):
+The module contains 6 implemented agent categories with 20 active agents:
 
-### Orchestration (2 active, 2 deprecated)
+### Orchestration (3 agents)
 High-level coordination of planning and execution workflows.
 
 | Agent | Purpose |
 |-------|---------|
-| `orchestration-planning` | Human-in-the-loop epic creation + MMD generation |
-| `orchestration-executor` | Dynamic agent routing from Plan-MMD |
-| ~~`orchestration-build`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
-| ~~`orchestration-guidance`~~ | **DEPRECATED** - replaced by `orchestration-executor` |
+| `orchestration-planning` | Human-in-the-loop epic creation and approval |
+| `orchestration-executor` | TinyDB-driven dynamic agent routing |
+| `orchestration-loop` | Iterative orchestration loops |
 
 ### Planner (6 agents)
 Create executable implementation epics from objectives.
 
 | Agent | Purpose |
 |-------|---------|
+| `epic-creator` | Epic scaffolding and initialization |
 | `planner-build` | Implementation planning for code changes |
 | `planner-test` | Test planning with execution loops |
-| `planner-cleaning` | Cleanup and audit planning |
-| `planner-guidance` | Guidance improvement planning |
-| `planner-guidance-testing` | Guidance completeness testing |
+| `planner-explore` | Discovery and exploration planning |
+| `planner-orchestration` | TinyDB phase record creation with agent routing |
 | `planner-audit` | Epic folder compliance auditing |
 
-### Test (7 agents)
+### Test (4 agents)
 Validation through testing and quality assurance.
 
 | Agent | Purpose |
 |-------|---------|
-| `test-runner` | Execute Python tests and report results |
-| `test-audit` | Review test quality and detect reward hacking |
-| `test-final-output` | Validate final outputs and execution data |
-| `test-guidance-simulator` | Execute walkthrough-based guidance validation |
 | `test-builder` | Build test implementations |
-| `test-service` | Service-level testing |
-| `test-user-simulator` | User interaction simulation |
+| `test-audit` | Review test quality and detect reward hacking |
+| `test-uat` | User acceptance test simulation |
+| `trace-explorer` | Trace analysis and diagnostics |
 
 ### Teacher (2 agents)
 Improve agent guidance by building paths, fences, and signposts.
@@ -136,20 +132,21 @@ Improve agent guidance by building paths, fences, and signposts.
 | `teacher-update-guidance` | Improve process.yml and inputs.yml files |
 | `teacher-update-assets` | Create/update shared assets (definitions, guidelines) |
 
-### Build (2 agents)
+### Build (4 agents)
 Building and compiling code for production deployment.
 
 | Agent | Purpose |
 |-------|---------|
 | `build-python` | Python-specific build for backend services and CLI |
 | `build-flutter` | Flutter-specific build for mobile/web frontend |
+| `build-story-writer` | User story authoring |
+| `build-docs-writer` | Documentation authoring |
 
-### Deploy (2 agents)
+### Deploy (1 agent)
 Infrastructure and deployment tooling.
 
 | Agent | Purpose |
 |-------|---------|
-| `deploy-worktree` | Git worktree and VS Code workspace management |
 | `deploy-cicd` | CI/CD pipeline configuration |
 
 ## Assets
@@ -215,8 +212,8 @@ To initiate a workflow, **inject the content** of the appropriate entrypoint fil
 
 1. **Planning Phase**: Use `_plan_build.yml` or `_plan_teach.yml` to create an epic
    - Invokes `orchestration-planning` agent
-   - Spawns `deploy-worktree` for workspace setup
-   - Runs planning loops with specialized planners and reviewers
+   - Spawns `epic-creator` for workspace setup
+   - Runs planning loops with specialized planners
    - Outputs approved epic to `docs/epics/live/YYMMDDXX_description/`
 
 2. **Execution Phase**: Use `_orchestrate.yml` to execute the approved epic
@@ -236,7 +233,7 @@ To initiate a workflow, **inject the content** of the appropriate entrypoint fil
 
 Epics are created in the **main worktree** for centralized visibility before execution:
 
-1. **Epic Creation** (main worktree): `agentic agent epic init <branch> --description <desc>`
+1. **Epic Creation** (main worktree): `agentic epic new <branch> --description <desc>`
    - Creates epic folder in `docs/epics/live/YYMMDDXX_description/`
    - Creates feature worktree for code implementation
 2. **Epic Approval**: Human reviews and approves the epic
@@ -252,11 +249,11 @@ This ensures all active epics are visible from a single location while code deve
 ### Bootstrap Sequence
 
 ```bash
-# 1. Get role context (process, inputs, guidelines)
-agentic agent context bootstrap --role <agent-role> -j
+# 1. Get epic status and context
+agentic epic status --epic <epic_folder>
 
 # 2. Get current ticket from epic
-agentic agent epic ticket current -j
+agentic epic ticket current -j
 ```
 
 ### Key Principles
@@ -304,33 +301,29 @@ This section is the **source of truth** for agent implementation status. Epic-re
 
 | Agent | Status | Notes |
 |-------|--------|-------|
-| orchestration-planning | Implemented | Human-in-the-loop epic creation, MMD generation |
-| orchestration-executor | Implemented | Dynamic agent routing from Plan-MMD metadata |
-| ~~orchestration-build~~ | Deprecated | Replaced by orchestration-executor |
-| ~~orchestration-guidance~~ | Deprecated | Replaced by orchestration-executor |
+| orchestration-planning | Implemented | Human-in-the-loop epic creation and approval |
+| orchestration-executor | Implemented | TinyDB-driven dynamic agent routing |
+| orchestration-loop | Implemented | Iterative orchestration loops |
 
 ### Planner Agents
 
 | Agent | Status | Notes |
 |-------|--------|-------|
+| epic-creator | Implemented | Epic scaffolding and initialization |
 | planner-build | Implemented | Implementation planning for code changes |
 | planner-test | Implemented | Test planning with execution loops |
-| planner-cleaning | Implemented | Cleanup and audit planning |
-| planner-guidance | Implemented | Guidance improvement planning |
-| planner-guidance-testing | Implemented | Guidance completeness testing |
+| planner-explore | Implemented | Discovery and exploration planning |
+| planner-orchestration | Implemented | TinyDB phase record creation with agent routing |
 | planner-audit | Implemented | Epic folder compliance auditing |
 
 ### Test Agents
 
 | Agent | Status | Notes |
 |-------|--------|-------|
-| test-runner | Implemented | Execute Python tests and report results |
-| test-audit | Implemented | Review test quality and detect reward hacking |
-| test-final-output | Implemented | Validate final outputs and execution data |
-| test-guidance-simulator | Implemented | Execute walkthrough-based guidance validation |
 | test-builder | Implemented | Build test implementations |
-| test-service | Implemented | Service-level testing |
-| test-user-simulator | Implemented | User interaction simulation |
+| test-audit | Implemented | Review test quality and detect reward hacking |
+| test-uat | Implemented | User acceptance test simulation |
+| trace-explorer | Implemented | Trace analysis and diagnostics |
 
 ### Teacher Agents
 
@@ -345,12 +338,13 @@ This section is the **source of truth** for agent implementation status. Epic-re
 |-------|--------|-------|
 | build-python | Implemented | Python-specific build for backend/CLI |
 | build-flutter | Implemented | Flutter-specific build for mobile/web |
+| build-story-writer | Implemented | User story authoring |
+| build-docs-writer | Implemented | Documentation authoring |
 
 ### Deploy Agents
 
 | Agent | Status | Notes |
 |-------|--------|-------|
-| deploy-worktree | Implemented | Git worktree and VS Code workspace management |
 | deploy-cicd | **Guidance Only** | CI/CD pipeline NOT yet set up for this module. Agent guidance exists for validating CI/CD files, but no cloudbuild.yaml, Dockerfile.test, or GitHub Actions workflow exists for AgenticGuidance. CI/CD infrastructure only exists in legacy modules. |
 
 ---
@@ -359,7 +353,7 @@ This section is the **source of truth** for agent implementation status. Epic-re
 
 | Infrastructure | Status | Notes |
 |----------------|--------|-------|
-| Agent Guidance Files | Implemented | 21 active agents with manifest.yml, inputs.yml, process.yml |
+| Agent Guidance Files | Implemented | 20 active agents with manifest.yml, inputs.yml, process.yml |
 | Definition Files | Implemented | 42 definition files in assets/definitions/ |
 | Guideline Files | Implemented | 46 guideline files in assets/guidelines/ |
 | Shared Input Configs | Implemented | 11 shared input configurations |
@@ -374,9 +368,8 @@ These categories have some infrastructure (definitions, guidelines) but no dedic
 
 | Category | Status | Workaround |
 |----------|--------|------------|
-| cleaner | Not Migrated | `planner-cleaning` handles cleanup planning |
-| explore | Not Migrated | Planner agents handle ad-hoc discovery |
-| documentation | Not Migrated | `teacher-update-assets` handles doc updates |
+| cleaner | Not Migrated | `planner-explore` handles discovery and cleanup planning |
+| documentation | Not Migrated | `build-docs-writer` and `teacher-update-assets` handle doc updates |
 
 ---
 

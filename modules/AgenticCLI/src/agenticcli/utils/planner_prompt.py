@@ -65,7 +65,7 @@ def build_planner_prompt(objective: str, epic_folder: Path, context: str | None 
         "   UAT is mandatory per planning-standard.yml - epics without UAT are incomplete.",
         "   UAT must be anchored to user stories with acceptance criteria.",
         "   Select appropriate UAT strategy:",
-        "   - test-user-simulator: For CLI tools and user journey validation",
+        "   - test-uat: For CLI tools and user journey validation",
         "   - guidance-blind-test: For documentation completeness validation",
         "   - documentation-loop: For end-user facing features needing docs validation",
         "   - manual: For complex scenarios requiring human judgment",

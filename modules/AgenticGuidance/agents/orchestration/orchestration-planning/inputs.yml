@@ -47,7 +47,7 @@ runtime_inputs:
       - planning_intent: "build"
         effect: "Prioritize planner-build, assume implementation-focused objective"
       - planning_intent: "teach"
-        effect: "Prioritize planner-guidance, assume guidance improvement objective"
+        effect: "Prioritize teacher-update-guidance, assume guidance improvement objective"
       - planning_intent: "test"
         effect: "Prioritize planner-test, assume test strategy objective"
     note: |
@@ -67,7 +67,7 @@ story_discovery:
     user stories. This provides acceptance criteria for UAT and anchors the
     plan to verifiable user outcomes.
   source_location: "docs/userstories/"
-  discovery_command: "agentic agent stories find [--project <project>]"
+  discovery_command: "agentic stories find [--project <project>]"
   outputs:
     - name: "affected_stories"
       type: "list[string]"
@@ -174,7 +174,7 @@ loop_selection_guidance:
       primary_loop: "user-story-validation-loop"
       description: "User acceptance testing (alias for user-story-validation)"
       planner: "planner-test"
-      executor: "test-user-simulator"
+      executor: "test-uat"
       note: "UAT planning handled by planner-test (see planner-test/process.yml#uat_phase_planning)"
 
   # Alternative loop selection criteria are defined in the authoritative source.
@@ -236,12 +236,12 @@ sub_agent_orchestration_workflow:
 
   workflow_steps:
     1_get_ticket:
-      command: "agentic agent epic ticket current --epic <folder>"
+      command: "agentic epic ticket current --epic <folder>"
       purpose: "Get the next ticket to execute"
       output: "Ticket details including id, description, guidance, inputs"
 
     2_start_ticket:
-      command: "agentic agent epic ticket start <ticket_id> --epic <folder>"
+      command: "agentic epic ticket start <ticket_id> --epic <folder>"
       purpose: "Mark ticket as in_progress before spawning agent"
       timing: "BEFORE spawning the sub-agent"
 
@@ -251,7 +251,7 @@ sub_agent_orchestration_workflow:
       note: "Agent role determined by ticket type and agent-ticket alignment check"
 
     4_complete_ticket:
-      command: "agentic agent epic ticket complete <ticket_id> --epic <folder>"
+      command: "agentic epic ticket complete <ticket_id> --epic <folder>"
       purpose: "Mark ticket as completed after agent succeeds"
       auto_archive: "Triggers auto-archival when this is the last ticket"
 
@@ -371,10 +371,8 @@ inputs:
     description: "Process for planning code implementation and build tasks."
   - location: "modules/AgenticGuidance/agents/planner/planner-test/process.yml"
     description: "Process for planning test strategy and validation tasks."
-  - location: "modules/AgenticGuidance/agents/planner/planner-cleaning/process.yml"
-    description: "Process for planning code cleanup and removal tasks."
-  - location: "modules/AgenticGuidance/agents/planner/planner-guidance/process.yml"
-    description: "Process for planning agent guidance and process improvements."
+  - location: "modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml"
+    description: "Process for improving agent guidance and process files."
 
   # Plan examples for structure reference
   - location: "modules/AgenticGuidance/assets/examples/planner/YYMMDDXX_description/plan_example.yml"

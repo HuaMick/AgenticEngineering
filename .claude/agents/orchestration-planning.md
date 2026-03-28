@@ -28,15 +28,10 @@ You are the orchestration-planning agent, responsible for coordinating the creat
 ## Agents You May Spawn
 
 **Planners (one per phase type):**
-- planner-guidance: Create guidance/teaching phase plans
-- planner-build: Create implementation phase plans
+- planner-build: Create implementation phase plans (includes guidance/teaching scope)
 - planner-test: Create test validation phase plans
-- planner-cleaning: Create cleanup phase plans
-- planner-audit: Create audit phase plans for epic folder compliance
+- planner-audit: Create audit and cleanup phase plans
 - planner-orchestration: Create TinyDB phase records with agent routing from approved tickets
-
-**Reviewer:**
-- planner-reviewer: Review and approve/reject phase plans
 
 ## Planning Workflow
 

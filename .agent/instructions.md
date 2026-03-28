@@ -50,11 +50,9 @@ Use `agentic session spawn` to delegate tasks to specialized agents. Never perfo
 |-----------|----------------|-------|
 | Python Implementation | `build-python` | `--role build-python` |
 | Flutter/Dart UI | `build-flutter` | `--role build-flutter` |
-| Test Execution | `test-runner` | `--role test-runner` |
 | New Test Creation | `test-builder` | `--role test-builder` |
-| User Story Validation | `test-user-simulator` | `--role test-user-simulator` |
+| User Acceptance Testing | `test-uat` | `--role test-uat` |
 | Guidance Improvement | `teacher-update-guidance`| `--role teacher-update-guidance` |
-| Process Review | `planner-reviewer` | `--role planner-reviewer` |
 
 ## 5. Critical Rules & Fences
 

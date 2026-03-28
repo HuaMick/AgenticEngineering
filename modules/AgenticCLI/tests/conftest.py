@@ -175,34 +175,26 @@ def _block_real_ntfy():
 def _isolate_tinydb(tmp_path):
     """Safety net: redirect all TinyDB writes to a per-test temp directory.
 
-    Prevents tests from polluting the repo-local (.agentic/epics.db) or
-    home-directory (~/.agentic/epics.db) TinyDB databases.
+    Prevents tests from polluting the global ~/.agentic/epics.db database.
 
-    Patches the two entry points that determine the DB file path:
-    - agenticcli.commands.epic._get_repo_db_path: used by cmd_init, cmd_list,
-      cmd_db_sync, cmd_db_status, and helpers like _get_repo().
-    - agenticguidance.services.epic.EpicService._find_repo_root: used by
-      EpicService.__init__ to derive the repo-local db_path.
-
-    The temp DB is placed at tmp_path/.agentic/epics.db so that path resolution
-    helpers that walk up looking for .git can also be satisfied when a test has
-    set up a real git repo inside tmp_path.
+    Patches:
+    - EpicRepository.__init__: redirects default db_path to isolated path
+    - _get_repo_db_path in epic.py and stories.py: returns isolated path
     """
     isolated_db_path = tmp_path / ".agentic" / "epics.db"
     isolated_db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Patch _find_repo_root at class level so all EpicService instances use tmp_path
-    from agenticguidance.services.epic import EpicService
+    from agenticguidance.services.epic_repository import EpicRepository
 
-    def _isolated_find_repo_root(start=None):
-        return tmp_path
+    _original_init = EpicRepository.__init__
 
-    with patch(
-        "agenticcli.commands.epic._get_repo_db_path",
-        return_value=isolated_db_path,
-    ):
-        with patch.object(EpicService, "_find_repo_root", staticmethod(_isolated_find_repo_root)):
-            yield isolated_db_path
+    def _patched_init(self, db_path=None, epics_base=None, auto_bootstrap=True):
+        _original_init(self, db_path=db_path or isolated_db_path, epics_base=epics_base, auto_bootstrap=auto_bootstrap)
+
+    with patch.object(EpicRepository, "__init__", _patched_init):
+        with patch("agenticcli.commands.epic._get_repo_db_path", return_value=isolated_db_path):
+            with patch("agenticcli.commands.stories._get_repo_db_path", return_value=isolated_db_path):
+                yield isolated_db_path
 
 
 def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data):
@@ -238,13 +230,18 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
     for phase in phases:
         phase_name = phase.get("name", phase.get("id", "default"))
         # Add the phase record first so get_epic() returns it
-        repo.add_phase(epic_folder_name, {
+        phase_record = {
             "name": phase_name,
             "phase_id": phase.get("phase_id", phase.get("id", "")),
             "description": phase.get("description", ""),
             "status": phase.get("status", "pending"),
             "execution": phase.get("execution", "sequential"),
-        })
+        }
+        # Pass through optional phase fields used by ExecutionRunner
+        for field in ("agent", "max_turns", "timeout", "feedback_triggers"):
+            if field in phase:
+                phase_record[field] = phase[field]
+        repo.add_phase(epic_folder_name, phase_record)
         tickets = phase.get("tickets", phase.get("tasks", []))
         for ticket in tickets:
             ticket_id = ticket.get("id") or ticket.get("task_id", "")

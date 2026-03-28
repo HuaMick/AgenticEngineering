@@ -38,7 +38,7 @@ Create a phased test plan for validating the implementation using test-fix-loop 
 6. **UAT Validation Phase** (MANDATORY - PRIMARY SUCCESS CRITERIA):
    - Uses user-story-validation-loop
    - Validates complete user journeys
-   - Spawns test-user-simulator
+   - Spawns test-uat
 
 7. **Documentation Loop**: At very end
 

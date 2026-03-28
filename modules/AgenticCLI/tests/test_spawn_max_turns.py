@@ -144,8 +144,8 @@ class TestExecutePlanMaxTurnsWiring:
 
         mock_repo = MagicMock()
         mock_repo.list_phases.side_effect = [
-            [PhaseData(name="Test", status="pending", agent="test-runner")],
-            [PhaseData(name="Test", status="completed", agent="test-runner")],
+            [PhaseData(name="Test", status="pending", agent="test-builder")],
+            [PhaseData(name="Test", status="completed", agent="test-builder")],
         ]
         workflow._get_repository.return_value = mock_repo
 

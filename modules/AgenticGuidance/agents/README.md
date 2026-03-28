@@ -8,14 +8,14 @@ This directory contains agent process definitions for the AgenticGuidance module
 
 | Category | Agents | Description |
 |----------|--------|-------------|
-| [orchestration](#orchestration) | 2 | High-level coordination of planning and execution workflows |
+| [orchestration](#orchestration) | 3 | High-level coordination of planning and execution workflows |
 | [planner](#planner) | 6 | Create executable implementation epics from objectives |
-| [build](#build) | 2 | Code implementation for production deployment |
-| [test](#test) | 7 | Validation through testing and quality assurance |
+| [build](#build) | 4 | Code implementation for production deployment |
+| [test](#test) | 4 | Validation through testing and quality assurance |
 | [teacher](#teacher) | 2 | Improve agent guidance (paths, fences, signposts) |
-| [deploy](#deploy) | 2 | Infrastructure and deployment tooling |
+| [deploy](#deploy) | 1 | Infrastructure and deployment tooling |
 
-**Total: 21 active agents**
+**Total: 20 active agents**
 
 ---
 
@@ -27,10 +27,12 @@ High-level orchestration agents that coordinate planning and execution workflows
 |-------|---------|-------------|--------|
 | orchestration-planning | 2.0 | Planning-only workflows - human-in-the-loop epic creation and approval | Complete |
 | orchestration-executor | 2.0 | TinyDB-driven execution - dynamic agent routing from phase.agent field | Complete |
+| orchestration-loop | 2.0 | Iterative orchestration loops | Complete |
 
 **Routing Logic:**
 - `orchestration-planning`: Planning-only workflows, produces approved epics with TinyDB phase records for downstream use.
 - `orchestration-executor`: TinyDB-driven execution (dynamic agent routing from phase.agent field). **Use this for all execution workflows.**
+- `orchestration-loop`: Iterative looping when phases require repeated execution.
 
 ---
 
@@ -40,19 +42,19 @@ Planner agents are responsible for creating executable implementation epics from
 
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
+| epic-creator | 2.0 | Epic scaffolding and initialization | Complete |
 | planner-build | 2.0 | Create phased implementation epics for build/development tasks with proper context routing, parallelization, and CI/CD validation | Complete |
 | planner-test | 2.0 | Create phased test epics including component testing, user flow testing, audit loops, and documentation validation | Complete |
-| planner-cleaning | 2.0 | Create cleanup, audit, and documentation phases for finalizing implementation | Complete |
-| planner-guidance | 2.0 | Create guidance-focused epics to improve agent paths, fences, and signposts | Complete |
-| planner-guidance-testing | 2.0 | Create phased guidance test epics for validating agent guidance completeness | Complete |
+| planner-explore | 2.0 | Discovery and exploration planning for codebase analysis and research tasks | Complete |
+| planner-orchestration | 2.0 | Create TinyDB phase records with agent routing from approved ticket data | Complete |
 | planner-audit | 2.0 | Audit epic folder compliance and identify files that should be archived, completed, or removed | Complete |
 
 **Routing Logic:**
+- `epic-creator`: Scaffolding new epics with folder structure and initial tickets
 - `planner-build`: Planning code implementation and build tasks
 - `planner-test`: Planning test strategy and validation tasks
-- `planner-cleaning`: Planning code cleanup and removal tasks
-- `planner-guidance`: Planning agent guidance and process improvements
-- `planner-guidance-testing`: Planning guidance validation and completeness tests
+- `planner-explore`: Planning discovery, research, and codebase exploration tasks
+- `planner-orchestration`: Creating TinyDB phase records with agent routing
 - `planner-audit`: Auditing epic folders for compliance with lifecycle rules
 
 ---
@@ -65,6 +67,8 @@ Build agents handle code implementation for production deployment. Each sub-agen
 |-------|---------|-------------|--------|
 | build-python | 2.0 | Python-specific build agent for backend services and CLI components | Complete |
 | build-flutter | 2.0 | Flutter-specific build agent for mobile/web frontend components | Complete |
+| build-story-writer | 2.0 | User story authoring for epics and features | Complete |
+| build-docs-writer | 2.0 | Documentation authoring for agents, services, and APIs | Complete |
 
 ---
 
@@ -74,22 +78,16 @@ Test agents validate implementations through various testing strategies. They ex
 
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
-| test-runner | 2.0-pilot | Execute existing tests and accurately report their status; identifies defects through test failures | Complete |
-| test-audit | 2.0 | Review test quality, coverage alignment, and identify gaps (reward hacking detection) | Complete |
-| test-final-output | 2.0-pilot | Validate final outputs of agent processes for completeness and correctness | Complete |
-| test-guidance-simulator | 1.0 | Test agent guidance completeness by attempting task execution using only guidance files | Complete |
 | test-builder | 2.0 | Create and update test files that expose defects (Unit, Integration, E2E coverage) | Complete |
-| test-user-simulator | 2.0 | Test user stories using only project documentation (agent-blind-test approach) | Complete |
-| test-service | 2.0 | Validate backend service lifecycle: startup, stability, and health checks | Complete |
+| test-audit | 2.0 | Review test quality, coverage alignment, and identify gaps (reward hacking detection) | Complete |
+| test-uat | 2.0 | User acceptance test simulation using only project documentation (agent-blind-test approach) | Complete |
+| trace-explorer | 2.0 | Trace analysis and diagnostics for agent execution logs | Complete |
 
 **Routing Logic:**
-- `test-runner`: Executes Python tests and reports results (smoke_test strategy)
-- `test-audit`: Reviews test quality, detects reward hacking (audit strategy)
-- `test-final-output`: Validates final outputs and execution data completeness
-- `test-guidance-simulator`: Executes walkthrough-based guidance validation (guidance-test-loop)
 - `test-builder`: Creates and updates test files that expose defects (test-build strategy)
-- `test-user-simulator`: Tests user stories via agent-blind-test strategy
-- `test-service`: Validates backend service lifecycle and health checks (service-test strategy)
+- `test-audit`: Reviews test quality, detects reward hacking (audit strategy)
+- `test-uat`: Tests user stories via agent-blind-test strategy (UAT validation)
+- `trace-explorer`: Analyses agent execution traces and diagnoses failures
 
 ---
 
@@ -114,11 +112,9 @@ Deploy agents handle infrastructure and deployment tooling. They do not write ap
 
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
-| deploy-worktree | 2.0 | Git worktree creation and epic folder structure initialization | Complete |
 | deploy-cicd | 2.0 | CI/CD pipeline configuration and validation | Complete |
 
 **Routing Logic:**
-- `deploy-worktree`: Route worktree/workspace/branch requests
 - `deploy-cicd`: Route CI/CD, pipeline, cloudbuild, dockerfile requests
 
 ---
@@ -135,7 +131,7 @@ Each agent directory contains:
 - **Partial**: Some files missing
 - **Stub**: Only manifest.yml exists
 
-All 21 agents in this directory are **Complete**.
+All 20 agents in this directory are **Complete**.
 
 ---
 
@@ -145,9 +141,8 @@ The following categories have infrastructure (definitions, guidelines, shared in
 
 | Category | Infrastructure | Current Workaround | Status |
 |----------|---------------|-------------------|--------|
-| cleaner | 3 files (cleaner-shared-guidelines.yml, cleaner-shared.yml, cleanup_phase.mmd) | `planner-cleaning` handles cleanup planning | Planned |
-| explore | 1 file (exploration-principles.yml) | Planner agents handle ad-hoc discovery | Planned |
-| documentation | Minimal | `teacher-update-assets` handles doc updates | Planned |
+| cleaner | 3 files (cleaner-shared-guidelines.yml, cleaner-shared.yml, cleanup_phase.mmd) | `planner-explore` handles discovery and cleanup planning | Planned |
+| documentation | Minimal | `build-docs-writer` and `teacher-update-assets` handle doc updates | Planned |
 
 These categories may be implemented if dedicated agents become necessary, but current workarounds are sufficient.
 
@@ -162,35 +157,34 @@ modules/AgenticGuidance/agents/
 ├── orchestration/                  # Orchestration agents
 │   ├── manifest.yml
 │   ├── orchestration-planning/
-│   └── orchestration-executor/
+│   ├── orchestration-executor/
+│   └── orchestration-loop/
 ├── planner/                        # Planner agents
 │   ├── manifest.yml
+│   ├── epic-creator/
 │   ├── planner-build/
 │   ├── planner-test/
-│   ├── planner-cleaning/
-│   ├── planner-guidance/
-│   ├── planner-guidance-testing/
-│   └── planner-audit/              # NEW: Epic folder compliance
+│   ├── planner-explore/
+│   ├── planner-orchestration/
+│   └── planner-audit/
 ├── build/                          # Build agents
 │   ├── manifest.yml
 │   ├── build-python/
-│   └── build-flutter/
+│   ├── build-flutter/
+│   ├── build-story-writer/
+│   └── build-docs-writer/
 ├── test/                           # Test agents
 │   ├── manifest.yml
-│   ├── test-runner/
-│   ├── test-audit/
-│   ├── test-final-output/
-│   ├── test-guidance-simulator/
 │   ├── test-builder/
-│   ├── test-user-simulator/
-│   └── test-service/
+│   ├── test-audit/
+│   ├── test-uat/
+│   └── trace-explorer/
 ├── teacher/                        # Teacher agents
 │   ├── manifest.yml
 │   ├── teacher-update-guidance/
 │   └── teacher-update-assets/
 └── deploy/                         # Deploy agents
     ├── manifest.yml
-    ├── deploy-worktree/
     └── deploy-cicd/
 ```
 
@@ -216,7 +210,7 @@ Agents should reference **category manifests** rather than individual process fi
 test_agents: "modules/AgenticGuidance/agents/test/manifest.yml"
 
 # Avoid: Direct process file references
-test_runner: "modules/AgenticGuidance/agents/test/test-runner/process.yml"
+test_builder: "modules/AgenticGuidance/agents/test/test-builder/process.yml"
 ```
 
 Category manifests define routing logic and available sub-agents, providing a stable interface to agent capabilities.

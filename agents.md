@@ -101,18 +101,18 @@ def handle(args, ctx=None):
 
 ---
 
-## 4. Agent Taxonomy (24 Active Agents)
+## 4. Agent Taxonomy (20 Active Agents)
 
 ### 4.1 Agent Categories
 
 ```
 modules/AgenticGuidance/agents/
-├── build/           # Code implementation (2 agents)
-├── deploy/          # Infrastructure (2 agents)
+├── build/           # Code implementation (4 agents)
+├── deploy/          # Infrastructure (1 agent)
 ├── orchestration/   # Coordination (3 agents)
-├── planner/         # Plan creation (7 agents)
-├── teacher/         # Guidance improvement (3 agents)
-└── test/            # Testing & validation (7+ agents)
+├── planner/         # Plan creation (6 agents)
+├── teacher/         # Guidance improvement (2 agents)
+└── test/            # Testing & validation (4 agents)
 ```
 
 ### 4.2 Full Agent Routing Table
@@ -121,27 +121,24 @@ modules/AgenticGuidance/agents/
 |----------|-------|-----------|---------|
 | **Build** | `build-python` | `--role build-python` | Python backend/CLI implementation |
 | | `build-flutter` | `--role build-flutter` | Flutter/Dart UI components |
-| **Deploy** | `deploy-worktree` | `--role deploy-worktree` | Git worktree + VS Code workspace |
-| | `deploy-cicd` | `--role deploy-cicd` | CI/CD pipeline synchronization |
+| | `build-story-writer` | `--role build-story-writer` | User story authoring |
+| | `build-docs-writer` | `--role build-docs-writer` | Documentation authoring |
+| **Deploy** | `deploy-cicd` | `--role deploy-cicd` | CI/CD pipeline synchronization |
 | **Orchestration** | `orchestration-planning` | `--role orchestration-planning` | Plan creation with HITL |
 | | `orchestration-executor` | `--role orchestration-executor` | TinyDB-driven plan execution |
-| **Planner** | `planner-build` | `--role planner-build` | Implementation phase planning |
+| | `orchestration-loop` | `--role orchestration-loop` | Iterative orchestration loops |
+| **Planner** | `epic-creator` | `--role epic-creator` | Epic scaffolding and initialization |
+| | `planner-build` | `--role planner-build` | Implementation phase planning |
 | | `planner-test` | `--role planner-test` | Test phase planning |
-| | `planner-cleaning` | `--role planner-cleaning` | Cleanup/audit planning |
-| | `planner-guidance` | `--role planner-guidance` | Guidance improvement planning |
-| | `planner-guidance-testing` | `--role planner-guidance-testing` | Guidance completeness validation |
-| | `planner-reviewer` | `--role planner-reviewer` | Plan review and approval |
+| | `planner-explore` | `--role planner-explore` | Discovery and exploration planning |
+| | `planner-orchestration` | `--role planner-orchestration` | TinyDB phase record creation |
 | | `planner-audit` | `--role planner-audit` | Plan folder compliance |
 | **Teacher** | `teacher-update-guidance` | `--role teacher-update-guidance` | Improve process.yml/inputs.yml |
 | | `teacher-update-assets` | `--role teacher-update-assets` | Shared asset creation |
-| **Test** | `test-runner` | `--role test-runner` | Execute tests, report results |
-| | `test-builder` | `--role test-builder` | Create new tests |
+| **Test** | `test-builder` | `--role test-builder` | Create new tests |
 | | `test-audit` | `--role test-audit` | Test quality & reward hacking |
-| | `test-final-output` | `--role test-final-output` | Validate final outputs |
-| | `test-guidance-simulator` | `--role test-guidance-simulator` | Walkthrough guidance validation |
-| | `test-user-simulator` | `--role test-user-simulator` | User interaction simulation |
-| | `test-service` | `--role test-service` | Service-level validation |
-| | `test-cleaner` | `--role test-cleaner` | Test cleanup support |
+| | `test-uat` | `--role test-uat` | User acceptance test simulation |
+| | `trace-explorer` | `--role trace-explorer` | Trace analysis and diagnostics |
 
 ### 4.3 Agent Responsibility Boundary
 
@@ -295,7 +292,7 @@ phases:
 
 ### 8.2 Key Definitions
 
-- `agent-categories.yml` - Agent taxonomy (all 24 agents)
+- `agent-categories.yml` - Agent taxonomy (all 20 agents)
 - `plans.yml` - Epic structure and lifecycle
 - `agent-loops.yml` - Loop patterns (test-fix, audit-test-fix, etc.)
 - `user-stories.yml` - Story format and UAT patterns
@@ -369,7 +366,7 @@ Phases are stored in TinyDB with the following fields:
 | Field | Purpose |
 |-------|---------|
 | `name` | Phase identifier (e.g., Phase_A) |
-| `agent` | Agent to route to (e.g., build-python, test-runner) |
+| `agent` | Agent to route to (e.g., build-python, test-builder) |
 | `status` | `pending`, `in_progress`, `completed`, or `failed` |
 | `feedback_triggers` | Re-run rules on failure (e.g., `TEST_FAILURE -> test-fix-loop`) |
 | `loop_type` | Iteration pattern (e.g., test-fix-loop) |

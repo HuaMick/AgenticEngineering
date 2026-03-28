@@ -57,7 +57,7 @@ stories:
   - step: 2
     when: the feature is used
     then:
-    - Tester phases route to test-runner or test-guidance-simulator
+    - Tester phases route to test-builder or trace-explorer
   - step: 3
     when: the feature is used
     then:
@@ -69,11 +69,11 @@ stories:
   - step: 5
     when: the feature is used
     then:
-    - Cleaner phases route to planner-cleaning
+    - Cleaner phases route to planner-audit
   - step: 6
     when: the feature is used
     then:
-    - Auditor phases route to test-audit or test-final-output
+    - Auditor phases route to test-audit or trace-explorer
   - step: 7
     when: the feature is used
     then:
@@ -81,7 +81,7 @@ stories:
   related_agents:
   - orchestration-executor
   - build-python
-  - test-runner
+  - test-builder
   - teacher-update-guidance
   last_tested: '2026-02-27'
   test_status: passing
@@ -127,7 +127,7 @@ stories:
   - agentic epic ticket complete <id>
   related_agents:
   - build-python
-  - test-runner
+  - test-builder
   last_tested: null
   test_status: untested
   test_notes: ''
@@ -151,7 +151,7 @@ stories:
   - step: 3
     when: the feature is used
     then:
-    - The executor spawns test agents (test-runner, test-audit) for validation
+    - The executor spawns test agents (test-builder, test-audit) for validation
   - step: 4
     when: an error condition occurs
     then:
@@ -162,7 +162,7 @@ stories:
     - Validation results are recorded in the plan
   related_agents:
   - orchestration-executor
-  - test-runner
+  - test-builder
   - test-audit
   last_tested: null
   test_status: untested
@@ -248,6 +248,77 @@ stories:
   - agentic epic move folder --epic <name> --force
   - agentic epic unarchive --epic <name>
   last_tested: '2026-02-23'
-  test_status: passed
+  test_status: passing
   test_notes: 'Validated by plan 260222RA: auto-archive removed, explicit archive model confirmed working'
   tested_by_plan: 260222RA_remove_auto_archive_from_cli_task_completion
+- id: US-PLN-093
+  title: Unified Phase-Routing Validation Utility
+  category: execution_workflow
+  priority: high
+  lifecycle: implemented
+  description: As a developer maintaining orchestration workflows, I want a single validate_phase_routing()
+    function that encapsulates the 'all phases have agent routing' and 'all tickets still proposed' checks,
+    so that I no longer need to keep separate inline implementations in sync when the validation logic changes.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: validate_phase_routing() is called for a fully routed epic with active tickets
+    then:
+    - Returns (True, None) indicating the epic is ready for execution
+  - step: 2
+    when: validate_phase_routing() is called for an epic with no phases in TinyDB
+    then:
+    - Returns (False, reason) with a meaningful reason string
+  - step: 3
+    when: validate_phase_routing() is called for an epic where some phases lack agent routing
+    then:
+    - Returns (False, reason) identifying the unrouted phase names
+  - step: 4
+    when: validate_phase_routing() is called for an epic with all tickets still proposed
+    then:
+    - Returns (False, reason) explaining that planning has not promoted tickets
+  - step: 5
+    when: validate_phase_routing() is called for an epic with no tickets but routed phases
+    then:
+    - Returns (True, None) without crashing
+  related_commands: []
+  related_agents:
+  - build-python
+  - test-builder
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/utils/phase_validation.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260328AG_extract_validate_phase_routing_utility_from_duplic
+- id: US-PLN-094
+  title: has_any_routed_phase Helper for Status Display
+  category: execution_workflow
+  priority: medium
+  lifecycle: implemented
+  description: As a developer maintaining epic status/display code, I want a has_any_routed_phase() helper
+    that checks whether at least one phase has agent routing, so that the weaker 'any phase has routing'
+    predicate used by status commands is discoverable alongside validate_phase_routing().
+  prerequisites: []
+  steps:
+  - step: 1
+    when: has_any_routed_phase() is called with an empty list
+    then:
+    - Returns False
+  - step: 2
+    when: has_any_routed_phase() is called with a mix of routed and unrouted phases
+    then:
+    - Returns True (any, not all)
+  - step: 3
+    when: has_any_routed_phase() is called with phases that all lack routing
+    then:
+    - Returns False
+  related_commands: []
+  related_agents:
+  - build-python
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/utils/phase_validation.py
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260328AG_extract_validate_phase_routing_utility_from_duplic

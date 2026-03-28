@@ -25,7 +25,7 @@ Analyze agent execution logs to identify friction patterns and improve guidance 
 
 ## Boundaries
 
-- Does NOT create plans (that's planner-guidance)
+- Does NOT create plans (that's planner-build)
 - Does NOT update shared assets in modules/AgenticGuidance/assets/ folder (that's teacher-update-assets)
 
 ## Process

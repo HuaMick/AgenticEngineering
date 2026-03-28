@@ -155,10 +155,6 @@ class TestForceSDKDirectOverride:
             called_path["path"] = "sdk-direct"
             return _ok_result()
 
-        def mock_subprocess(session_id, role, epic_folder):
-            called_path["path"] = "subprocess"
-            return _ok_result()
-
         monkeypatch.setenv("AGENTIC_FORCE_SDK_DIRECT", "1")
 
         with (
@@ -166,7 +162,6 @@ class TestForceSDKDirectOverride:
             patch("shutil.which", return_value="/usr/bin/tmux"),
             patch.object(workflow, "_run_via_tmux_sdk", side_effect=mock_tmux_sdk),
             patch.object(workflow, "_run_via_sdk", side_effect=mock_sdk_direct),
-            patch.object(workflow, "_run_via_subprocess", side_effect=mock_subprocess),
         ):
             workflow._run_role_agent("planner-build", epic_folder)
 
@@ -210,10 +205,6 @@ class TestForceSDKDirectOverride:
             called_path["path"] = "sdk-direct"
             return _ok_result()
 
-        def mock_subprocess(session_id, role, epic_folder):
-            called_path["path"] = "subprocess"
-            return _ok_result()
-
         # Explicitly ensure the env var is NOT set
         monkeypatch.delenv("AGENTIC_FORCE_SDK_DIRECT", raising=False)
 
@@ -222,7 +213,6 @@ class TestForceSDKDirectOverride:
             patch("shutil.which", return_value="/usr/bin/tmux"),
             patch.object(workflow, "_run_via_tmux_sdk", side_effect=mock_tmux_sdk),
             patch.object(workflow, "_run_via_sdk", side_effect=mock_sdk_direct),
-            patch.object(workflow, "_run_via_subprocess", side_effect=mock_subprocess),
         ):
             workflow._run_role_agent("planner-build", epic_folder)
 

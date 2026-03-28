@@ -726,7 +726,7 @@ def epic_phase_add(
     name: Annotated[str, typer.Option("--name", help="Phase name")] = ...,
     description: Annotated[Optional[str], typer.Option("--description", help="Phase description")] = None,
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
-    agent: Annotated[Optional[str], typer.Option("--agent", "-a", help="Agent type (e.g. build-python, test-runner)")] = None,
+    agent: Annotated[Optional[str], typer.Option("--agent", "-a", help="Agent type (e.g. build-python, test-builder)")] = None,
     execution: Annotated[Optional[str], typer.Option("--execution", "-e", help="Execution mode: sequential or parallel")] = None,
     loop_type: Annotated[Optional[str], typer.Option("--loop-type", help="Loop type override")] = None,
     loop_max_iterations: Annotated[Optional[int], typer.Option("--loop-max-iterations", help="Max iterations for the phase")] = None,
@@ -763,7 +763,7 @@ def epic_phase_update(
     status: Annotated[Optional[str], typer.Option("--status", "-s", help="New status")] = None,
     name: Annotated[Optional[str], typer.Option("--name", "-n", help="New name")] = None,
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
-    agent: Annotated[Optional[str], typer.Option("--agent", "-a", help="Agent type (e.g. build-python, test-runner)")] = None,
+    agent: Annotated[Optional[str], typer.Option("--agent", "-a", help="Agent type (e.g. build-python, test-builder)")] = None,
     execution: Annotated[Optional[str], typer.Option("--execution", "-e", help="Execution mode: sequential or parallel")] = None,
     loop_type: Annotated[Optional[str], typer.Option("--loop-type", help="Loop type override")] = None,
     loop_max_iterations: Annotated[Optional[int], typer.Option("--loop-max-iterations", help="Max iterations for the phase")] = None,
@@ -848,6 +848,22 @@ def epic_new(
     ))
 
 
+# --- epic from-plan ---
+@epic_app.command("from-plan")
+def epic_from_plan(
+    plan_file: Annotated[str, typer.Argument(help="Path to Claude Code plan markdown file")],
+    branch: Annotated[Optional[str], typer.Option("--branch", "-b", help="Git branch name (auto-generated from plan title if omitted)")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n", help="Preview without creating epic")] = False,
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="JSON output")] = False,
+):
+    """Create a seed epic from a Claude Code plan file."""
+    _epic_handle(_ns(
+        command="epic", epic_command="from-plan",
+        json=_global["json"] or json_output, debug=_global["debug"],
+        plan_file=plan_file, branch=branch, dry_run=dry_run,
+    ))
+
+
 # --- epic validate ---
 # --- epic archive ---
 @epic_app.command("archive")
@@ -910,18 +926,6 @@ def stories_sync():
         json=_global["json"], debug=_global["debug"],
     ))
 
-
-@stories_app.command("coverage")
-def stories_coverage(
-    project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
-    min_pct: Annotated[Optional[float], typer.Option("--min-pct", help="Minimum coverage percentage")] = None,
-    exit_code: Annotated[bool, typer.Option("--exit-code", help="Exit 1 if below --min-pct")] = False,
-):
-    """Show story-to-test coverage from the TinyDB index."""
-    _stories_handle(_ns(
-        stories_command="coverage", project=project, min_pct=min_pct, exit_code=exit_code,
-        json=_global["json"], debug=_global["debug"],
-    ))
 
 
 @stories_app.command("run")

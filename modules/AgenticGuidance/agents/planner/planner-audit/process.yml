@@ -13,8 +13,8 @@ process:
     - |
       CCI BOOTSTRAP (CLI Context Injection) - Run FIRST:
       ```bash
-      agentic agent context bootstrap --role planner-audit -j
-      agentic agent epic ticket current -j
+      agentic epic status --epic <epic_folder>
+      agentic epic ticket current -j
       ```
       Use Glob/Grep/Read only if CLI output indicates specific files to examine.
 
@@ -179,8 +179,8 @@ process:
       2. STORY → TICKET (Reverse Traceability):
          Discover affected stories using one of these methods (in priority order):
          a. Read design_context.yml from the epic folder (contains story_to_phase_map)
-         b. Run: `agentic agent stories find --project <project_name>`
-         c. Run: `agentic agent stories report --project <project_name> --coverage`
+         b. Run: `agentic stories find --project <project_name>`
+         c. Run: `agentic stories report --project <project_name> --coverage`
             (shows all stories and their pytest marker coverage)
 
          For each affected story:
@@ -271,11 +271,34 @@ process:
       ```
 
     - |
+      CLEANUP PHASE CREATION:
+
+      When audit findings warrant cleanup, create TinyDB cleanup phase and tickets:
+      ```bash
+      agentic epic phase add --epic {epic_folder_name} --name "cleanup" --agent build-python
+      ```
+
+      For each cleanup action, create a ticket:
+      ```bash
+      agentic epic ticket add --epic {epic_folder_name} \
+        --title "Archive completed files" \
+        --description "Move completed artifacts to completed/ subfolder"
+      ```
+
+      Cleanup categories to plan:
+      - ARCHIVAL: Move completed/stale files to appropriate subfolders
+      - DOCUMENTATION: Finalize documentation, update READMEs
+      - ORPHAN REMOVAL: Delete files that no longer serve a purpose
+      - EPIC ARCHIVAL: Archive entire epic when all work is done
+        (`agentic epic archive --epic {epic_folder_name}`)
+
+    - |
       REPORT FINDINGS:
 
       Provide a summary to the orchestrating agent:
       - Number of files audited
       - Number and severity of issues found
+      - Cleanup phases/tickets created (if any)
       - Recommended immediate actions
       - Path to full audit report
 

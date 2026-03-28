@@ -19,7 +19,7 @@ guideline:
       fence: |
         FENCE: STORY-FIRST PLANNING
         Story discovery MUST occur BEFORE phase determination in any planning workflow.
-        Every epic MUST identify affected user stories using `agentic agent stories find`
+        Every epic MUST identify affected user stories using `agentic stories find`
         before creating phase epics. Stories provide the acceptance criteria that
         drive UAT and define success.
       justification: |
@@ -27,7 +27,7 @@ guideline:
         to user needs, and UAT phases lack concrete acceptance criteria. Story-first
         planning ensures every implementation is anchored to verifiable user outcomes.
       execution_pattern:
-        - "Run `agentic agent stories find [--project <project>]` to discover affected stories"
+        - "Run `agentic stories find [--project <project>]` to discover affected stories"
         - "Record affected_stories in epic metadata (list of story IDs)"
         - "Pass story context to downstream planner agents"
         - "If no stories found: require no_stories_rationale field in epic metadata"
@@ -39,12 +39,12 @@ guideline:
       story_lifecycle:
         discovery:
           description: "Find existing story IDs that map to the objective"
-          command: "agentic agent stories find [--project <name>]"
+          command: "agentic stories find [--project <name>]"
           output: "List of story IDs (US-PROJECT-NNN)"
           when: "ALWAYS - first step in planning workflow"
         generation:
           description: "Create new story content files when discovery finds no stories"
-          responsibility: "planner-build (for build epics), planner-guidance (for teach epics)"
+          responsibility: "planner-build (for build epics and teach epics)"
           output: "Story YAML files with journey, success_criteria, testing fields"
           when: "When discovery returns empty AND epic type is build/test"
           escape_hatch: "Infrastructure, guidance, internal_tooling may skip with rationale"
@@ -112,12 +112,12 @@ guideline:
         without story anchoring risks validating the wrong things or missing
         critical user requirements.
       execution_pattern:
-        - "Identify relevant user stories: `agentic agent stories find`"
+        - "Identify relevant user stories: `agentic stories find`"
         - "Map each story to implementation artifacts"
         - "Execute UAT against story acceptance criteria"
         - "Document pass/fail per story ID (e.g., US-CLI-001)"
       characteristics:
-        - "Stories discovered via: agentic agent stories find [--project <project>]"
+        - "Stories discovered via: agentic stories find [--project <project>]"
         - "Stories location: docs/userstories/"
         - "Each UAT test traces to specific story ID"
         - "Acceptance criteria from stories define UAT success"
@@ -207,27 +207,27 @@ guideline:
         user simulation, while a guidance update benefits from blind testing. Rigid
         mandates on strategy would reduce effectiveness.
       implementation_options:
-        test-user-simulator:
+        test-uat:
           description: |
-            Spawn test-user-simulator agents to execute simulated user journeys.
+            Spawn test-uat agents to execute simulated user journeys.
             Agent walks through user stories as if they were a real user.
           when_to_use:
             - "Full user journey validation needed"
             - "CLI tools or interactive features"
             - "Repeatable automated validation desired"
             - "User flow complexity requires step-by-step execution"
-          agent: "test-user-simulator"
+          agent: "test-uat"
 
         guidance-blind-test:
           description: |
-            Spawn test-guidance-simulator without prior context. Agent attempts
+            Spawn trace-explorer without prior context. Agent attempts
             to complete tasks using only documentation and guidance.
           when_to_use:
             - "Documentation completeness validation needed"
             - "Guidance or instruction updates"
             - "Validating that guidance is self-contained"
             - "Testing that new users can follow instructions"
-          agent: "test-guidance-simulator"
+          agent: "trace-explorer"
 
         documentation-loop:
           description: |
@@ -276,7 +276,7 @@ guideline:
               user_stories:
                 - "US-CLI-001: User can install CLI tool"
                 - "US-CLI-002: User can run basic commands"
-              strategy: "test-user-simulator"
+              strategy: "test-uat"
               acceptance_criteria:
                 - "All referenced stories pass validation"
                 - "User simulator completes journeys without errors"

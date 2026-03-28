@@ -143,7 +143,7 @@ process:
   goal: "What this process accomplishes"
 
   inputs:
-    - location: "test/test-runner/inputs.yml"
+    - location: "test/test-builder/inputs.yml"
       description: "Self-contained sub-agent inputs (each sub-agent has its own complete inputs.yml)"
     - location: "process/specific/input.yml"
       description: "Process-specific additions (if needed)"
@@ -174,11 +174,10 @@ Orchestrator (with plan)
     ├─→ Builder Agent
     │       │
     │       └─→ test-fix-loop (max 5)
-    │               ├─→ Test Builder
-    │               └─→ Test Runner
+    │               └─→ Test Builder
     │
     ├─→ audit-test-fix-loop (MANDATORY, max 3)
-    │       └─→ Test Auditor + Test Runner
+    │       └─→ Test Auditor + Test Builder
     │
     ├─→ cleaner-dependency-loop (max 3)
     │       ├─→ Cleaner Identify

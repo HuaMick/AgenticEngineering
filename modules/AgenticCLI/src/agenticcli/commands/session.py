@@ -84,7 +84,7 @@ def _compile_spawn_context(
 
     Combines the spawn prompt with pre-fetched bootstrap context (role process,
     inputs manifest, current task) so the agent doesn't need to manually run
-    ``agentic -j context bootstrap``.
+    ``agentic -j epic status --epic <epic>``.
 
     Args:
         prompt: The base prompt (from _build_role_prompt or _build_ticket_prompt).
@@ -148,7 +148,7 @@ def _compile_spawn_context(
         logger.debug("Failed to compile bootstrap context: %s", e)
         sections.append(
             f"\nNote: Auto-bootstrap failed ({e}). "
-            f"Run manually: agentic -j context bootstrap --role {role}"
+            f"Run manually: agentic -j epic status --epic <epic>"
         )
 
     return "\n".join(sections)
@@ -211,98 +211,6 @@ def _update_unified_session_status(session_data: dict) -> dict:
         Updated session data dict.
     """
     return _update_session_status(session_data)
-
-
-def _spawn_diagnostic_planner(stuck_session: dict) -> str | None:
-    """Spawn a diagnostic planner for a stuck session.
-
-    Creates a new background session that investigates why the original
-    session became stuck and creates a remediation plan if needed.
-    Only spawns once per stuck session.
-
-    Args:
-        stuck_session: Session data dict of the stuck session.
-
-    Returns:
-        New session ID if diagnostic was spawned, None otherwise.
-    """
-    if stuck_session.get("diagnostic_spawned", False):
-        return None
-
-    session_id = stuck_session["session_id"]
-    prompt_excerpt = stuck_session.get("prompt", "")[:200]
-
-    prompt = (
-        f"Your role is DIAGNOSTIC PLANNER. A session has become stuck/unhealthy.\n\n"
-        f"## Stuck Session Details\n"
-        f"- Session ID: {session_id[:8]}\n"
-        f"- Started: {stuck_session.get('started_at', 'unknown')}\n"
-        f"- Status: {stuck_session.get('status', 'unknown')}\n"
-        f"- PID: {stuck_session.get('pid', 'unknown')}\n"
-        f"- Prompt excerpt: {prompt_excerpt}...\n\n"
-        f"## Your Task\n"
-        f"1. Investigate what went wrong (check logs at ~/.agentic/sessions/logs/{session_id}.*.log)\n"
-        f"2. Determine if this is a one-off or systemic issue\n"
-        f"3. If systemic, create a planning folder to address the root cause\n"
-        f"4. If one-off, document findings and exit\n\n"
-        f"Exit when investigation is complete."
-    )
-
-    # Build command for background spawn (diagnostic planner uses -p for
-    # consistency with main spawn path; limited to 10 turns since it's
-    # investigative, not a full agent session).
-    new_session_id = generate_session_id()
-    cmd = ["claude", "--dangerously-skip-permissions", "--max-turns", "10", "-p", prompt]
-
-    logs_dir = _get_logs_dir()
-    stdout_log = open(logs_dir / f"{new_session_id}.stdout.log", "w")
-    stderr_log = open(logs_dir / f"{new_session_id}.stderr.log", "w")
-
-    try:
-        process = subprocess.Popen(
-            cmd,
-            cwd=stuck_session.get("working_dir", "."),
-            stdin=subprocess.DEVNULL,
-            stdout=stdout_log,
-            stderr=stderr_log,
-            start_new_session=True,
-            env=get_clean_env(),
-        )
-    except (FileNotFoundError, OSError):
-        return None
-    finally:
-        stdout_log.close()
-        stderr_log.close()
-
-    # Save diagnostic session
-    diag_session = {
-        "session_id": new_session_id,
-        "pid": process.pid,
-        "prompt": prompt,
-        "max_turns": 10,
-        "status": "running",
-        "started_at": datetime.now().isoformat(),
-        "ended_at": None,
-        "background": True,
-        "working_dir": stuck_session.get("working_dir", "."),
-        "command": " ".join(cmd),
-        "last_activity": datetime.now().isoformat(),
-        "stdout_log": str(logs_dir / f"{new_session_id}.stdout.log"),
-        "stderr_log": str(logs_dir / f"{new_session_id}.stderr.log"),
-        "metadata": {"diagnostic_for": session_id},
-    }
-    _store.save(diag_session)
-
-    # Mark original session
-    sessions_dir = _store.get_dir()
-    session_path = sessions_dir / f"{session_id}.json"
-    if session_path.exists():
-        data = json.loads(session_path.read_text())
-        data["diagnostic_spawned"] = True
-        data["diagnostic_session_id"] = new_session_id
-        session_path.write_text(json.dumps(data, indent=2))
-
-    return new_session_id
 
 
 def _check_tmux_session(session_id: str) -> bool | None:
@@ -452,14 +360,14 @@ def handle(args, ctx=None):
     elif args.session_command == "logs":
         cmd_logs(args, ctx)
     else:
-        print("Usage: agentic orchestrate session <spawn|list|stop|plan|implement>", file=sys.stderr)
+        print("Usage: agentic orchestrate session <spawn|list|stop>", file=sys.stderr)
         sys.exit(1)
 
 
 def _resolve_epic_folder(epic_name: str) -> Path | None:
-    """Resolve an epic folder name to its full path.
+    """Resolve an epic folder name to its full path via TinyDB.
 
-    Searches docs/epics/live/ for the matching epic folder.
+    Uses the TinyDB-first ``find_epic_folder()`` helper from the epic module.
 
     Args:
         epic_name: Epic folder name (e.g., '260207TA_cli_task_spawn').
@@ -467,20 +375,11 @@ def _resolve_epic_folder(epic_name: str) -> Path | None:
     Returns:
         Path to epic folder, or None if not found.
     """
-    # Try common epic locations
-    search_dirs = [
-        Path.cwd() / "docs" / "epics" / "live",
-        Path.cwd() / "docs" / "epics" / "completed",
-    ]
-
-    for search_dir in search_dirs:
-        if not search_dir.exists():
-            continue
-        candidate = search_dir / epic_name
-        if candidate.exists() and candidate.is_dir():
-            return candidate
-
-    return None
+    try:
+        from agenticcli.commands.epic import find_epic_folder
+        return find_epic_folder(epic_name)
+    except (SystemExit, Exception):
+        return None
 
 
 
@@ -490,7 +389,7 @@ If you encounter a gap in the system (missing service, broken workflow, missing 
 do NOT work around it silently. Instead:
 1. Check if an epic already exists: agentic epic list
 2. If a relevant epic exists, add a ticket to it or start working on the gap ticket.
-3. If no epic exists, create one: agentic epic list (check docs/epics/live/ for existing epics)
+3. If no epic exists, create one: agentic epic list (to confirm it's truly missing)
 4. Then spawn a subagent to implement the fix:
    agentic orchestrate session spawn --role build-python --epic <epic_folder> -b
 5. Continue your original work once the gap is resolved.
@@ -504,15 +403,11 @@ _PLANNING_PHASE_ROLES_SESSION = frozenset({
     "epic-creator",
     "planner-explore",
     "explore",
-    "story-writer",
+    "build-story-writer",
     "planner-build",
     "planner-test",
-    "planner-guidance",
-    "planner-cleaning",
     "planner-audit",
     "planner-orchestration",
-    "planner-sdk",
-    "planner-guidance-testing",
 })
 
 
@@ -532,14 +427,16 @@ def _build_role_prompt(role: str, epic_folder: Path | None) -> str:
     """
     parts = [
         f"You are being spawned as a {role} agent.",
-        f"Initialize your context by running: agentic -j context bootstrap --role {role}",
     ]
 
     if epic_folder:
         epic_name = epic_folder.name
+        parts.append(f"Initialize your context by running: agentic -j epic status --epic {epic_name}")
         parts.append(f"Your active epic is: {epic_name}")
         parts.append(f"Epic path: {epic_folder}")
         parts.append(f"List tickets with: agentic -j epic ticket list --epic {epic_name}")
+    else:
+        parts.append("Initialize your context by running: agentic epic list")
 
     if role in _PLANNING_PHASE_ROLES_SESSION:
         parts.append(
@@ -813,7 +710,7 @@ def cmd_spawn(args, ctx=None):
 
     # Compile full context (prompt + bootstrap data) into a temp file
     # This avoids OS argument length limits and removes the need for
-    # agents to manually run `agentic -j context bootstrap`
+    # agents to manually run `agentic -j epic status --epic <epic>`
     compiled_context = _compile_spawn_context(prompt, role, epic_folder)
     context_file = write_context_file(session_id, compiled_context)
 
@@ -1666,9 +1563,7 @@ def cmd_healthcheck(args, ctx=None):
     """Check health/vitality of a session.
 
     Evaluates PID liveness, log file output, and activity recency
-    to determine overall session health. Without --diagnose, this is
-    purely read-only. With --diagnose, auto-spawns a diagnostic planner
-    for unhealthy/stale sessions.
+    to determine overall session health. Read-only operation.
 
     Args:
         args: Parsed command arguments with session_id.
@@ -1678,7 +1573,6 @@ def cmd_healthcheck(args, ctx=None):
 
     session_id_prefix = getattr(args, "session_id", "")
     json_output = is_json_output() or getattr(args, "json_output", False)
-    diagnose = getattr(args, "diagnose", False)
 
     sessions_dir = _store.get_dir()
     matches = [f for f in sessions_dir.glob("*.json")
@@ -1699,13 +1593,6 @@ def cmd_healthcheck(args, ctx=None):
 
     if json_output:
         result = {"session_id": session["session_id"], **health}
-        if diagnose and (health["stale"] or not health["healthy"]):
-            if not session.get("diagnostic_spawned", False):
-                new_id = _spawn_diagnostic_planner(session)
-                if new_id:
-                    result["diagnostic_spawned"] = new_id
-            else:
-                result["diagnostic_session_id"] = session.get("diagnostic_session_id")
         print(json.dumps(result, indent=2))
         return
 
@@ -1727,15 +1614,6 @@ def cmd_healthcheck(args, ctx=None):
     else:
         console.print("[red bold]Verdict: UNHEALTHY[/red bold]")
 
-    # Only spawn diagnostic planner when --diagnose is passed
-    if diagnose and (health["stale"] or not health["healthy"]):
-        if not session.get("diagnostic_spawned", False):
-            new_id = _spawn_diagnostic_planner(session)
-            if new_id:
-                console.print(f"\n[cyan]Auto-spawned diagnostic session: {new_id[:8]}[/cyan]")
-        else:
-            diag_id = session.get("diagnostic_session_id", "unknown")[:8]
-            console.print(f"\n[dim]Diagnostic already spawned: {diag_id}[/dim]")
 
 
 def cmd_logs(args, ctx=None):

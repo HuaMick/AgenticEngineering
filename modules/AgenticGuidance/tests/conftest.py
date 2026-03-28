@@ -156,26 +156,21 @@ def pytest_sessionfinish(session, exitstatus):
 def _isolate_tinydb(tmp_path):
     """Redirect all TinyDB writes to a per-test temp directory.
 
-    Patches the two entry points that determine the DB file path:
-    - agenticcli.commands.epic._get_repo_db_path: used by CLI commands that
-      import from agenticcli (e.g. cmd_init, cmd_list, _get_repo() helpers).
-      Without this patch those commands write to the real repo-local DB.
-    - agenticguidance.services.epic.EpicService._find_repo_root: used by
-      EpicService.__init__ to derive the repo-local db_path.
+    Patches EpicRepository.__init__ to always use tmp_path/.agentic/epics.db
+    when no explicit db_path is provided (i.e. the global default).
     """
     isolated_db_path = tmp_path / ".agentic" / "epics.db"
     isolated_db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    from agenticguidance.services.epic import EpicService
+    from agenticguidance.services.epic_repository import EpicRepository
 
-    def _isolated_find_repo_root(start=None):
-        return tmp_path
+    _original_init = EpicRepository.__init__
 
-    with patch(
-        "agenticcli.commands.epic._get_repo_db_path",
-        return_value=isolated_db_path,
-    ):
-        with patch.object(EpicService, "_find_repo_root", staticmethod(_isolated_find_repo_root)):
+    def _patched_init(self, db_path=None, epics_base=None, auto_bootstrap=True):
+        _original_init(self, db_path=db_path or isolated_db_path, epics_base=epics_base, auto_bootstrap=auto_bootstrap)
+
+    with patch.object(EpicRepository, "__init__", _patched_init):
+        with patch("agenticcli.commands.epic._get_repo_db_path", return_value=isolated_db_path):
             yield isolated_db_path
 
 

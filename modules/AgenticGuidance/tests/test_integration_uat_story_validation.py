@@ -163,12 +163,12 @@ def test_executor_proceeds_when_stories_complete(temp_plan_dir, temp_stories_dir
     2. Create complete story files (all required fields)
     3. Execute UAT phase
     4. Verify executor validation passes
-    5. Verify test-user-simulator spawned per story
+    5. Verify test-uat spawned per story
 
     Expected outcome:
     - Executor validates story content successfully
     - UAT phase executes
-    - test-user-simulator agent spawned for each story
+    - test-uat agent spawned for each story
     """
     # Plan with UAT phase
     plan = {
@@ -222,24 +222,24 @@ def test_executor_proceeds_when_stories_complete(temp_plan_dir, temp_stories_dir
     uat_should_execute = len(validation_errors) == 0
     assert uat_should_execute is True, "UAT should execute when stories complete"
 
-    # Expected: test-user-simulator spawned per story
+    # Expected: test-uat spawned per story
     expected_spawned_agents = [
-        {'agent': 'test-user-simulator', 'story_id': 'US-CLI-TEST-004'},
-        {'agent': 'test-user-simulator', 'story_id': 'US-CLI-TEST-005'}
+        {'agent': 'test-uat', 'story_id': 'US-CLI-TEST-004'},
+        {'agent': 'test-uat', 'story_id': 'US-CLI-TEST-005'}
     ]
 
     assert len(expected_spawned_agents) == len(complete_stories), \
-        "One test-user-simulator per story"
+        "One test-uat per story"
 
     for spawned in expected_spawned_agents:
-        assert spawned['agent'] == 'test-user-simulator'
+        assert spawned['agent'] == 'test-uat'
         assert spawned['story_id'] in plan['affected_stories']
 
 
 @pytest.mark.integration
 def test_executor_validation_happens_before_spawn():
     """
-    Test that validation gate runs BEFORE spawning test-user-simulator.
+    Test that validation gate runs BEFORE spawning test-uat.
 
     Scenario:
     1. Mock executor workflow

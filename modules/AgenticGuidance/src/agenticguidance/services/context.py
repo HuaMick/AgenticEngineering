@@ -37,20 +37,7 @@ class MainFirstEpicResolver:
         try:
             from agenticguidance.services.epic_repository import EpicRepository
 
-            # Derive db_path from repo root
-            try:
-                result = subprocess.run(
-                    ["git", "rev-parse", "--show-toplevel"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    cwd=self.cwd,
-                )
-                repo_root = Path(result.stdout.strip())
-            except subprocess.CalledProcessError:
-                repo_root = self.cwd
-            db_path = repo_root / ".agentic" / "epics.db"
-            self._repository = EpicRepository(db_path=db_path)
+            self._repository = EpicRepository()
         except Exception:
             logger.warning("Failed to initialize EpicRepository for MainFirstEpicResolver")
 
@@ -544,14 +531,14 @@ Before taking action, run these commands to get your context:
 agentic context bootstrap --role {role_id} -j
 
 # 2. Get your current/next task details
-agentic agent epic ticket current -j
+agentic epic ticket current -j
 ```
 
 ## Execution Loop
 
-1. **Read** your current task from `agentic agent epic ticket current`
+1. **Read** your current task from `agentic epic ticket current`
 2. **Execute** the task following the guidance provided
-3. **Update** status when done: `agentic agent epic ticket update <task-id> --status completed`
+3. **Update** status when done: `agentic epic ticket update <task-id> --status completed`
 4. **Repeat** from step 1 until all tasks are complete
 
 ## CLI Commands Reference
@@ -559,8 +546,8 @@ agentic agent epic ticket current -j
 | Command | Purpose |
 |---------|---------|
 | `agentic context bootstrap --role {role_id}` | Get Seed Context |
-| `agentic agent epic ticket current` | Get current/next task |
-| `agentic agent epic ticket update <id> --status <s>` | Update task status |
+| `agentic epic ticket current` | Get current/next task |
+| `agentic epic ticket update <id> --status <s>` | Update task status |
 
 ## Role Boundary
 

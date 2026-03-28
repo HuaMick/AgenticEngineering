@@ -33,10 +33,10 @@ This agent follows the planner-* naming convention because it creates planning a
 5. **Determine Agent Routing**: Map each phase to the appropriate agent type:
    - teach phases -> teacher agents (teacher-update-guidance, teacher-update-assets)
    - build phases -> builder agents (build-python, build-flutter)
-   - test phases -> tester agents (test-runner, test-builder)
+   - test phases -> tester agents (test-builder, test-audit)
    - cleanup phases -> builder agents
    - audit phases -> planner-audit
-   - uat phases -> test-user-simulator
+   - uat phases -> test-uat
 
 6. **Validate Loop Structure**: Verify non-trivial phases include loop_structure definitions.
    - Build phases require test-fix-loop

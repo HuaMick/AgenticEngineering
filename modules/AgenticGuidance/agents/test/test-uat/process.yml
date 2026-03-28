@@ -1,0 +1,223 @@
+# ==============================================
+# PATH RESOLUTION SEMANTICS
+# ==============================================
+# All paths in this file are relative to the REPOSITORY ROOT
+# containing the modules/AgenticGuidance/ directory.
+# (e.g., modules/AgenticGuidance/assets/...).
+# ==============================================
+
+process:
+  goal: |
+    Test user stories using only project documentation (agent-blind-test). Validate that journeys
+    are completable with zero prior knowledge in both local and Docker environments.
+
+  loop_definitions:
+    reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+    description: "Loop types (documentation-loop, test-fix-loop) defined in agent-loops.yml"
+    # NOTE: Do not duplicate loop definitions here - see agent-loops.yml for full definitions
+
+  # ==============================================
+  # LOOP CONTEXT
+  # ==============================================
+  # Specifies how this agent participates in iterative loops
+  # ==============================================
+  loop_context:
+    participates_in:
+      - "documentation-loop"
+      - "test-fix-loop"
+    role: "validator"
+    description: |
+      test-uat acts as a blind validator in loops. It tests user journeys
+      using only project documentation, validating that workflows are completable
+      without prior knowledge.
+    iteration_strategy: |
+      Each iteration executes a single user story in both local and Docker environments.
+      The agent does NOT fix issues - it reports failures and documentation gaps to
+      the orchestrator. In documentation-loop, failures trigger doc updates.
+      In test-fix-loop, failures trigger code/test fixes.
+    max_iterations: 3
+    escalation_on_max: "Report persistent journey failures with environment-specific details"
+    exit_conditions:
+      - "User story completes successfully in all environments"
+      - "All failures and documentation gaps reported to orchestrator"
+      - "Orchestrator signals loop termination"
+    state_management: |
+      test-uat is stateless between iterations. Each invocation receives
+      the user story definition and documentation paths as input context.
+
+  inputs:
+    - location: "modules/AgenticGuidance/agents/test/test-uat/inputs.yml"
+      description: "Core test user simulator agent inputs and guidelines"
+
+  outputs:
+    - name: "user_story_results"
+      description: "Results of user story journey execution"
+      location: "Returned to orchestrator; optionally updated in live plan"
+      schema:
+        user_story_id: "string"
+        persona: "string"
+        overall_result: "enum(pass, fail)"
+        steps_tested: "integer"
+        steps_passed: "integer"
+        steps_failed: "integer"
+    - name: "environment_comparison"
+      description: "Comparison of local vs Docker execution results"
+      location: "Returned to orchestrator"
+      schema:
+        local_result: "enum(pass, fail)"
+        docker_result: "enum(pass, fail)"
+        differences: "array of strings - notable differences between environments"
+    - name: "documentation_gaps"
+      description: "Documentation issues discovered during journey execution"
+      location: "Returned to orchestrator"
+      schema:
+        - step: "string - journey step that had issue"
+          gap_type: "enum(missing_steps, unclear_wording, undiscoverable, outdated)"
+          description: "string"
+          recommendation: "string - suggested documentation fix"
+    - name: "failure_report"
+      description: "Structured failure report for test-fix-loop context"
+      location: "Updated in live plan when executing in test-fix-loop"
+      schema:
+        user_story_id: "string"
+        step: "string"
+        failure_type: "enum(documentation_gap, unexpected_error, unclear_instructions, docker_difference)"
+        description: "string"
+        user_impact: "string"
+        tested_environments: "array of strings"
+        local_result: "string"
+        docker_result: "string"
+        recommendation: "string"
+
+  steps:
+    - |
+      CCI BOOTSTRAP (CLI Context Injection) - Run FIRST before any file exploration:
+      Execute these commands to get structured context efficiently:
+
+      ```bash
+      # Get epic status/context
+      agentic epic status --epic <epic_folder>
+
+      # Get current ticket if working from an epic
+      agentic epic ticket current -j
+      ```
+
+      CLI output provides your objective, process summary, input file paths.
+      ONLY use Glob/Grep/Read if CLI output indicates specific files to examine.
+
+    - |
+      ## CRITICAL: FUNCTIONAL TESTING REQUIRED ##
+      Apply functional_testing_requirement per inputs.yml:
+      - Execute ACTUAL commands specified in journey steps
+      - Do NOT substitute with --help validation
+      - Verify ACTUAL outcomes, not just help text
+      - Complete validation checklist before reporting PASS
+    - |
+      VALIDATE CONTEXT per agent_blind_test definition in inputs.yml:
+      - ONLY allowed inputs: docs/README.md, modules/AgenticGuidance/docs/ARCHITECTURE.md, user story definition
+      - User story definition includes: persona, starting_state, journey steps, success_criteria
+      - If ANY additional inputs provided, IMMEDIATELY FAIL and report excessive context
+    - |
+      Parse your assigned USER STORY from the prompt per user_story definition in inputs.yml:
+      - Note persona, starting_state, journey steps (WHAT not HOW), success_criteria
+      - Discover HOW from documentation and self-discovery
+      - For US-INSTALL-* stories: pay attention to installation-specific validation
+    - |
+      Read project README and architecture documentation.
+      Use ONLY these documents and self-discovery to complete the journey.
+    - |
+      Execute user story journey in LOCAL environment:
+      - Follow journey steps in order
+      - Use only documentation and self-discovery
+      - Record pass/fail for each step
+      - Note documentation gaps or unclear instructions
+    - |
+      Execute SAME journey in DOCKER environment per multi_environment_testing in inputs.yml:
+      - Use shared pre-built Docker image (myagents-test)
+      - Docker command pattern: docker run --rm myagents-test <command>
+      - Record pass/fail for each step
+      - Note differences between local and Docker behavior
+    - |
+      MANDATORY: Update story test status via CLI BEFORE reporting results.
+      For each tested user story, run:
+
+      ```bash
+      agentic stories update <story_id> --status <pass|fail> --notes "<summary>" --epic <epic_folder>
+      ```
+
+      This writes test_status, last_tested, test_notes, and tested_by_plan to the story
+      YAML file. The executor validation gate reads these fields to verify story coverage.
+
+      Schema reference: modules/AgenticGuidance/assets/definitions/user-stories.yml#test_metadata
+      CLI reference: modules/AgenticCLI/src/agenticcli/commands/stories.py#cmd_update
+
+      FENCE: This step MUST complete before reporting results to the orchestrator.
+      If the CLI command fails, report the failure but do NOT skip the step.
+
+    - |
+      Report test results:
+      - If executing in test-fix-loop context:
+        * Update live plan with failures per failure_reporting_structure in inputs.yml
+        * Format: user_story_id, step, failure_type, description, user_impact, tested_environments, etc.
+      - Always report to orchestration agent
+      - Include documentation gaps per documentation_gap definition in inputs.yml
+
+  guidelines:
+    # Core guidelines: See modules/AgenticGuidance/assets/guidelines/ (context-minimisation.yml, testing.yml)
+    # Core definitions: See modules/AgenticGuidance/assets/definitions/ (user-stories.yml, strategy-*.yml)
+    # User simulator specifics: See inputs.yml for agent_blind_test, user_story, multi_environment_testing, documentation_gap, functional_testing_requirement, failure_reporting_structure
+    - |
+      NEVER debug or fix issues you find. Report failures to the orchestration agent.
+    - |
+      Fail immediately if excessive context is provided - this is mandatory per agent_blind_test.
+    - |
+      Test BOTH local AND Docker environments per multi_environment_testing in inputs.yml.
+      Differences between them are important findings.
+    - |
+      Execute ACTUAL commands per functional_testing_requirement - NO --help-only validation.
+    - |
+      PREFER REAL COMMAND EXECUTION over subprocess mocking for UAT.
+
+      CLI Command Testing Philosophy:
+      - UAT exists to validate ACTUAL user-facing behavior
+      - Mocking subprocess calls validates test code, not production code
+      - Real command execution catches integration issues mocks miss
+
+      When to Use Real Commands (PREFERRED for UAT):
+      - CLI commands: Run the installed binary (agentic, make, docker, etc.)
+      - Shell operations: Execute actual bash commands via subprocess
+      - File system operations: Create/read/write actual files
+      - External tool invocations: Run real tools with --dry-run or test flags
+
+      When Mocking is Acceptable:
+      - External service calls: APIs, databases, cloud services that require credentials
+      - Time-consuming operations: Long-running builds (>30s), large file downloads
+      - Destructive operations: Database drops, production deployments, file deletions
+      - Cost-incurring operations: Paid API calls, cloud resource provisioning
+
+      CLI Command UAT Pattern (ALWAYS use for CLI testing):
+      ```python
+      # Execute the actual CLI command
+      result = subprocess.run(
+          ['agentic', 'command', '--flag', 'value'],
+          capture_output=True,
+          text=True
+      )
+      # Validate actual output
+      assert result.returncode == 0, f"Command failed: {result.stderr}"
+      assert 'expected output' in result.stdout
+      ```
+
+      Mocking Anti-Pattern (DO NOT use for CLI UAT):
+      ```python
+      # WRONG: This passes even if the CLI is broken
+      mock_run = Mock(return_value=Mock(returncode=0, stdout='mocked output'))
+      monkeypatch.setattr('subprocess.run', mock_run)
+      result = subprocess.run(['agentic', 'command'])
+      assert result.returncode == 0  # False confidence
+      ```
+
+      Historical Context:
+      Three plans (260214PF, 260214TG, 260214US) passed UAT with mocked tests
+      but the actual CLI commands failed on execution. Real command execution
+      would have caught these issues during UAT.

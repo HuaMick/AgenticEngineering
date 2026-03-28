@@ -64,14 +64,7 @@ class TicketService:
         if self._repository is None:
             try:
                 from .epic_repository import EpicRepository
-                # Derive db_path from epic_path's repo root for test isolation
-                repo_root = epic_path
-                while repo_root != repo_root.parent:
-                    if (repo_root / ".git").exists():
-                        break
-                    repo_root = repo_root.parent
-                db_path = repo_root / ".agentic" / "epics.db"
-                self._repository = EpicRepository(db_path=db_path)
+                self._repository = EpicRepository()
             except Exception:
                 pass
 

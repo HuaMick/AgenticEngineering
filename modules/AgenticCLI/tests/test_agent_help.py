@@ -32,9 +32,9 @@ class TestAgentNameDetection:
 
     def test_is_agent_name_valid(self):
         """Test detection of valid agent names (positional, no -- prefix)."""
-        assert is_agent_name("planner-guidance") is True
+        assert is_agent_name("planner-build") is True
         assert is_agent_name("build-python") is True
-        assert is_agent_name("test-runner") is True
+        assert is_agent_name("test-builder") is True
         assert is_agent_name("orchestration-executor") is True
 
     def test_is_agent_name_invalid(self):
@@ -43,32 +43,32 @@ class TestAgentNameDetection:
         assert is_agent_name("help") is False
         assert is_agent_name("-j") is False
         # Old flag syntax should NOT work
-        assert is_agent_name("--planner-guidance") is False
+        assert is_agent_name("--planner-build") is False
         assert is_agent_name("--") is False
 
     def test_agent_name_with_dashes(self):
         """Test multi-word agent names work correctly."""
         # All agents with multiple dashes
-        assert is_agent_name("planner-guidance-testing") is True
-        assert is_agent_name("test-guidance-simulator") is True
+        assert is_agent_name("build-story-writer") is True
+        assert is_agent_name("build-docs-writer") is True
         assert is_agent_name("teacher-update-guidance") is True
 
     def test_get_agent_name_valid(self):
         """Test extracting agent name from valid positional argument."""
-        assert get_agent_name("planner-guidance") == "planner-guidance"
+        assert get_agent_name("planner-build") == "planner-build"
         assert get_agent_name("build-python") == "build-python"
-        assert get_agent_name("test-runner") == "test-runner"
+        assert get_agent_name("test-builder") == "test-builder"
 
     def test_get_agent_name_invalid(self):
         """Test returns None for invalid names."""
         assert get_agent_name("nonexistent") is None
         assert get_agent_name("help") is None
         # Old flag syntax should return None
-        assert get_agent_name("--planner-guidance") is None
+        assert get_agent_name("--planner-build") is None
 
     def test_all_agents_registered(self):
         """Verify all agents are in KNOWN_AGENTS."""
-        assert len(KNOWN_AGENTS) == 28, f"Expected 28 agents, got {len(KNOWN_AGENTS)}"
+        assert len(KNOWN_AGENTS) == 20, f"Expected 20 agents, got {len(KNOWN_AGENTS)}"
 
     def test_all_agents_have_categories(self):
         """Verify all agents have category mappings."""
@@ -118,7 +118,7 @@ class TestAgentHelpContent:
 
     def test_context_includes_role(self):
         """Test that context includes role description when available."""
-        context = _load_agent_context("planner-guidance")
+        context = _load_agent_context("planner-build")
 
         # Role may be None if files not found, but key should exist
         assert "role" in context
@@ -126,7 +126,7 @@ class TestAgentHelpContent:
     @pytest.mark.story("US-GDN-030")
     def test_help_includes_process_steps(self):
         """Test that context includes process steps when available."""
-        context = _load_agent_context("test-runner")
+        context = _load_agent_context("test-builder")
 
         # process_steps should be a list
         assert isinstance(context.get("process_steps", []), list)
@@ -152,7 +152,7 @@ class TestAgentHelpOutput:
 
         try:
             sys.stdout = captured
-            show_agent_help("planner-guidance", json_output=True)
+            show_agent_help("planner-build", json_output=True)
         finally:
             sys.stdout = old_stdout
 
@@ -160,7 +160,7 @@ class TestAgentHelpOutput:
         data = json.loads(output)
 
         assert "agent" in data
-        assert data["agent"] == "planner-guidance"
+        assert data["agent"] == "planner-build"
         assert "category" in data
         assert "next_commands" in data
 
@@ -196,7 +196,7 @@ class TestAgentHelpOutput:
 
         try:
             sys.stdout = captured
-            show_agent_help("test-runner", json_output=True)
+            show_agent_help("test-builder", json_output=True)
         finally:
             sys.stdout = old_stdout
 
@@ -213,12 +213,12 @@ class TestAgentDirectoryFinding:
 
     def test_find_agent_directory_planner(self):
         """Test finding planner agent directory."""
-        agent_dir = _find_agent_directory("planner-guidance")
+        agent_dir = _find_agent_directory("planner-build")
 
         # May be None if not in AgenticEngineering repo
         if agent_dir:
             assert agent_dir.exists()
-            assert "planner-guidance" in str(agent_dir)
+            assert "planner-build" in str(agent_dir)
 
     def test_find_agent_directory_build(self):
         """Test finding build agent directory."""
@@ -241,7 +241,7 @@ class TestCLIIntegration:
     def test_cli_agent_positional_invocation(self):
         """Test invoking CLI with positional agent name (CCI pattern)."""
         result = subprocess.run(
-            [sys.executable, "-m", "agenticcli.entry", "planner-guidance"],
+            [sys.executable, "-m", "agenticcli.entry", "planner-build"],
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent / "src",
@@ -252,7 +252,7 @@ class TestCLIIntegration:
         assert result.returncode == 0, f"CLI failed: {result.stderr}"
 
         # Output should contain agent info
-        assert "planner-guidance" in result.stdout.lower()
+        assert "planner-build" in result.stdout.lower()
 
     def test_cli_agent_positional_with_json(self):
         """Test invoking CLI with positional agent name and -j."""
@@ -274,7 +274,7 @@ class TestCLIIntegration:
     def test_cli_agent_positional_with_bootstrap(self):
         """Test invoking CLI with positional agent name and --bootstrap."""
         result = subprocess.run(
-            [sys.executable, "-m", "agenticcli.entry", "test-runner", "--bootstrap"],
+            [sys.executable, "-m", "agenticcli.entry", "test-builder", "--bootstrap"],
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent / "src",
@@ -284,7 +284,7 @@ class TestCLIIntegration:
         assert result.returncode == 0, f"CLI failed: {result.stderr}"
 
         # Bootstrap output should have more detail
-        assert "BOOTSTRAP CONTEXT" in result.stdout or "test-runner" in result.stdout.lower()
+        assert "BOOTSTRAP CONTEXT" in result.stdout or "test-builder" in result.stdout.lower()
 
     @pytest.mark.story("US-GDN-029")
     def test_cli_agent_bootstrap_with_json(self):
@@ -308,7 +308,7 @@ class TestCLIIntegration:
     def test_cli_old_flag_syntax_rejected(self):
         """Test old --agent-name syntax no longer works (breaking change)."""
         result = subprocess.run(
-            [sys.executable, "-m", "agenticcli.entry", "--planner-guidance"],
+            [sys.executable, "-m", "agenticcli.entry", "--planner-build"],
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent / "src",
@@ -343,7 +343,7 @@ class TestCLIIntegration:
 
         start = time.time()
         result = subprocess.run(
-            [sys.executable, "-m", "agenticcli.entry", "test-runner"],
+            [sys.executable, "-m", "agenticcli.entry", "test-builder"],
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent / "src",
@@ -389,10 +389,10 @@ class TestErrorHandling:
 
                 mock_find.return_value = Path(tmpdir)
 
-                context = _load_agent_context("test-runner")
+                context = _load_agent_context("test-builder")
 
                 # Should work with just manifest
-                assert context["agent"] == "test-runner"
+                assert context["agent"] == "test-builder"
                 assert context["role"] == "Test Agent"
                 assert context["process_steps"] == []  # No process file
 
@@ -418,14 +418,14 @@ class TestAgentCategories:
     """Tests for agent category organization."""
 
     def test_planner_agents_count(self):
-        """Verify 11 planner agents."""
+        """Verify 6 planner agents."""
         planners = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "planner"]
-        assert len(planners) == 11
+        assert len(planners) == 6
 
     def test_test_agents_count(self):
-        """Verify 8 test agents."""
+        """Verify 4 test agents."""
         testers = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "test"]
-        assert len(testers) == 8
+        assert len(testers) == 4
 
     def test_orchestration_agents_count(self):
         """Verify 3 orchestration agents."""
@@ -438,9 +438,9 @@ class TestAgentCategories:
         assert len(teachers) == 2
 
     def test_build_agents_count(self):
-        """Verify 3 build agents."""
+        """Verify 4 build agents."""
         builders = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "build"]
-        assert len(builders) == 3
+        assert len(builders) == 4
 
     def test_deploy_agents_count(self):
         """Verify 1 deploy agent."""

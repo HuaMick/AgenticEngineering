@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 class EpicStatus(Enum):
-    """Canonical epic statuses (6 lifecycle values)."""
+    """Canonical epic statuses (7 lifecycle values)."""
 
+    SEED = "seed"
     ACTIVE = "active"
     PLANNING = "planning"
     IN_PROGRESS = "in_progress"
@@ -28,9 +29,10 @@ class EpicStatus(Enum):
     BLOCKED = "blocked"
 
 
-# Maps all legacy status strings to the 6 canonical values
+# Maps all legacy status strings to the 7 canonical values
 EPIC_STATUS_MIGRATION: dict[str, str] = {
     # Canonical values (identity)
+    "seed": "seed",
     "active": "active",
     "planning": "planning",
     "in_progress": "in_progress",
@@ -54,7 +56,8 @@ def normalize_epic_status(status: str) -> str:
         status: Any status string (old or new).
 
     Returns:
-        One of 'active', 'planning', 'in_progress', 'completed', 'deferred', 'blocked'.
+        One of 'seed', 'active', 'planning', 'in_progress', 'completed',
+        'deferred', 'blocked'.
     """
     return EPIC_STATUS_MIGRATION.get(status.lower().strip(), "active")
 
@@ -693,12 +696,7 @@ class EpicService:
         if self._repository is None:
             try:
                 from .epic_repository import EpicRepository
-                # Use repo-local DB so tests with tmp_path get isolated instances
-                db_path = self.repo_path / ".agentic" / "epics.db"
-                self._repository = EpicRepository(
-                    db_path=db_path,
-                    epics_base=self.epics_base,
-                )
+                self._repository = EpicRepository()
             except Exception:
                 pass
 

@@ -1,0 +1,126 @@
+# ==============================================
+# PATH RESOLUTION SEMANTICS
+# ==============================================
+# All paths in this file are relative to the REPOSITORY ROOT
+# containing the modules/AgenticGuidance/ directory.
+# ==============================================
+
+process:
+  goal: |
+    Analyse execution traces from agent runs and produce structured friction
+    reports for teacher agent consumption. Combines trace analysis, guidance
+    walkthrough validation, and story compliance checking.
+
+  inputs:
+    - location: "modules/AgenticGuidance/agents/test/trace-explorer/inputs.yml"
+      description: "Core trace explorer agent inputs"
+    - name: "affected_stories"
+      source: "ticket.inputs.affected_stories"
+      description: "Story IDs to validate execution against"
+      required: true
+
+  fences:
+    - name: "STORY-FIRST PLANNING"
+      description: |
+        FENCE: STORY-FIRST PLANNING. If no affected_stories are present in the
+        ticket, flag this in your output as a blocking issue and do NOT proceed.
+
+  outputs:
+    - name: "friction_report"
+      format: "yaml"
+      description: "Structured friction report for teacher consumption"
+      location: "docs/epics/live/{epic_folder}/analysis/friction_report.yml"
+      schema:
+        metadata:
+          epic_folder: "string"
+          analysis_date: "YYYYMMDD"
+          analyst: "trace-explorer"
+          agents_analysed: "array of agent names"
+        friction_points:
+          - id: "string - FP-NNN"
+            type: "enum(guidance_gap, backtracking, excessive_iteration, input_resolution_failure, story_drift, tool_misuse, context_overflow)"
+            severity: "enum(critical, high, medium, low)"
+            agent: "string - agent that experienced friction"
+            guidance_file: "string - path to relevant process.yml or inputs.yml"
+            description: "string - what happened"
+            evidence: "string - log excerpt or trace reference"
+            recommendation: "string - suggested guidance improvement"
+        story_compliance:
+          - story_id: "string - US-XXX-NNN"
+            status: "enum(satisfied, partially_satisfied, not_addressed, drifted)"
+            evidence: "string - how the story was or wasn't addressed"
+        summary:
+          total_friction_points: "integer"
+          by_severity: "map of severity → count"
+          by_type: "map of type → count"
+          top_recommendations: "array of strings"
+
+  steps:
+    - |
+      CCI BOOTSTRAP (CLI Context Injection) - Run FIRST:
+      ```bash
+      agentic epic status --epic <epic_folder>
+      agentic epic ticket current -j
+      ```
+
+    - |
+      FENCE: STORY-FIRST PLANNING. If no affected_stories are present in the
+      ticket, flag this in your output as a blocking issue and do NOT proceed.
+
+    - |
+      COLLECT EXECUTION TRACES:
+      Gather agent output logs from the epic execution:
+      - TinyDB phase/ticket records: `agentic -j epic ticket list --epic {epic_folder}`
+      - Tmux pane logs (if available): check /tmp/agentic-* or session logs
+      - Agent output files in the epic folder
+
+    - |
+      TRAJECTORY ANALYSIS:
+      For each agent execution trace:
+      1. Extract decision points — where did the agent make choices?
+      2. Detect backtracking — did the agent reverse or redo decisions?
+      3. Measure iteration depth — how many loop iterations occurred?
+      4. Identify anomalies — unexpected tool usage, error patterns, timeouts
+
+    - |
+      GUIDANCE WALKTHROUGH:
+      If agent_guidance inputs are provided:
+      1. Read the target agent's process.yml step by step
+      2. For each step, check if the execution trace followed the guidance
+      3. Identify gaps — steps where the agent deviated or got stuck
+      4. Classify each gap using the friction taxonomy from inputs.yml
+
+    - |
+      STORY COMPLIANCE CHECK:
+      For each affected_story:
+      1. Read the story's acceptance criteria
+      2. Check if the execution trace addresses each criterion
+      3. Flag stories that were not addressed or where work drifted
+
+    - |
+      GENERATE FRICTION REPORT:
+      Create the structured YAML friction report:
+      - One entry per friction point, with type, severity, evidence
+      - Story compliance section
+      - Summary with top recommendations for teacher agents
+
+      Write to: docs/epics/live/{epic_folder}/analysis/friction_report.yml
+
+    - |
+      REPORT TO ORCHESTRATOR:
+      Summarize findings:
+      - Total friction points by severity
+      - Top 3 recommendations
+      - Story compliance status
+      - Path to full friction report
+
+  guidelines:
+    - |
+      ANALYSIS ONLY: Do NOT modify any guidance files. Your output is a friction
+      report consumed by teacher-update-guidance agents.
+    - |
+      EVIDENCE-BASED: Every friction point must cite specific evidence from the
+      execution trace. Do not speculate about issues without log evidence.
+    - |
+      PRIORITIZE: Focus on high-severity friction that caused agent failures or
+      significant wasted effort. Low-severity items are informational only.

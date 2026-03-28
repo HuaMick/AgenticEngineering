@@ -1,0 +1,317 @@
+stories:
+  - id: US-001
+    title: "Unified phase-routing validation utility"
+    category: "utility-extraction"
+    priority: critical
+    lifecycle: "implemented"
+
+    description: |
+      As a developer maintaining the orchestration workflows, I want a single
+      validate_phase_routing() function that encapsulates the "all phases have
+      agent routing" and "all tickets still proposed" checks so that I no longer
+      need to keep three separate inline implementations in sync when the
+      validation logic changes.
+
+    prerequisites:
+      - "EpicRepository is available and can list phases and get epic data"
+      - "PhaseData objects have an `agent` field that may be None or a string"
+      - "Ticket objects have a `status` field including 'proposed' as a value"
+
+    steps:
+      - step: 1
+        when: "A caller invokes validate_phase_routing(repo, epic_folder) for an epic with all phases having agent routing and at least one ticket beyond 'proposed' status"
+        then:
+          - "Returns (True, None) indicating the epic is fully routed and planning is complete"
+
+      - step: 2
+        when: "A caller invokes validate_phase_routing(repo, epic_folder) for an epic with no phases in TinyDB"
+        then:
+          - "Returns (False, reason) where reason explains that no phases exist"
+
+      - step: 3
+        when: "A caller invokes validate_phase_routing(repo, epic_folder) for an epic where some phases lack agent routing"
+        then:
+          - "Returns (False, reason) where reason identifies the unrouted phases"
+
+      - step: 4
+        when: "A caller invokes validate_phase_routing(repo, epic_folder) for an epic with all phases routed but all tickets still in 'proposed' status"
+        then:
+          - "Returns (False, reason) where reason explains that planning has not yet promoted tickets beyond proposed"
+
+      - step: 5
+        when: "A caller invokes validate_phase_routing(repo, epic_folder) for an epic with no tickets"
+        then:
+          - "Returns a consistent result that does not crash or raise an exception"
+        notes: "Edge case — empty epic with phases but no tickets should be handled gracefully"
+
+    related_commands: []
+    related_agents:
+      - "build-python"
+
+    related_files:
+      - "modules/AgenticCLI/src/agenticcli/utils/phase_validation.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-002
+    title: "Planning discovery uses shared validation"
+    category: "workflow-refactor"
+    priority: high
+    lifecycle: "implemented"
+
+    description: |
+      As the planner loop workflow, I want discover_plans_needing_orchestration()
+      to delegate its phase-routing check to validate_phase_routing() so that the
+      discovery logic stays consistent with other call sites and the inline
+      duplication is eliminated.
+
+    prerequisites:
+      - "validate_phase_routing() utility exists and is importable"
+      - "discover_plans_needing_orchestration() currently contains inline routing checks at planner_loop.py:229"
+
+    steps:
+      - step: 1
+        when: "The planner loop calls discover_plans_needing_orchestration() to find epics needing work"
+        then:
+          - "The function delegates to validate_phase_routing() for each candidate epic"
+          - "Epics with no phases, unrouted phases, or all-proposed tickets are included in the result"
+          - "Seed epic handling is preserved unchanged"
+
+      - step: 2
+        when: "An epic has fully routed phases and at least one ticket beyond 'proposed'"
+        then:
+          - "The epic is excluded from the needs-work list, same as pre-refactor behavior"
+
+    related_commands:
+      - "agentic plan"
+    related_agents:
+      - "build-python"
+
+    related_files:
+      - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-003
+    title: "Single-epic early-exit uses shared validation"
+    category: "workflow-refactor"
+    priority: high
+    lifecycle: "implemented"
+
+    description: |
+      As the planner loop runner in single-epic mode, I want the early-exit
+      check in PlannerLoopRunner.run() to use validate_phase_routing() so that
+      the fast-path routing check stays consistent with the discovery function
+      and future changes to the predicate only need to happen in one place.
+
+    prerequisites:
+      - "validate_phase_routing() utility exists and is importable"
+      - "PlannerLoopRunner.run() currently has inline routing logic at planner_loop.py:1094-1109"
+
+    steps:
+      - step: 1
+        when: "PlannerLoopRunner.run() is invoked with a specific epic_folder and the epic has fully routed phases with tickets beyond 'proposed'"
+        then:
+          - "The runner early-exits with True, printing the planning-complete promise"
+          - "Behavior is identical to pre-refactor"
+
+      - step: 2
+        when: "PlannerLoopRunner.run() is invoked with a specific epic_folder and the epic has routed phases but all tickets are 'proposed'"
+        then:
+          - "The runner proceeds with planning instead of early-exiting"
+          - "A log message indicates re-planning is needed because tickets are still proposed"
+
+    related_commands:
+      - "agentic plan"
+    related_agents:
+      - "build-python"
+
+    related_files:
+      - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-004
+    title: "Execution discovery filters unrouted epics"
+    category: "workflow-refactor"
+    priority: high
+    lifecycle: "implemented"
+
+    description: |
+      As the execution workflow, I want discover_plans_needing_execution() to
+      additionally verify phase routing via validate_phase_routing() so that
+      unrouted epics are filtered out before they reach _execute_plan() and
+      fail at the per-phase guard, improving error reporting and preventing
+      wasted agent spawns.
+
+    prerequisites:
+      - "validate_phase_routing() utility exists and is importable"
+      - "discover_plans_needing_execution() currently only checks has_pending_phases()"
+      - "The per-phase guard in _execute_plan() at orchestration.py:389 already rejects phases without agent routing"
+
+    steps:
+      - step: 1
+        when: "The execution runner calls discover_plans_needing_execution() and an epic has pending phases but some phases lack agent routing"
+        then:
+          - "The epic is excluded from the execution list"
+          - "A log message indicates the epic was skipped due to missing routing"
+
+      - step: 2
+        when: "The execution runner calls discover_plans_needing_execution() and an epic has pending phases with all phases routed"
+        then:
+          - "The epic is included in the execution list as before"
+          - "has_pending_phases() check is preserved as a complementary filter"
+
+      - step: 3
+        when: "An unrouted epic that would previously have been discovered and then failed at the per-phase guard"
+        then:
+          - "The epic is now caught earlier at discovery time"
+          - "No agent spawn is wasted on an epic that would fail immediately"
+
+    related_commands:
+      - "agentic execute"
+    related_agents:
+      - "build-python"
+
+    related_files:
+      - "modules/AgenticCLI/src/agenticcli/workflows/orchestration.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-005
+    title: "Comprehensive unit tests for phase validation"
+    category: "testing"
+    priority: high
+    lifecycle: "under-construction"
+
+    description: |
+      As a developer making future changes to validation logic, I want
+      comprehensive unit tests for validate_phase_routing() so that regressions
+      are caught immediately and the behavioral contract is documented in code.
+
+    prerequisites:
+      - "validate_phase_routing() utility exists in phase_validation.py"
+      - "pytest test infrastructure is available"
+
+    steps:
+      - step: 1
+        when: "Tests run with an epic whose phases all have agent routing and tickets beyond 'proposed'"
+        then:
+          - "validate_phase_routing returns (True, None)"
+
+      - step: 2
+        when: "Tests run with an epic that has no phases"
+        then:
+          - "validate_phase_routing returns (False, reason) with a meaningful reason string"
+
+      - step: 3
+        when: "Tests run with an epic where some phases lack the agent field"
+        then:
+          - "validate_phase_routing returns (False, reason)"
+
+      - step: 4
+        when: "Tests run with an epic where all tickets are still 'proposed'"
+        then:
+          - "validate_phase_routing returns (False, reason)"
+
+      - step: 5
+        when: "Tests run with mixed ticket statuses (some proposed, some pending)"
+        then:
+          - "validate_phase_routing returns (True, None) because not all tickets are proposed"
+
+    related_commands: []
+    related_agents:
+      - "test-builder"
+
+    related_files:
+      - "modules/AgenticCLI/tests/test_phase_validation.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-006
+    title: "Optional DRY-up of any-routed-phase checks in epic.py"
+    category: "cleanup"
+    priority: medium
+    lifecycle: "implemented"
+
+    description: |
+      As a developer maintaining epic.py, I want the related but semantically
+      different "any phase has routing" predicate (used in has_orchestration_phases
+      at line 111 and the validate command at line 1260) evaluated for potential
+      consolidation into a has_any_routed_phase() helper, so that related
+      phase-routing logic is discoverable in one module rather than scattered
+      across files.
+
+    prerequisites:
+      - "phase_validation.py utility module already exists from US-001"
+      - "The any() predicate in epic.py is semantically different from the all() predicate — any vs all"
+
+    steps:
+      - step: 1
+        when: "A developer reviews the cleanup ticket and determines the scope is appropriate"
+        then:
+          - "A has_any_routed_phase() helper is added to phase_validation.py"
+          - "Both call sites in epic.py (line 111 and line 1260) are updated to use it"
+
+      - step: 2
+        when: "A developer reviews the cleanup ticket and determines the scope is too broad or the coupling is undesirable"
+        then:
+          - "The decision is documented in the ticket as a 'decided not to change' note"
+          - "No code changes are made for this story"
+        notes: "This story explicitly allows a no-op outcome if the refactor is not warranted"
+
+    related_commands:
+      - "agentic epic"
+    related_agents:
+      - "build-python"
+
+    related_files:
+      - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+      - "modules/AgenticCLI/src/agenticcli/utils/phase_validation.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+categories:
+  - name: "utility-extraction"
+    description: "Extract the shared phase-routing validation predicate into a reusable utility module"
+    codebase_scope:
+      - "modules/AgenticCLI/src/agenticcli/utils/"
+    story_ids:
+      - "US-001"
+
+  - name: "workflow-refactor"
+    description: "Refactor planner_loop.py and orchestration.py to call the shared utility instead of inline checks"
+    codebase_scope:
+      - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+      - "modules/AgenticCLI/src/agenticcli/workflows/orchestration.py"
+    story_ids:
+      - "US-002"
+      - "US-003"
+      - "US-004"
+
+  - name: "testing"
+    description: "Unit tests for the new phase_validation utility and regression tests for the refactored workflows"
+    codebase_scope:
+      - "modules/AgenticCLI/tests/"
+    story_ids:
+      - "US-005"
+
+  - name: "cleanup"
+    description: "Evaluate and optionally consolidate the related any-routed-phase predicate in epic.py"
+    codebase_scope:
+      - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+      - "modules/AgenticCLI/src/agenticcli/utils/"
+    story_ids:
+      - "US-006"

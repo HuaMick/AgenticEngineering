@@ -153,8 +153,7 @@ def _run_planning_loop(args, ctx=None):
     from agenticcli.workflows.orchestration import PlanningRunner
     from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
-    epics_dir = Path(working_dir) / "docs" / "epics" / "live"
-    workflow = PlannerLoopWorkflow(epics_dir=epics_dir, working_dir=working_dir, prompt=prompt)
+    workflow = PlannerLoopWorkflow(working_dir=working_dir, prompt=prompt)
     budget_usd = getattr(args, "budget_usd", 50.0)
     runner = PlanningRunner(
         workflow=workflow, project=project, plan_folder=plan_folder,
@@ -383,8 +382,7 @@ def _run_executing_loop(args, ctx=None):
 
     from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
 
-    epics_dir = Path(working_dir) / "docs" / "epics" / "live"
-    workflow = OrchestrationWorkflow(epics_dir=epics_dir, working_dir=working_dir)
+    workflow = OrchestrationWorkflow(working_dir=working_dir)
     budget_usd = getattr(args, "budget_usd", 50.0)
     runner = ExecutionRunner(
         workflow=workflow,

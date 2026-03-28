@@ -66,17 +66,17 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
     "explore": ["Read", "Glob", "Grep", "Bash"],
     "planner-build": ["Read", "Glob", "Grep", "Bash"],
     "planner-test": ["Read", "Glob", "Grep", "Bash"],
-    "planner-guidance": ["Read", "Glob", "Grep", "Bash"],
-    "planner-cleaning": ["Read", "Glob", "Grep", "Bash"],
-    "planner-guidance-testing": ["Read", "Glob", "Grep", "Bash"],
-    "planner-sdk": ["Read", "Glob", "Grep", "Bash"],
     "planner-orchestration": ["Read", "Glob", "Grep", "Bash"],
     "planner-audit": ["Read", "Glob", "Grep", "Bash"],
-    "story-writer": ["Read", "Glob", "Grep", "Bash", "Write"],
     # ── Execution phase: full access ──
-    "test-runner": ["Read", "Glob", "Grep", "Bash", "Edit"],
     "build-python": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
     "build-flutter": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
+    "build-story-writer": ["Read", "Glob", "Grep", "Bash", "Write"],
+    "build-docs-writer": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
+    "test-builder": ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
+    "test-audit": ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
+    "test-uat": ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
+    "trace-explorer": ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
 }
 
 
@@ -85,20 +85,19 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
 ROLE_TIMEOUT_SECONDS: dict[str, int] = {
     "epic-creator": 600,           # 10 min — CLI scaffolding only
     "planner-explore": 900,        # 15 min — codebase exploration + ticket updates
-    "explore": 600,               # 10 min — lightweight codebase analysis
-    "story-writer": 600,           # 10 min — story generation (lightweight planning)
+    "explore": 600,                # 10 min — lightweight codebase analysis
     "planner-build": 1800,
     "planner-test": 1800,
-    "planner-guidance": 1800,
-    "planner-cleaning": 1800,
-    "planner-guidance-testing": 1800,
-    "planner-sdk": 1800,
-    "planner-orchestration": 3600, # 60 min — orchestration
+    "planner-audit": 1800,
+    "planner-orchestration": 900,  # 15 min (observed: 4-5 min)
     "build-python": 1800,
     "build-flutter": 1800,
-    "test-runner": 1800,
+    "build-story-writer": 600,     # 10 min — story generation (lightweight)
+    "build-docs-writer": 1800,
     "test-builder": 1800,
     "test-audit": 1800,
+    "test-uat": 1800,
+    "trace-explorer": 1800,
 }
 
 

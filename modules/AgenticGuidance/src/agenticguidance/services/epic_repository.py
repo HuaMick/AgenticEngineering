@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # DB status values that correspond to a "live" (active/in-progress) epic.
 # "completed", "deferred", and "cancelled" are their own direct status values.
 _LIVE_STATUSES: frozenset[str] = frozenset(
-    {"proposed", "in_progress", "active", "planning", "approved", "pending", "blocked"}
+    {"proposed", "in_progress", "active", "planning", "approved", "pending", "blocked", "seed"}
 )
 
 
@@ -87,6 +87,17 @@ class EpicRepository:
     def close(self):
         """Close the database."""
         self._db.close()
+
+    def refresh(self):
+        """Clear all TinyDB query caches so the next read hits disk.
+
+        Required after external processes (e.g. SDK agents in tmux panes)
+        have written to the same database file. TinyDB caches query results
+        per-table; without clearing, the in-process cache returns stale data.
+        """
+        for table in (self._epics, self._tickets, self._phases,
+                      self._story_tests, self._story_code):
+            table.clear_cache()
 
     # ------------------------------------------------------------------
     # DB Migration

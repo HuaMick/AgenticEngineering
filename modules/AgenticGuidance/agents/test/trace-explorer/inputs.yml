@@ -1,0 +1,99 @@
+# ==============================================
+# PATH RESOLUTION SEMANTICS
+# ==============================================
+# All paths in this file are relative to the REPOSITORY ROOT
+# containing the modules/AgenticGuidance/ directory.
+# ==============================================
+
+# Trace Explorer Agent Inputs
+# Analyses execution traces and produces friction reports for teacher consumption.
+
+agent_context:
+  category: "modules/AgenticGuidance/assets/definitions/agent-categories.yml#agent_categories.test"
+  role: "trace-explorer"
+
+inputs:
+  agent_type: "trace-explorer"
+  version: "1.0"
+
+  # Reference layers (transitive loading)
+  layers:
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/core-system.yml"
+      description: "Core system definitions"
+      required: true
+
+    - type: layer
+      path: "modules/AgenticGuidance/assets/inputs/core-guidelines.yml"
+      description: "Universal behavioral guidelines"
+      required: true
+
+  # Execution traces to analyse
+  execution_traces:
+    - type: directory
+      path: "docs/epics/live/{epic_folder}/"
+      description: "Epic folder containing execution context and TinyDB records"
+      required: true
+
+    - name: "agent_output_logs"
+      source: "orchestration.execution_logs"
+      description: "Agent output logs from tmux panes or SDK execution records"
+      required: true
+
+  # Agent guidance for walkthrough mode
+  agent_guidance:
+    - type: file
+      path: "modules/AgenticGuidance/agents/{target_category}/{target_agent}/process.yml"
+      description: "Target agent's process definition (for guidance walkthrough validation)"
+      required: false
+
+    - type: file
+      path: "modules/AgenticGuidance/agents/{target_category}/{target_agent}/inputs.yml"
+      description: "Target agent's input specification (for input resolution validation)"
+      required: false
+
+  # Story inputs — REQUIRED for story-first compliance
+  story_inputs:
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/user-stories.yml"
+      description: "User story structure and authoritative path"
+      required: true
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/specifications/story-schema.yml"
+      description: "Story schema definition and validation checklist"
+      required: true
+
+    - name: "affected_stories"
+      source: "ticket.inputs.affected_stories"
+      description: "Story IDs to validate execution traces against"
+      required: true
+
+  # Friction taxonomy and analysis patterns
+  analysis_inputs:
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
+      description: "Loop definitions for iteration depth analysis"
+      required: true
+
+    - type: file
+      path: "modules/AgenticGuidance/assets/definitions/self-review-criteria.yml"
+      description: "Self-review criteria for validating agent outputs"
+      required: false
+
+definitions:
+  friction_taxonomy: |
+    Friction points are categorized by type:
+    - guidance_gap: Process/inputs file missing information agent needed
+    - backtracking: Agent reversed a decision or redid work
+    - excessive_iteration: Loop exceeded expected iteration count
+    - input_resolution_failure: Agent couldn't find/load a declared input
+    - story_drift: Agent's work diverged from story acceptance criteria
+    - tool_misuse: Agent used wrong tool or inefficient tool sequence
+    - context_overflow: Agent hit context limits requiring RLM patterns
+
+  severity_levels: |
+    - critical: Agent failed to complete task due to this friction
+    - high: Agent completed but with significant wasted effort (>30% overhead)
+    - medium: Agent completed with minor inefficiency
+    - low: Minor friction, informational only

@@ -35,7 +35,7 @@ pytestmark = pytest.mark.story("US-SES-001")
 # The planning roles executed sequentially by PlannerLoopRunner
 PLANNING_ROLES = [
     "epic-creator",
-    "story-writer",
+    "build-story-writer",
     "planner-explore",
     "planner-orchestration",
 ]
@@ -182,7 +182,7 @@ class TestSequentialSDKTmuxSpawns:
         """
         sid = generate_session_id()
         # Use roles whose first 8 chars are unique to avoid truncation collisions.
-        distinct_roles = ["epic-creator", "story-writer", "planner-explore"]
+        distinct_roles = ["epic-creator", "build-story-writer", "planner-explore"]
         names = {
             tmux_session_name(sid, epic_folder=Path(TEST_EPIC), role=role)
             for role in distinct_roles

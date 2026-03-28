@@ -82,14 +82,14 @@ class TestAgentNamePositionalRouting:
         import io
         from contextlib import redirect_stdout
 
-        with patch.object(sys, "argv", ["agentic", "planner-guidance"]):
+        with patch.object(sys, "argv", ["agentic", "planner-build"]):
             captured = io.StringIO()
             with redirect_stdout(captured):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
             assert exc_info.value.code == 0
             # Should have agent output
-            assert "planner-guidance" in captured.getvalue().lower()
+            assert "planner-build" in captured.getvalue().lower()
 
     def test_agent_name_with_bootstrap_flag(self):
         """Test positional agent name with --bootstrap flag."""
@@ -97,7 +97,7 @@ class TestAgentNamePositionalRouting:
         import io
         from contextlib import redirect_stdout
 
-        with patch.object(sys, "argv", ["agentic", "test-runner", "--bootstrap"]):
+        with patch.object(sys, "argv", ["agentic", "test-builder", "--bootstrap"]):
             captured = io.StringIO()
             with redirect_stdout(captured):
                 with pytest.raises(SystemExit) as exc_info:
@@ -105,7 +105,7 @@ class TestAgentNamePositionalRouting:
             assert exc_info.value.code == 0
             output = captured.getvalue()
             # Bootstrap should have more content
-            assert "test-runner" in output.lower()
+            assert "test-builder" in output.lower()
 
     def test_agent_name_with_json_flag(self):
         """Test positional agent name with -j flag."""

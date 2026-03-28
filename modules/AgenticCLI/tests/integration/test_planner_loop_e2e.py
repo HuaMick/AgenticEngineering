@@ -4,7 +4,7 @@ Validates the full planning loop workflow logic with all SDK/tmux/subprocess
 calls mocked.  No real API calls or real tmux sessions are used.
 
 The suite verifies:
-- All expected agent roles are invoked (epic-creator, story-writer,
+- All expected agent roles are invoked (epic-creator, build-story-writer,
   planner-explore, planner-orchestration)
 - Spawn commands include the --tmux flag (sdk-tmux path)
 - SDK metrics are collected after each agent completes
@@ -208,7 +208,7 @@ class TestPlannerLoopE2E:
     def test_planning_loop_spawns_all_roles(self, tmp_path, monkeypatch):
         """Full planning loop invokes all expected agent roles.
 
-        Verifies that epic-creator, story-writer, planner-explore,
+        Verifies that epic-creator, build-story-writer, planner-explore,
         and planner-orchestration are each invoked for a single unplanned epic.
         """
         epic_folder = "260309AA_test_epic"
@@ -227,7 +227,7 @@ class TestPlannerLoopE2E:
             return _ok_result(session_id="explore-001")
 
         def tracking_spawn_story(pf):
-            spawned_roles.append("story-writer")
+            spawned_roles.append("build-story-writer")
             return _ok_result(session_id="story-001")
 
         def tracking_spawn_orchestration(pf):
@@ -256,7 +256,7 @@ class TestPlannerLoopE2E:
 
         # All roles must appear
         assert "epic-creator" in spawned_roles, f"epic-creator not in {spawned_roles}"
-        assert "story-writer" in spawned_roles, f"story-writer not in {spawned_roles}"
+        assert "build-story-writer" in spawned_roles, f"story-writer not in {spawned_roles}"
         assert "planner-explore" in spawned_roles, f"planner-explore not in {spawned_roles}"
         assert "planner-orchestration" in spawned_roles, f"planner-orchestration not in {spawned_roles}"
 
@@ -294,7 +294,7 @@ class TestPlannerLoopE2E:
 
         planning_roles = [
             "explore",
-            "story-writer",
+            "build-story-writer",
             "planner-build",
             "planner-orchestration",
         ]
