@@ -176,7 +176,9 @@ def format_status(status: str) -> str:
     for backward compatibility.
     """
     _colors = {
+        "seed": "[magenta]seed[/magenta]",
         "active": "[blue]active[/blue]",
+        "ready": "[cyan]ready[/cyan]",
         "planning": "[cyan]planning[/cyan]",
         "in_progress": "[yellow]in_progress[/yellow]",
         "completed": "[green]completed[/green]",

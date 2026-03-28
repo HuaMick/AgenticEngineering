@@ -11,6 +11,7 @@ import time
 from typing import Optional
 
 from agenticcli.utils.epic_lock import acquire_epic_lock, release_epic_lock
+from agenticcli.utils.phase_validation import validate_phase_routing
 from agenticcli.utils.retry import SPAWN_RETRY_BACKOFF, static_backoff
 from agenticcli.utils.session_diagnostics import diagnose_quick_exit
 from agenticcli.utils.session_state import read_sdk_metrics
@@ -28,9 +29,14 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
     """
 
     def discover_plans_needing_execution(self) -> list[str]:
-        """Find live epics that have phases with pending/in_progress status in TinyDB.
+        """Find live epics that have pending phases AND are fully routed.
 
-        Queries TinyDB directly instead of scanning MMD files.
+        An epic is included only when:
+        1. It has pending/in_progress phases (has_pending_phases), AND
+        2. All phases have agent routing set (validate_phase_routing).
+
+        This prevents un-routed epics from slipping through to _execute_plan()
+        where they would fail at the per-phase guard in _run_phase().
 
         Returns:
             List of plan folder names needing execution.
@@ -43,8 +49,16 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
         epics = repo.list_epics(status="live")
         needs_execution = []
         for epic in epics:
-            if repo.has_pending_phases(epic.epic_folder_name):
+            if not repo.has_pending_phases(epic.epic_folder_name):
+                continue
+            is_valid, reason = validate_phase_routing(repo, epic.epic_folder_name)
+            if is_valid:
                 needs_execution.append(epic.epic_folder_name)
+            else:
+                logger.info(
+                    "Skipping %s for execution — has pending phases but: %s",
+                    epic.epic_folder_name, reason,
+                )
 
         logger.info("Found %d plans needing execution: %s", len(needs_execution), needs_execution)
         return needs_execution
@@ -418,6 +432,10 @@ class ExecutionRunner:
                 max_turns=next_phase.max_turns,
                 timeout=next_phase.timeout,
             )
+
+            # Refresh TinyDB cache — the agent ran in a separate process
+            # and may have updated tickets/phases in the shared DB file.
+            repo.refresh()
 
             if success:
                 repo.update_phase(plan_folder, next_phase.name, {"status": "completed"})

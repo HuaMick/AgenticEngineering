@@ -1,0 +1,183 @@
+stories:
+  - id: US-001
+    title: "Centralized phase routing validation"
+    category: "utility-extraction"
+    priority: critical
+    lifecycle: "proposal"
+
+    description: |
+      As a developer maintaining orchestration workflows, I want a single
+      utility function that determines whether all phases in an epic are
+      routed to agents so that routing-rule changes only need to be made
+      in one place instead of updated in multiple workflow files.
+
+    prerequisites:
+      - "PhaseData dataclass is importable from agenticguidance.services.epic"
+      - "EpicRepository.list_phases() returns a list of PhaseData objects"
+
+    steps:
+      - step: 1
+        when: "A caller passes a list of PhaseData objects to phases_fully_routed()"
+        then:
+          - "Returns True when all phases have a non-empty agent field"
+          - "Returns False when any phase has a None or empty agent field"
+
+      - step: 2
+        when: "A caller passes an empty list to phases_fully_routed()"
+        then:
+          - "Returns False because there are no phases to validate"
+
+      - step: 3
+        when: "A caller passes None to phases_fully_routed()"
+        then:
+          - "Returns False without raising an exception"
+        notes: "Defensive handling matches existing inline behavior in planner_loop.py"
+
+    related_commands: []
+    related_agents:
+      - "build-python"
+
+    related_files:
+      - "modules/AgenticCLI/src/agenticcli/utils/phase_routing.py"
+      - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-002
+    title: "Centralized feedback triggers parsing"
+    category: "utility-extraction"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As a developer maintaining CLI phase commands, I want a single utility
+      function that parses comma-separated KEY=VALUE feedback trigger strings
+      into dictionaries so that the parsing logic is consistent across
+      cmd_phase_add and cmd_phase_update and only needs maintenance in one
+      place.
+
+    prerequisites:
+      - "Feedback triggers are passed as comma-separated KEY=VALUE strings via --feedback-triggers flag"
+
+    steps:
+      - step: 1
+        when: "A caller passes a valid 'KEY1=VAL1,KEY2=VAL2' string to parse_feedback_triggers()"
+        then:
+          - "Returns a dict mapping each KEY to its VALUE with whitespace stripped"
+
+      - step: 2
+        when: "A caller passes a string with items missing the '=' separator"
+        then:
+          - "Skips malformed items without raising an exception"
+          - "Returns a dict containing only the well-formed KEY=VALUE pairs"
+        notes: "Matches existing inline behavior which silently drops items without '='"
+
+      - step: 3
+        when: "A caller passes None or an empty string to parse_feedback_triggers()"
+        then:
+          - "Returns an empty dict without raising an exception"
+
+      - step: 4
+        when: "A caller passes a string with a KEY=VALUE where VALUE contains '='"
+        then:
+          - "Splits only on the first '=' so VALUE retains embedded equals signs"
+        notes: "Existing code uses split('=', 1) so this behavior is preserved"
+
+    related_commands:
+      - "agentic epic phase add --feedback-triggers"
+      - "agentic epic phase update --feedback-triggers"
+    related_agents:
+      - "build-python"
+
+    related_files:
+      - "modules/AgenticCLI/src/agenticcli/utils/phase_routing.py"
+      - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-003
+    title: "Behavior-preserving refactoring of callers"
+    category: "caller-refactor"
+    priority: critical
+    lifecycle: "proposal"
+
+    description: |
+      As an operator running planning and orchestration workflows, I want
+      the planner loop discovery and CLI phase commands to behave identically
+      after the refactoring so that no existing workflows, agent spawning,
+      or phase management operations are disrupted.
+
+    prerequisites:
+      - "phases_fully_routed() and parse_feedback_triggers() exist in agenticcli.utils.phase_routing"
+      - "Existing AgenticCLI test suite passes before refactoring callers"
+
+    steps:
+      - step: 1
+        when: "discover_plans_needing_orchestration() evaluates whether an epic needs planning"
+        then:
+          - "Uses phases_fully_routed() instead of inline 'phases and all(p.agent for p in phases)'"
+          - "Returns the same list of epic folders as the pre-refactor implementation"
+
+      - step: 2
+        when: "The planner loop seed-epic handler checks whether phases are fully routed"
+        then:
+          - "Uses phases_fully_routed() instead of inline check at line 1095"
+          - "Seed epic handling and proposed-ticket detection remain unchanged"
+
+      - step: 3
+        when: "A user runs 'agentic epic phase add --feedback-triggers TEST_FAILURE=Build'"
+        then:
+          - "parse_feedback_triggers() is called instead of inline parsing"
+          - "The resulting TinyDB phase record contains {'TEST_FAILURE': 'Build'}"
+          - "JSON and human-readable output remain unchanged"
+
+      - step: 4
+        when: "A user runs 'agentic epic phase update P3 --feedback-triggers TEST_FAILURE=Build,LINT_ERROR=Fix'"
+        then:
+          - "parse_feedback_triggers() is called instead of inline parsing"
+          - "The resulting TinyDB phase record contains {'TEST_FAILURE': 'Build', 'LINT_ERROR': 'Fix'}"
+
+      - step: 5
+        when: "The full AgenticCLI test suite is run after all caller refactoring"
+        then:
+          - "All existing tests pass with zero modifications to test files"
+          - "No new test failures or regressions are introduced"
+
+    related_commands:
+      - "agentic epic phase add"
+      - "agentic epic phase update"
+    related_agents:
+      - "build-python"
+      - "test-builder"
+      - "test-uat"
+
+    related_files:
+      - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+      - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+categories:
+  - name: "utility-extraction"
+    description: "Create the shared phase_routing.py utility module with phases_fully_routed() and parse_feedback_triggers() functions"
+    codebase_scope:
+      - "modules/AgenticCLI/src/agenticcli/utils/"
+      - "modules/AgenticCLI/tests/utils/"
+    story_ids:
+      - "US-001"
+      - "US-002"
+
+  - name: "caller-refactor"
+    description: "Replace inline duplicated logic in planner_loop.py and epic.py with calls to the new utility functions and verify zero regressions"
+    codebase_scope:
+      - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+      - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+      - "modules/AgenticCLI/src/agenticcli/workflows/orchestration.py"
+    story_ids:
+      - "US-003"

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 from agenticcli.utils.epic_lock import acquire_epic_lock, release_epic_lock
+from agenticcli.utils.phase_validation import validate_phase_routing
 from agenticcli.utils.session_id import generate_session_id
 from agenticcli.utils.retry import SPAWN_RETRY_BACKOFF, static_backoff
 from agenticcli.utils.session_diagnostics import diagnose_quick_exit
@@ -54,15 +55,11 @@ _PLANNING_PHASE_ROLES = frozenset({
     "epic-creator",
     "planner-explore",
     "explore",
-    "story-writer",
+    "build-story-writer",
     "planner-build",
     "planner-test",
-    "planner-guidance",
-    "planner-cleaning",
     "planner-audit",
     "planner-orchestration",
-    "planner-sdk",
-    "planner-guidance-testing",
 })
 
 
@@ -229,21 +226,13 @@ class PlannerLoopWorkflow:
 
         needs_work = []
         for epic in epics:
-            phases = self._repository.list_phases(epic.epic_folder_name)
-            if not phases or not all(p.agent for p in phases):
+            is_valid, reason = validate_phase_routing(self._repository, epic.epic_folder_name)
+            if not is_valid:
+                logger.info(
+                    "Epic %s needs orchestration: %s",
+                    epic.epic_folder_name, reason,
+                )
                 needs_work.append(epic.epic_folder_name)
-            else:
-                # Phases are routed — check if all tickets are still "proposed".
-                # "proposed" = skeleton only (pre-planning); "pending" = planning completed.
-                # Planning promotes proposed→pending on success, so only proposed triggers re-plan.
-                epic_data = self._repository.get_epic(epic.epic_folder_name)
-                tickets = epic_data.tasks if epic_data else []
-                if tickets and all(t.status == "proposed" for t in tickets):
-                    logger.info(
-                        "Epic %s has routed phases but all %d tickets are 'proposed' — needs planning",
-                        epic.epic_folder_name, len(tickets),
-                    )
-                    needs_work.append(epic.epic_folder_name)
 
         logger.info("Found %d epics needing orchestration: %s", len(needs_work), needs_work)
         return needs_work
@@ -585,7 +574,7 @@ class PlannerLoopWorkflow:
     # ── Public spawn methods (now delegates to _run_role_agent) ────────
 
     def spawn_story_agent(self, epic_folder: str) -> SessionResult:
-        """Run a story-writer agent for user story generation.
+        """Run a build-story-writer agent for user story generation.
 
         Args:
             epic_folder: Epic folder name.
@@ -593,7 +582,7 @@ class PlannerLoopWorkflow:
         Returns:
             SessionResult with completion status.
         """
-        return self._run_role_agent("story-writer", epic_folder)
+        return self._run_role_agent("build-story-writer", epic_folder)
 
     def spawn_epic_creator(self, epic_folder: str) -> SessionResult:
         """Run epic-creator agent to scaffold phases and skeleton tickets.
@@ -1089,28 +1078,20 @@ class PlannerLoopRunner:
                     return True
 
             if self.epic_folder:
-                # Single-epic mode: check if epic already has fully-routed phases in TinyDB.
-                # Also require that at least one ticket has moved beyond "proposed" status —
-                # all-proposed tickets means the skeleton was created but planning hasn't
-                # run yet (planning promotes proposed→pending on success).
-                # "pending" means planning completed; "proposed" means skeleton-only.
+                # Single-epic mode: check if epic already has fully-routed phases
+                # and at least one ticket has moved beyond "proposed" status.
                 if self.workflow._repository:
-                    phases = self.workflow._repository.list_phases(self.epic_folder)
-                    all_routed = phases and all(p.agent for p in phases)
-                    if all_routed:
-                        epic_data = self.workflow._repository.get_epic(self.epic_folder)
-                        tickets = epic_data.tasks if epic_data else []
-                        all_tickets_proposed = tickets and all(
-                            t.status == "proposed" for t in tickets
-                        )
-                        if not all_tickets_proposed:
-                            logger.info("Epic %s already has routed phases in TinyDB. %s", self.epic_folder, promise)
-                            print(promise)
-                            return True
-                        logger.info(
-                            "Epic %s has routed phases but all %d tickets are still 'proposed' — "
-                            "re-planning to update tickets.", self.epic_folder, len(tickets),
-                        )
+                    is_valid, reason = validate_phase_routing(
+                        self.workflow._repository, self.epic_folder,
+                    )
+                    if is_valid:
+                        logger.info("Epic %s already has routed phases in TinyDB. %s", self.epic_folder, promise)
+                        print(promise)
+                        return True
+                    logger.info(
+                        "Epic %s needs planning: %s",
+                        self.epic_folder, reason,
+                    )
                 plans = [self.epic_folder]
             else:
                 plans = self.workflow.discover_plans_needing_orchestration()
@@ -1133,6 +1114,13 @@ class PlannerLoopRunner:
                 success = self._process_plan(epic_folder)
                 if success:
                     self.state["plans_processed"].append(epic_folder)
+                    # In single-epic mode, verify promotion and exit immediately
+                    if self.epic_folder and self.workflow._repository:
+                        epic_data = self.workflow._repository.get_epic(epic_folder)
+                        if epic_data and not any(t.status == "proposed" for t in epic_data.tasks):
+                            logger.info("Epic %s fully planned and promoted — exiting loop", epic_folder)
+                            print(promise)
+                            return True
                 else:
                     self.state["plans_skipped"].append(epic_folder)
                     failed_this_run.add(epic_folder)
@@ -1157,7 +1145,7 @@ class PlannerLoopRunner:
     def _parse_story_categories(self, epic_folder: str) -> list[dict] | None:
         """Read categories from stories.yml in the epic folder.
 
-        Stories are REQUIRED — the story-writer agent must produce a valid
+        Stories are REQUIRED — the build-story-writer agent must produce a valid
         stories.yml with at least one category before exploration can proceed.
 
         Args:
@@ -1171,7 +1159,7 @@ class PlannerLoopRunner:
         if not stories_path.exists():
             logger.error(
                 "No stories.yml found for %s — stories are required. "
-                "The story-writer agent must produce stories.yml before exploration.",
+                "The build-story-writer agent must produce stories.yml before exploration.",
                 epic_folder,
             )
             return None
@@ -1182,7 +1170,7 @@ class PlannerLoopRunner:
             if not categories:
                 logger.error(
                     "stories.yml for %s has no categories — "
-                    "story-writer must define at least one category.",
+                    "build-build-story-writer must define at least one category.",
                     epic_folder,
                 )
                 return None
@@ -1269,9 +1257,9 @@ class PlannerLoopRunner:
 
         # Check agent_type references (advisory)
         known_agents = {
-            "build-python", "build-flutter", "test-runner", "test-builder",
-            "test-audit", "test-user-simulator", "test-service", "test-final-output",
-            "test-guidance-simulator", "teacher-update-guidance", "teacher-update-assets",
+            "build-python", "build-flutter", "build-story-writer", "build-docs-writer",
+            "test-builder", "test-audit", "test-uat", "trace-explorer",
+            "teacher-update-guidance", "teacher-update-assets",
             "planner-audit", "deploy-cicd",
         }
         for t in tickets:
@@ -1281,7 +1269,7 @@ class PlannerLoopRunner:
 
         # BLOCKING: Story references required on tickets after explore phase
         # Per planning-standard.yml FENCE: STORY-FIRST PLANNING
-        # At this point, story-writer has succeeded and stories.yml exists.
+        # At this point, build-story-writer has succeeded and stories.yml exists.
         # Explore agents should have populated story_ids on tickets.
         has_story_refs = any(t.story_ids for t in tickets)
         if not has_story_refs:
@@ -1306,6 +1294,94 @@ class PlannerLoopRunner:
             logger.info("Pre-flight validation: %d warnings for %s", len(warnings), epic_folder)
 
         return True, warnings
+
+    def _enrich_tickets_from_stories(self, epic_folder: str) -> tuple[int, int]:
+        """Enrich tickets with target_files derived from story→code mappings.
+
+        Runs `agentic stories sync` to populate TinyDB with story→code node IDs,
+        then for each ticket that has story_ids set, resolves the associated source
+        files and writes them back as target_files.
+
+        Args:
+            epic_folder: Epic folder name.
+
+        Returns:
+            Tuple of (enriched_count, unenriched_count). enriched = tickets that
+            received target_files from story tags; unenriched = tickets with no
+            story tags or no code matches.
+        """
+        # Sync story→code mappings into TinyDB first
+        sync_result = subprocess.run(
+            ["agentic", "stories", "sync"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=self.workflow.working_dir,
+        )
+        if sync_result.returncode != 0:
+            logger.warning(
+                "stories sync returned non-zero (%d) — proceeding anyway: %s",
+                sync_result.returncode,
+                sync_result.stderr[:200],
+            )
+
+        repo = self.workflow._get_repository()
+        if repo is None:
+            logger.warning("No EpicRepository available — cannot enrich tickets from stories")
+            return (0, 0)
+
+        epic_data = repo.get_epic(epic_folder)
+        if epic_data is None:
+            logger.warning("Epic %s not found in TinyDB — cannot enrich tickets", epic_folder)
+            return (0, 0)
+
+        tickets = epic_data.tasks or []
+        enriched_count = 0
+        unenriched_count = 0
+
+        for ticket in tickets:
+            story_ids = getattr(ticket, "story_ids", None) or []
+            if not story_ids:
+                unenriched_count += 1
+                continue
+
+            # Collect unique file paths from all story node IDs
+            file_paths: set[str] = set()
+            for story_id in story_ids:
+                try:
+                    nodeids = repo.get_code_for_story(story_id)
+                    for nodeid in nodeids:
+                        file_paths.add(nodeid.split("::")[0])
+                except Exception as e:
+                    logger.debug(
+                        "get_code_for_story(%s) failed for ticket %s: %s",
+                        story_id, ticket.id, e,
+                    )
+
+            if not file_paths:
+                unenriched_count += 1
+                continue
+
+            files = sorted(file_paths)
+            updated = repo.update_ticket(epic_folder, ticket.id, {"target_files": files})
+            if updated:
+                enriched_count += 1
+                logger.debug(
+                    "Enriched ticket %s with %d target files from story tags",
+                    ticket.id, len(files),
+                )
+            else:
+                logger.warning(
+                    "Failed to update target_files for ticket %s in %s",
+                    ticket.id, epic_folder,
+                )
+                unenriched_count += 1
+
+        logger.info(
+            "Ticket enrichment for %s: enriched=%d, unenriched=%d",
+            epic_folder, enriched_count, unenriched_count,
+        )
+        return (enriched_count, unenriched_count)
 
     def _process_plan_inner(self, epic_folder: str) -> bool:
         """Inner implementation of _process_plan (lock already held).
@@ -1370,9 +1446,17 @@ class PlannerLoopRunner:
             })
             return False
 
+        # Refresh TinyDB cache — epic-creator wrote tickets from a separate process
+        if self.workflow._repository:
+            self.workflow._repository.refresh()
+
+        # Ensure epic folder exists on disk for build-story-writer output
+        epic_path = self.workflow.epics_dir / epic_folder
+        epic_path.mkdir(parents=True, exist_ok=True)
+
         # 2. Story generation: run story agent
         story_result = self.workflow.spawn_story_agent(epic_folder)
-        self.workflow._validate_result(story_result, "story-writer")
+        self.workflow._validate_result(story_result, "build-story-writer")
         if self._track_cost(story_result):
             return False
         if story_result.status != "completed":
@@ -1389,30 +1473,56 @@ class PlannerLoopRunner:
         if story_categories is None:
             self.state["errors"].append({
                 "plan": epic_folder,
-                "error": "stories.yml missing or invalid after story-writer completed — stories are required",
+                "error": "stories.yml missing or invalid after build-story-writer completed — stories are required",
                 "phase": "story_parsing",
             })
             return False
         if not story_categories:
             self.state["errors"].append({
                 "plan": epic_folder,
-                "error": "stories.yml has no categories — story-writer must define at least one category",
+                "error": "stories.yml has no categories — build-story-writer must define at least one category",
                 "phase": "story_parsing",
             })
             return False
 
-        # 3. Explore: run planner-explore to analyze codebase and enrich tickets
-        explore_result = self.workflow.spawn_explore_agents(epic_folder, categories=story_categories)
-        self.workflow._validate_result(explore_result, "planner-explore")
-        if self._track_cost(explore_result):
-            return False
-        if explore_result.status != "completed":
-            self.state["errors"].append({
-                "plan": epic_folder,
-                "error": f"Explore agent failed: {explore_result.result[:200]}",
-                "phase": "explore",
-            })
-            return False
+        # Refresh TinyDB cache — build-story-writer may have modified data from a separate process
+        if self.workflow._repository:
+            self.workflow._repository.refresh()
+
+        # 3. Explore: optionally skip if all tickets already enriched from story tags
+        _skip_explore = False
+        try:
+            enriched, unenriched = self._enrich_tickets_from_stories(epic_folder)
+            if unenriched == 0 and enriched > 0:
+                logger.info(
+                    "All tickets enriched from story tags — skipping explore (%d tickets enriched)",
+                    enriched,
+                )
+                _skip_explore = True
+            else:
+                logger.info(
+                    "Story enrichment: %d enriched, %d unenriched — proceeding with explore",
+                    enriched, unenriched,
+                )
+        except Exception as e:
+            logger.warning("Story enrichment failed (%s) — falling through to explore", e)
+
+        if not _skip_explore:
+            explore_result = self.workflow.spawn_explore_agents(epic_folder, categories=story_categories)
+            self.workflow._validate_result(explore_result, "planner-explore")
+            if self._track_cost(explore_result):
+                return False
+            if explore_result.status != "completed":
+                self.state["errors"].append({
+                    "plan": epic_folder,
+                    "error": f"Explore agent failed: {explore_result.result[:200]}",
+                    "phase": "explore",
+                })
+                return False
+
+        # Refresh TinyDB cache — explore agents wrote tickets from separate processes
+        if self.workflow._repository:
+            self.workflow._repository.refresh()
 
         # 4. Pre-flight validation (blocking for story requirements)
         valid, issues = self._validate_planning_output(epic_folder)
@@ -1443,6 +1553,8 @@ class PlannerLoopRunner:
         # Without this, the loop's termination check (all tickets proposed → re-plan)
         # would rediscover this epic and create an infinite re-planning loop.
         if self.workflow._repository:
+            # Refresh after orchestration agent wrote from a separate process
+            self.workflow._repository.refresh()
             epic_data = self.workflow._repository.get_epic(epic_folder)
             if epic_data:
                 promoted = 0
@@ -1470,13 +1582,16 @@ class PlannerLoopRunner:
                     still_proposed = sum(
                         1 for t in epic_data_after.tasks if t.status == "proposed"
                     )
-                    if still_proposed > 0 and promoted == 0:
-                        logger.error(
-                            "Ticket promotion failed for %s: %d tickets still in 'proposed' state "
-                            "after promotion attempt. Aborting to prevent infinite re-planning loop.",
-                            epic_folder, still_proposed,
+                    if still_proposed > 0:
+                        logger.warning(
+                            "Promotion incomplete: %d tickets still proposed, force-retrying",
+                            still_proposed,
                         )
-                        return False
+                        for t in epic_data_after.tasks:
+                            if t.status == "proposed":
+                                self.workflow._repository.update_ticket(
+                                    epic_folder, t.id, {"status": "pending"}
+                                )
 
         logger.info("Epic %s processed successfully (with orchestration phases)", epic_folder)
         return True

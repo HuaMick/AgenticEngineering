@@ -14,14 +14,13 @@ _agent_types_cache: set | None = None
 
 # Fallback set used when filesystem scanning fails
 _FALLBACK_AGENT_TYPES = {
-    "build-python", "build-flutter",
+    "build-docs-writer", "build-flutter", "build-python", "build-story-writer",
     "deploy-cicd",
-    "orchestration-executor", "orchestration-planning",
-    "planner-build", "planner-test", "planner-guidance", "planner-cleaning",
-    "planner-audit", "planner-orchestration", "planner-guidance-testing",
-    "teacher-update-guidance", "teacher-update-assets",
-    "test-runner", "test-builder", "test-guidance-simulator", "test-final-output",
-    "test-audit", "test-user-simulator", "test-service",
+    "epic-creator",
+    "orchestration-executor", "orchestration-loop", "orchestration-planning",
+    "planner-audit", "planner-build", "planner-explore", "planner-orchestration", "planner-test",
+    "teacher-update-assets", "teacher-update-guidance",
+    "test-audit", "test-builder", "test-uat", "trace-explorer",
 }
 
 
@@ -36,7 +35,7 @@ def get_valid_agent_types(agents_dir: Path | None = None) -> set[str]:
         agents_dir: Optional override for the agents directory path.
 
     Returns:
-        Set of valid agent type names (e.g., {"build-python", "test-runner"}).
+        Set of valid agent type names (e.g., {"build-python", "test-builder"}).
     """
     global _agent_types_cache
     use_cache = agents_dir is None
@@ -82,26 +81,14 @@ def _get_phase_id(phase: dict) -> str:
 
 
 def _get_repo_db_path() -> Path:
-    """Derive the repo-local TinyDB path (.agentic/epics.db under repo root).
-
-    Matches the path that EpicService uses so reads and writes hit the same DB.
-    """
-    current = Path.cwd()
-    while current != current.parent:
-        if (current / ".git").exists():
-            return current / ".agentic" / "epics.db"
-        current = current.parent
+    """Return the global TinyDB path (~/.agentic/epics.db)."""
     return Path.home() / ".agentic" / "epics.db"
 
 
 def _get_repo():
-    """Get EpicRepository instance for TinyDB-backed epic access.
-
-    Uses the repo-local DB path (matching EpicService) and disables
-    auto_bootstrap to avoid side-effects in test environments.
-    """
+    """Get EpicRepository instance for TinyDB-backed epic access."""
     from agenticguidance.services.epic_repository import EpicRepository
-    return EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
+    return EpicRepository()
 
 
 def _check_has_orchestration(epic_folder_name: str, plan_path: Path = None) -> bool:
@@ -117,12 +104,13 @@ def _check_has_orchestration(epic_folder_name: str, plan_path: Path = None) -> b
     Returns:
         True if orchestration phases with an agent exist in TinyDB.
     """
+    from agenticcli.utils.phase_validation import has_any_routed_phase
+
     try:
         repo = _get_repo()
         phases = repo.list_phases(epic_folder_name)
         repo.close()
-        if phases and any(phase.agent for phase in phases):
-            return True
+        return has_any_routed_phase(phases)
     except Exception:
         pass
     return False
@@ -241,142 +229,72 @@ def handle(args, ctx=None):
             sys.exit(1)
     elif args.epic_command == "cancel":
         cmd_cancel(args, ctx)
+    elif args.epic_command == "from-plan":
+        cmd_from_plan(args, ctx)
     else:
-        print("Usage: agentic epic <new|status|ticket|archive|list|phase|cancel>", file=sys.stderr)
+        print("Usage: agentic epic <new|from-plan|status|ticket|archive|list|phase|cancel>", file=sys.stderr)
         sys.exit(1)
 
 
 def find_epic_folder(path: str | None = None) -> Path:
-    """Find the active plan folder.
+    """Find an epic by name or path, using TinyDB as the sole lookup source.
 
     Args:
-        path: Explicit path to plan folder, or None to auto-detect.
-              Can be a full path, or a partial folder name to search for
-              in docs/epics/live/ (e.g., "260129FI" matches "260129FI_cli_bug_fixes").
+        path: Explicit path or partial epic name, or None to auto-detect.
+              Can be an absolute path, or a partial folder name to match
+              (e.g., "260129FI" matches "260129FI_cli_bug_fixes").
 
     Returns:
-        Path to the plan folder.
+        Path to the epic folder (from TinyDB's epic_folder field).
     """
+    repo = _get_repo()
+
     if path:
-        # First check if path exists as-is
+        # If it's an absolute path that exists on disk, return it directly
         path_obj = Path(path)
-        if path_obj.exists() and path_obj.is_dir():
+        if path_obj.is_absolute() and path_obj.exists() and path_obj.is_dir():
             return path_obj
 
-        # Path doesn't exist - search for matching folder in docs/epics/live/
-        # Find repo root to locate plans directory
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            repo_root = Path(result.stdout.strip())
-        except subprocess.CalledProcessError:
-            # Not in a git repo, can't search for plans
-            print(f"Error: Path '{path}' not found and not in a git repository.", file=sys.stderr)
-            sys.exit(1)
-
-        plans_live_dir = repo_root / "docs" / "epics" / "live"
-
-        # Search for matching folders
         search_name = path_obj.name if path_obj.name else path
 
-        # Try PlanRepository for faster lookup (only trust results inside this repo)
+        # Exact match in TinyDB
         try:
-            from agenticguidance.services.epic_repository import EpicRepository
-            repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
-            plan_data = repo.get_epic(search_name)
-            if plan_data and plan_data.epic_folder.is_dir():
-                # Only accept if the plan folder belongs to this repo tree
-                try:
-                    plan_data.epic_folder.relative_to(repo_root)
-                except ValueError:
-                    repo.close()
-                    pass  # Plan folder is outside this repo - fall through
-                else:
-                    resolved_folder = plan_data.epic_folder
-                    # Live-preference: if TinyDB points to completed/ but a
-                    # live/ version exists, prefer live/ and auto-correct TinyDB.
-                    if "/epics/completed/" in str(resolved_folder):
-                        live_path = Path(
-                            str(resolved_folder).replace(
-                                "/epics/completed/", "/epics/live/"
-                            )
-                        )
-                        if live_path.is_dir():
-                            resolved_folder = live_path
-                            try:
-                                repo.resync_epic_folder(
-                                    plan_data.epic_folder_name,
-                                    str(live_path),
-                                )
-                            except Exception:
-                                pass  # Non-fatal: TinyDB correction is best-effort
-                    repo.close()
-                    return resolved_folder
-            else:
+            epic_data = repo.get_epic(search_name)
+            if epic_data:
                 repo.close()
+                return epic_data.epic_folder
         except Exception:
             pass
 
-        if plans_live_dir.exists():
-            # Search for matching folders
-            exact_match = None
-            partial_matches = []
+        # Partial match: search all epics for prefix match
+        try:
+            all_epics = repo.list_epics()
+            matches = [
+                e for e in all_epics
+                if e.epic_folder_name.startswith(search_name)
+            ]
+            if matches:
+                matches.sort(key=lambda e: e.epic_folder_name)
+                repo.close()
+                return matches[0].epic_folder
+        except Exception:
+            pass
 
-            for item in plans_live_dir.iterdir():
-                if item.is_dir():
-                    if item.name == search_name:
-                        # Exact match - return immediately
-                        exact_match = item
-                        break
-                    elif item.name.startswith(search_name):
-                        # Partial match (e.g., "260129FI" matches "260129FI_cli_bug_fixes")
-                        partial_matches.append(item)
-
-            if exact_match:
-                return exact_match
-            if partial_matches:
-                # Return first partial match (sorted for consistency)
-                partial_matches.sort(key=lambda p: p.name)
-                return partial_matches[0]
-
-        # No match found
-        print(f"Error: Plan folder '{path}' not found.", file=sys.stderr)
+        repo.close()
+        print(f"Error: Epic '{path}' not found in TinyDB.", file=sys.stderr)
         sys.exit(1)
 
-    # Auto-detect: check if we're in an epic folder or find one via TinyDB
-    cwd = Path.cwd()
-
-    # Check if we're in a plan folder (check TinyDB for current directory)
+    # Auto-detect: find first live epic from TinyDB
     try:
-        repo = _get_repo()
-        if repo is not None:
-            # Check if cwd IS an epic folder known to TinyDB
-            epic_doc = repo.get_epic(cwd.name)
-            if epic_doc is not None and epic_doc.epic_folder.resolve() == cwd.resolve():
-                return cwd
-
-            # Find first live epic from TinyDB
-            from agenticguidance.services.epic import EpicService
-            svc = EpicService()
-            metas = svc.list_epics(status="live")
-            for meta in metas:
-                if meta.epic_folder.is_dir():
-                    return meta.epic_folder
+        live_epics = repo.list_epics(status="live")
+        if live_epics:
+            repo.close()
+            return live_epics[0].epic_folder
     except Exception:
         pass
 
-    # Filesystem fallback: check docs/epics/live/ for any epic subdirectory
-    epics_dir = cwd / "docs" / "epics" / "live"
-    if epics_dir.exists():
-        for item in sorted(epics_dir.iterdir()):
-            if item.is_dir():
-                return item
-
-    print("Error: Could not find a plan folder. Specify path explicitly.", file=sys.stderr)
+    repo.close()
+    print("Error: No live epics found. Specify path explicitly.", file=sys.stderr)
     sys.exit(1)
 
 
@@ -519,11 +437,11 @@ def cmd_new(args, ctx=None):
         from agenticcli.utils.naming import generate_epic_folder_name
         plan_folder_name = generate_epic_folder_name(repo_root, description, branch=branch)
         from agenticguidance.services.epic_repository import EpicRepository
-        _init_repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
+        _init_repo = EpicRepository()
         epic_doc = _init_repo.get_epic(plan_folder_name)
         _init_repo.close()
         if epic_doc is not None:
-            plan_folder = epic_doc.epic_folder
+            plan_folder = Path(epic_doc.epic_folder)
     except Exception:
         pass
 
@@ -564,7 +482,7 @@ def cmd_new(args, ctx=None):
             from agenticcli.utils.subprocess_utils import get_clean_env
             sdk_options = ClaudeAgentOptions(
                 permission_mode="bypassPermissions",
-                cwd=str(plan_folder),
+                cwd=str(repo_root),
                 env=get_clean_env(),
             )
         except ImportError:
@@ -597,7 +515,7 @@ def cmd_new(args, ctx=None):
                 with get_status(status_message):
                     result = subprocess.run(
                         claude_cmd,
-                        cwd=plan_folder,
+                        cwd=str(repo_root),
                         capture_output=True,
                         text=True,
                     )
@@ -608,7 +526,7 @@ def cmd_new(args, ctx=None):
                 # In JSON mode, run without status indicator
                 result = subprocess.run(
                     claude_cmd,
-                    cwd=plan_folder,
+                    cwd=str(repo_root),
                     capture_output=True,
                     text=True,
                 )
@@ -627,7 +545,7 @@ def cmd_new(args, ctx=None):
     planner_created_tickets = False
     try:
         from agenticguidance.services.epic_repository import EpicRepository
-        _repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
+        _repo = EpicRepository()
         _tickets = _repo.get_tickets(plan_folder.name)
         # Check if planner added tickets beyond the initial IM_001 stub
         planner_created_tickets = len(_tickets) > 1 or (
@@ -868,6 +786,150 @@ def cmd_new(args, ctx=None):
     return result_data
 
 
+def cmd_from_plan(args, ctx=None):
+    """Create a seed epic from a Claude Code plan markdown file.
+
+    Reads the plan file, extracts the title from the first ``# `` heading,
+    and creates an epic with status "seed" so the orchestration planner
+    can later structure it into phases and tickets.
+
+    Args:
+        args: Parsed arguments with plan_file, optional branch, dry_run.
+        ctx: Optional CLIContext.
+    """
+    import re
+    from types import SimpleNamespace
+
+    from agenticcli.console import (
+        console,
+        is_json_output,
+        print_error,
+        print_info,
+        print_json,
+        print_success,
+    )
+
+    plan_file = getattr(args, "plan_file", None)
+    if not plan_file:
+        print_error("Plan file path is required.")
+        sys.exit(1)
+
+    plan_path = Path(plan_file).expanduser().resolve()
+    if not plan_path.is_file():
+        print_error(f"Plan file not found: {plan_path}")
+        sys.exit(1)
+
+    # Read and parse plan content
+    plan_content = plan_path.read_text()
+    if not plan_content.strip():
+        print_error("Plan file is empty.")
+        sys.exit(1)
+
+    # Extract title from first heading
+    title_match = re.search(r"^#\s+(.+)$", plan_content, re.MULTILINE)
+    title = title_match.group(1).strip() if title_match else plan_path.stem
+
+    dry_run = getattr(args, "dry_run", False)
+    branch = getattr(args, "branch", None) or _slugify_objective(title)
+
+    if dry_run:
+        data = {
+            "title": title,
+            "branch": branch,
+            "plan_file": str(plan_path),
+            "content_length": len(plan_content),
+        }
+        if is_json_output():
+            print_json(data)
+        else:
+            print_info(f"Title: {title}")
+            print_info(f"Branch: {branch}")
+            print_info(f"Content: {len(plan_content)} chars")
+            print_info(f"Source: {plan_path}")
+            console.print("[dim]Dry run — no epic created.[/dim]")
+        return
+
+    # Create epic via cmd_init (same pattern as cmd_new)
+    import io
+    from contextlib import redirect_stdout
+
+    from agenticcli.console import set_json_output as _set_json
+
+    # Use title as description for folder naming
+    description = title
+
+    init_args = SimpleNamespace(
+        command="plan",
+        plan_command="init",
+        json=False,
+        debug=getattr(args, "debug", False),
+        branch=branch,
+        description=description,
+        base="main",
+        objective=plan_content,
+    )
+
+    was_json = is_json_output()
+    if was_json:
+        _set_json(False)
+
+    init_stdout = io.StringIO()
+    with redirect_stdout(init_stdout):
+        cmd_init(init_args, ctx)
+
+    if was_json:
+        _set_json(True)
+
+    # Look up the created epic and set status to "seed"
+    import subprocess as _sp
+
+    try:
+        result = _sp.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        )
+        repo_root = Path(result.stdout.strip())
+    except _sp.CalledProcessError:
+        print_error("Not in a git repository")
+        sys.exit(1)
+
+    from agenticcli.utils.naming import generate_epic_folder_name
+    from agenticguidance.services.epic_repository import EpicRepository
+
+    plan_folder_name = generate_epic_folder_name(repo_root, description, branch=branch)
+    repo = EpicRepository()
+    try:
+        # Update status to seed and store plan source path in context
+        repo.update_epic(plan_folder_name, {
+            "status": "seed",
+            "context": plan_content,
+            "plan_source": str(plan_path),
+        })
+    except Exception:
+        pass  # Best-effort — epic was already created by cmd_init
+    finally:
+        repo.close()
+
+    epic_folder = repo_root / "docs" / "epics" / "live" / plan_folder_name
+    result_data = {
+        "epic_folder_name": plan_folder_name,
+        "epic_folder": str(epic_folder),
+        "status": "seed",
+        "title": title,
+        "branch": branch,
+        "plan_source": str(plan_path),
+    }
+
+    if is_json_output():
+        print_json(result_data)
+    else:
+        print_success(f"Seed epic created: {plan_folder_name}")
+        console.print(f"  [dim]Status:[/dim] [magenta]seed[/magenta]")
+        console.print(f"  [dim]Branch:[/dim] {branch}")
+        console.print(f"  [dim]Source:[/dim] {plan_path}")
+        console.print(f"\n[dim]Next: agentic orchestrate session plan --plan {plan_folder_name}[/dim]")
+
+
 def cmd_init(args, ctx=None):
     """Initialize plan folder with proper naming convention.
 
@@ -929,7 +991,7 @@ def cmd_init(args, ctx=None):
     # Create epic in TinyDB (primary data store)
     try:
         from agenticguidance.services.epic_repository import EpicRepository
-        repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
+        repo = EpicRepository()
         epic_data = {
             "epic_folder_name": plan_folder_name,
             "epic_folder": str(plan_path),
@@ -1193,10 +1255,12 @@ def _collect_validation(plan_path, args):
     has_tinydb_phases = False
     tinydb_phase_count = 0
     try:
+        from agenticcli.utils.phase_validation import has_any_routed_phase
+
         repo = _get_repo()
         phases = repo.list_phases(plan_path.name)
         repo.close()
-        if phases and any(phase.agent for phase in phases):
+        if has_any_routed_phase(phases):
             has_tinydb_phases = True
             tinydb_phase_count = len(phases)
     except Exception:
@@ -1847,27 +1911,75 @@ def cmd_list(args):
         print_error(f"Failed to load EpicService: {e}")
         sys.exit(1)
 
+    from agenticcli.utils.phase_validation import validate_phase_routing
+
+    try:
+        repo = plan_service._repository
+    except Exception:
+        repo = None
+
     for meta in plan_metas:
         plan_folder = meta.epic_folder
+        folder_name = plan_folder.name
+        plan_status = meta.status or "unknown"
 
-        # Get task counts via PlanService
+        # Get ticket counts by status
         try:
             plan_data_obj = plan_service.get_epic(str(plan_folder))
             tasks = plan_data_obj.tasks if plan_data_obj else []
         except Exception:
             tasks = []
 
-        # Treat in_progress as proposed for display (tickets are either proposed or done)
-        total_proposed = sum(1 for t in tasks if t.status in ("pending", "in_progress", "proposed"))
-        total_completed = sum(1 for t in tasks if t.status == "completed")
-        plan_status = meta.status or "unknown"
+        n_proposed = sum(1 for t in tasks if t.status == "proposed")
+        n_pending = sum(1 for t in tasks if t.status == "pending")
+        n_in_progress = sum(1 for t in tasks if t.status == "in_progress")
+        n_completed = sum(1 for t in tasks if t.status == "completed")
+        n_total = len(tasks)
+
+        # Get phase counts
+        phases = repo.list_phases(folder_name) if repo else []
+        n_phases = len(phases)
+        n_phases_routed = sum(1 for p in phases if p.agent)
+        n_phases_done = sum(1 for p in phases if p.status == "completed")
+
+        # Normalize display status based on actual state
+        # "active" with unplanned tickets is really just "seed"
+        # "planning" that's stale (no running planner) is also "seed"
+        if repo:
+            is_valid, _reason = validate_phase_routing(repo, folder_name)
+        else:
+            is_valid = False
+
+        if plan_status in ("seed", "active", "planning") and not is_valid:
+            display_status = "seed"
+        elif is_valid and n_completed == n_total and n_total > 0:
+            display_status = "completed"
+        elif is_valid and n_completed > 0:
+            display_status = "in_progress"
+        elif is_valid:
+            display_status = "ready"
+        else:
+            display_status = plan_status
+
+        # Build progress string: "3/8 tickets, 1/3 phases"
+        progress = f"{n_completed}/{n_total} tickets"
+        if n_phases:
+            progress += f", {n_phases_done}/{n_phases} phases"
 
         plans_data.append(
             {
-                "name": plan_folder.name,
-                "status": plan_status,
-                "proposed": total_proposed,
-                "completed": total_completed,
+                "name": folder_name,
+                "status": display_status,
+                "raw_status": plan_status,
+                "tickets": n_total,
+                "completed": n_completed,
+                "proposed": n_proposed,
+                "pending": n_pending,
+                "in_progress": n_in_progress,
+                "phases": n_phases,
+                "phases_routed": n_phases_routed,
+                "phases_done": n_phases_done,
+                "progress": progress,
             }
         )
 
@@ -1875,15 +1987,6 @@ def cmd_list(args):
     show_all = getattr(args, "all", False)
     if not show_all:
         plans_data = [p for p in plans_data if p["status"] != "completed"]
-
-    # Compute action hint for each epic
-    for plan in plans_data:
-        if plan["proposed"] + plan["completed"] == 0:
-            plan["action"] = "needs planning"
-        elif plan["proposed"] > 0:
-            plan["action"] = "ready to implement"
-        else:
-            plan["action"] = ""
 
     if is_json_output():
         print_json({"plans": plans_data})
@@ -1896,22 +1999,26 @@ def cmd_list(args):
 
         rows = []
         for plan in plans_data:
-            action_cell = f"[cyan]{plan['action']}[/cyan]" if plan["action"] else ""
+            status_cell = format_status(plan["status"])
+            tickets_cell = f"[green]{plan['completed']}[/green]/{plan['tickets']}"
+            phases_cell = f"[green]{plan['phases_done']}[/green]/{plan['phases']}" if plan["phases"] else "[dim]—[/dim]"
             rows.append(
                 [
                     f"[bold]{plan['name']}[/bold]",
-                    format_status(plan["status"]),
-                    f"[dim]{plan['proposed']}[/dim]",
-                    f"[green]{plan['completed']}[/green]",
-                    action_cell,
+                    status_cell,
+                    tickets_cell,
+                    phases_cell,
                 ]
             )
 
-        print_table("", ["Epic", "Status", "Proposed", "Completed", "Action"], rows)
+        print_table("", ["Epic", "Status", "Tickets", "Phases"], rows)
 
-        needs_planning = sum(1 for p in plans_data if p["action"] == "needs planning")
+        needs_planning = sum(1 for p in plans_data if p["status"] == "seed")
+        ready = sum(1 for p in plans_data if p["status"] == "ready")
         if needs_planning:
             console.print(f"\n[dim]Hint: {needs_planning} epic(s) need planning. Run: agentic orchestrate session plan[/dim]")
+        if ready:
+            console.print(f"\n[dim]Hint: {ready} epic(s) ready to implement. Run: agentic orchestrate session implement[/dim]")
 
 
 def cmd_task_update(args, ctx=None):
