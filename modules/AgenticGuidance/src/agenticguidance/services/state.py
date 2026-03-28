@@ -4,13 +4,21 @@ Replaces raw PID/state files with a centralized JSON registry that tracks
 active processes with file locking and automatic dead process cleanup.
 """
 
+import atexit
+import fcntl
 import json
+import logging
 import os
+import signal
+import threading
 import time
+import weakref
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # psutil is optional - gracefully degrade if not available
 try:
@@ -19,6 +27,58 @@ try:
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
+
+
+# ---------------------------------------------------------------------------
+# Global lock registry + cleanup infrastructure
+# ---------------------------------------------------------------------------
+
+_lock_registry: weakref.WeakSet = weakref.WeakSet()
+"""WeakSet of all currently-held FileLock instances.
+
+Using WeakSet ensures garbage-collected FileLock objects don't leak.
+"""
+
+
+def _cleanup_all_locks() -> None:
+    """Release every lock still tracked in the global registry.
+
+    Called by atexit and signal handlers so that orderly shutdown (sys.exit,
+    SIGTERM, SIGINT) does not leave lock files in a held state.
+    """
+    for lock in list(_lock_registry):
+        try:
+            lock.release()
+        except Exception:  # noqa: BLE001 — best-effort cleanup
+            pass
+
+
+# Register atexit handler unconditionally (works in any thread).
+atexit.register(_cleanup_all_locks)
+
+
+def _signal_handler(signum: int, frame) -> None:  # type: ignore[override]
+    """Release all locks, then chain to the previous signal handler."""
+    _cleanup_all_locks()
+
+    prev = _prev_handlers.get(signum)
+    if callable(prev):
+        prev(signum, frame)
+    elif signum == signal.SIGINT:
+        # Default SIGINT behaviour: raise KeyboardInterrupt
+        signal.default_int_handler(signum, frame)
+    else:
+        # SIGTERM with no previous handler → exit cleanly
+        raise SystemExit(128 + signum)
+
+
+# Signal handlers can only be registered from the main thread.
+_prev_handlers: dict[int, object] = {}
+
+if threading.current_thread() is threading.main_thread():
+    for _sig in (signal.SIGTERM, signal.SIGINT):
+        _prev_handlers[_sig] = signal.getsignal(_sig)
+        signal.signal(_sig, _signal_handler)
 
 
 class ProcessState(Enum):
@@ -68,81 +128,146 @@ class ProcessEntry:
         )
 
 
+# @story US-SET-017
 class FileLock:
-    """Simple file-based lock for atomic operations.
+    """POSIX flock-based lock for atomic operations.
 
-    Uses a .lock file to prevent concurrent access to critical sections.
+    Uses fcntl.flock() on a .lock file to prevent concurrent access to
+    critical sections.  The kernel automatically releases flocks when the
+    file descriptor is closed — including on SIGKILL or OOM — so locks
+    cannot be left orphaned by crashed processes.
     """
 
-    def __init__(self, path: Path, timeout: float = 10.0):
+    def __init__(self, path: Path, timeout: float = 10.0, max_age: float = 300.0):
         """Initialize lock.
 
         Args:
             path: Path to the file being protected.
             timeout: Maximum time to wait for lock acquisition.
+            max_age: Maximum age in seconds before a lock is considered stale.
+                     Handles NFS/cross-platform edge cases and PID recycling.
+                     Default 300 s (5 minutes).
         """
         self.lock_path = path.with_suffix(path.suffix + ".lock")
         self.timeout = timeout
+        self.max_age = max_age
         self._acquired = False
+        self._fd: int | None = None
 
     def acquire(self) -> bool:
-        """Acquire the lock.
+        """Acquire the lock via fcntl.flock().
+
+        Opens (or creates) the lock file and attempts a non-blocking
+        exclusive flock in a polling loop, sleeping 0.1 s between retries
+        until *timeout* seconds elapse.
+
+        If the lock appears held but is older than *max_age*, a force-break
+        is attempted (unlink + recreate) as a fallback for NFS / PID-recycle
+        edge cases.
 
         Returns:
             True if lock was acquired, False if timeout.
         """
         start = time.time()
+        # Open/create lock file (NOT O_EXCL — file persists across locks)
+        fd = os.open(
+            str(self.lock_path),
+            os.O_CREAT | os.O_WRONLY,
+            0o644,
+        )
         while time.time() - start < self.timeout:
             try:
-                # Try to create lock file exclusively
-                fd = os.open(
-                    str(self.lock_path),
-                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-                )
-                os.write(fd, str(os.getpid()).encode())
-                os.close(fd)
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # Lock acquired — write JSON with PID + timestamp
+                lock_data = json.dumps(
+                    {"pid": os.getpid(), "timestamp": time.time()}
+                ).encode()
+                os.ftruncate(fd, 0)
+                os.lseek(fd, 0, os.SEEK_SET)
+                os.write(fd, lock_data)
+                self._fd = fd
                 self._acquired = True
+                _lock_registry.add(self)
+                logger.debug("Acquired lock: %s", self.lock_path)
                 return True
-            except FileExistsError:
-                # Check if lock is stale (owner process dead)
-                if self._is_stale_lock():
-                    self._force_release()
-                    continue
+            except BlockingIOError:
+                # Check lock-age expiration before sleeping
+                if self._is_lock_expired():
+                    stale_info = self._read_lock_metadata()
+                    logger.warning(
+                        "Stale lock detected (age > %ss): %s (holder pid=%s). "
+                        "Force-breaking.",
+                        self.max_age,
+                        self.lock_path,
+                        stale_info.get("pid", "?"),
+                    )
+                    # Force-break: close fd, unlink old file, open new inode
+                    os.close(fd)
+                    try:
+                        self.lock_path.unlink()
+                    except OSError:
+                        pass
+                    fd = os.open(
+                        str(self.lock_path),
+                        os.O_CREAT | os.O_WRONLY,
+                        0o644,
+                    )
+                    continue  # retry flock immediately on new inode
                 time.sleep(0.1)
+
+        # Timed out — close the fd we opened (we never acquired the lock)
+        os.close(fd)
+        logger.warning(
+            "Timed out acquiring lock: %s after %ss", self.lock_path, self.timeout
+        )
         return False
 
+    def _is_lock_expired(self) -> bool:
+        """Check if the lock file's timestamp exceeds max_age.
+
+        Returns:
+            True if the lock is older than max_age or the metadata cannot
+            be read (treat as stale on error).
+        """
+        metadata = self._read_lock_metadata()
+        ts = metadata.get("timestamp")
+        if ts is None:
+            return True  # unreadable → treat as stale
+        return (time.time() - ts) > self.max_age
+
+    def _read_lock_metadata(self) -> dict:
+        """Read JSON metadata from the lock file.
+
+        Returns:
+            Dict with 'pid' and 'timestamp' keys, or empty dict on error.
+        """
+        try:
+            raw = self.lock_path.read_text().strip()
+            return json.loads(raw)
+        except (OSError, json.JSONDecodeError, ValueError):
+            return {}
+
     def release(self) -> None:
-        """Release the lock."""
-        if self._acquired and self.lock_path.exists():
-            try:
-                self.lock_path.unlink()
-            except OSError:
-                pass
-        self._acquired = False
+        """Release the lock.
 
-    def _is_stale_lock(self) -> bool:
-        """Check if lock file is stale (owner process is dead)."""
-        if not self.lock_path.exists():
-            return True
+        Unlocks via fcntl.flock(LOCK_UN) then closes the file descriptor.
+        The lock file is intentionally NOT unlinked — flock is tied to the
+        fd, not the file's existence.
+        """
+        if not self._acquired or self._fd is None:
+            return
         try:
-            pid = int(self.lock_path.read_text().strip())
-            if HAS_PSUTIL:
-                return not psutil.pid_exists(pid)
-            # Fallback: try to send signal 0 (doesn't do anything but checks)
-            try:
-                os.kill(pid, 0)
-                return False
-            except OSError:
-                return True
-        except (ValueError, OSError):
-            return True
-
-    def _force_release(self) -> None:
-        """Force release a stale lock."""
-        try:
-            self.lock_path.unlink()
+            fcntl.flock(self._fd, fcntl.LOCK_UN)
         except OSError:
             pass
+        try:
+            os.close(self._fd)
+        except OSError:
+            pass
+        self._fd = None
+        self._acquired = False
+        _lock_registry.discard(self)
+        logger.debug("Released lock: %s", self.lock_path)
 
     def __enter__(self) -> "FileLock":
         """Context manager entry."""

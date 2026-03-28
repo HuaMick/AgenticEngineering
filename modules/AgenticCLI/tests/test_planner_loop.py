@@ -1911,35 +1911,49 @@ class TestConcurrentGuard:
     """Test file-based concurrent run guard."""
 
     def test_concurrent_guard_blocks_duplicate(self, tmp_path, monkeypatch):
-        """Lock file with live PID → returns False."""
-        from agenticcli.utils.epic_lock import acquire_epic_lock
+        """Lock held via flock → second acquire returns False."""
+        from agenticcli.utils.epic_lock import (
+            _held_locks,
+            acquire_epic_lock,
+            release_epic_lock,
+        )
 
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
-        # Write lock with current PID (which is running)
-        lock_file = tmp_path / ".agentic" / "locks" / "orchestrate_my_plan.lock"
-        lock_file.parent.mkdir(parents=True)
-        lock_file.write_text(json.dumps({"pid": os.getpid(), "started_at": "2026-01-01"}))
+        # Acquire the lock normally (holds flock)
+        assert acquire_epic_lock("my_plan") is True
 
+        # Second acquire on the same epic should timeout (flock held)
         result = acquire_epic_lock("my_plan")
         assert result is False
 
+        # Cleanup
+        release_epic_lock("my_plan")
+
     def test_concurrent_guard_clears_stale_lock(self, tmp_path, monkeypatch):
-        """Lock file with dead PID → clears and proceeds."""
-        from agenticcli.utils.epic_lock import acquire_epic_lock
+        """Stale lock file (no flock held) does not block acquisition."""
+        from agenticcli.utils.epic_lock import (
+            _held_locks,
+            acquire_epic_lock,
+            release_epic_lock,
+        )
 
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
 
         lock_file = tmp_path / ".agentic" / "locks" / "orchestrate_stale_plan.lock"
         lock_file.parent.mkdir(parents=True)
-        # PID 999999999 is almost certainly not running
+        # Stale lock file on disk without a held flock — should not block
         lock_file.write_text(json.dumps({"pid": 999999999, "started_at": "2026-01-01"}))
 
         result = acquire_epic_lock("stale_plan")
         assert result is True
 
+        # Cleanup
+        release_epic_lock("stale_plan")
+
     def test_lock_released_after_completion(self, tmp_path, monkeypatch):
-        """Lock file gone after _process_plan returns."""
+        """Lock is released (flock freed) after _process_plan returns."""
+        from agenticcli.utils.epic_lock import _held_locks
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
 
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
@@ -1959,5 +1973,12 @@ class TestConcurrentGuard:
 
         runner._process_plan("lock_test")
 
-        lock_file = tmp_path / ".agentic" / "locks" / "orchestrate_lock_test.lock"
-        assert not lock_file.exists()
+        # With fcntl.flock, the lock file may persist on disk, but the
+        # flock should be released and the epic removed from _held_locks.
+        assert "lock_test" not in _held_locks
+
+        # Verify we can re-acquire the lock (proves flock was released)
+        from agenticcli.utils.epic_lock import acquire_epic_lock, release_epic_lock
+
+        assert acquire_epic_lock("lock_test") is True
+        release_epic_lock("lock_test")

@@ -1,0 +1,405 @@
+stories:
+  - id: US-001
+    title: "Automatic Lock Release on Agent Crash"
+    category: "lock-mechanism"
+    priority: critical
+    lifecycle: "proposal"
+
+    description: |
+      As an operator, I want TinyDB file locks to automatically release when an
+      agent process is killed (SIGKILL, OOM, segfault) so that subsequent agents
+      can acquire the lock without manual deletion of orphaned lock files.
+
+      This is the core value of the epic. The current file-existence locking
+      mechanism (O_CREAT|O_EXCL) leaves .lock files on disk after uncontrolled
+      process death. Switching to POSIX fcntl.flock() delegates release
+      responsibility to the kernel, which closes all file descriptors — and
+      therefore releases all flocks — when a process terminates for any reason.
+
+    prerequisites:
+      - "FileLock class exists in agenticguidance/services/state.py"
+      - "Platform supports POSIX fcntl.flock (Linux or macOS)"
+
+    steps:
+      - step: 1
+        when: "An agent process acquires a FileLock on the TinyDB database"
+        then:
+          - "The lock is held via fcntl.flock() on an open file descriptor"
+          - "The lock file contains the holder's PID and acquisition timestamp"
+          - "No other process can acquire the same lock concurrently"
+
+      - step: 2
+        when: "The agent process is killed with SIGKILL while holding the lock"
+        then:
+          - "The kernel closes the agent's file descriptor automatically"
+          - "The flock is released by the kernel without any userspace cleanup"
+          - "The next agent that calls acquire() obtains the lock immediately"
+          - "No manual intervention (lock file deletion) is required"
+
+      - step: 3
+        when: "The agent process is killed by OOM or crashes with an uncaught exception"
+        then:
+          - "The same automatic release behavior occurs as with SIGKILL"
+          - "The lock file may remain on disk but the flock is released"
+          - "A subsequent acquire() succeeds because flock() is non-exclusive on the stale file"
+
+    related_commands: []
+    related_agents:
+      - "build-python"
+    related_files:
+      - "modules/AgenticGuidance/src/agenticguidance/services/state.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-002
+    title: "Stale Lock Expiration via Lock Age"
+    category: "lock-mechanism"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As an operator, I want locks older than a configurable maximum age to be
+      treated as stale so that PID recycling and NFS edge cases cannot cause
+      indefinite lockout.
+
+      fcntl.flock() handles the common crash case, but edge cases exist: NFS
+      may not propagate flock semantics, and the OS may recycle a crashed PID
+      before the lock file is cleaned up. A secondary age-based expiration
+      provides defense-in-depth by ensuring no lock can persist beyond a
+      reasonable time window.
+
+    prerequisites:
+      - "FileLock uses fcntl.flock() as the primary mechanism (US-001)"
+
+    steps:
+      - step: 1
+        when: "A FileLock is acquired successfully"
+        then:
+          - "The current timestamp is written to the lock file alongside the PID"
+          - "The timestamp format supports age comparison"
+
+      - step: 2
+        when: "A process attempts to acquire a lock held by a running process whose lock age exceeds max_age (default 5 minutes)"
+        then:
+          - "The lock is treated as stale regardless of PID liveness"
+          - "The stale lock is forcibly released"
+          - "The requesting process acquires the lock"
+          - "A warning is logged indicating stale lock recovery with age details"
+
+      - step: 3
+        when: "A lock is held by a recycled PID (different process reusing the crashed agent's PID) and the lock age exceeds max_age"
+        then:
+          - "The age check detects the lock as stale"
+          - "The lock is released and re-acquired by the requesting process"
+          - "The system does not remain indefinitely locked"
+
+      - step: 4
+        when: "A lock is held by a running process and the lock age is within max_age"
+        then:
+          - "The lock is NOT treated as stale"
+          - "The requesting process waits or times out normally"
+        notes: "Age expiration only triggers when the lock is older than max_age, preventing premature forced release of legitimately held locks."
+
+    related_commands: []
+    related_agents:
+      - "build-python"
+    related_files:
+      - "modules/AgenticGuidance/src/agenticguidance/services/state.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-003
+    title: "Graceful Lock Cleanup on Shutdown Signals"
+    category: "lock-mechanism"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As a developer, I want all held FileLocks to be released when a process
+      receives SIGTERM, SIGINT, or exits normally via atexit so that orderly
+      shutdowns leave no orphaned lock state and don't rely solely on kernel
+      flock release.
+
+      While fcntl.flock auto-releases on process death, proactive cleanup on
+      graceful shutdown provides cleaner state: lock files are removed, log
+      messages confirm release, and signal handlers chain to previously
+      registered handlers so other cleanup code still runs.
+
+    prerequisites:
+      - "FileLock uses fcntl.flock() as the primary mechanism (US-001)"
+      - "Global lock registry exists to track active FileLock instances"
+
+    steps:
+      - step: 1
+        when: "A process holding one or more FileLocks receives SIGTERM"
+        then:
+          - "The signal handler releases all locks in the global registry"
+          - "Lock files are cleaned up from disk"
+          - "Previously registered SIGTERM handlers are chained and called"
+          - "The process exits"
+
+      - step: 2
+        when: "A process holding one or more FileLocks receives SIGINT (Ctrl-C)"
+        then:
+          - "The signal handler releases all locks in the global registry"
+          - "Lock files are cleaned up from disk"
+          - "Previously registered SIGINT handlers are chained and called"
+
+      - step: 3
+        when: "A process holding one or more FileLocks exits normally (atexit)"
+        then:
+          - "The atexit handler releases all locks still in the registry"
+          - "Lock files are cleaned up from disk"
+
+      - step: 4
+        when: "A FileLock is acquired"
+        then:
+          - "The lock instance is added to the global lock registry"
+        notes: "The registry enables signal/atexit handlers to find and release all active locks without each consumer needing its own cleanup logic."
+
+      - step: 5
+        when: "A FileLock is released normally (via release() or context manager exit)"
+        then:
+          - "The lock instance is removed from the global lock registry"
+          - "Signal/atexit handlers will not attempt to release it again"
+
+    related_commands: []
+    related_agents:
+      - "build-python"
+    related_files:
+      - "modules/AgenticGuidance/src/agenticguidance/services/state.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-004
+    title: "Epic Orchestration Lock Crash Recovery"
+    category: "orchestration-lock"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As an operator, I want the epic orchestration lock (used by planning and
+      execution workflows) to auto-release on agent crash so that a killed
+      planner or executor does not block subsequent orchestration runs for the
+      same epic.
+
+      Currently epic_lock.py uses a JSON-based lock file with PID liveness
+      checking, which suffers from the same failure modes as the old FileLock:
+      PID recycling, no age limit, and no kernel-level auto-release. Rewriting
+      epic_lock.py to use the hardened FileLock from state.py unifies the
+      locking strategy and gives orchestration locks all three protection layers.
+
+    prerequisites:
+      - "Hardened FileLock with fcntl.flock is available (US-001, US-002, US-003)"
+      - "epic_lock.py exists in agenticcli/utils/"
+
+    steps:
+      - step: 1
+        when: "A planner or executor acquires the epic orchestration lock"
+        then:
+          - "The lock is backed by the hardened FileLock (fcntl.flock)"
+          - "Lock metadata (PID, timestamp) is written to the lock file"
+
+      - step: 2
+        when: "The planner process is killed with SIGKILL while holding the orchestration lock"
+        then:
+          - "The kernel releases the flock automatically"
+          - "The next orchestration run for the same epic acquires the lock immediately"
+          - "No manual lock file deletion is required"
+
+      - step: 3
+        when: "Two different epics are being orchestrated concurrently"
+        then:
+          - "Each epic has an independent lock file"
+          - "Locking one epic does not block orchestration of another"
+
+      - step: 4
+        when: "release_epic_lock() is called for an epic that has no active lock"
+        then:
+          - "The call completes without error (no-op)"
+
+    related_commands:
+      - "agentic agent epic execute"
+    related_agents:
+      - "build-python"
+    related_files:
+      - "modules/AgenticCLI/src/agenticcli/utils/epic_lock.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-005
+    title: "Backward-Compatible Lock API for Existing Consumers"
+    category: "lock-mechanism"
+    priority: critical
+    lifecycle: "proposal"
+
+    description: |
+      As a developer, I want the hardened FileLock to maintain its existing
+      public API (acquire, release, context manager) so that all current
+      consumers — EpicRepository, SessionStateService, QuestionQueue — continue
+      to work without any code changes.
+
+      The locking mechanism is changing fundamentally (file-existence → fcntl.flock),
+      but the contract with consumers must remain stable. This story ensures the
+      internal rewrite is transparent to callers.
+
+    prerequisites:
+      - "Existing consumers use FileLock via context manager or acquire()/release()"
+      - "EpicRepository, ClaudeSessionManager, and QuestionQueue import FileLock from state.py"
+
+    steps:
+      - step: 1
+        when: "EpicRepository creates or updates an epic using FileLock as a context manager"
+        then:
+          - "The operation completes successfully with the hardened lock"
+          - "No import changes are required in epic_repository.py"
+          - "TinyDB data is protected from concurrent writes"
+
+      - step: 2
+        when: "ClaudeSessionManager writes session data using FileLock as a context manager"
+        then:
+          - "The operation completes successfully with the hardened lock"
+          - "No import changes are required in claude_session.py"
+
+      - step: 3
+        when: "QuestionQueue uses manual acquire()/release() on FileLock"
+        then:
+          - "acquire() returns True on success and False on timeout"
+          - "release() is idempotent (safe to call multiple times)"
+          - "The two-lock pattern in QuestionQueue works without deadlock changes"
+
+      - step: 4
+        when: "A consumer creates FileLock(path) with only the path argument"
+        then:
+          - "The default timeout remains 10 seconds"
+          - "The lock file is created adjacent to the target file"
+          - "The API signature is unchanged"
+
+      - step: 5
+        when: "A consumer calls acquire() and the lock cannot be obtained within the timeout"
+        then:
+          - "acquire() returns False (non-context-manager usage)"
+          - "Context manager raises TimeoutError"
+          - "Behavior is identical to the previous implementation"
+
+    related_commands: []
+    related_agents:
+      - "build-python"
+    related_files:
+      - "modules/AgenticGuidance/src/agenticguidance/services/state.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/claude_session.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/question.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-006
+    title: "Verified Crash Recovery via Integration Tests"
+    category: "test-validation"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As a developer, I want integration tests that prove lock crash recovery
+      works end-to-end so that I can confidently deploy the hardened locking
+      mechanism and catch regressions.
+
+      Unit tests validate individual components, but the critical behavior —
+      a subprocess holds a lock, gets SIGKILL'd, and the parent immediately
+      acquires the same lock — must be verified with a real subprocess and
+      real file descriptors. Existing tests that assert on lock file existence
+      must be updated for the fcntl.flock mechanism.
+
+    prerequisites:
+      - "Hardened FileLock is implemented (US-001, US-002, US-003)"
+      - "Hardened epic lock is implemented (US-004)"
+      - "pytest and subprocess are available in test environment"
+
+    steps:
+      - step: 1
+        when: "A subprocess acquires a FileLock and is killed with SIGKILL"
+        then:
+          - "The parent process can immediately acquire the same lock"
+          - "No manual lock file cleanup is needed"
+          - "The test completes within 5 seconds (no polling delay)"
+
+      - step: 2
+        when: "A subprocess acquires a FileLock and the test creates a lock with an expired age"
+        then:
+          - "The parent detects the lock as stale via age expiration"
+          - "The parent acquires the lock successfully"
+
+      - step: 3
+        when: "Existing tests in test_plan_repository_filelock.py are run against the hardened FileLock"
+        then:
+          - "Tests that manually created .lock files are updated for fcntl.flock semantics"
+          - "Test intent is preserved: concurrent writes serialized, stale recovery works, reads bypass lock"
+          - "All updated tests pass"
+
+      - step: 4
+        when: "Existing tests in test_epic_lock.py are run against the hardened epic lock"
+        then:
+          - "Tests are updated for FileLock-backed implementation"
+          - "Fresh acquisition, stale clearance, independent epics, no-op release all pass"
+
+      - step: 5
+        when: "The full test suite is run"
+        then:
+          - "All existing tests pass (no regressions)"
+          - "New crash recovery tests pass"
+          - "No test requires manual lock file cleanup in teardown"
+
+    related_commands: []
+    related_agents:
+      - "test-builder"
+      - "test-uat"
+    related_files:
+      - "modules/AgenticGuidance/tests/test_plan_repository_filelock.py"
+      - "modules/AgenticGuidance/tests/test_services_state.py"
+      - "modules/AgenticCLI/tests/test_epic_lock.py"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+categories:
+  - name: "lock-mechanism"
+    description: "Core FileLock hardening: fcntl.flock primary mechanism, age-based expiration, signal/atexit cleanup, and backward-compatible API"
+    codebase_scope:
+      - "modules/AgenticGuidance/src/agenticguidance/services/state.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/claude_session.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/question.py"
+    story_ids:
+      - "US-001"
+      - "US-002"
+      - "US-003"
+      - "US-005"
+
+  - name: "orchestration-lock"
+    description: "Migrate epic orchestration lock to use hardened FileLock, unifying the locking strategy across the system"
+    codebase_scope:
+      - "modules/AgenticCLI/src/agenticcli/utils/epic_lock.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/orchestration.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/planner_loop.py"
+    story_ids:
+      - "US-004"
+
+  - name: "test-validation"
+    description: "Integration tests for crash recovery, updated unit tests for fcntl.flock semantics, and UAT validation"
+    codebase_scope:
+      - "modules/AgenticGuidance/tests/test_plan_repository_filelock.py"
+      - "modules/AgenticGuidance/tests/test_services_state.py"
+      - "modules/AgenticCLI/tests/test_epic_lock.py"
+    story_ids:
+      - "US-006"

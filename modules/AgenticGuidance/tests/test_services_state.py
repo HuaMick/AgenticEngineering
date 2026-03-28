@@ -99,8 +99,8 @@ class TestFileLock:
         assert lock.lock_path.exists()
         lock.release()
 
-    def test_release_removes_lock_file(self, tmp_path):
-        """Test releasing lock removes .lock file."""
+    def test_release_unlocks_flock(self, tmp_path):
+        """Test releasing lock allows re-acquisition (flock released, file persists)."""
         target_file = tmp_path / "data.json"
         target_file.write_text("{}")
 
@@ -108,7 +108,11 @@ class TestFileLock:
         lock.acquire()
         lock.release()
 
-        assert not lock.lock_path.exists()
+        # With fcntl.flock, the lock file persists but the flock is released.
+        # Verify another lock can acquire immediately (no timeout).
+        lock2 = FileLock(target_file, timeout=1.0)
+        assert lock2.acquire() is True
+        lock2.release()
 
     def test_context_manager_acquires_and_releases(self, tmp_path):
         """Test context manager properly handles lock lifecycle."""
@@ -117,8 +121,13 @@ class TestFileLock:
 
         with FileLock(target_file) as lock:
             assert lock.lock_path.exists()
+            assert lock._acquired is True
 
-        assert not lock.lock_path.exists()
+        # After exit, flock is released (file persists but is unlocked)
+        assert lock._acquired is False
+        lock2 = FileLock(target_file, timeout=1.0)
+        assert lock2.acquire() is True
+        lock2.release()
 
     def test_double_acquire_waits(self, tmp_path):
         """Test second acquire waits for first release."""

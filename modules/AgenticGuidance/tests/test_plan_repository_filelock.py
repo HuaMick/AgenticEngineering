@@ -1,22 +1,31 @@
 """Tests for FileLock protecting concurrent EpicRepository writes.
 
+Updated for fcntl.flock-based locking. Key changes from O_CREAT|O_EXCL era:
+- Lock file persists after release (flock is tied to fd, not file existence)
+- Cross-process serialization is the primary guarantee (flock is per-fd)
+- Stale lock files without a held flock do not block acquisition
+
 Validates that:
-- Concurrent writes are serialized via FileLock
+- Concurrent writes from separate processes are serialized via FileLock
 - Lock file appears during write operations
-- Stale locks with dead PIDs are recovered
+- Stale lock files (no flock held) do not block acquisition
 - Read operations work without acquiring the lock
 """
 
+import json
 import os
-import threading
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from agenticguidance.services.epic_repository import EpicRepository
 
 pytestmark = pytest.mark.story("US-PLN-082", "US-PLN-063")
+
+_SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
 
 
 @pytest.fixture
@@ -41,34 +50,55 @@ def _make_epic_data(name: str) -> dict:
 
 @pytest.mark.story("US-PLN-082")
 class TestConcurrentWritesSerialized:
-    """FL_002-1: Concurrent create_epic calls are serialized by FileLock."""
+    """FL_002-1: Concurrent create_epic calls are serialized by FileLock.
+
+    Uses subprocesses instead of threads because fcntl.flock is per-open-file-
+    description — threads in the same process each opening the file get
+    independent locks.  Cross-process serialization is the production use case.
+    """
 
     def test_concurrent_writes_are_serialized(self, tmp_path):
-        """Two threads calling create_epic concurrently both succeed without corruption."""
+        """Two subprocesses calling create_epic concurrently both succeed."""
         db_path = tmp_path / "epics.db"
-        results = {}
-        errors = []
 
-        def create_in_thread(epic_name: str):
-            try:
-                r = EpicRepository(db_path=db_path, auto_bootstrap=False)
-                result = r.create_epic(_make_epic_data(epic_name))
-                results[epic_name] = result
-                r.close()
-            except Exception as exc:
-                errors.append((epic_name, exc))
+        script = textwrap.dedent(f"""\
+            import sys, json
+            from pathlib import Path
+            sys.path.insert(0, "{_SRC_DIR}")
+            from agenticguidance.services.epic_repository import EpicRepository
 
-        t1 = threading.Thread(target=create_in_thread, args=("plan_alpha",))
-        t2 = threading.Thread(target=create_in_thread, args=("plan_beta",))
+            epic_name = sys.argv[1]
+            db_path = Path("{db_path}")
+            r = EpicRepository(db_path=db_path, auto_bootstrap=False)
+            data = {{
+                "plan_folder_name": epic_name,
+                "plan_folder": f"/tmp/epics/{{epic_name}}",
+                "name": epic_name,
+                "status": "pending",
+                "objective": f"Objective for {{epic_name}}",
+            }}
+            result = r.create_epic(data)
+            r.close()
+            # Exit 0 on success, 1 on failure
+            sys.exit(0 if result.success else 1)
+        """)
+        script_path = tmp_path / "create_epic.py"
+        script_path.write_text(script)
 
-        t1.start()
-        t2.start()
-        t1.join(timeout=15)
-        t2.join(timeout=15)
+        p1 = subprocess.Popen(
+            [sys.executable, str(script_path), "plan_alpha"],
+            stderr=subprocess.PIPE,
+        )
+        p2 = subprocess.Popen(
+            [sys.executable, str(script_path), "plan_beta"],
+            stderr=subprocess.PIPE,
+        )
 
-        assert not errors, f"Threads raised errors: {errors}"
-        assert results["plan_alpha"].success is True
-        assert results["plan_beta"].success is True
+        p1.wait(timeout=15)
+        p2.wait(timeout=15)
+
+        assert p1.returncode == 0, f"plan_alpha failed: {p1.stderr.read().decode()}"
+        assert p2.returncode == 0, f"plan_beta failed: {p2.stderr.read().decode()}"
 
         # Verify both epics exist in the DB
         verify = EpicRepository(db_path=db_path, auto_bootstrap=False)
@@ -85,14 +115,15 @@ class TestLockFileCreatedDuringWrite:
         """The .lock file must exist while inside the locked section."""
         db_path = tmp_path / "epics.db"
         lock_path = Path(str(db_path) + ".lock")
-        lock_seen = threading.Event()
+        lock_seen = False
 
         original_insert = None
 
         def spy_insert(doc):
             """Intercept TinyDB insert to check lock file mid-write."""
+            nonlocal lock_seen
             if lock_path.exists():
-                lock_seen.set()
+                lock_seen = True
             return original_insert(doc)
 
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
@@ -103,34 +134,40 @@ class TestLockFileCreatedDuringWrite:
         repo.close()
 
         assert result.success is True
-        assert lock_seen.is_set(), "Lock file was not observed during write"
-        # Lock should be released after the operation
-        assert not lock_path.exists(), "Lock file should be cleaned up after write"
+        assert lock_seen, "Lock file was not observed during write"
+        # With fcntl.flock, the lock FILE persists but the flock is released.
+        # Verify the lock is released by acquiring it.
+        from agenticguidance.services.state import FileLock
+
+        lock = FileLock(db_path, timeout=1.0)
+        assert lock.acquire() is True, "Lock should be acquirable after write completes"
+        lock.release()
 
 
 @pytest.mark.story("US-PLN-082")
 class TestStaleLockRecovery:
-    """FL_002-3: EpicRepository recovers from stale lock files with dead PIDs."""
+    """FL_002-3: EpicRepository recovers from stale lock files."""
 
-    def test_stale_lock_recovery(self, tmp_path):
-        """A stale lock file with a dead PID is cleaned up automatically."""
+    def test_stale_lock_file_does_not_block(self, tmp_path):
+        """A stale lock file (no flock held) does not block acquisition.
+
+        With fcntl.flock, a lock file on disk without a held flock is
+        just a regular file — it does not block new acquisitions.
+        """
         db_path = tmp_path / "epics.db"
         lock_path = Path(str(db_path) + ".lock")
 
-        # Create a stale lock file with a PID that does not exist.
-        # PID 2^22 (4194304) is extremely unlikely to be running.
-        dead_pid = 4194304
-        lock_path.write_text(str(dead_pid))
+        # Create a stale lock file — no flock is held on it
+        lock_path.write_text(json.dumps({"pid": 4194304, "timestamp": 0}))
 
-        # Patch pid_exists / os.kill to confirm the PID is dead
-        with patch("agenticguidance.services.state.HAS_PSUTIL", False):
-            with patch("os.kill", side_effect=OSError("No such process")):
-                repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-                result = repo.create_epic(_make_epic_data("plan_after_stale"))
-                repo.close()
+        repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+        result = repo.create_epic(_make_epic_data("plan_after_stale"))
+        repo.close()
 
         assert result.success is True
-        assert not lock_path.exists(), "Stale lock should have been cleaned up"
+        # Lock file now contains current process's PID
+        data = json.loads(lock_path.read_text())
+        assert data["pid"] == os.getpid()
 
 
 @pytest.mark.story("US-PLN-082")
@@ -138,37 +175,26 @@ class TestReadOperationsDontLock:
     """FL_002-4: Read operations (get_epic, list_epics) work without lock."""
 
     def test_get_epic_works_without_lock(self, repo):
-        """get_epic succeeds even when lock file is held by another process."""
+        """get_epic succeeds even when lock file exists on disk."""
         repo.create_epic(_make_epic_data("plan_readable"))
 
-        # Manually create a lock file simulating another process holding it
-        lock_path = Path(str(repo.db_path) + ".lock")
-        lock_path.write_text(str(os.getpid()))  # current PID = alive
-
-        try:
-            epic = repo.get_epic("plan_readable")
-            assert epic is not None
-            assert epic.plan_folder_name == "plan_readable"
-        finally:
-            lock_path.unlink(missing_ok=True)
+        # Lock file exists on disk (flock persists file after release)
+        # but no flock is held — reads should not be affected
+        epic = repo.get_epic("plan_readable")
+        assert epic is not None
+        assert epic.plan_folder_name == "plan_readable"
 
     def test_list_epics_works_without_lock(self, repo):
-        """list_epics succeeds even when lock file is held by another process."""
+        """list_epics succeeds regardless of lock file presence."""
         repo.create_epic(_make_epic_data("plan_listable"))
 
-        lock_path = Path(str(repo.db_path) + ".lock")
-        lock_path.write_text(str(os.getpid()))
-
-        try:
-            epics = repo.list_epics()
-            assert len(epics) >= 1
-            names = [p.plan_folder_name for p in epics]
-            assert "plan_listable" in names
-        finally:
-            lock_path.unlink(missing_ok=True)
+        epics = repo.list_epics()
+        assert len(epics) >= 1
+        names = [p.plan_folder_name for p in epics]
+        assert "plan_listable" in names
 
     def test_get_tickets_works_without_lock(self, repo):
-        """get_tickets succeeds even when lock file is held."""
+        """get_tickets succeeds regardless of lock file presence."""
         repo.create_epic(_make_epic_data("plan_with_tasks"))
         repo.add_ticket(
             "plan_with_tasks",
@@ -176,12 +202,6 @@ class TestReadOperationsDontLock:
             {"id": "T1", "name": "task", "status": "pending"},
         )
 
-        lock_path = Path(str(repo.db_path) + ".lock")
-        lock_path.write_text(str(os.getpid()))
-
-        try:
-            tickets = repo.get_tickets("plan_with_tasks")
-            assert len(tickets) == 1
-            assert tickets[0].id == "T1"
-        finally:
-            lock_path.unlink(missing_ok=True)
+        tickets = repo.get_tickets("plan_with_tasks")
+        assert len(tickets) == 1
+        assert tickets[0].id == "T1"
