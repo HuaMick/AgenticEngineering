@@ -233,11 +233,11 @@ def handle(args, ctx=None):
 def _epic_folder_or_synthetic(epic_obj) -> Path:
     """Return epic_folder from an EpicData/EpicMetadata, or synthesize a Path from the name.
 
-    When epic_folder is None (folder-free epic), returns a synthetic Path
-    using only the epic_folder_name. Callers use .name on the result to
+    When epic_folder is None or empty (folder-free epic), returns a synthetic
+    Path using only the epic_folder_name. Callers use .name on the result to
     get the epic_folder_name for TinyDB lookups.
     """
-    if epic_obj.epic_folder is not None:
+    if epic_obj.epic_folder:
         return epic_obj.epic_folder
     return Path(epic_obj.epic_folder_name)
 
@@ -2492,49 +2492,48 @@ def cmd_phase_add(args, ctx=None):
 
     # TinyDB-first: add phase via PlanRepository
     tinydb_done = False
-    try:
-        repo = _get_repo()
-        if repo is not None:
-            # Ensure the epic is registered in TinyDB (auto-create if folder
-            # exists on disk but has no DB record yet).
-            if _ensure_epic_in_db(repo, plan_path):
-                # Check for duplicate by phase_id (primary key)
-                existing = repo.get_phase(plan_path.name, phase_id) if phase_id else None
-                if not existing:
-                    existing = repo.get_phase(plan_path.name, phase_name)
-                if existing:
-                    if is_json_output():
-                        print_json({"status": "exists", "phase": phase_id or phase_name, "message": f"Phase '{phase_id or phase_name}' already exists"})
-                    else:
-                        print_success(f"Phase '{phase_id or phase_name}' already exists (skipped)")
-                    return
+    repo = _get_repo()
+    if repo is not None:
+        # Ensure the epic is registered in TinyDB
+        if not _ensure_epic_in_db(repo, plan_path):
+            print_error(f"Epic not found in TinyDB: {plan_path.name}")
+            sys.exit(1)
 
-                phase_doc = {
-                    "name": phase_name,
-                    "phase_id": phase_id,
-                    "description": phase_description,
-                    "status": "pending",
-                }
-                if agent is not None:
-                    phase_doc["agent"] = agent
-                if execution is not None:
-                    phase_doc["execution"] = execution
-                if loop_type is not None:
-                    phase_doc["loop_type"] = loop_type
-                if loop_max_iterations is not None:
-                    phase_doc["loop_max_iterations"] = loop_max_iterations
-                if max_turns is not None:
-                    phase_doc["max_turns"] = max_turns
-                if timeout is not None:
-                    phase_doc["timeout"] = timeout
-                if triggers:
-                    phase_doc["feedback_triggers"] = triggers
+        # Check for duplicate by phase_id (primary key)
+        existing = repo.get_phase(plan_path.name, phase_id) if phase_id else None
+        if not existing:
+            existing = repo.get_phase(plan_path.name, phase_name)
+        if existing:
+            if is_json_output():
+                print_json({"status": "exists", "phase": phase_id or phase_name, "message": f"Phase '{phase_id or phase_name}' already exists"})
+            else:
+                print_success(f"Phase '{phase_id or phase_name}' already exists (skipped)")
+            return
 
-                added = repo.add_phase(plan_path.name, phase_doc)
-                if added:
-                    tinydb_done = True
-    except Exception:
-        pass
+        phase_doc = {
+            "name": phase_name,
+            "phase_id": phase_id,
+            "description": phase_description,
+            "status": "pending",
+        }
+        if agent is not None:
+            phase_doc["agent"] = agent
+        if execution is not None:
+            phase_doc["execution"] = execution
+        if loop_type is not None:
+            phase_doc["loop_type"] = loop_type
+        if loop_max_iterations is not None:
+            phase_doc["loop_max_iterations"] = loop_max_iterations
+        if max_turns is not None:
+            phase_doc["max_turns"] = max_turns
+        if timeout is not None:
+            phase_doc["timeout"] = timeout
+        if triggers:
+            phase_doc["feedback_triggers"] = triggers
+
+        added = repo.add_phase(plan_path.name, phase_doc)
+        if added:
+            tinydb_done = True
 
     if not tinydb_done:
         print_error("Failed to add phase via TinyDB")

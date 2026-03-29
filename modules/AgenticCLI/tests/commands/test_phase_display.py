@@ -1,5 +1,6 @@
-"""Tests for phase list display using actual phase_id values."""
+"""Tests for phase list display and folder-free epic resolution."""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -80,3 +81,40 @@ def test_phase_list_fallback_for_missing_phase_id(mock_repo, mock_find_epic, cap
         call_data = mock_print_json.call_args[0][0]
         assert call_data["phases"][0]["id"] == "P1"
         assert call_data["phases"][1]["id"] == "P2"
+
+
+class TestEpicFolderOrSynthetic:
+    """Regression tests for _epic_folder_or_synthetic with empty epic_folder."""
+
+    def test_empty_string_epic_folder_uses_name(self):
+        """epic_folder='' (folder-free) must use epic_folder_name, not Path('')."""
+        from agenticcli.commands.epic import _epic_folder_or_synthetic
+
+        epic = MagicMock()
+        epic.epic_folder = ""
+        epic.epic_folder_name = "260329AG_my_epic"
+
+        result = _epic_folder_or_synthetic(epic)
+        assert result.name == "260329AG_my_epic"
+
+    def test_none_epic_folder_uses_name(self):
+        """epic_folder=None uses epic_folder_name."""
+        from agenticcli.commands.epic import _epic_folder_or_synthetic
+
+        epic = MagicMock()
+        epic.epic_folder = None
+        epic.epic_folder_name = "260329AG_my_epic"
+
+        result = _epic_folder_or_synthetic(epic)
+        assert result.name == "260329AG_my_epic"
+
+    def test_real_path_epic_folder_returned(self):
+        """Non-empty epic_folder is returned as-is."""
+        from agenticcli.commands.epic import _epic_folder_or_synthetic
+
+        epic = MagicMock()
+        epic.epic_folder = Path("/home/user/docs/epics/live/260329AG_my_epic")
+        epic.epic_folder_name = "260329AG_my_epic"
+
+        result = _epic_folder_or_synthetic(epic)
+        assert result == Path("/home/user/docs/epics/live/260329AG_my_epic")
