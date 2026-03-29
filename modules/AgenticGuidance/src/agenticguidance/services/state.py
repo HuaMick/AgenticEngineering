@@ -158,8 +158,9 @@ class FileLock:
         """Acquire the lock via fcntl.flock().
 
         Opens (or creates) the lock file and attempts a non-blocking
-        exclusive flock in a polling loop, sleeping 0.1 s between retries
-        until *timeout* seconds elapse.
+        exclusive flock in a polling loop with exponential backoff
+        (0.05s -> 0.1s -> 0.2s -> ... capped at 1.0s) until *timeout*
+        seconds elapse.
 
         If the lock appears held but is older than *max_age*, a force-break
         is attempted (unlink + recreate) as a fallback for NFS / PID-recycle
@@ -169,6 +170,8 @@ class FileLock:
             True if lock was acquired, False if timeout.
         """
         start = time.time()
+        backoff = 0.05
+        max_backoff = 1.0
         # Open/create lock file (NOT O_EXCL — file persists across locks)
         fd = os.open(
             str(self.lock_path),
@@ -178,13 +181,18 @@ class FileLock:
         while time.time() - start < self.timeout:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                # Lock acquired — write JSON with PID + timestamp
+                # Lock acquired — write JSON with PID + timestamp.
+                # Write the full payload in one shot, then truncate any
+                # trailing bytes from a previous longer payload.  This
+                # avoids a window where the file appears empty (between
+                # ftruncate and write) that could trick another process's
+                # staleness check.
                 lock_data = json.dumps(
                     {"pid": os.getpid(), "timestamp": time.time()}
                 ).encode()
-                os.ftruncate(fd, 0)
                 os.lseek(fd, 0, os.SEEK_SET)
                 os.write(fd, lock_data)
+                os.ftruncate(fd, len(lock_data))
                 self._fd = fd
                 self._acquired = True
                 _lock_registry.add(self)
@@ -212,13 +220,22 @@ class FileLock:
                         os.O_CREAT | os.O_WRONLY,
                         0o644,
                     )
+                    backoff = 0.05  # Reset backoff after force-break
                     continue  # retry flock immediately on new inode
-                time.sleep(0.1)
+                time.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
 
         # Timed out — close the fd we opened (we never acquired the lock)
         os.close(fd)
+        holder = self._read_lock_metadata()
+        elapsed = time.time() - start
         logger.warning(
-            "Timed out acquiring lock: %s after %ss", self.lock_path, self.timeout
+            "Timed out acquiring lock: %s after %.1fs "
+            "(holder pid=%s, holder age=%.1fs)",
+            self.lock_path,
+            elapsed,
+            holder.get("pid", "?"),
+            time.time() - holder.get("timestamp", time.time()),
         )
         return False
 
@@ -272,7 +289,13 @@ class FileLock:
     def __enter__(self) -> "FileLock":
         """Context manager entry."""
         if not self.acquire():
-            raise TimeoutError(f"Could not acquire lock: {self.lock_path}")
+            holder = self._read_lock_metadata()
+            raise TimeoutError(
+                f"Could not acquire lock: {self.lock_path} "
+                f"after {self.timeout}s "
+                f"(holder pid={holder.get('pid', '?')}, "
+                f"holder age={time.time() - holder.get('timestamp', time.time()):.1f}s)"
+            )
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:

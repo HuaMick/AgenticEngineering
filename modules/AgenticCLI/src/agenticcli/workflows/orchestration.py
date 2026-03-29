@@ -349,6 +349,11 @@ class ExecutionRunner:
             finally:
                 release_epic_lock(plan)
 
+        # Close repository to release file handles
+        repo_final = self.workflow._get_repository()
+        if repo_final:
+            repo_final.close()
+
         if all_success:
             print(promise)
         return all_success

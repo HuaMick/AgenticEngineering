@@ -7,12 +7,17 @@ Replaces the legacy PlanRepository (plan_repository.py) with renamed
 tables, fields, and methods aligned to the epic/ticket terminology.
 """
 
+import json
 import logging
+import os
+import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from tinydb import Query, TinyDB
+from tinydb.storages import Storage
 
 from .state import FileLock
 
@@ -27,6 +32,114 @@ from .epic import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class AtomicJSONStorage(Storage):
+    """TinyDB storage backend with atomic writes and corruption recovery.
+
+    Writes go to a temporary file in the same directory, then are atomically
+    renamed over the target. This prevents truncated/invalid JSON from
+    mid-write crashes. A backup (.bak) is maintained so that if the primary
+    file is corrupted, the last known-good state can be recovered.
+    """
+
+    def __init__(self, path: str, **kwargs: Any):
+        super().__init__()
+        self._path = Path(path)
+        self._backup_path = self._path.with_suffix(self._path.suffix + ".bak")
+
+    def read(self) -> Optional[dict]:
+        """Read the database, recovering from backup on corruption."""
+        if not self._path.exists():
+            return None
+
+        try:
+            raw = self._path.read_text(encoding="utf-8")
+            if not raw.strip():
+                return None
+            return json.loads(raw)
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.warning(
+                "Corrupted DB file %s: %s. Attempting backup recovery.",
+                self._path,
+                exc,
+            )
+            return self._recover_from_backup()
+
+    def _recover_from_backup(self) -> Optional[dict]:
+        """Restore from .bak file if the primary is corrupted."""
+        if not self._backup_path.exists():
+            logger.error(
+                "No backup file at %s — returning empty database.",
+                self._backup_path,
+            )
+            return None
+
+        try:
+            raw = self._backup_path.read_text(encoding="utf-8")
+            if not raw.strip():
+                return None
+            data = json.loads(raw)
+            logger.warning(
+                "Recovered database from backup %s.", self._backup_path
+            )
+            # Restore the primary file from backup
+            shutil.copy2(str(self._backup_path), str(self._path))
+            return data
+        except (json.JSONDecodeError, ValueError, OSError) as exc:
+            logger.error(
+                "Backup %s also corrupted: %s — returning empty database.",
+                self._backup_path,
+                exc,
+            )
+            return None
+
+    def write(self, data: dict) -> None:
+        """Write data atomically via temp-file + rename.
+
+        Steps:
+        1. Back up current file to .bak (if it exists and is valid)
+        2. Write new data to a temp file in the same directory
+        3. Atomically rename temp file over the target
+        """
+        # Back up current file before writing
+        if self._path.exists():
+            try:
+                shutil.copy2(str(self._path), str(self._backup_path))
+            except OSError as exc:
+                logger.warning("Failed to create backup: %s", exc)
+
+        # Write to temp file then atomically rename
+        dir_path = str(self._path.parent)
+        fd = None
+        tmp_path = None
+        try:
+            fd, tmp_path = tempfile.mkstemp(
+                dir=dir_path, suffix=".tmp", prefix=".epics_"
+            )
+            serialized = json.dumps(data, indent=2, ensure_ascii=False)
+            os.write(fd, serialized.encode("utf-8"))
+            os.fsync(fd)
+            os.close(fd)
+            fd = None
+            os.rename(tmp_path, str(self._path))
+            tmp_path = None
+        except BaseException:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            if tmp_path is not None:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+            raise
+
+    def close(self) -> None:
+        """No persistent file handle to close."""
+        pass
 
 
 # DB status values that correspond to a "live" (active/in-progress) epic.
@@ -70,15 +183,18 @@ class EpicRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._lock = FileLock(self.db_path)
-        self._db = TinyDB(str(self.db_path))
-        self._epics = self._db.table("epics")
-        self._tickets = self._db.table("tickets")
-        self._phases = self._db.table("phases")
-        self._story_tests = self._db.table("story_tests")
-        self._story_code = self._db.table("story_code")
 
-        # Migrate legacy "plans" / "tasks" tables if they exist
-        self._migrate_from_plans_table()
+        # Open TinyDB under lock to prevent reading a partially-written file
+        with self._lock:
+            self._db = TinyDB(str(self.db_path), storage=AtomicJSONStorage)
+            self._epics = self._db.table("epics")
+            self._tickets = self._db.table("tickets")
+            self._phases = self._db.table("phases")
+            self._story_tests = self._db.table("story_tests")
+            self._story_code = self._db.table("story_code")
+
+            # Migrate legacy "plans" / "tasks" tables if they exist
+            self._migrate_from_plans_table()
 
         # auto_bootstrap parameter kept for API compat but no longer imports YAML.
         # TinyDB is the sole data store; if the DB is empty, it stays empty until
@@ -87,6 +203,14 @@ class EpicRepository:
     def close(self):
         """Close the database."""
         self._db.close()
+
+    def __enter__(self) -> "EpicRepository":
+        """Context manager entry — returns self."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit — closes the database."""
+        self.close()
 
     def refresh(self):
         """Clear all TinyDB query caches so the next read hits disk.
@@ -125,61 +249,61 @@ class EpicRepository:
             len(old_plan_docs),
         )
 
-        with self._lock:
-            for doc in old_plan_docs:
-                epic_folder_name = doc.get("plan_folder_name", "")
-                if not epic_folder_name:
-                    continue
+        # NOTE: Caller must hold self._lock (called from __init__ under lock)
+        for doc in old_plan_docs:
+            epic_folder_name = doc.get("plan_folder_name", "")
+            if not epic_folder_name:
+                continue
 
-                # Skip if already migrated
-                Epic = Query()
-                if self._epics.search(Epic.epic_folder_name == epic_folder_name):
-                    continue
+            # Skip if already migrated
+            Epic = Query()
+            if self._epics.search(Epic.epic_folder_name == epic_folder_name):
+                continue
 
-                new_doc = dict(doc)
-                # Rename fields
-                new_doc["epic_folder_name"] = new_doc.pop("plan_folder_name", "")
-                new_doc["epic_folder"] = new_doc.pop("plan_folder", "")
-                # Remove TinyDB internal doc_id if present
-                new_doc.pop("doc_id", None)
-                self._epics.insert(new_doc)
+            new_doc = dict(doc)
+            # Rename fields
+            new_doc["epic_folder_name"] = new_doc.pop("plan_folder_name", "")
+            new_doc["epic_folder"] = new_doc.pop("plan_folder", "")
+            # Remove TinyDB internal doc_id if present
+            new_doc.pop("doc_id", None)
+            self._epics.insert(new_doc)
 
-            # Migrate tasks -> tickets
-            old_task_docs = old_tasks_table.all()
-            for doc in old_task_docs:
-                epic_folder_name = doc.get("plan_folder_name", "")
-                if not epic_folder_name:
-                    continue
+        # Migrate tasks -> tickets
+        old_task_docs = old_tasks_table.all()
+        for doc in old_task_docs:
+            epic_folder_name = doc.get("plan_folder_name", "")
+            if not epic_folder_name:
+                continue
 
-                Ticket = Query()
-                if self._tickets.search(
-                    (Ticket.epic_folder_name == epic_folder_name)
-                    & (Ticket.task_id == doc.get("task_id", ""))
-                ):
-                    continue
+            Ticket = Query()
+            if self._tickets.search(
+                (Ticket.epic_folder_name == epic_folder_name)
+                & (Ticket.task_id == doc.get("task_id", ""))
+            ):
+                continue
 
-                new_doc = dict(doc)
-                new_doc["epic_folder_name"] = new_doc.pop("plan_folder_name", "")
-                new_doc.pop("doc_id", None)
-                self._tickets.insert(new_doc)
+            new_doc = dict(doc)
+            new_doc["epic_folder_name"] = new_doc.pop("plan_folder_name", "")
+            new_doc.pop("doc_id", None)
+            self._tickets.insert(new_doc)
 
-            # Migrate phases (only rename the key field)
-            old_phases_table = self._db.table("phases")
-            # phases table is shared; check if already populated
-            phase_docs_check = old_phases_table.all()
-            has_old_key = any("plan_folder_name" in d for d in phase_docs_check)
-            if has_old_key:
-                for doc in phase_docs_check:
-                    if "plan_folder_name" in doc and "epic_folder_name" not in doc:
-                        Phase = Query()
-                        old_phases_table.update(
-                            {"epic_folder_name": doc["plan_folder_name"]},
-                            Phase.plan_folder_name == doc["plan_folder_name"],
-                        )
+        # Migrate phases (only rename the key field)
+        old_phases_table = self._db.table("phases")
+        # phases table is shared; check if already populated
+        phase_docs_check = old_phases_table.all()
+        has_old_key = any("plan_folder_name" in d for d in phase_docs_check)
+        if has_old_key:
+            for doc in phase_docs_check:
+                if "plan_folder_name" in doc and "epic_folder_name" not in doc:
+                    Phase = Query()
+                    old_phases_table.update(
+                        {"epic_folder_name": doc["plan_folder_name"]},
+                        Phase.plan_folder_name == doc["plan_folder_name"],
+                    )
 
-            # Clear old tables after migration
-            old_plans_table.truncate()
-            old_tasks_table.truncate()
+        # Clear old tables after migration
+        old_plans_table.truncate()
+        old_tasks_table.truncate()
 
         logger.info("Migration from 'plans' to 'epics' table complete.")
 

@@ -1043,6 +1043,14 @@ class PlannerLoopRunner:
         """
         promise = completion_promise or DEFAULT_COMPLETION_PROMISE
 
+        try:
+            return self._run_inner(max_iterations, promise)
+        finally:
+            if self.workflow._repository:
+                self.workflow._repository.close()
+
+    def _run_inner(self, max_iterations: int, promise: str) -> bool:
+        """Inner run loop, wrapped by run() for cleanup."""
         # Health check
         try:
             self.workflow.run_health_check()

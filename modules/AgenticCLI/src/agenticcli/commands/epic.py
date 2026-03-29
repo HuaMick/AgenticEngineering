@@ -88,7 +88,11 @@ def _get_repo_db_path() -> Path:
 def _get_repo():
     """Get EpicRepository instance for TinyDB-backed epic access."""
     from agenticguidance.services.epic_repository import EpicRepository
-    return EpicRepository()
+    try:
+        return EpicRepository()
+    except TimeoutError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
 
 
 def _check_has_orchestration(epic_folder_name: str, plan_path: Path = None) -> bool:
@@ -107,10 +111,9 @@ def _check_has_orchestration(epic_folder_name: str, plan_path: Path = None) -> b
     from agenticcli.utils.phase_validation import has_any_routed_phase
 
     try:
-        repo = _get_repo()
-        phases = repo.list_phases(epic_folder_name)
-        repo.close()
-        return has_any_routed_phase(phases)
+        with _get_repo() as repo:
+            phases = repo.list_phases(epic_folder_name)
+            return has_any_routed_phase(phases)
     except Exception:
         pass
     return False
@@ -247,55 +250,49 @@ def find_epic_folder(path: str | None = None) -> Path:
     Returns:
         Path to the epic folder (from TinyDB's epic_folder field).
     """
-    repo = _get_repo()
+    with _get_repo() as repo:
+        if path:
+            # If it's an absolute path that exists on disk, return it directly
+            path_obj = Path(path)
+            if path_obj.is_absolute() and path_obj.exists() and path_obj.is_dir():
+                return path_obj
 
-    if path:
-        # If it's an absolute path that exists on disk, return it directly
-        path_obj = Path(path)
-        if path_obj.is_absolute() and path_obj.exists() and path_obj.is_dir():
-            return path_obj
+            search_name = path_obj.name if path_obj.name else path
 
-        search_name = path_obj.name if path_obj.name else path
+            # Exact match in TinyDB
+            try:
+                epic_data = repo.get_epic(search_name)
+                if epic_data:
+                    return epic_data.epic_folder
+            except Exception:
+                pass
 
-        # Exact match in TinyDB
+            # Partial match: search all epics for prefix match
+            try:
+                all_epics = repo.list_epics()
+                matches = [
+                    e for e in all_epics
+                    if e.epic_folder_name.startswith(search_name)
+                ]
+                if matches:
+                    matches.sort(key=lambda e: e.epic_folder_name)
+                    return matches[0].epic_folder
+            except Exception:
+                pass
+
+            print(f"Error: Epic '{path}' not found in TinyDB.", file=sys.stderr)
+            sys.exit(1)
+
+        # Auto-detect: find first live epic from TinyDB
         try:
-            epic_data = repo.get_epic(search_name)
-            if epic_data:
-                repo.close()
-                return epic_data.epic_folder
+            live_epics = repo.list_epics(status="live")
+            if live_epics:
+                return live_epics[0].epic_folder
         except Exception:
             pass
 
-        # Partial match: search all epics for prefix match
-        try:
-            all_epics = repo.list_epics()
-            matches = [
-                e for e in all_epics
-                if e.epic_folder_name.startswith(search_name)
-            ]
-            if matches:
-                matches.sort(key=lambda e: e.epic_folder_name)
-                repo.close()
-                return matches[0].epic_folder
-        except Exception:
-            pass
-
-        repo.close()
-        print(f"Error: Epic '{path}' not found in TinyDB.", file=sys.stderr)
+        print("Error: No live epics found. Specify path explicitly.", file=sys.stderr)
         sys.exit(1)
-
-    # Auto-detect: find first live epic from TinyDB
-    try:
-        live_epics = repo.list_epics(status="live")
-        if live_epics:
-            repo.close()
-            return live_epics[0].epic_folder
-    except Exception:
-        pass
-
-    repo.close()
-    print("Error: No live epics found. Specify path explicitly.", file=sys.stderr)
-    sys.exit(1)
 
 
 
