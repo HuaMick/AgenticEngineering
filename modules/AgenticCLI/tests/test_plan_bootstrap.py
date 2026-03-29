@@ -263,7 +263,7 @@ class TestPlanBootstrap:
 
         # cmd_init outputs these keys (not the old plan_id/plan_path/success)
         assert "epic_folder_name" in output
-        assert "epic_folder" in output
+        # epic_folder is no longer included in output (TinyDB-only, no disk folder)
         assert "objective" in output
         assert output["objective"] == "Implement new feature"
         assert "branch" in output

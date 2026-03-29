@@ -68,9 +68,9 @@ class TestSigkillReleasesFileLock:
 
         try:
             # Wait for child to acquire lock
-            deadline = time.time() + 10
+            deadline = time.time() + 30
             while not ready_sentinel.exists():
-                assert time.time() < deadline, "Child did not acquire lock within 10s"
+                assert time.time() < deadline, "Child did not acquire lock within 30s"
                 time.sleep(0.05)
 
             # SIGKILL the child
@@ -216,9 +216,9 @@ class TestOomSimulationViaSigkill:
         )
 
         try:
-            deadline = time.time() + 10
+            deadline = time.time() + 30
             while not ready_sentinel.exists():
-                assert time.time() < deadline, "Child did not acquire lock within 10s"
+                assert time.time() < deadline, "Child did not acquire lock within 30s"
                 time.sleep(0.05)
 
             # Simulate OOM kill (kernel sends SIGKILL to the process)

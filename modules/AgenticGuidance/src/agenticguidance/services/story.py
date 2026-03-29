@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -9,6 +10,10 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+
+from .state import FileLock
+
+logger = logging.getLogger(__name__)
 
 # Lifecycle states and allowed transitions
 LIFECYCLE_STATES = ("proposal", "under-construction", "implemented", "deprecated", "archived")
@@ -116,11 +121,30 @@ class StoryService:
     def _parse_file(self, path: Path) -> list[Story]:
         """Parse a single YAML story file into Story objects."""
         try:
-            content = yaml.safe_load(path.read_text())
-        except Exception:
+            raw = path.read_text()
+        except FileNotFoundError:
+            logger.warning("Story file not found: %s", path)
+            return []
+        except OSError as e:
+            logger.warning("Could not read story file %s: %s", path, e)
+            return []
+
+        if not raw.strip():
+            logger.warning("Story file is empty: %s", path)
+            return []
+
+        try:
+            content = yaml.safe_load(raw)
+        except yaml.YAMLError as e:
+            logger.warning("YAML syntax error in story file %s: %s", path, e)
             return []
 
         if not content or not isinstance(content, dict):
+            logger.warning(
+                "Story file %s has unexpected content type: %s (expected dict)",
+                path,
+                type(content).__name__,
+            )
             return []
 
         result = []
@@ -181,6 +205,8 @@ class StoryService:
         """Update the lifecycle state of a story (writes back to YAML).
 
         Only allows valid transitions as defined in LIFECYCLE_TRANSITIONS.
+        Uses FileLock for atomic read-modify-write to prevent corruption
+        from concurrent updates.
         """
         if new_status not in LIFECYCLE_STATES:
             return False
@@ -194,23 +220,32 @@ class StoryService:
 
         path = Path(story.source_file)
         try:
-            content = yaml.safe_load(path.read_text())
+            with FileLock(path):
+                content = yaml.safe_load(path.read_text())
+
+                if not content or not isinstance(content, dict):
+                    return False
+
+                for key in ("stories", "user_stories"):
+                    items = content.get(key, [])
+                    if not isinstance(items, list):
+                        continue
+                    for item in items:
+                        if isinstance(item, dict) and item.get("id") == story_id:
+                            item["lifecycle"] = new_status
+                            path.write_text(
+                                yaml.dump(content, sort_keys=False, default_flow_style=False)
+                            )
+                            self._stories = None
+                            return True
+        except TimeoutError:
+            logger.error(
+                "FileLock timeout updating lifecycle for %s in %s",
+                story_id, path,
+            )
+            return False
         except Exception:
             return False
-
-        if not content or not isinstance(content, dict):
-            return False
-
-        for key in ("stories", "user_stories"):
-            items = content.get(key, [])
-            if not isinstance(items, list):
-                continue
-            for item in items:
-                if isinstance(item, dict) and item.get("id") == story_id:
-                    item["lifecycle"] = new_status
-                    path.write_text(yaml.dump(content, sort_keys=False, default_flow_style=False))
-                    self._stories = None
-                    return True
         return False
 
     def update_test_status(
@@ -221,35 +256,48 @@ class StoryService:
         test_notes: str = "",
         last_tested: str = "",
     ) -> bool:
-        """Update test status for a story (writes back to YAML)."""
+        """Update test status for a story (writes back to YAML).
+
+        Uses FileLock for atomic read-modify-write to prevent corruption
+        from concurrent updates.
+        """
         story = self.get_by_id(story_id)
         if not story or not story.source_file:
             return False
 
         path = Path(story.source_file)
         try:
-            content = yaml.safe_load(path.read_text())
+            with FileLock(path):
+                content = yaml.safe_load(path.read_text())
+
+                if not content or not isinstance(content, dict):
+                    return False
+
+                for key in ("stories", "user_stories"):
+                    items = content.get(key, [])
+                    if not isinstance(items, list):
+                        continue
+                    for item in items:
+                        if isinstance(item, dict) and item.get("id") == story_id:
+                            item["test_status"] = status
+                            if tested_by:
+                                item["tested_by_plan"] = tested_by
+                            if test_notes:
+                                item["test_notes"] = test_notes
+                            if last_tested:
+                                item["last_tested"] = last_tested
+                            path.write_text(
+                                yaml.dump(content, sort_keys=False, default_flow_style=False)
+                            )
+                            # Invalidate cache
+                            self._stories = None
+                            return True
+        except TimeoutError:
+            logger.error(
+                "FileLock timeout updating test_status for %s in %s",
+                story_id, path,
+            )
+            return False
         except Exception:
             return False
-
-        if not content or not isinstance(content, dict):
-            return False
-
-        for key in ("stories", "user_stories"):
-            items = content.get(key, [])
-            if not isinstance(items, list):
-                continue
-            for item in items:
-                if isinstance(item, dict) and item.get("id") == story_id:
-                    item["test_status"] = status
-                    if tested_by:
-                        item["tested_by_plan"] = tested_by
-                    if test_notes:
-                        item["test_notes"] = test_notes
-                    if last_tested:
-                        item["last_tested"] = last_tested
-                    path.write_text(yaml.dump(content, sort_keys=False, default_flow_style=False))
-                    # Invalidate cache
-                    self._stories = None
-                    return True
         return False

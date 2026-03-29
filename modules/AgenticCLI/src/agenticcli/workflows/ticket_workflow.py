@@ -29,7 +29,7 @@ class TicketPresetWorkflow:
     def __init__(self, plan_path: Path, presets_dir: Optional[Path] = None):
         self.plan_path = plan_path
         self.live_dir = plan_path / "live"
-        self.live_dir.mkdir(parents=True, exist_ok=True)
+        # No mkdir — TinyDB is the sole data store, no disk folders required
 
         # Initialize EpicRepository for TinyDB-based operations
         self._repository = None

@@ -1516,6 +1516,262 @@ class TestParseStoryCategories:
         assert result is None
 
 
+# @story US-PLN-091
+@pytest.mark.story("US-PLN-053", "US-PLN-091")
+class TestParseStoryCategoriesRetry:
+    """Tests for _parse_story_categories retry-with-backoff logic.
+
+    Validates that transient file visibility failures (FileNotFoundError,
+    empty file, YAML parse errors) are retried with exponential backoff,
+    while data errors (valid YAML missing categories) are NOT retried.
+    """
+
+    def _make_runner(self, tmp_path):
+        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_path)
+        return PlannerLoopRunner(workflow=workflow)
+
+    def test_retry_on_file_not_found_then_success(self, tmp_path, monkeypatch):
+        """File appears on 2nd attempt after FileNotFoundError — retries succeed."""
+        import yaml
+
+        epic_folder = "my_epic"
+        epic_dir = tmp_path / epic_folder
+        epic_dir.mkdir()
+        stories_path = epic_dir / "stories.yml"
+        categories = [{"name": "cli", "story_ids": ["US-001"]}]
+
+        # Track sleep calls to verify backoff
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+        # On first call, stories_path.exists() returns True but open() raises
+        # FileNotFoundError (file disappeared between exists() and open()).
+        # On second call, file is written and valid.
+        call_count = {"open": 0}
+        _real_open = open
+
+        def _mock_open(path, *args, **kwargs):
+            if str(path) == str(stories_path):
+                call_count["open"] += 1
+                if call_count["open"] == 1:
+                    raise FileNotFoundError(str(path))
+            return _real_open(path, *args, **kwargs)
+
+        # Write the file so exists() returns True on first attempt
+        stories_path.write_text(yaml.dump({"categories": categories}))
+
+        monkeypatch.setattr("builtins.open", _mock_open)
+
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+
+        assert result == categories
+        assert call_count["open"] == 2  # Failed once, succeeded once
+        assert len(sleep_calls) == 1  # One backoff sleep
+        assert sleep_calls[0] == 0.5  # First backoff delay
+
+    def test_retry_on_empty_file_then_success(self, tmp_path, monkeypatch):
+        """File is empty on first read, has content on retry — succeeds."""
+        import yaml
+
+        epic_folder = "my_epic"
+        epic_dir = tmp_path / epic_folder
+        epic_dir.mkdir()
+        stories_path = epic_dir / "stories.yml"
+        categories = [{"name": "backend", "story_ids": ["US-002"]}]
+
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+        # Start with empty file, then populate it after first read
+        stories_path.write_text("")
+        read_count = {"n": 0}
+        _real_open = open
+
+        def _mock_open(path, *args, **kwargs):
+            if str(path) == str(stories_path):
+                read_count["n"] += 1
+                if read_count["n"] == 1:
+                    # Return a file-like object with empty content
+                    import io
+                    return io.StringIO("")
+                # Second read: write real content first
+                stories_path.write_text(yaml.dump({"categories": categories}))
+            return _real_open(path, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", _mock_open)
+
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+
+        assert result == categories
+        assert len(sleep_calls) == 1
+        assert sleep_calls[0] == 0.5
+
+    def test_retry_on_yaml_parse_error_then_success(self, tmp_path, monkeypatch):
+        """YAML parse error on first read, valid YAML on retry — succeeds."""
+        import yaml
+
+        epic_folder = "my_epic"
+        epic_dir = tmp_path / epic_folder
+        epic_dir.mkdir()
+        stories_path = epic_dir / "stories.yml"
+        categories = [{"name": "frontend", "story_ids": ["US-003"]}]
+
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+        # Start with invalid YAML (simulating partial write)
+        stories_path.write_text(": broken: yaml: [")
+
+        read_count = {"n": 0}
+        _real_open = open
+
+        def _mock_open(path, *args, **kwargs):
+            if str(path) == str(stories_path):
+                read_count["n"] += 1
+                if read_count["n"] >= 2:
+                    # Fix the file content before second read
+                    stories_path.write_text(yaml.dump({"categories": categories}))
+            return _real_open(path, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", _mock_open)
+
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+
+        assert result == categories
+        assert len(sleep_calls) == 1
+        assert sleep_calls[0] == 0.5
+
+    def test_no_retry_on_valid_yaml_missing_categories(self, tmp_path, monkeypatch):
+        """Valid YAML with empty categories is a data error — NOT retried."""
+        import yaml
+
+        epic_folder = "my_epic"
+        epic_dir = tmp_path / epic_folder
+        epic_dir.mkdir()
+        stories_path = epic_dir / "stories.yml"
+        stories_path.write_text(yaml.dump({"stories": [{"id": "US-001"}], "categories": []}))
+
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+
+        assert result is None
+        assert len(sleep_calls) == 0  # No retries — immediate failure
+
+    def test_exponential_backoff_timing(self, tmp_path, monkeypatch):
+        """All retries exhausted — verify backoff delays match _STORY_PARSE_BACKOFF."""
+        epic_folder = "my_epic"
+        epic_dir = tmp_path / epic_folder
+        epic_dir.mkdir()
+        # No stories.yml — all attempts will hit FileNotFoundError path
+
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+
+        assert result is None
+        # 3 retries after initial attempt: backoff 0.5, 1.0, 2.0
+        assert sleep_calls == [0.5, 1.0, 2.0]
+
+    def test_file_not_found_all_retries_exhausted(self, tmp_path, monkeypatch):
+        """FileNotFoundError on every attempt returns None after exhausting retries."""
+        epic_folder = "my_epic"
+        epic_dir = tmp_path / epic_folder
+        epic_dir.mkdir()
+        # No stories.yml created — stays missing for all attempts
+
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+
+        assert result is None
+        assert len(sleep_calls) == 3  # 3 retries
+
+    def test_empty_file_all_retries_exhausted(self, tmp_path, monkeypatch):
+        """Empty file on every attempt returns None after exhausting retries."""
+        epic_folder = "my_epic"
+        epic_dir = tmp_path / epic_folder
+        epic_dir.mkdir()
+        stories_path = epic_dir / "stories.yml"
+        stories_path.write_text("")  # Empty file persists
+
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+
+        assert result is None
+        assert len(sleep_calls) == 3
+
+    def test_yaml_parse_error_all_retries_exhausted(self, tmp_path, monkeypatch):
+        """YAML parse error on every attempt returns None after exhausting retries."""
+        epic_folder = "my_epic"
+        epic_dir = tmp_path / epic_folder
+        epic_dir.mkdir()
+        stories_path = epic_dir / "stories.yml"
+        stories_path.write_text(": invalid: yaml: [")
+
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+        runner = self._make_runner(tmp_path)
+        result = runner._parse_story_categories(epic_folder)
+
+        assert result is None
+        assert len(sleep_calls) == 3
+
+    def test_success_on_third_attempt_logs_recovery(self, tmp_path, monkeypatch, caplog):
+        """Success after retries logs recovery message with attempt number."""
+        import logging
+        import yaml
+
+        epic_folder = "my_epic"
+        epic_dir = tmp_path / epic_folder
+        epic_dir.mkdir()
+        stories_path = epic_dir / "stories.yml"
+        categories = [{"name": "infra", "story_ids": ["US-004"]}]
+
+        sleep_calls = []
+        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+        # File missing on attempts 1 and 2, appears on attempt 3
+        attempt_count = {"n": 0}
+        _real_exists = Path.exists
+
+        def _mock_exists(self_path):
+            if str(self_path) == str(stories_path):
+                attempt_count["n"] += 1
+                if attempt_count["n"] <= 2:
+                    return False
+                # Write file on 3rd attempt
+                stories_path.write_text(yaml.dump({"categories": categories}))
+                return True
+            return _real_exists(self_path)
+
+        monkeypatch.setattr(Path, "exists", _mock_exists)
+
+        runner = self._make_runner(tmp_path)
+        with caplog.at_level(logging.INFO):
+            result = runner._parse_story_categories(epic_folder)
+
+        assert result == categories
+        assert len(sleep_calls) == 2  # Two backoff sleeps
+        assert sleep_calls == [0.5, 1.0]
+        # Verify recovery log message
+        assert any("parsed successfully on attempt 3/4" in r.message for r in caplog.records)
+
+
 @pytest.mark.story("US-PLN-048", "US-PLN-053", "US-PLN-057")
 class TestTicketPromotion:
     """Tests for ticket promotion step in _process_plan (Bug 1 fix)."""
@@ -1750,7 +2006,12 @@ class TestProcessPlanAutoRegister:
     """Test auto-registration of epic folders in _process_plan."""
 
     def test_process_plan_auto_registers_epic_from_disk(self, tmp_path, monkeypatch):
-        """Folder on disk but not in DB → auto-registered before agents run."""
+        """Epic pre-registered in TinyDB → _process_plan proceeds and finds it.
+
+        Disk-based auto-registration was removed. TinyDB is the sole source of
+        truth. This test verifies that when an epic is already in TinyDB,
+        _process_plan can find it and proceed (not return False / log an error).
+        """
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
         from agenticguidance.services.epic_repository import EpicRepository
 
@@ -1763,26 +2024,32 @@ class TestProcessPlanAutoRegister:
         epic_name = "260311PB_test_epic"
         (epics_dir / epic_name).mkdir()
 
+        # Pre-register epic in TinyDB (disk-based auto-registration was removed)
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-        # Epic NOT in DB yet
-        assert repo.get_epic(epic_name) is None
+        repo.create_epic({
+            "epic_folder_name": epic_name,
+            "epic_folder": str(epics_dir / epic_name),
+            "name": "Test epic",
+            "status": "active",
+        })
+        assert repo.get_epic(epic_name) is not None
         repo.close()
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
 
         runner = PlannerLoopRunner(workflow=workflow, epic_folder=epic_name)
 
-        # Mock the lock and agent spawns — we only care about auto-registration
+        # Mock the lock and agent spawns — we only care that the epic is found
         monkeypatch.setattr("agenticcli.workflows.planner_loop.acquire_epic_lock", lambda ef: True)
         monkeypatch.setattr("agenticcli.workflows.planner_loop.release_epic_lock", lambda ef: None)
 
-        # Make spawn_epic_creator return failure so we exit early after registration
+        # Make spawn_epic_creator return failure so we exit early after the TinyDB check
         workflow.spawn_epic_creator = MagicMock(return_value=_fail_result())
         workflow._validate_result = MagicMock()
 
         runner._process_plan(epic_name)
 
-        # Verify epic was auto-registered
+        # Verify epic is still registered (was not removed by _process_plan)
         repo2 = EpicRepository(db_path=db_path, auto_bootstrap=False)
         registered = repo2.get_epic(epic_name)
         assert registered is not None

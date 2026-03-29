@@ -67,9 +67,14 @@ class TestFullLifecycleNoYaml:
         db_record = service._repository.get_epic(result.epic_folder_name)
         assert db_record is not None, "Epic record should exist in TinyDB after creation"
 
-        # No YAML files should exist (check parent live/ dir since folder may not exist)
-        yaml_files = _yaml_files_in(result.epic_folder.parent)
-        assert yaml_files == [], f"YAML files found after create_epic: {yaml_files}"
+        # epic_folder should be None for TinyDB-first creation (no disk path)
+        assert result.epic_folder is None, "epic_folder should be None for TinyDB-first epic"
+
+        # No YAML files should exist in the live/ dir
+        live_dir = isolated_repo / "docs" / "epics" / "live"
+        if live_dir.exists():
+            yaml_files = _yaml_files_in(live_dir)
+            assert yaml_files == [], f"YAML files found after create_epic: {yaml_files}"
 
     def test_list_epics_from_tinydb(self, isolated_repo):
         """Step 2: list_epics reads from TinyDB."""
@@ -122,9 +127,11 @@ class TestFullLifecycleNoYaml:
         t = service._repository.get_ticket(epic_name, "T1_1")
         assert t.status == "completed"
 
-        # No YAML files at any point
-        yaml_files = _yaml_files_in(result.epic_folder)
-        assert yaml_files == [], f"YAML files found after ticket ops: {yaml_files}"
+        # No YAML files at any point (check live/ dir since epic_folder is None)
+        live_dir = isolated_repo / "docs" / "epics" / "live"
+        if live_dir.exists():
+            yaml_files = _yaml_files_in(live_dir)
+            assert yaml_files == [], f"YAML files found after ticket ops: {yaml_files}"
 
     def test_ticket_service_no_yaml(self, isolated_repo):
         """TicketService operates without YAML."""

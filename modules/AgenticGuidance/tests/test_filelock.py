@@ -428,7 +428,7 @@ class TestBackwardCompatibleAPI:
 
         lock = FileLock(target)
         assert lock.lock_path == target.with_suffix(".json.lock")
-        assert lock.timeout == 10.0  # default timeout
+        assert lock.timeout == 30.0  # default timeout (increased for parallel agent contention)
 
     def test_lock_path_attribute(self, tmp_path):
         """lock_path is accessible and correct."""

@@ -120,38 +120,27 @@ def _check_has_orchestration(epic_folder_name: str, plan_path: Path = None) -> b
 
 
 def _ensure_epic_in_db(repo, plan_path: Path) -> bool:
-    """Ensure the epic folder is registered in TinyDB.
+    """Check that the epic exists in TinyDB.
 
-    If the epic folder exists on disk but is not yet in TinyDB, this
-    function auto-registers it so that subsequent phase/ticket operations
-    succeed.
+    TinyDB is the sole source of truth. No disk-based auto-registration.
 
     Args:
         repo: EpicRepository instance.
-        plan_path: Path to the epic folder on disk.
+        plan_path: Path-like identifying the epic (only .name is used).
 
     Returns:
-        True if the epic is now present in TinyDB (either already existed
-        or was just created), False on failure.
+        True if the epic exists in TinyDB, False otherwise.
     """
     plan_doc = repo.get_epic(plan_path.name)
     if plan_doc is not None:
-        # Already registered - check folder matches
-        if plan_doc.epic_folder.resolve() == plan_path.resolve():
-            return True
-        # Folder path is stale - resync it
-        repo.resync_epic_folder(plan_path.name, str(plan_path))
+        # Already registered - optionally resync folder path (name-based comparison)
+        if (
+            plan_path
+            and plan_doc.epic_folder
+            and plan_doc.epic_folder_name != plan_path.name
+        ):
+            repo.resync_epic_folder(plan_path.name, str(plan_path))
         return True
-
-    # Epic folder exists on disk but not in DB - auto-register it
-    if plan_path.is_dir():
-        result = repo.create_epic({
-            "epic_folder_name": plan_path.name,
-            "epic_folder": str(plan_path),
-            "name": plan_path.name,
-            "status": "active",
-        })
-        return result.success
 
     return False
 
@@ -239,6 +228,18 @@ def handle(args, ctx=None):
         sys.exit(1)
 
 
+def _epic_folder_or_synthetic(epic_obj) -> Path:
+    """Return epic_folder from an EpicData/EpicMetadata, or synthesize a Path from the name.
+
+    When epic_folder is None (folder-free epic), returns a synthetic Path
+    using only the epic_folder_name. Callers use .name on the result to
+    get the epic_folder_name for TinyDB lookups.
+    """
+    if epic_obj.epic_folder is not None:
+        return epic_obj.epic_folder
+    return Path(epic_obj.epic_folder_name)
+
+
 def find_epic_folder(path: str | None = None) -> Path:
     """Find an epic by name or path, using TinyDB as the sole lookup source.
 
@@ -252,18 +253,15 @@ def find_epic_folder(path: str | None = None) -> Path:
     """
     with _get_repo() as repo:
         if path:
-            # If it's an absolute path that exists on disk, return it directly
+            # Extract folder name from absolute or relative path
             path_obj = Path(path)
-            if path_obj.is_absolute() and path_obj.exists() and path_obj.is_dir():
-                return path_obj
-
-            search_name = path_obj.name if path_obj.name else path
+            search_name = path_obj.name if path_obj.name else str(path)
 
             # Exact match in TinyDB
             try:
                 epic_data = repo.get_epic(search_name)
                 if epic_data:
-                    return epic_data.epic_folder
+                    return _epic_folder_or_synthetic(epic_data)
             except Exception:
                 pass
 
@@ -276,7 +274,7 @@ def find_epic_folder(path: str | None = None) -> Path:
                 ]
                 if matches:
                     matches.sort(key=lambda e: e.epic_folder_name)
-                    return matches[0].epic_folder
+                    return _epic_folder_or_synthetic(matches[0])
             except Exception:
                 pass
 
@@ -287,7 +285,7 @@ def find_epic_folder(path: str | None = None) -> Path:
         try:
             live_epics = repo.list_epics(status="live")
             if live_epics:
-                return live_epics[0].epic_folder
+                return _epic_folder_or_synthetic(live_epics[0])
         except Exception:
             pass
 
@@ -437,7 +435,7 @@ def cmd_new(args, ctx=None):
         _init_repo = EpicRepository()
         epic_doc = _init_repo.get_epic(plan_folder_name)
         _init_repo.close()
-        if epic_doc is not None:
+        if epic_doc is not None and epic_doc.epic_folder is not None:
             plan_folder = Path(epic_doc.epic_folder)
     except Exception:
         pass
@@ -587,7 +585,7 @@ def cmd_new(args, ctx=None):
             repo = _get_repo()
             plan_data_obj = repo.get_epic(plan_folder_name)
             if (plan_data_obj and plan_data_obj.phases
-                    and plan_data_obj.epic_folder == plan_folder):
+                    and plan_data_obj.epic_folder_name == plan_folder_name):
                 phases = [
                     {
                         "name": phase.name,
@@ -979,19 +977,15 @@ def cmd_init(args, ctx=None):
         print_error(f"Generated name '{plan_folder_name}' is invalid: {error}")
         sys.exit(3)
 
-    # Compute plan path (no folder creation — TinyDB is the sole data store)
-    plan_path = repo_root / "docs" / "epics" / "live" / plan_folder_name
-
-    # Create epic in TinyDB
+    # Create epic in TinyDB (primary data store — no disk folder created)
     objective = getattr(args, "objective", None)
 
-    # Create epic in TinyDB (primary data store)
     try:
         from agenticguidance.services.epic_repository import EpicRepository
         repo = EpicRepository()
         epic_data = {
             "epic_folder_name": plan_folder_name,
-            "epic_folder": str(plan_path),
+            "epic_folder": "",
             "name": description,
             "branch": branch,
             "status": "active",
@@ -1030,7 +1024,6 @@ def cmd_init(args, ctx=None):
     result_data = {
         "branch": branch,
         "base": base,
-        "epic_folder": str(plan_path),
         "epic_folder_name": plan_folder_name,
     }
     if objective:
@@ -1039,14 +1032,13 @@ def cmd_init(args, ctx=None):
     if is_json_output():
         print_json(result_data)
     else:
-        console.print(f"  [green]Created epic folder[/green] at {plan_path}")
+        console.print(f"  [green]Created epic[/green]: {plan_folder_name}")
         if objective:
-            console.print(f"  [green]Epic created in TinyDB[/green] with objective")
+            console.print(f"  [green]Epic created[/green] with objective")
         console.print()
         print_success(f"Epic initialized: {plan_folder_name}")
-        console.print(f"[dim]Epic folder:[/dim] {plan_path}")
         console.print()
-        console.print("[dim]Link related user stories in inputs.yml:[/dim]")
+        console.print("[dim]Link related user stories:[/dim]")
         console.print(f"[dim]  agentic stories find --project <name>[/dim]")
         console.print(f"[dim]  agentic stories untested --project <name>[/dim]")
 
@@ -1540,7 +1532,7 @@ def _update_task_status(plan_path: Path, task_id: str, new_status: str):
             plan_doc = repo.get_epic(plan_path.name)
             folder_matches = (
                 plan_doc is not None
-                and plan_doc.epic_folder.resolve() == plan_path.resolve()
+                and plan_doc.epic_folder_name == plan_path.name
             )
             if folder_matches:
                 updated = repo.update_ticket_status(plan_path.name, task_id, new_status)
@@ -1587,7 +1579,7 @@ def cmd_task_list(args, ctx=None):
             plan_doc = repo.get_epic(plan_path.name)
             folder_matches = (
                 plan_doc is not None
-                and plan_doc.epic_folder.resolve() == plan_path.resolve()
+                and plan_doc.epic_folder_name == plan_path.name
             )
             if folder_matches:
                 sf = status_filter if status_filter != "all" else None
@@ -1826,7 +1818,7 @@ def cmd_cancel(args, ctx=None):
             plan_data = repo.get_epic(plan_folder.name)
             folder_matches = (
                 plan_data is not None
-                and plan_data.epic_folder.resolve() == plan_folder.resolve()
+                and plan_data.epic_folder_name == plan_folder.name
             )
             if folder_matches:
                 current_status = plan_data.status or "unknown"
@@ -2078,7 +2070,7 @@ def cmd_task_update(args, ctx=None):
             plan_doc = repo.get_epic(plan_path.name)
             folder_matches = (
                 plan_doc is not None
-                and plan_doc.epic_folder.resolve() == plan_path.resolve()
+                and plan_doc.epic_folder_name == plan_path.name
             )
             if not folder_matches:
                 repo = None  # Skip TinyDB path
@@ -2278,7 +2270,7 @@ def cmd_task_current(args, ctx=None):
             plan_doc = repo.get_epic(plan_path.name)
             folder_matches = (
                 plan_doc is not None
-                and plan_doc.epic_folder.resolve() == plan_path.resolve()
+                and plan_doc.epic_folder_name == plan_path.name
             )
             if folder_matches:
                 repo_task = repo.get_current_ticket(plan_path.name)
@@ -2507,7 +2499,7 @@ def cmd_phase_list(args, ctx=None):
     try:
         repo = _get_repo()
         plan_data_obj = repo.get_epic(plan_path.name)
-        if plan_data_obj and plan_data_obj.epic_folder == plan_path:
+        if plan_data_obj and plan_data_obj.epic_folder_name == plan_path.name:
             phases_data = []
             for i, phase in enumerate(plan_data_obj.phases):
                 phases_data.append({
@@ -2610,7 +2602,7 @@ def cmd_phase_update(args, ctx=None):
             plan_doc = repo.get_epic(plan_path.name)
             folder_matches = (
                 plan_doc is not None
-                and plan_doc.epic_folder.resolve() == plan_path.resolve()
+                and plan_doc.epic_folder_name == plan_path.name
             )
             if not folder_matches:
                 repo = None  # Skip TinyDB path

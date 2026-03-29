@@ -19,7 +19,7 @@ from typing import Any, Optional
 from tinydb import Query, TinyDB
 from tinydb.storages import Storage
 
-from .state import FileLock
+from .state import FileLock, RetryingFileLock
 
 from .epic import (
     EpicCreateResult,
@@ -183,9 +183,10 @@ class EpicRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._lock = FileLock(self.db_path)
+        self._retrying_lock = RetryingFileLock(self._lock)
 
         # Open TinyDB under lock to prevent reading a partially-written file
-        with self._lock:
+        with self._retrying_lock:
             self._db = TinyDB(str(self.db_path), storage=AtomicJSONStorage)
             self._epics = self._db.table("epics")
             self._tickets = self._db.table("tickets")
@@ -332,17 +333,17 @@ class EpicRepository:
 
         if not epic_folder_name:
             return EpicCreateResult(
-                epic_folder=Path(str(epic_folder)),
+                epic_folder=Path(str(epic_folder)) if epic_folder else None,
                 epic_folder_name=epic_folder_name,
                 success=False,
                 message="epic_folder_name is required",
             )
 
-        with self._lock:
+        with self._retrying_lock:
             Epic = Query()
             if self._epics.search(Epic.epic_folder_name == epic_folder_name):
                 return EpicCreateResult(
-                    epic_folder=Path(str(epic_folder)),
+                    epic_folder=Path(str(epic_folder)) if epic_folder else None,
                     epic_folder_name=epic_folder_name,
                     success=False,
                     message=f"Epic already exists in DB: {epic_folder_name}",
@@ -350,7 +351,7 @@ class EpicRepository:
 
             doc = {
                 "epic_folder_name": epic_folder_name,
-                "epic_folder": str(epic_folder),
+                "epic_folder": str(epic_folder) if epic_folder else "",
                 "name": epic_data.get("name", epic_folder_name),
                 "worktree_path": epic_data.get("worktree_path", ""),
                 "branch": epic_data.get("branch", ""),
@@ -363,7 +364,7 @@ class EpicRepository:
             self._epics.insert(doc)
 
         return EpicCreateResult(
-            epic_folder=Path(str(epic_folder)),
+            epic_folder=Path(str(epic_folder)) if epic_folder else None,
             epic_folder_name=epic_folder_name,
             success=True,
             message=f"Epic inserted into DB: {epic_folder_name}",
@@ -433,8 +434,9 @@ class EpicRepository:
                 )
             )
 
+        raw_folder = doc.get("epic_folder", "")
         return EpicData(
-            epic_folder=Path(doc.get("epic_folder", "")),
+            epic_folder=Path(raw_folder) if raw_folder else None,
             epic_folder_name=epic_folder_name,
             objective=doc.get("objective"),
             status=doc.get("status"),
@@ -484,9 +486,10 @@ class EpicRepository:
 
         results = []
         for doc in docs:
+            raw_folder = doc.get("epic_folder", "")
             results.append(
                 EpicMetadata(
-                    epic_folder=Path(doc.get("epic_folder", "")),
+                    epic_folder=Path(raw_folder) if raw_folder else None,
                     epic_folder_name=doc["epic_folder_name"],
                     objective=doc.get("objective"),
                     status=doc.get("status"),
@@ -511,7 +514,7 @@ class EpicRepository:
         Returns:
             EpicUpdateResult indicating success or failure.
         """
-        with self._lock:
+        with self._retrying_lock:
             doc = self._find_epic_doc(epic_folder_name)
             if not doc:
                 return EpicUpdateResult(
@@ -541,7 +544,7 @@ class EpicRepository:
         Returns:
             EpicDeleteResult indicating success or failure.
         """
-        with self._lock:
+        with self._retrying_lock:
             doc = self._find_epic_doc(epic_folder_name)
             if not doc:
                 return EpicDeleteResult(
@@ -676,7 +679,7 @@ class EpicRepository:
             return False
 
         actual_name = doc["epic_folder_name"]
-        with self._lock:
+        with self._retrying_lock:
             Epic = Query()
             self._epics.update(
                 {"epic_folder": str(new_path)},
@@ -791,7 +794,7 @@ class EpicRepository:
         updates = {"status": new_status}
         if new_status == "completed":
             updates["completed_date"] = datetime.now().strftime("%Y-%m-%d")
-        with self._lock:
+        with self._retrying_lock:
             Ticket = Query()
             updated = self._tickets.update(
                 updates,
@@ -817,7 +820,7 @@ class EpicRepository:
         if not task_id:
             return False
 
-        with self._lock:
+        with self._retrying_lock:
             Ticket = Query()
             if self._tickets.search(
                 (Ticket.epic_folder_name == epic_folder_name)
@@ -853,7 +856,7 @@ class EpicRepository:
         Returns:
             True if the ticket was found and removed, False otherwise.
         """
-        with self._lock:
+        with self._retrying_lock:
             Ticket = Query()
             removed = self._tickets.remove(
                 (Ticket.epic_folder_name == epic_folder_name)
@@ -874,7 +877,7 @@ class EpicRepository:
         Returns:
             True if the ticket was found and updated.
         """
-        with self._lock:
+        with self._retrying_lock:
             Ticket = Query()
             updated = self._tickets.update(
                 updates,
@@ -1022,7 +1025,7 @@ class EpicRepository:
         if not phase_name:
             return False
 
-        with self._lock:
+        with self._retrying_lock:
             Phase = Query()
             existing = self._phases.search(
                 (Phase.epic_folder_name == epic_folder_name)
@@ -1064,7 +1067,7 @@ class EpicRepository:
         Returns:
             True if the phase was found and updated.
         """
-        with self._lock:
+        with self._retrying_lock:
             Phase = Query()
             updated = self._phases.update(
                 updates,
@@ -1088,7 +1091,7 @@ class EpicRepository:
         if phase_obj is None:
             return False
         actual_name = phase_obj.name
-        with self._lock:
+        with self._retrying_lock:
             Phase = Query()
             removed = self._phases.remove(
                 (Phase.epic_folder_name == epic_folder_name)
@@ -1235,7 +1238,7 @@ class EpicRepository:
         count = 0
         ST = Query()
 
-        with self._lock:
+        with self._retrying_lock:
             for story_id, test_nodeids in mappings.items():
                 test_files = sorted({nid.split("::")[0] for nid in test_nodeids})
                 doc = {
@@ -1317,7 +1320,7 @@ class EpicRepository:
         count = 0
         SC = Query()
 
-        with self._lock:
+        with self._retrying_lock:
             for story_id, code_nodeids in mappings.items():
                 code_files = sorted({nid.split("::")[0] for nid in code_nodeids})
                 doc = {

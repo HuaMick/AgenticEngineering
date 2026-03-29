@@ -206,7 +206,7 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
     Args:
         db_path: Path to the TinyDB database file.
         epic_folder_name: Epic folder name (e.g. "260103AE_test").
-        epic_folder: Path to the epic folder on disk.
+        epic_folder: Path to the epic folder on disk, or None for folder-free epics.
         yaml_data: Dict with optional keys: name, status, phases, tasks.
             phases: list of {name, tickets/tasks: [{id, name, status, ...}]}
             tasks: list of {id, name, status, ...} (flat/legacy structure)
@@ -216,7 +216,7 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
     repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
     epic_doc = {
         "epic_folder_name": epic_folder_name,
-        "epic_folder": str(epic_folder),
+        "epic_folder": str(epic_folder) if epic_folder else "",
         "name": yaml_data.get("name", epic_folder_name),
         "status": yaml_data.get("status", "active"),
     }
@@ -261,6 +261,7 @@ def tinydb_populator(_isolate_tinydb):
     """Fixture providing a function to populate the isolated TinyDB.
 
     Usage in tests:
+        # With a disk folder:
         def test_something(tinydb_populator, tmp_path):
             epic_dir = tmp_path / "my_epic"
             epic_dir.mkdir()
@@ -268,6 +269,13 @@ def tinydb_populator(_isolate_tinydb):
                 "name": "My Epic",
                 "status": "active",
                 "phases": [{"name": "P1", "tickets": [...]}]
+            })
+
+        # Folder-free epic (no disk folder):
+        def test_folder_free(tinydb_populator):
+            tinydb_populator("my_epic", None, {
+                "name": "My Epic",
+                "status": "active",
             })
     """
     db_path = _isolate_tinydb
@@ -318,6 +326,54 @@ def temp_repo(temp_dir):
         epic_folder,
         {
             "name": "Test Plan",
+            "status": "in_progress",
+            "phases": [
+                {
+                    "name": "Phase 1",
+                    "status": "completed",
+                    "tickets": [
+                        {"id": "T1", "name": "Task 1", "status": "completed"},
+                    ],
+                },
+                {
+                    "name": "Phase 2",
+                    "status": "pending",
+                    "tickets": [
+                        {"id": "T2", "name": "Task 2", "status": "proposed"},
+                    ],
+                },
+            ],
+        },
+    )
+
+    yield repo_dir
+
+
+@pytest.fixture
+def temp_repo_no_folder(temp_dir):
+    """Create a temporary git repository with a TinyDB-only epic (no disk folder).
+
+    Unlike temp_repo, this does NOT create an epic folder on disk.
+    The epic exists only as a TinyDB record with epic_folder="".
+    Use this fixture for testing folder-free epic operations.
+    """
+    repo_dir = temp_dir / "repo"
+    repo_dir.mkdir()
+
+    # Create docs/epics/live structure (repo structure, but no epic folder inside)
+    epics_live = repo_dir / "docs" / "epics" / "live"
+    epics_live.mkdir(parents=True)
+
+    # Populate TinyDB with a folder-free epic (epic_folder=None)
+    agentic_dir = repo_dir / ".agentic"
+    agentic_dir.mkdir(parents=True, exist_ok=True)
+    db_path = agentic_dir / "epics.db"
+    populate_tinydb_from_yaml(
+        db_path,
+        "260103AE_test",
+        None,  # No disk folder — folder-free epic
+        {
+            "name": "Test Plan (Folder-Free)",
             "status": "in_progress",
             "phases": [
                 {

@@ -1,355 +1,437 @@
 metadata:
-  epic_folder: null
-  analysis_date: "2026-03-28"
-  analyst: trace-explorer
+  epic_folder: "multiple (cross-session analysis)"
+  analysis_date: "2026-03-29"
+  analyst: "trace-explorer"
   agents_analysed:
-    - epic-creator
+    - orchestration-executor
+    - planner-orchestration
+    - planner-explore
     - build-story-writer
-    - planner-build
-    - planner-loop (PlannerLoopRunner)
-  investigation_scope: "Epic creation flow — why disk folders are still created despite TinyDB-first intent"
-
-# ============================================================
-# DECISION HISTORY
-# ============================================================
-# The user has requested TinyDB-only epic creation across multiple sessions.
-# Evidence from git history and user story definitions confirms this intent
-# was stated but only partially implemented.
-#
-# Key commits in chronological order:
-#
-#   53c58d4  feat: make TinyDB first-class planning datastore with filelock concurrency
-#   c3b1933  feat: complete TinyDB-first migration for CLI plan commands
-#   6f910c1  feat: complete epic/ticket migration and worktree deprecation
-#   165f5c7  fix: atexit tmux cleanup kills background spawns + YAML decommission
-#   ce22ca7  feat: remove MMD files completely — TinyDB is sole orchestration source
-#   ac04277  feat: simplify epic command group from ~30 to 13 commands
-#
-# The YAML and MMD elimination work (260305AG, 260307EO epics) explicitly set
-# the direction: TinyDB is the sole data store. However, disk folder creation
-# was never explicitly removed from the epic creation path — it was simply
-# replaced from "create folder + write YAML file inside" to "create folder +
-# write TinyDB record" with the folder creation step left in place as dead weight.
-# ============================================================
+    - build-python
+    - test-builder
+    - test-uat
+    - epic-creator
+  sessions_covered:
+    # Session 1 (March 28): 260328AG_extract_validate_phase_routing_utility_from_duplic — 6 attempts, partial success
+    # Session 2 (March 29 morning): 260329AG_fix_tinydb_file_lock_not_released_on_agent_crash — clean success
+    # Session 3 (March 29 midday): 260329AG_fix_story_parsing_race_condition_in_planning_pipel — 1 failed retry then success
+    # Session 4 (March 29 afternoon): 260329AG_eliminate_mandatory_disk_folder_creation_make_epic — in-progress
+    - "orch-aefd039c2bdb (failed, 2026-03-28 22:23)"
+    - "orch-64144c1c4672 (failed, 2026-03-28 22:40)"
+    - "exec-5dfd53446d66 (failed, 2026-03-28 22:54)"
+    - "exec-3e68b7136efe (failed, 2026-03-28 23:05)"
+    - "exec-72c1097b61eb (failed, 2026-03-28 23:05)"
+    - "exec-8034e6f9da44 (failed, 2026-03-28 23:11)"
+    - "exec-0af9a1a79abd (completed, 2026-03-28 23:13)"
+    - "orch-63574e8dfb43 (completed, 2026-03-29 06:50-07:14)"
+    - "exec-d64528639736 (completed, 2026-03-29 07:18-07:41)"
+    - "orch-69d788ffe531 (completed, 2026-03-29 12:15-12:35)"
+    - "exec-ea0ce367f8e4 (failed, 2026-03-29 12:57-13:19)"
+    - "exec-d257d6e9f67b (completed, 2026-03-29 13:20-13:55)"
+    - "orch-851711d20063 (running, 2026-03-29 15:15)"
 
 friction_points:
 
   - id: FP-001
-    type: guidance_gap
-    severity: high
-    agent: planner-build
-    guidance_file: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
+    type: excessive_iteration
+    severity: critical
+    agent: "planner-design / ralph (both decommissioned)"
+    guidance_file: null
     description: >
-      planner-build has an explicit FENCE that requires the epic folder to exist
-      on disk before planning proceeds. The fence reads: "FENCE: EPIC FOLDER MUST
-      EXIST BEFORE PLANNING — The epic folder MUST already exist at
-      docs/epics/live/YYMMDDXX_description/." This fence directly contradicts the
-      TinyDB-first design encoded in US-PLN-001 step 8, US-PLN-002 step 5, and
-      US-PLN-054 step 7, all of which state disk folders should be created lazily.
+      2,224 session files dated March 10-12 are permanently stale. Of these,
+      891 (40%) are stuck in status=running, 731 (33%) failed, and 602 (27%)
+      completed. The dominant role is planner-design (1,352 sessions), which no
+      longer exists in the current agent roster (removed in the 28-to-20
+      restructure committed 2026-03-29). Also present are 280 ralph sessions
+      (ralph decommissioned 2026-03-20) and 106 explore sessions (renamed
+      planner-explore). None of these sessions can self-heal because the agents
+      that would update them no longer exist. The 891 running sessions will
+      remain in that state permanently, polluting session-list output and
+      inflating live-session counts.
     evidence:
-      file: "modules/AgenticGuidance/agents/planner/planner-build/process.yml"
-      line_range: "119-139"
-      quote: |
-        FENCE: EPIC FOLDER MUST EXIST BEFORE PLANNING
-        The epic folder MUST already exist at docs/epics/live/YYMMDDXX_description/.
-        ...
-        If the folder does NOT exist, STOP immediately...
+      - "Total sessions 2026-03-10/11/12: 2224"
+      - "status breakdown: running=891, failed=731, completed=602"
+      - "role breakdown: planner-design=1352, ralph=280, explore=106, planner-orchestration=61, story-generator=77, others=468"
+      - "No planner-design or ralph directory exists under agents/"
+      - "commit c77f7a0 (2026-03-29): complete 28->20 agent restructure"
     recommendation: >
-      Remove the filesystem existence check from planner-build's fence. Replace
-      with a TinyDB presence check: "Verify the epic exists in TinyDB via
-      `agentic epic status --epic {epic_folder_name} -j`. If not found, stop and
-      instruct the caller to run `agentic epic init`." The disk folder should not
-      be a gate; TinyDB presence is the authoritative check.
+      A one-time cleanup pass should transition all sessions whose role is absent
+      from the current agent roster to status=failed with reason=agent_decommissioned.
+      A CLI command such as `agentic orchestrate debug state cleanup --stale-roles`
+      would operationalise this. Teacher agents should add a cleanup step to
+      orchestration-executor guidance specifying that any agent decommission must
+      be accompanied by a session-store tombstone pass for that role.
 
   - id: FP-002
-    type: guidance_gap
+    type: backtracking
     severity: high
-    agent: epic-creator
-    guidance_file: "modules/AgenticGuidance/agents/planner/epic-creator/process.yml"
+    agent: "orchestration-executor"
+    guidance_file: "orchestration/orchestration-executor/process.yml"
     description: >
-      epic-creator's "Read epic README" step instructs the agent to read
-      docs/epics/live/{epic_folder}/README.md from disk. However, cmd_init
-      (the `agentic epic init` command) does NOT create a README.md on disk —
-      it only writes a TinyDB record with a `context` field. This means
-      epic-creator will fail its README read step on freshly created epics
-      that have no disk folder yet, creating a catch-22: the folder must exist
-      for epic-creator to read it, but folders are supposed to be created lazily.
+      Epic 260328AG_extract_validate_phase_routing_utility_from_duplic required
+      seven execution attempts spanning 57 minutes before the plan was marked
+      complete. The sequence was: two planning failures (story_parsing, story_ids
+      validation) followed by four execution failures (lock timeout after Build,
+      lock timeout after Test+UAT, JSON corruption at start, EpicRepository
+      unavailable at start) followed by a final session that completed only the
+      Cleanup phase. The actual phase work for Build, Test, and UAT ran to
+      completion in failed sessions (exec-5dfd53446d66 and exec-3e68b7136efe)
+      but those sessions marked the plan failed when the lock error occurred
+      during finalise, causing the next executor to treat all phases as un-run.
+      This resulted in duplicate phase execution and lost time.
     evidence:
-      - file: "modules/AgenticGuidance/agents/planner/epic-creator/process.yml"
-        line: 44
-        quote: "The README is at: docs/epics/live/{epic_folder}/README.md"
-      - file: "modules/AgenticCLI/src/agenticcli/commands/epic.py"
-        line_range: "985-1054"
-        note: "cmd_init has comment '# Compute plan path (no folder creation — TinyDB is the sole data store)' but still computes plan_path pointing at docs/epics/live/ and outputs 'Created epic folder at {plan_path}' (misleading, folder is NOT created)"
-      - note: "TinyDB record for 260327AG has context='Mandatory ticket-story binding...' but no README on disk; epic creator would read from docs/epics/live/ and fail or find nothing"
+      - "22:16 orch-aefd039c2bdb: status=failed, error='stories.yml missing or invalid'"
+      - "22:24 orch-64144c1c4672: status=failed, error='No tickets reference story_ids'"
+      - "22:41 exec-5dfd53446d66: phases_completed=[Build], failed on lock timeout"
+      - "22:56 exec-3e68b7136efe: phases_completed=[Test, UAT], failed on lock timeout"
+      - "23:05 exec-72c1097b61eb: failed at iteration=1, JSON parse error at offset 3623749"
+      - "23:11 exec-8034e6f9da44: failed at iteration=0, no EpicRepository"
+      - "23:12 exec-0af9a1a79abd: phases_completed=[Cleanup], status=completed"
+      - "epics.db.corrupt (3,623,749 bytes) and epics.db.repaired (3,623,742 bytes) dated 23:05"
     recommendation: >
-      Add a step to epic-creator that reads the epic objective from TinyDB via
-      `agentic -j epic status --epic {epic_folder}` and extracts the `context`
-      or `objective` field. The README.md read should be a fallback if the file
-      exists, not the primary source. This removes the disk dependency for the
-      objective read step.
+      The executor should perform a phase-status pre-check at each iteration start
+      and skip phases already marked completed in TinyDB. This idempotent resume
+      behaviour would have allowed exec-3e68b7136efe (which completed Test+UAT)
+      to also run Cleanup in the same session rather than failing. Additionally,
+      distinguish lock-timeout-on-finalise from lock-timeout-on-phase-start in
+      the error handler: the former means the plan may actually be complete and
+      should trigger a status re-read before marking failed.
 
   - id: FP-003
     type: guidance_gap
     severity: high
-    agent: build-story-writer
-    guidance_file: "modules/AgenticGuidance/agents/build/build-story-writer/process.yml"
+    agent: "build-story-writer / planner-orchestration"
+    guidance_file: "planner/planner-orchestration/process.yml"
     description: >
-      build-story-writer writes stories.yml to docs/epics/live/{epic_folder}/stories.yml
-      via the Write tool. This is the primary reason the epic folder must exist on
-      disk — the story writer needs a place to write. The PlannerLoopRunner explicitly
-      creates the disk folder (mkdir) before spawning build-story-writer at line 1455
-      of planner_loop.py precisely because of this dependency.
+      The first planning attempt on epic
+      260328AG_extract_validate_phase_routing_utility_from_duplic failed with
+      "stories.yml missing or invalid after build-story-writer completed" (orch-aefd039c2bdb).
+      The orchestrator had no retry or backoff logic when reading stories.yml
+      immediately after the agent completion signal. This race condition — the tmux
+      pane writes the file, the agent signals done, but the orchestrator reads
+      before the filesystem flush propagates — was the subject of epic
+      260329AG_fix_story_parsing_race_condition_in_planning_pipel, which was
+      planned and fully executed on March 29 in 35 minutes. The guidance for
+      planner-orchestration did not document the expected behaviour on a
+      story-parse failure, leaving the system with no documented recovery path.
     evidence:
-      - file: "modules/AgenticGuidance/agents/build/build-story-writer/process.yml"
-        quote: |
-          Target path: `docs/epics/live/{epic_folder}/stories.yml`
-          ...
-          Your only output is stories.yml, written via the Write tool.
-      - file: "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
-        line: 1453
-        quote: |
-          # Ensure epic folder exists on disk for build-story-writer output
-          epic_path = self.workflow.epics_dir / epic_folder
-          epic_path.mkdir(parents=True, exist_ok=True)
+      - "orch-aefd039c2bdb error: 'stories.yml missing or invalid after build-story-writer completed — stories are required'"
+      - "260329AG_fix_story_parsing_race_condition: 5 phases completed, all tickets completed"
+      - "Commits a9f42c5 and 0eae43f on 2026-03-29 address the underlying race conditions"
+      - "US-001 in the fixed epic directly specifies retry-with-backoff acceptance criteria"
     recommendation: >
-      The mkdir at line 1455 is the correct place for lazy folder creation —
-      it is called immediately before the story-writer agent runs. This is
-      acceptable as a transitional pattern. The long-term fix is to store
-      stories data in TinyDB (not as a YAML file on disk). Until that TinyDB
-      schema change is made, the mkdir call is the least-bad option and should
-      remain but be explicitly documented as "lazy creation for story artifact."
-      The key fix is to remove the planner-build fence (FP-001) that requires
-      the folder to exist before the planning pipeline even starts.
+      Add a guidance step in planner-orchestration process.yml documenting the
+      retry-with-backoff behaviour for story parsing (now implemented in code).
+      This ensures future agents reading the guidance understand the expected
+      behaviour rather than treating a missing stories.yml as an unrecoverable
+      error and failing the entire planning session.
 
   - id: FP-004
     type: guidance_gap
-    severity: medium
-    agent: build-story-writer
-    guidance_file: "modules/AgenticGuidance/agents/build/build-story-writer/process.yml"
+    severity: high
+    agent: "planner-explore"
+    guidance_file: "planner/planner-explore/process.yml"
     description: >
-      build-story-writer reads the epic objective from README.md or objective.md
-      on disk. Neither file is guaranteed to exist for newly created epics.
-      cmd_init stores the objective in TinyDB's `context` field but does not
-      create any disk file. The story writer will silently fall back to reading
-      ticket descriptions alone (per its guidelines), which loses the richer
-      objective text stored in TinyDB.
+      All four planner-explore agents for epic
+      260328AG_extract_validate_phase_routing_utility_from_duplic completed
+      successfully, yet the subsequent pre-flight validation failed with
+      "No tickets reference story_ids — stories are required." All four explore
+      agents produced tickets with no story_ids populated. The FENCE: STORY-FIRST
+      requirement exists in planning-standard.yml but the planner-explore guidance
+      apparently did not instruct agents that populating story_ids is mandatory.
+      The same failure did not occur on March 27 or March 29 epics (100% and 94%
+      coverage respectively), suggesting the guidance was updated between
+      those dates.
     evidence:
-      - file: "modules/AgenticGuidance/agents/build/build-story-writer/process.yml"
-        line_range: "43-44"
-        quote: |
-          1. `docs/epics/live/{epic_folder}/objective.md`
-          2. `docs/epics/live/{epic_folder}/README.md`
-      - note: >
-          TinyDB record for 260329AG has context='Fix story parsing race condition...'
-          but docs/epics/live/260329AG_.../README.md was created separately —
-          not by cmd_init. Who creates README.md is unclear from code inspection.
+      - "orch-64144c1c4672 error: 'Pre-flight validation failed: No tickets reference story_ids'"
+      - "260328AG_extract_validate: tickets=8, with_story_ids=0 (0% coverage)"
+      - "260327AG_mandatory: tickets=16, with_story_ids=16 (100% coverage)"
+      - "260329AG_fix_story_parsing: tickets=16, with_story_ids=15 (94% coverage)"
+      - "All four explore sessions completed: 58c6656b, 8744c0cc, cab7a684, f1b2307c"
     recommendation: >
-      Add a step before the README read: run `agentic -j epic status --epic
-      {epic_folder}` and extract the `context` field as the primary objective
-      source. README.md on disk becomes an optional enrichment. This makes the
-      story-writer resilient to missing disk files.
+      Add an explicit self-check step to planner-explore process.yml: after writing
+      tickets the agent must verify each ticket has at least one story_ids entry
+      before marking itself complete. The check should cross-reference the US-*
+      identifiers from the current epic's stories.yml. A teacher agent should
+      review the diff between the March 28 and March 29 planner-explore guidance
+      to confirm this fix was applied and document it as a FENCE.
 
   - id: FP-005
-    type: backtracking
-    severity: medium
-    agent: PlannerLoopRunner
-    guidance_file: "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+    type: input_resolution_failure
+    severity: high
+    agent: "orchestration-executor"
+    guidance_file: "orchestration/orchestration-executor/process.yml"
     description: >
-      The planner loop contains a TinyDB-first path at line 1399-1404
-      (_ensure_epic_in_db) that attempts to register the epic from disk into
-      TinyDB, AND a separate mkdir at line 1455 that creates the folder for
-      story-writer output. The _ensure_epic_in_db call takes a plan_path derived
-      from epics_dir/epic_folder — which is a disk path. If the folder does not
-      exist yet (TinyDB-only epic), this call does nothing useful (plan_path.is_dir()
-      is False). The logic then proceeds to create the folder via mkdir. This is
-      a two-step process that was originally designed for disk-first and patched
-      toward TinyDB-first without fully completing the transition.
+      exec-ea0ce367f8e4 (March 29 13:19) failed at iteration=1 with
+      "Could not acquire lock after 10.0s (holder pid=1939243, holder age=14.3s)".
+      The lock holder was still alive and only 14 seconds old — a concurrent
+      process had just acquired the lock when this session started. This session
+      was a retry for epic 260329AG_fix_story_parsing, which had been successfully
+      planned by orch-69d788ffe531 at 12:35. The overlapping launch windows
+      (exec-ea0ce367f8e4 started 12:57, orch-69d788ffe531 completed 12:35)
+      suggest the user launched a second execution while the first was finalising.
+      The immediately subsequent session exec-d257d6e9f67b (started 13:20)
+      succeeded completely, completing 5 phases in 35 minutes.
     evidence:
-      - file: "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
-        line_range: "1399-1455"
-        note: >
-          _ensure_epic_in_db is called with a path that may not yet exist,
-          which makes it a no-op for TinyDB-only epics. Then mkdir creates
-          the folder anyway. The guard at line 1415-1426 ("not found in
-          TinyDB — cannot plan") is TinyDB-first. So the logic is: require
-          TinyDB presence (good) but also create disk folder (contradicts lazy intent).
+      - "exec-ea0ce367f8e4: started=12:57, failed=13:19, error='Could not acquire lock after 10.0s'"
+      - "Lock holder pid=1939243, holder_age=14.3s"
+      - "exec-d257d6e9f67b: started=13:20:05, completed=13:55:24, all 5 phases done"
+      - "Commits a9f42c5 raises lock timeout and adds auto-release on crash"
     recommendation: >
-      The mkdir at line 1455 should remain as the single canonical lazy-creation
-      point. Remove or make conditional the _ensure_epic_in_db call at line
-      1403 — it should only be called if the folder already exists (i.e., it
-      should be an optional resync, not a required step). Document that lazy
-      folder creation happens exactly once, immediately before story-writer runs.
+      Confirm the default lock timeout was raised from 10s in a9f42c5. The guidance
+      for orchestration-executor should document that a lock-timeout on session start
+      (iteration=1, no phases yet run) is always safe to retry after 15-30 seconds
+      because it means another session is in its writeback phase. This should be
+      distinguished in the error output from a mid-execution timeout.
 
   - id: FP-006
     type: guidance_gap
-    severity: low
-    agent: cmd_init
-    guidance_file: "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+    severity: medium
+    agent: "planner-orchestration"
+    guidance_file: "planner/planner-orchestration/process.yml"
     description: >
-      cmd_init has a comment "# Compute plan path (no folder creation — TinyDB is
-      the sole data store)" at line 985, but the console output at line 1045 reads
-      "Created epic folder at {plan_path}" — which is false. No folder is created.
-      This misleading output causes downstream confusion: agents and humans reading
-      this output may believe the disk folder exists when it does not.
+      Epic 260327AG_mandatory_ticket_story_binding_for_build_plans has 6 phases
+      in TinyDB, two of which reference decommissioned agent names: test-runner
+      and test-user-simulator. Neither exists in the current roster (current test
+      agents: test-builder, test-audit, test-uat, trace-explorer). If the executor
+      runs this epic it will encounter a routing failure immediately. The epic is
+      flagged as ready to implement by `agentic epic list`. The decommissioned
+      names originated from the planner-orchestration agent that planned this epic
+      before the 28-to-20 restructure was committed.
     evidence:
-      - file: "modules/AgenticCLI/src/agenticcli/commands/epic.py"
-        line: 1045
-        quote: "console.print(f'  [green]Created epic folder[/green] at {plan_path}')"
-      - note: "The folder at plan_path is NOT created by cmd_init — only a TinyDB record is written."
+      - "260327AG_mandatory phases: agent=test-runner and agent=test-user-simulator (both absent from agents/)"
+      - "Current test agents: test-builder, test-audit, test-uat, trace-explorer"
+      - "`agentic epic list` shows 260327AG_mandatory as ready with 0/6 phases started"
+      - "Restructure committed 2026-03-29 (c77f7a0)"
     recommendation: >
-      Change line 1045 to read "Epic record registered in TinyDB (folder at
-      {plan_path} will be created lazily)" or simply "Epic created: {plan_folder_name}".
-      This aligns output with actual behavior and removes false signals about disk state.
+      Before running `agentic orchestrate session implement` on this epic, update
+      the stale phase agent values (test-runner -> test-builder, test-user-simulator
+      -> test-uat) via direct TinyDB update or `agentic epic phase` commands.
+      Teacher agents should update planner-orchestration guidance to reference only
+      current agent names, and a canonical agent-name list in planning-standard.yml
+      would prevent this class of error after future restructures.
 
-# ============================================================
-# STORY COMPLIANCE
-# ============================================================
+  - id: FP-007
+    type: guidance_gap
+    severity: medium
+    agent: "planner-orchestration"
+    guidance_file: "planner/planner-orchestration/process.yml"
+    description: >
+      The IM_001 "Initial Research and Planning" scaffold ticket in epics
+      260329AG_fix_story_parsing and 260329AG_eliminate_mandatory_disk lacks
+      story_ids (the only ticket without story_ids in those otherwise well-covered
+      epics). This ticket is created before story generation runs and therefore
+      cannot reference a US-* id at creation time. The pre-flight validator's
+      current behaviour (pass if any ticket has story_ids) means this does not
+      block execution, but the ticket remains without traceability. Either the
+      guidance should instruct planner-orchestration to backfill story_ids on
+      IM_001 after story generation completes, or the validator should be
+      updated to require full coverage.
+    evidence:
+      - "260329AG_fix_story_parsing: task_id=IM_001, story_ids=null (1/16 tickets without)"
+      - "260329AG_eliminate_mandatory_disk: task_id=IM_001, story_ids=null (1/17 tickets without)"
+      - "Pre-flight validation passes for both epics (any-coverage check)"
+    recommendation: >
+      Update planner-orchestration process.yml to include a post-story-generation
+      step: backfill story_ids on the IM_001 / research scaffold ticket using the
+      most broadly applicable story from stories.yml. Alternatively update the
+      pre-flight validator to require 100% coverage and exempt only explicitly
+      tagged scaffold tickets.
+
+  - id: FP-008
+    type: excessive_iteration
+    severity: medium
+    agent: "orchestration-executor"
+    guidance_file: "orchestration/orchestration-executor/process.yml"
+    description: >
+      The March 28 execution chain involved six executor launches over 57 minutes.
+      The actual productive work (Build, Test, UAT) completed inside two failed
+      sessions that were each marked failed due to lock errors on finalise, causing
+      duplicate phase execution. Total iteration depth across sessions: 2+3+1+0+2
+      = 8 iterations for a 4-phase epic. Expected iteration count for a healthy
+      4-phase epic (no failures) is 4-5 iterations in a single session.
+    evidence:
+      - "exec-5dfd53446d66: current_iteration=2, phases_completed=[Build]"
+      - "exec-3e68b7136efe: current_iteration=3, phases_completed=[Test, UAT]"
+      - "exec-0af9a1a79abd: current_iteration=2, phases_completed=[Cleanup]"
+      - "Total wall-clock time 22:16 to 23:13 = 57 minutes for 4 phases"
+    recommendation: >
+      Implement idempotent phase resume: executor reads TinyDB phase status before
+      attempting each phase and skips phases already marked completed. This would
+      reduce the March 28 scenario from 6 sessions to 2 (plan + execute-all-phases)
+      and eliminate the duplicate Build/Test/UAT execution.
+
+  - id: FP-009
+    type: input_resolution_failure
+    severity: medium
+    agent: "orchestration-executor"
+    guidance_file: "orchestration/orchestration-executor/process.yml"
+    description: >
+      exec-8034e6f9da44 failed with "No EpicRepository available" at iteration=0
+      in under one second (started and failed at 23:11:56). This occurred one
+      minute after exec-72c1097b61eb detected the corrupt DB at 23:05. The repair
+      process (epics.db.repaired) was likely still in progress when this executor
+      launched, leaving the database in an unreadable state. The executor had no
+      health-check or wait logic and failed immediately.
+    evidence:
+      - "exec-8034e6f9da44: started=23:11:56, failed=23:11:56, current_iteration=0"
+      - "exec-72c1097b61eb (preceding): JSON parse error at char 3623749"
+      - "epics.db.corrupt and epics.db.repaired both dated 23:05"
+      - "exec-0af9a1a79abd (succeeding, started 23:12): EpicRepository available"
+    recommendation: >
+      Add a database-health preflight to the executor: check that epics.db is
+      present and valid JSON before entering the execution loop. If the check fails,
+      wait with exponential backoff (up to ~60s) before aborting. This is distinct
+      from a lock timeout — a corrupt or missing database indicates infrastructure
+      recovery in progress.
+
+  - id: FP-010
+    type: excessive_iteration
+    severity: informational
+    agent: "planner-design / ralph (both decommissioned)"
+    guidance_file: null
+    description: >
+      Historical accumulation: 1,352 planner-design and 280 ralph sessions from
+      March 10-12 are permanently stale with no cleanup path. These are artefacts
+      of intensive testing during the planning pipeline development period.
+      891 remain stuck in status=running. They inflate session-store size
+      (contributing to ~372K files in ~/.agentic/sessions/) and will confuse any
+      tooling that iterates the session store without role-validity filtering.
+    evidence:
+      - "Total sessions 2026-03-10/11/12: 2224 — dominated by planner-design (1352) and ralph (280)"
+      - "891 sessions stuck in status=running"
+      - "~/.agentic/sessions/ contains 357 directory entries at analysis time"
+    recommendation: >
+      Implement `agentic orchestrate debug state cleanup --stale-roles` to tombstone
+      sessions for absent roles. Document in orchestration-executor process.yml
+      that any role decommission must be followed by a session-store cleanup pass.
 
 story_compliance:
 
-  - story_id: US-PLN-001
+  - story_id: "inferred from phases"
+    epic: "260329AG_fix_tinydb_file_lock_not_released_on_agent_crash"
+    status: compliant
+    evidence: >
+      All 4 phases completed (Harden FileLock, Harden Epic Lock, Test, UAT).
+      exec-d64528639736 completed in 22 minutes at iteration=5. No phases failed.
+      Commits a9f42c5 and 0eae43f confirm the implementation reached the
+      repository.
+
+  - story_id: "US-001 (Reliable Story Parsing)"
+    epic: "260329AG_fix_story_parsing_race_condition_in_planning_pipel"
+    status: compliant
+    evidence: >
+      15/16 tickets have story_ids. All 16 tickets completed. 5 phases completed
+      via exec-d257d6e9f67b in 35 minutes. Epic status=completed, awaiting archive.
+      US-001 acceptance criteria (retry-with-backoff, structured exceptions, file
+      readiness check) directly addressed by tickets P1-T1, P1-T2, P1-T3.
+
+  - story_id: "US-002 (TinyDB concurrent access)"
+    epic: "260329AG_fix_story_parsing_race_condition_in_planning_pipel"
+    status: compliant
+    evidence: >
+      P2-T1 through P2-T3 implement TinyDB concurrent access hardening.
+      P5-T2 (UAT: validate parallel explore agents complete with concurrent access)
+      verifies the acceptance criteria. All P2 and P5 tickets marked completed.
+
+  - story_id: "US-002 (ticket CE_001 story_ids field)"
+    epic: "260327AG_mandatory_ticket_story_binding_for_build_plans"
+    status: not_started
+    evidence: >
+      16 tickets pending, 16/16 have story_ids. 6 phases pending but 2 reference
+      decommissioned agents (test-runner, test-user-simulator). No execution
+      attempted. Story compliance cannot be assessed until stale agent names are
+      corrected.
+
+  - story_id: "none (0 story_ids on any ticket)"
+    epic: "260328AG_extract_validate_phase_routing_utility_from_duplic"
     status: partial
     evidence: >
-      Step 8 ("Disk folders in docs/epics/live/ are created lazily only when agents
-      need to write artifacts") is NOT met. The planner_loop.py creates the folder
-      eagerly at line 1455 before story-writer runs — this is technically lazy
-      relative to epic init, but it is not conditional on agent need. More critically,
-      planner-build's fence (FP-001) requires the folder to exist before planning,
-      which forces eager creation in some flows. cmd_init does NOT create the folder
-      (step 8 partially met for init command), but the planning pipeline creates it
-      unconditionally (step 8 not met for planning).
+      8 tickets in TinyDB, 0 with story_ids. The epic's implementation reached
+      the repository (commit bb53dcf: extract validate_phase_routing utility) but
+      story traceability was never established. The Build, Test, and UAT phases
+      ran to completion inside sessions that were marked failed due to lock errors.
+      The Cleanup phase completed in the final session. Functional outcome achieved,
+      story compliance absent.
 
-  - story_id: US-PLN-002
-    status: non_compliant
+  - story_id: "none (0 story_ids, not yet executed)"
+    epic: "260328AG_cleanup_stale_agent_references_after_2820_restruct"
+    status: not_started
     evidence: >
-      Step 5 ("A disk folder in docs/epics/live/ is only created when an agent first
-      writes an artifact to it") is not met for the planning pipeline. The planner
-      loop creates the folder at line 1455 regardless of whether the story-writer
-      succeeds or produces any output. The `agentic epic scaffold` command referenced
-      in steps 1-3 does not appear to exist as a distinct command — scaffold is
-      implemented but appears to be an alias or variant of init.
-
-  - story_id: US-PLN-053
-    status: non_compliant
-    evidence: >
-      Step 4 ("An epic record is created in TinyDB with YYMMDDXX_description naming
-      (no disk folder required at this point)") is partially met by cmd_init (TinyDB
-      record written, no folder created). However, the planner-build guidance fence
-      (FP-001) immediately reverses this by requiring the folder to exist before
-      planning begins, creating implicit pressure to create the folder at init time.
-
-  - story_id: US-PLN-054
-    status: non_compliant
-    evidence: >
-      Step 7 ("Disk folders in docs/epics/live/ are created lazily when agents write
-      artifacts (stories.yml, README.md)") is not met. Folders are created by the
-      PlannerLoopRunner mkdir call before the story-writer runs, not after the first
-      successful artifact write. The folder is created even if story-writer subsequently
-      fails, leaving orphan disk folders.
-
-# ============================================================
-# CURRENT STATE SUMMARY (code paths that create disk folders)
-# ============================================================
-#
-# 1. PlannerLoopRunner._process_plan_inner() — planner_loop.py:1455
-#    epic_path.mkdir(parents=True, exist_ok=True)
-#    Called before spawn_story_agent(). This is the PRIMARY disk folder creator
-#    in the planning pipeline.
-#
-# 2. planner-build process.yml fence — lines 119-139
-#    Not code, but agent guidance that blocks planning if folder absent.
-#    Agents following this fence will create implicit pressure to have folder early.
-#
-# 3. build-story-writer process.yml — "Write tool" output to stories.yml
-#    Requires the folder to exist on disk. Currently satisfied by (1).
-#
-# 4. build-story-writer process.yml — reads README.md / objective.md from disk
-#    No code creates these files at epic init time.
-#
-# 5. epic-creator process.yml — reads README.md from disk
-#    Same problem as (4).
-#
-# 6. _ensure_epic_in_db() — epic.py:119-152
-#    Only creates TinyDB record from disk (disk → TinyDB direction).
-#    Does not create disk folders. Not a blocker.
-#
-# FILES THAT STILL WRITE TO DISK (blockers for full TinyDB-first):
-#   - stories.yml: written by build-story-writer agent (Write tool)
-#   - README.md: written by agents manually (not by any automated step at init)
-#   - epic.md: present in live folders (260327AG has epic.md) — unclear origin,
-#     not created by cmd_init, likely created by a build agent or manually.
-# ============================================================
+      5 tickets all status=proposed, none have story_ids. 2 phases pending
+      (teacher-update-assets, test-builder). Epic has not been executed.
+      This epic cannot be planned (story_ids missing) or executed without
+      a re-plan run.
 
 summary:
-  total_friction_points: 6
+  total_friction_points: 10
   by_severity:
-    high: 3
-    medium: 2
-    low: 1
+    critical: 1
+    high: 4
+    medium: 4
+    informational: 1
   by_type:
-    guidance_gap: 5
-    backtracking: 1
-    excessive_iteration: 0
-    input_resolution_failure: 0
-    story_drift: 0
-    tool_misuse: 0
-    context_overflow: 0
+    excessive_iteration: 3   # FP-001, FP-008, FP-010
+    backtracking: 1          # FP-002
+    guidance_gap: 4          # FP-003, FP-004, FP-006, FP-007
+    input_resolution_failure: 2  # FP-005, FP-009
 
-  story_compliance_summary:
-    compliant: 0
-    partial: 1
-    non_compliant: 3
-    stories_checked:
-      - US-PLN-001
-      - US-PLN-002
-      - US-PLN-053
-      - US-PLN-054
+  epics_worked_on:
+    - folder: "260328AG_extract_validate_phase_routing_utility_from_duplic"
+      date: "2026-03-28"
+      outcome: >
+        Partial success via 7 attempts over 57 minutes. Build/Test/UAT phases ran
+        inside failed sessions; only Cleanup completed in a session marked
+        successful. Implementation committed to git. Story traceability: zero.
+    - folder: "260329AG_fix_tinydb_file_lock_not_released_on_agent_crash"
+      date: "2026-03-29 morning"
+      outcome: "Clean success — 4 phases, 22 minutes, single session."
+    - folder: "260329AG_fix_story_parsing_race_condition_in_planning_pipel"
+      date: "2026-03-29 midday"
+      outcome: "Success after 1 failed retry — 5 phases, 35 minutes in the final session."
+    - folder: "260329AG_eliminate_mandatory_disk_folder_creation_make_epic"
+      date: "2026-03-29 afternoon"
+      outcome: "In-progress — planning stage, epic-creator running as of analysis time."
 
   top_recommendations:
-    - id: REC-1
-      priority: 1
-      target: planner-build/process.yml
+    - priority: 1
       action: >
-        Remove the "FENCE: EPIC FOLDER MUST EXIST BEFORE PLANNING" disk check.
-        Replace with a TinyDB check: `agentic -j epic status --epic {epic_folder_name}`
-        must return a valid epic record. This is the single highest-leverage change —
-        it removes the gate that forces disk folder creation before the planning pipeline.
+        Fix stale agent names in 260327AG_mandatory phases before running implement.
+        test-runner -> test-builder, test-user-simulator -> test-uat.
+        Failure to do this will cause an immediate routing error on the next
+        `agentic orchestrate session implement` call.
+    - priority: 2
+      action: >
+        Implement session-store cleanup for decommissioned roles. The 2,224 stale
+        March 10-12 sessions are permanent noise and will grow with each future
+        agent restructure unless a tombstone mechanism exists.
+    - priority: 3
+      action: >
+        Add a FENCE self-check to planner-explore process.yml: agent must not mark
+        itself complete until all created tickets have story_ids populated. This
+        closes the gap that caused the March 28 pre-flight validation failure.
+    - priority: 4
+      action: >
+        Update orchestration-executor guidance to implement idempotent phase resume:
+        check TinyDB phase status before each iteration and skip already-completed
+        phases. This eliminates the duplicate-execution pattern seen in the March 28
+        six-session cascade.
+    - priority: 5
+      action: >
+        Add a DB health preflight to the executor (valid JSON check with wait/backoff)
+        to prevent the sub-second failures seen in exec-8034e6f9da44 and
+        exec-72c1097b61eb when the database was mid-repair.
 
-    - id: REC-2
-      priority: 2
-      target: epic-creator/process.yml and build-story-writer/process.yml
-      action: >
-        Add a TinyDB context read step before any disk file read. Use
-        `agentic -j epic status --epic {epic_folder}` to extract the `context`
-        field as the primary objective source. README.md on disk becomes an
-        optional enrichment fallback. This makes both agents robust to
-        disk-folder-free epics.
-
-    - id: REC-3
-      priority: 3
-      target: planner_loop.py line 1455
-      action: >
-        Keep the mkdir at line 1455 but document it as the single canonical
-        lazy-creation point ("create folder lazily, immediately before the first
-        agent that writes a disk artifact runs"). Remove or conditionalize the
-        _ensure_epic_in_db call at line 1403 to only run when plan_path.is_dir().
-        Long-term: move stories.yml storage to TinyDB to eliminate this mkdir entirely.
-
-    - id: REC-4
-      priority: 4
-      target: epic.py cmd_init line 1045
-      action: >
-        Fix the misleading console output. Change "Created epic folder at {plan_path}"
-        to "Epic registered in TinyDB: {plan_folder_name}" to accurately reflect
-        that no disk folder is created at init time.
-
-    - id: REC-5
-      priority: 5
-      target: stories.yml (long-term)
-      action: >
-        To fully eliminate disk folder creation from the planning pipeline, stories.yml
-        content must move into TinyDB. This is a schema change: add a `stories` field
-        to the TinyDB epic record, and update build-story-writer to write via a CLI
-        command (e.g., `agentic epic stories set`) rather than the Write tool. Until
-        this change is made, the disk folder will always be required for planning.
+  system_health_assessment: >
+    The system is functionally healthy for the two successfully completed March 29
+    epics (FileLock hardening and story parsing race fix). The root causes of the
+    March 28 cascade failure — TinyDB corruption, lock contention, missing story_ids
+    on tickets — have all been directly addressed by commits landed today (a9f42c5,
+    0eae43f, bb53dcf, c77f7a0). Three structural issues remain unresolved and require
+    action before the next execute run: (1) 2,224 stale sessions from decommissioned
+    roles with no cleanup path; (2) epic 260327AG_mandatory has stale agent names
+    that will cause a routing failure on the next implement run; (3) epic
+    260328AG_cleanup_stale_agent_references has zero story_ids and cannot be
+    executed without a re-plan. The DB corruption artifact files
+    (epics.db.corrupt, epics.db.repaired) in ~/.agentic/ should be archived or
+    deleted once the repair is confirmed stable.

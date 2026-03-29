@@ -171,7 +171,8 @@ class TestCreateEpic:
 
         assert result.success is True
         assert "[dry-run]" in result.message
-        assert not result.epic_folder.exists()
+        # epic_folder is None for TinyDB-first creation (no disk path)
+        assert result.epic_folder is None
 
     def test_create_epic_already_exists(self, tmp_path):
         """Test create_epic fails when folder already exists."""

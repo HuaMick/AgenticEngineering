@@ -162,6 +162,8 @@ class MainFirstEpicResolver:
                     for epic_meta in sorted(
                         all_epics, key=lambda e: e.epic_folder_name, reverse=True
                     ):
+                        if not epic_meta.epic_folder:
+                            continue
                         epic_folder_path = Path(str(epic_meta.epic_folder))
                         if "/epics/live/" in str(epic_folder_path):
                             epic_data = self._repository.get_epic(epic_meta.epic_folder_name)

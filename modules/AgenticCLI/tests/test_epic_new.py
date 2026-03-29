@@ -99,7 +99,20 @@ def create_worktree_for_test(temp_repo: Path, branch: str, base: str = "main") -
     return worktree_path
 
 
-def _populate_tinydb_for_mock_planner(plan_folder_path, db_path=None):
+def _extract_epic_name_from_prompt(prompt: str) -> str | None:
+    """Extract the epic folder name from a planner prompt string.
+
+    The prompt contains a line like:  EPIC NAME: 260329AG_my_epic
+    Returns that name, or None if not found.
+    """
+    import re
+    match = re.search(r"EPIC NAME:\s*(\S+)", prompt)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _populate_tinydb_for_mock_planner(epic_folder_name: str, db_path=None):
     """Helper: populate TinyDB with a mock ticket after planner runs.
 
     This simulates what a real planner agent would do: add tickets to TinyDB
@@ -111,23 +124,20 @@ def _populate_tinydb_for_mock_planner(plan_folder_path, db_path=None):
     try:
         from agenticguidance.services.epic_repository import EpicRepository
 
-        plan_folder = Path(plan_folder_path)
-        plan_folder_name = plan_folder.name
-
         repo = EpicRepository(db_path=db_path) if db_path else EpicRepository()
 
         # Add a mock phase if not present already
         phase_name = "Mock Phase 1"
-        existing_phase = repo.get_phase(plan_folder_name, phase_name)
+        existing_phase = repo.get_phase(epic_folder_name, phase_name)
         if existing_phase is None:
-            repo.add_phase(plan_folder_name, {"name": phase_name})
+            repo.add_phase(epic_folder_name, {"name": phase_name})
 
         # Add a mock ticket (not IM_001) so validation passes
-        existing_tickets = repo.get_tickets(plan_folder_name)
+        existing_tickets = repo.get_tickets(epic_folder_name)
         ticket_ids = {t.id for t in existing_tickets}
         if "MOCK_001" not in ticket_ids:
             repo.add_ticket(
-                plan_folder_name,
+                epic_folder_name,
                 phase_name,
                 {
                     "task_id": "MOCK_001",
@@ -154,10 +164,15 @@ def mock_claude_subprocess():
 
     def patched_run(cmd, *args, **kwargs):
         if isinstance(cmd, list) and cmd and cmd[0] == "claude":
-            # Populate TinyDB so cmd_new's validation passes
-            cwd = kwargs.get("cwd")
-            if cwd:
-                _populate_tinydb_for_mock_planner(cwd)
+            # Extract epic name from the -p <prompt> argument and populate TinyDB
+            try:
+                p_idx = cmd.index("-p")
+                prompt_text = cmd[p_idx + 1]
+                epic_name = _extract_epic_name_from_prompt(prompt_text)
+                if epic_name:
+                    _populate_tinydb_for_mock_planner(epic_name)
+            except (ValueError, IndexError):
+                pass
             mock_result = Mock()
             mock_result.stdout = "Planner output"
             mock_result.stderr = ""
@@ -169,9 +184,10 @@ def mock_claude_subprocess():
     # instead of subprocess. Mock it to populate TinyDB with a mock ticket.
     def mock_sdk_run(prompt, options=None, timeout_seconds=1800):
         from agenticcli.utils.sdk_runner import SessionResult
-        # options.cwd has the plan folder path when called from cmd_new's planner step
-        if options is not None and hasattr(options, "cwd") and options.cwd:
-            _populate_tinydb_for_mock_planner(options.cwd)
+        # Extract the epic name from the prompt text (contains "EPIC NAME: <name>")
+        epic_name = _extract_epic_name_from_prompt(prompt)
+        if epic_name:
+            _populate_tinydb_for_mock_planner(epic_name)
         return SessionResult(status="completed", result="Mock SDK planner output")
 
     with patch("agenticcli.commands.epic.subprocess.run", side_effect=patched_run):
@@ -552,9 +568,13 @@ class TestPlanNewPlannerSpawn:
             # If this is the planner spawn call (contains "claude")
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
                 # Populate TinyDB so cmd_new's validation passes
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    _populate_tinydb_for_mock_planner(cwd)
+                try:
+                    p_idx = cmd.index("-p")
+                    epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if epic_name:
+                        _populate_tinydb_for_mock_planner(epic_name)
+                except (ValueError, IndexError):
+                    pass
             return mock_result
 
         # Force subprocess path since this test targets subprocess behavior
@@ -617,9 +637,13 @@ class TestPlanNewPlannerSpawn:
             mock_result.returncode = 0
             # Populate TinyDB so cmd_new's validation passes
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    _populate_tinydb_for_mock_planner(cwd)
+                try:
+                    p_idx = cmd.index("-p")
+                    epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if epic_name:
+                        _populate_tinydb_for_mock_planner(epic_name)
+                except (ValueError, IndexError):
+                    pass
             return mock_result
 
         # Force subprocess path by marking SDK unavailable
@@ -657,9 +681,13 @@ class TestPlanNewPlannerSpawn:
             mock_result.returncode = 0
             # Populate TinyDB so cmd_new's validation passes
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    _populate_tinydb_for_mock_planner(cwd)
+                try:
+                    p_idx = cmd.index("-p")
+                    epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if epic_name:
+                        _populate_tinydb_for_mock_planner(epic_name)
+                except (ValueError, IndexError):
+                    pass
             return mock_result
 
         # Force subprocess path by marking SDK unavailable
@@ -725,9 +753,13 @@ class TestPlanNewOrchestration:
             if isinstance(cmd, list) and cmd and cmd[0] == "git":
                 return real_subprocess_run(cmd, *a, **kwargs)
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    _populate_tinydb_for_mock_planner(cwd)
+                try:
+                    p_idx = cmd.index("-p")
+                    epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if epic_name:
+                        _populate_tinydb_for_mock_planner(epic_name)
+                except (ValueError, IndexError):
+                    pass
             mock_result = Mock()
             mock_result.stdout = "Output"
             mock_result.stderr = ""
@@ -757,9 +789,13 @@ class TestPlanNewOrchestration:
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
                 # Populate TinyDB so planner ticket validation passes;
                 # orchestration generation may still fail (no phases in TinyDB)
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    _populate_tinydb_for_mock_planner(cwd)
+                try:
+                    p_idx = cmd.index("-p")
+                    epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if epic_name:
+                        _populate_tinydb_for_mock_planner(epic_name)
+                except (ValueError, IndexError):
+                    pass
             mock_result = Mock()
             mock_result.stdout = "Output"
             mock_result.stderr = ""
@@ -819,9 +855,13 @@ class TestPlanNewBuilderSpawning:
                 return real_subprocess_run(cmd, *a, **kwargs)
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
                 # Populate TinyDB so cmd_new's ticket validation passes
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    _populate_tinydb_for_mock_planner(cwd)
+                try:
+                    p_idx = cmd.index("-p")
+                    epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if epic_name:
+                        _populate_tinydb_for_mock_planner(epic_name)
+                except (ValueError, IndexError):
+                    pass
             mock_result = Mock()
             mock_result.stdout = "Output"
             mock_result.stderr = ""
@@ -875,9 +915,13 @@ class TestPlanNewBuilderSpawning:
                 return real_subprocess_run(cmd, *a, **kwargs)
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
                 # Populate TinyDB so cmd_new's ticket validation passes
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    _populate_tinydb_for_mock_planner(cwd)
+                try:
+                    p_idx = cmd.index("-p")
+                    epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if epic_name:
+                        _populate_tinydb_for_mock_planner(epic_name)
+                except (ValueError, IndexError):
+                    pass
             mock_result = Mock()
             mock_result.stdout = "Output"
             mock_result.stderr = ""
@@ -931,15 +975,14 @@ class TestPlanNewBuilderSpawning:
             if isinstance(cmd, list) and cmd and cmd[0] == "git":
                 return real_subprocess_run(cmd, *a, **kwargs)
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    # Populate TinyDB with DONE_001 (completed) and PEND_001 (pending)
-                    # so cmd_new's execution step reads the correct task statuses
-                    try:
+                # Populate TinyDB with DONE_001 (completed) and PEND_001 (pending)
+                # so cmd_new's execution step reads the correct task statuses
+                try:
+                    p_idx = cmd.index("-p")
+                    plan_folder_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if plan_folder_name:
                         import agenticcli.commands.epic as _epic_mod
                         from agenticguidance.services.epic_repository import EpicRepository
-                        plan_folder_path = Path(cwd)
-                        plan_folder_name = plan_folder_path.name
                         db_path = _epic_mod._get_repo_db_path()
                         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
                         phase_name = "Phase"
@@ -955,8 +998,8 @@ class TestPlanNewBuilderSpawning:
                                 "task_id": "PEND_001", "name": "Still pending", "status": "pending"
                             })
                         repo.close()
-                    except Exception:
-                        pass
+                except (ValueError, IndexError, Exception):
+                    pass
             mock_result = Mock()
             mock_result.stdout = "Output"
             mock_result.stderr = ""
@@ -1017,9 +1060,13 @@ class TestPlanNewBuilderSpawning:
             mock_result.returncode = 0
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
                 # Populate TinyDB so planner ticket validation passes
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    _populate_tinydb_for_mock_planner(cwd)
+                try:
+                    p_idx = cmd.index("-p")
+                    epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if epic_name:
+                        _populate_tinydb_for_mock_planner(epic_name)
+                except (ValueError, IndexError):
+                    pass
             return mock_result
 
         spawned = []
@@ -1099,9 +1146,13 @@ class TestPlanNewIntegration:
                 return real_subprocess_run(cmd, *a, **kwargs)
             if isinstance(cmd, list) and cmd and cmd[0] == "claude":
                 # Populate TinyDB so cmd_new's ticket validation passes
-                cwd = kwargs.get("cwd")
-                if cwd:
-                    _populate_tinydb_for_mock_planner(cwd)
+                try:
+                    p_idx = cmd.index("-p")
+                    epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                    if epic_name:
+                        _populate_tinydb_for_mock_planner(epic_name)
+                except (ValueError, IndexError):
+                    pass
             mock_result = Mock()
             mock_result.stdout = "Output"
             mock_result.stderr = ""

@@ -180,7 +180,7 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
     Args:
         db_path: Path to the TinyDB database file.
         epic_folder_name: Epic folder name.
-        epic_folder: Path to the epic folder on disk.
+        epic_folder: Path to the epic folder on disk, or None for folder-free epics.
         yaml_data: Dict with optional keys: name, status, phases, tasks.
     """
     from agenticguidance.services.epic_repository import EpicRepository
@@ -188,7 +188,7 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
     repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
     repo.create_epic({
         "epic_folder_name": epic_folder_name,
-        "epic_folder": str(epic_folder),
+        "epic_folder": str(epic_folder) if epic_folder else "",
         "name": yaml_data.get("name", epic_folder_name),
         "status": yaml_data.get("status", "active"),
     })
@@ -218,7 +218,15 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
 
 @pytest.fixture
 def tinydb_populator(_isolate_tinydb):
-    """Fixture providing a function to populate the isolated TinyDB."""
+    """Fixture providing a function to populate the isolated TinyDB.
+
+    Usage:
+        # With a disk folder:
+        tinydb_populator("my_epic", tmp_path / "my_epic", {"name": "My Epic"})
+
+        # Folder-free epic (no disk folder):
+        tinydb_populator("my_epic", None, {"name": "My Epic"})
+    """
     db_path = _isolate_tinydb
 
     def _populate(epic_folder_name, epic_folder, yaml_data):

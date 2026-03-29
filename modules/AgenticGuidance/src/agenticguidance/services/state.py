@@ -128,6 +128,12 @@ class ProcessEntry:
         )
 
 
+# Default timeout for FileLock acquisition (seconds).
+# Increased from 10s to 30s to accommodate parallel explore agent scenarios
+# where up to 6 agents may contend on the same TinyDB lock file.
+FILELOCK_DEFAULT_TIMEOUT: float = 30.0
+
+
 # @story US-SET-017
 class FileLock:
     """POSIX flock-based lock for atomic operations.
@@ -138,7 +144,7 @@ class FileLock:
     cannot be left orphaned by crashed processes.
     """
 
-    def __init__(self, path: Path, timeout: float = 10.0, max_age: float = 300.0):
+    def __init__(self, path: Path, timeout: float = FILELOCK_DEFAULT_TIMEOUT, max_age: float = 300.0):
         """Initialize lock.
 
         Args:
@@ -301,6 +307,85 @@ class FileLock:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit."""
         self.release()
+
+
+# Default retry settings for RetryingFileLock
+FILELOCK_RETRY_MAX: int = 3
+FILELOCK_RETRY_BACKOFF_BASE: float = 1.0
+
+
+class RetryingFileLock:
+    """Context manager that retries ``FileLock`` acquisition with exponential backoff.
+
+    Wraps an existing :class:`FileLock` and catches :class:`TimeoutError`
+    raised by ``__enter__``.  On each timeout, the lock holder PID and lock
+    file age are logged before sleeping.
+
+    Usage::
+
+        lock = FileLock(path)
+        with RetryingFileLock(lock):
+            ...  # critical section
+
+    Args:
+        lock: The underlying ``FileLock`` instance.
+        max_retries: Maximum number of retry attempts after the first failure.
+        backoff_base: Base delay in seconds; actual delay is
+            ``backoff_base * 2^attempt`` (1s, 2s, 4s, …).
+    """
+
+    def __init__(
+        self,
+        lock: FileLock,
+        max_retries: int = FILELOCK_RETRY_MAX,
+        backoff_base: float = FILELOCK_RETRY_BACKOFF_BASE,
+    ):
+        self._lock = lock
+        self._max_retries = max_retries
+        self._backoff_base = backoff_base
+
+    def __enter__(self) -> FileLock:
+        total_attempts = self._max_retries + 1
+        for attempt in range(total_attempts):
+            try:
+                return self._lock.__enter__()
+            except TimeoutError:
+                holder = self._lock._read_lock_metadata()
+                holder_pid = holder.get("pid", "?")
+                holder_ts = holder.get("timestamp")
+                lock_age = (
+                    f"{time.time() - holder_ts:.1f}s"
+                    if holder_ts
+                    else "unknown"
+                )
+                if attempt < self._max_retries:
+                    delay = self._backoff_base * (2 ** attempt)
+                    logger.warning(
+                        "FileLock timeout (attempt %d/%d) on %s — "
+                        "holder pid=%s, lock age=%s, retrying in %.1fs",
+                        attempt + 1,
+                        total_attempts,
+                        self._lock.lock_path,
+                        holder_pid,
+                        lock_age,
+                        delay,
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "FileLock acquisition failed after %d attempts on %s — "
+                        "holder pid=%s, lock age=%s",
+                        total_attempts,
+                        self._lock.lock_path,
+                        holder_pid,
+                        lock_age,
+                    )
+                    raise
+        # Unreachable — the loop either returns or raises on final attempt
+        raise TimeoutError("FileLock retry exhausted")  # pragma: no cover
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self._lock.__exit__(exc_type, exc_val, exc_tb)
 
 
 class StateRegistry:

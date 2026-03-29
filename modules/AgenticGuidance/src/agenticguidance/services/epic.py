@@ -347,11 +347,9 @@ class EpicMovementWorkflow:
         epic_name = self.epic_path.name
         source = self.epic_path
 
-        # Determine completed/ destination (sibling of live/)
-        if source.parent.name == "live":
-            completed_dir = source.parent.parent / "completed"
-        else:
-            completed_dir = None
+        # Determine if source is a real live/ folder
+        has_live_folder = source.is_absolute() and source.parent.name == "live"
+        completed_dir = source.parent.parent / "completed" if has_live_folder else None
         destination = completed_dir / epic_name if completed_dir else None
 
         if dry_run:
@@ -372,7 +370,7 @@ class EpicMovementWorkflow:
             )
 
         try:
-            # Step 1: Update TinyDB status
+            # Step 1: Update TinyDB status (always)
             update_result = self._repository.archive_epic(epic_name)
             if not update_result.success:
                 return FolderMoveResult(
@@ -382,7 +380,7 @@ class EpicMovementWorkflow:
                     message=f"TinyDB update failed: {update_result.message}",
                 )
 
-            # Step 2: Move folder from live/ to completed/
+            # Step 2: Move folder from live/ to completed/ (only if folder exists)
             if destination and source.exists():
                 if destination.exists():
                     return FolderMoveResult(
@@ -409,7 +407,7 @@ class EpicMovementWorkflow:
                     message=f"Archived {epic_name} to {destination}",
                 )
 
-            # Source missing or not in live/ → TinyDB-only update
+            # Folder-free epic or source missing → TinyDB-only archive (normal path)
             return FolderMoveResult(
                 source=str(source),
                 destination="(TinyDB status=completed)",
@@ -473,18 +471,18 @@ class EpicMovementWorkflow:
 class EpicCreateResult:
     """Result of creating an epic."""
 
-    epic_folder: Path
     epic_folder_name: str
     success: bool
     message: str
+    epic_folder: Optional[Path] = None
 
 
 @dataclass
 class EpicData:
     """Complete epic data including phases and tickets."""
 
-    epic_folder: Path
     epic_folder_name: str
+    epic_folder: Optional[Path] = None
     objective: Optional[str] = None
     status: Optional[str] = None
     branch: Optional[str] = None
@@ -505,12 +503,12 @@ class EpicData:
             self.tasks = []
 
     @property
-    def plan_folder(self) -> Path:
+    def plan_folder(self) -> Optional[Path]:
         """Backward-compat alias for epic_folder."""
         return self.epic_folder
 
     @plan_folder.setter
-    def plan_folder(self, value: Path) -> None:
+    def plan_folder(self, value: Optional[Path]) -> None:
         self.epic_folder = value
 
     @property
@@ -527,8 +525,8 @@ class EpicData:
 class EpicMetadata:
     """Summary information about an epic."""
 
-    epic_folder: Path
     epic_folder_name: str
+    epic_folder: Optional[Path] = None
     objective: Optional[str] = None
     status: Optional[str] = None
     created: Optional[str] = None
@@ -538,12 +536,12 @@ class EpicMetadata:
     branch: Optional[str] = None
 
     @property
-    def plan_folder(self) -> Path:
+    def plan_folder(self) -> Optional[Path]:
         """Backward-compat alias for epic_folder."""
         return self.epic_folder
 
     @plan_folder.setter
-    def plan_folder(self, value: Path) -> None:
+    def plan_folder(self, value: Optional[Path]) -> None:
         self.epic_folder = value
 
     @property
@@ -784,47 +782,33 @@ class EpicService:
             EpicCreateResult with folder path and success status.
         """
         folder_name = self._generate_epic_folder_name(description, branch)
-        epic_folder = self.epics_base / "live" / folder_name
 
         if dry_run:
             return EpicCreateResult(
-                epic_folder=epic_folder,
+                epic_folder=None,
                 epic_folder_name=folder_name,
                 success=True,
                 message=f"[dry-run] Would create epic: {folder_name}",
             )
 
-        epic_scaffold = {
-            "name": folder_name.replace("_", "-"),
-            "worktree_path": str(self.repo_path),
-            "branch": branch,
-            "status": "proposed",
-            "priority": "medium",
-            "created": datetime.now().strftime("%Y-%m-%d"),
-            "objective": objective,
-            "phases": [],
-            "success_criteria": [],
-            "dependencies": [],
-            "target_files": {"primary": [], "tests": []},
-        }
-
-        # TinyDB-first: write to repository as primary store
+        # TinyDB-first: write to repository as primary store.
+        # No disk path is stored — epics are TinyDB-only at creation time.
         if self._repository is not None:
             try:
                 repo_result = self._repository.create_epic({
                     "epic_folder_name": folder_name,
-                    "epic_folder": str(epic_folder),
-                    "name": epic_scaffold["name"],
-                    "worktree_path": epic_scaffold["worktree_path"],
+                    "epic_folder": "",
+                    "name": folder_name.replace("_", "-"),
+                    "worktree_path": str(self.repo_path),
                     "branch": branch,
                     "status": "proposed",
                     "priority": "medium",
                     "objective": objective,
-                    "created": epic_scaffold["created"],
+                    "created": datetime.now().strftime("%Y-%m-%d"),
                 })
                 if not repo_result.success:
                     return EpicCreateResult(
-                        epic_folder=epic_folder,
+                        epic_folder=None,
                         epic_folder_name=folder_name,
                         success=False,
                         message=repo_result.message,
@@ -833,7 +817,7 @@ class EpicService:
                 pass
 
         return EpicCreateResult(
-            epic_folder=epic_folder,
+            epic_folder=None,
             epic_folder_name=folder_name,
             success=True,
             message=f"Created epic: {folder_name}",
@@ -861,61 +845,34 @@ class EpicService:
             lookup_key = self._normalize_epic_id(epic_id_or_path)
             result = self._repository.get_epic(lookup_key)
             if result is not None:
-                # Resurrection detection: if TinyDB has completed/ path but
-                # live/ version exists, resync to the live path
-                _folder_str = ""
-                _val = getattr(result, "epic_folder", None)
-                if _val and "/completed/" in str(_val):
-                    _folder_str = str(_val)
-
-                _result_folder_name = getattr(result, "epic_folder_name", None)
-
-                if _folder_str and _result_folder_name:
-                    live_path = self.epics_base / "live" / _result_folder_name
-                    if live_path.exists():
-                        self._repository.resync_epic_folder(
-                            _result_folder_name, str(live_path)
-                        )
-                        # Update the result object directly (works with mocks too)
-                        result.epic_folder = live_path
                 return result
-
             return None
 
         return None
 
     def _resolve_epic_folder(self, epic_id_or_path: str) -> Optional[Path]:
-        """Resolve epic identifier or path to actual epic folder.
+        """Resolve epic identifier or path to actual epic folder via TinyDB.
+
+        No filesystem checks are performed. TinyDB is the sole source of truth.
 
         Args:
-            epic_id_or_path: Epic identifier or path.
+            epic_id_or_path: Epic identifier, folder name, or path.
 
         Returns:
-            Path to epic folder or None.
+            Path to epic folder (from TinyDB), or None if not found.
         """
-        # If it's an absolute path, use it directly
-        path = Path(epic_id_or_path)
-        if path.is_absolute() and path.exists():
-            return path
+        if self._repository is None:
+            return None
 
-        # If it's a relative path from repo root
-        rel_path = self.repo_path / epic_id_or_path
-        if rel_path.exists():
-            return rel_path
+        # Extract folder name from path-like inputs
+        lookup_key = Path(epic_id_or_path).name if "/" in epic_id_or_path else epic_id_or_path
 
-        # Search in epics directories for matching ID or folder name
-        for status in ["live", "completed", "deferred"]:
-            epics_dir = self.epics_base / status
-            if not epics_dir.exists():
-                continue
-
-            for folder in epics_dir.iterdir():
-                if not folder.is_dir():
-                    continue
-
-                # Match by folder name or ID prefix
-                if folder.name == epic_id_or_path or folder.name.startswith(epic_id_or_path + "_"):
-                    return folder
+        epic_data = self._repository.get_epic(lookup_key)
+        if epic_data is not None:
+            if epic_data.epic_folder is not None:
+                return epic_data.epic_folder
+            # Folder-free epic: return synthetic path from name
+            return Path(epic_data.epic_folder_name)
 
         return None
 

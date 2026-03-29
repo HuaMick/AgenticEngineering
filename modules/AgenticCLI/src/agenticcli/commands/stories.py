@@ -104,6 +104,8 @@ def _find_plan_stories_dirs() -> list[Path]:
     story_dirs = []
     for meta in metas:
         epic_dir = meta.epic_folder
+        if epic_dir is None:
+            continue
         if epic_dir.is_dir():
             story_dir = epic_dir / "user_stories"
             if story_dir.exists():
@@ -456,7 +458,10 @@ def cmd_init(args):
             # Fallback to legacy path
             epic_dir = Path.cwd() / "docs" / "plans" / "live" / args.plan
         if not epic_dir.exists():
-            print_error(f"Epic directory not found: {args.plan}")
+            print_error(
+                f"Epic directory not found: {args.plan}. "
+                "If this is a folder-free epic, omit --plan to use the current directory."
+            )
             sys.exit(1)
         target_dir = epic_dir / "user_stories"
         target_dir.mkdir(exist_ok=True)

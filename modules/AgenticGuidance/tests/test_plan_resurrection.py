@@ -187,37 +187,32 @@ class TestFindPlanFolderLivePreference:
 class TestPlanServiceResurrection:
     """Tests for EpicService get_epic() and list_epics() with resurrected epics."""
 
-    def test_get_plan_prefers_live_over_completed(self, resurrected_plan):
-        """get_epic() should return the live/ version when both exist."""
+    def test_get_plan_returns_tinydb_record_directly(self, resurrected_plan):
+        """get_epic() returns the TinyDB record without disk-based resurrection."""
         from agenticguidance.services.epic import EpicService, EpicMetadata
 
         plan_name, plans_base = resurrected_plan
         repo_root = plans_base.parent.parent  # docs/epics -> docs -> repo
 
-        # Create a mock repository that returns completed/ path
+        # Mock repository returns completed/ path (no disk-based correction)
         mock_repo = MagicMock()
         completed_path = plans_base / "completed" / plan_name
-        live_path = plans_base / "live" / plan_name
 
         mock_plan_data = MagicMock()
         mock_plan_data.epic_folder = completed_path
         mock_plan_data.epic_folder_name = plan_name
         mock_repo.get_epic.return_value = mock_plan_data
-        mock_repo.update_epic.return_value = MagicMock(success=True)
-        mock_repo.resync_epic_folder.return_value = True
 
         service = EpicService(repo_path=repo_root)
         service._repository = mock_repo
 
         result = service.get_epic(plan_name)
 
-        # Should have corrected to live/ path
+        # Returns TinyDB record as-is (no disk-based resurrection)
         assert result is not None
-        assert result.epic_folder == live_path
-        # Should have triggered resync
-        mock_repo.resync_epic_folder.assert_called_once_with(
-            plan_name, str(live_path)
-        )
+        assert result.epic_folder == completed_path
+        # No resync triggered - disk checks removed
+        mock_repo.resync_epic_folder.assert_not_called()
 
     def test_get_plan_returns_completed_when_no_live(self, plans_base):
         """get_epic() should return completed/ path when no live/ version exists."""
@@ -372,11 +367,12 @@ class TestDeathLoopSimulation:
         service = EpicService(repo_path=repo_dir)
         service._repository = mock_repo
 
-        # Step 5: Verify get_epic returns live/ path
+        # Step 5: get_epic() returns TinyDB record as-is (no disk resurrection)
         result = service.get_epic(plan_name)
         assert result is not None
-        assert result.epic_folder == live_dir
-        mock_repo.resync_epic_folder.assert_called_once()
+        # Returns the completed/ path from TinyDB (no disk-based correction)
+        assert result.epic_folder == completed_dir
+        mock_repo.resync_epic_folder.assert_not_called()
 
     def test_list_plans_uses_db_status_after_archive(self, tmp_path):
         """list_epics(status='live') relies on DB status, not folder path.

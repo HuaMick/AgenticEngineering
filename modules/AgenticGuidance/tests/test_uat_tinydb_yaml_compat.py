@@ -641,8 +641,8 @@ class TestUS_GD_206_FolderMatchesGuard:
 class TestUS_GD_206_ResurrectionDetection:
     """US-GD-206 - Criterion 3: Resurrection detection re-syncs live epic path."""
 
-    def test_get_epic_detects_resurrection_and_resyncs(self, isolated_repo):
-        """When TinyDB says completed/ but live/ exists, get_epic resyncs to live."""
+    def test_get_epic_returns_tinydb_record_without_disk_resurrection(self, isolated_repo):
+        """get_epic() returns TinyDB record as-is without disk-based resurrection."""
         from agenticguidance.services.epic import EpicService
 
         epic_name = "260224TE_resurrection"
@@ -659,7 +659,7 @@ class TestUS_GD_206_ResurrectionDetection:
             service._repository, epic_name, str(live_dir), epic_data
         )
 
-        # Simulate archiving: update DB to point to completed/ (stale path)
+        # Simulate archiving: update DB to point to completed/
         completed_dir = isolated_repo / "docs" / "epics" / "completed" / epic_name
         completed_dir.mkdir(parents=True)
         _write_plan_yaml(completed_dir, _minimal_epic_data(epic_name, status="completed"))
@@ -669,19 +669,16 @@ class TestUS_GD_206_ResurrectionDetection:
             "status": "completed",
         })
 
-        # Epic still exists in live/ (resurrection scenario)
-        assert live_dir.exists()
-
-        # get_epic should detect stale completed/ path and resync to live/
+        # get_epic returns TinyDB record as-is (no disk-based correction)
         result = service.get_epic(epic_name)
 
-        assert result is not None, "Should find the epic after resurrection detection"
-        assert result.epic_folder == live_dir, (
-            f"Epic folder should be the live/ path {live_dir}, got {result.epic_folder}"
+        assert result is not None, "Should find the epic in TinyDB"
+        assert result.epic_folder == completed_dir, (
+            "get_epic returns TinyDB record as-is without disk-based resurrection"
         )
 
-    def test_resurrection_detection_updates_tinydb_path(self, isolated_repo):
-        """After resurrection detection, TinyDB stores the live/ path."""
+    def test_get_epic_returns_db_path_unchanged(self, isolated_repo):
+        """get_epic() does not modify TinyDB path based on disk state."""
         from agenticguidance.services.epic import EpicService
 
         epic_name = "260224TE_resurrection_db_update"
@@ -702,14 +699,14 @@ class TestUS_GD_206_ResurrectionDetection:
         _write_plan_yaml(completed_dir, _minimal_epic_data(epic_name, status="completed"))
         service._repository.update_epic(epic_name, {"epic_folder": str(completed_dir)})
 
-        # Trigger resurrection detection via get_epic
+        # get_epic does not modify TinyDB based on disk state
         service.get_epic(epic_name)
 
-        # After detection, re-read from DB directly to confirm path was updated
+        # DB path should still be completed/ (no auto-resync from disk)
         db_entry = service._repository.get_epic(epic_name)
         assert db_entry is not None
-        assert db_entry.epic_folder == live_dir, (
-            "TinyDB should be updated to live/ path after resurrection detection"
+        assert db_entry.epic_folder == completed_dir, (
+            "TinyDB path should not be modified by disk-based resurrection"
         )
 
 

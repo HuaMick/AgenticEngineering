@@ -36,15 +36,27 @@ def create_worktree_for_test(temp_repo: Path, branch: str, base: str = "main") -
     return worktree_path
 
 
-def _populate_tinydb_for_mock(plan_folder_path: Path, db_path: Path) -> None:
-    """Populate TinyDB with mock planner tickets for plan_folder_path.
+def _extract_epic_name_from_prompt(prompt: str) -> str | None:
+    """Extract the epic folder name from a planner prompt string.
+
+    The prompt contains a line like:  EPIC NAME: 260329AG_my_epic
+    Returns that name, or None if not found.
+    """
+    import re
+    match = re.search(r"EPIC NAME:\s*(\S+)", prompt)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _populate_tinydb_for_mock(epic_folder_name: str, db_path: Path) -> None:
+    """Populate TinyDB with mock planner tickets for epic_folder_name.
 
     Called by mock planner functions to simulate what a real planner agent
     would write to TinyDB after processing the planning objective.
     """
     from agenticguidance.services.epic_repository import EpicRepository
 
-    epic_folder_name = plan_folder_path.name
     repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
 
     # Ensure the epic record exists (cmd_init already created it, so upsert safely)
@@ -52,7 +64,7 @@ def _populate_tinydb_for_mock(plan_folder_path: Path, db_path: Path) -> None:
     if not existing:
         repo.create_epic({
             "epic_folder_name": epic_folder_name,
-            "epic_folder": str(plan_folder_path),
+            "epic_folder": "",
             "name": "Mock Plan",
             "status": "active",
         })
@@ -74,19 +86,23 @@ def mock_claude_subprocess(_isolate_tinydb):
     """Mock subprocess.run and SDK path in plan.py so claude calls don't hang.
 
     Git calls pass through to the real subprocess.run.
-    Claude subprocess calls and SDK calls return mock results, create plan_build.yml,
-    and populate TinyDB with mock tickets so the post-planner TinyDB validation passes.
+    Claude subprocess calls and SDK calls return mock results and populate TinyDB
+    with mock tickets so the post-planner TinyDB validation passes.
+    The epic name is extracted from the planner prompt text (contains "EPIC NAME: <name>").
     """
     real_subprocess_run = subprocess.run
     db_path = _isolate_tinydb
 
     def patched_run(cmd, *args, **kwargs):
         if isinstance(cmd, list) and cmd and cmd[0] == "claude":
-            # Populate TinyDB so the post-planner validation passes
-            cwd = kwargs.get("cwd")
-            if cwd:
-                plan_folder = Path(cwd)
-                _populate_tinydb_for_mock(plan_folder, db_path)
+            # Extract epic name from the -p <prompt> argument and populate TinyDB
+            try:
+                p_idx = cmd.index("-p")
+                epic_name = _extract_epic_name_from_prompt(cmd[p_idx + 1])
+                if epic_name:
+                    _populate_tinydb_for_mock(epic_name, db_path)
+            except (ValueError, IndexError):
+                pass
             mock_result = Mock()
             mock_result.stdout = "Planner output"
             mock_result.stderr = ""
@@ -97,12 +113,10 @@ def mock_claude_subprocess(_isolate_tinydb):
     def mock_sdk_run(prompt, options=None, timeout_seconds=1800):
         """Mock SDK path - populates TinyDB so post-planner validation passes."""
         from agenticcli.utils.sdk_runner import SessionResult
-        # Extract cwd from options if available
-        cwd = getattr(options, "cwd", None)
-        if cwd:
-            plan_folder = Path(cwd)
-            # Populate TinyDB so the post-planner validation passes
-            _populate_tinydb_for_mock(plan_folder, db_path)
+        # Extract the epic name from the prompt text (contains "EPIC NAME: <name>")
+        epic_name = _extract_epic_name_from_prompt(prompt)
+        if epic_name:
+            _populate_tinydb_for_mock(epic_name, db_path)
         return SessionResult(status="completed", result="Mock SDK planner output")
 
     with patch("agenticcli.commands.epic.subprocess.run", side_effect=patched_run):
