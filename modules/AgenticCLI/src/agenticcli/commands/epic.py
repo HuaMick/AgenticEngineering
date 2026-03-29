@@ -181,6 +181,8 @@ def handle(args, ctx=None):
     """
     if args.epic_command == "new":
         cmd_new(args, ctx)
+    elif args.epic_command == "seed":
+        cmd_seed(args, ctx)
     elif args.epic_command == "init":
         cmd_init(args, ctx)
     elif args.epic_command == "status":
@@ -500,7 +502,7 @@ def cmd_new(args, ctx=None):
         claude_cmd = ["claude"]
         if dangerously_skip_permissions:
             claude_cmd.append("--dangerously-skip-permissions")
-        if max_turns:
+        if max_turns is not None:
             claude_cmd.extend(["--max-turns", str(max_turns)])
         claude_cmd.extend(["-p", planner_prompt])
 
@@ -779,6 +781,104 @@ def cmd_new(args, ctx=None):
             print(f"    2. Execute: agentic epic new \"{objective}\" --execute")
 
     return result_data
+
+
+def cmd_seed(args, ctx=None):
+    """Create an epic shell without spawning a planner agent.
+
+    Runs only the init step of epic creation (TinyDB record + optional disk
+    folder) and returns immediately. Use this when you want to manually
+    add phases and tickets before planning/executing.
+
+    Args:
+        args: Parsed arguments with objective, optional branch, description, base.
+        ctx: Optional CLIContext.
+    """
+    from types import SimpleNamespace
+
+    from agenticcli.console import (
+        is_json_output,
+        print_error,
+        print_json,
+        print_success,
+    )
+
+    objective = getattr(args, "objective", None)
+    if not objective:
+        print_error("Objective is required. Usage: agentic epic seed \"your objective\"")
+        sys.exit(1)
+
+    branch = getattr(args, "branch", None)
+    description = getattr(args, "description", None)
+    base = getattr(args, "base", "main")
+
+    # Auto-generate branch name from objective if not provided
+    if not branch:
+        branch = _slugify_objective(objective)
+
+    # Use objective as description if not provided
+    if not description:
+        description = objective
+
+    # Delegate to cmd_init (Step 1 only — no planner spawn)
+    import io
+    from contextlib import redirect_stdout
+
+    from agenticcli.console import set_json_output as _set_json
+
+    init_args = SimpleNamespace(
+        command="plan",
+        plan_command="init",
+        json=False,
+        debug=getattr(args, "debug", False),
+        branch=branch,
+        description=description,
+        base=base,
+        objective=objective,
+    )
+
+    was_json = is_json_output()
+    if was_json:
+        _set_json(False)
+
+    init_stdout = io.StringIO()
+    with redirect_stdout(init_stdout):
+        cmd_init(init_args, ctx)
+
+    if was_json:
+        _set_json(True)
+
+    # Look up created epic from TinyDB
+    import subprocess as _sp
+
+    try:
+        result = _sp.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        )
+        repo_root = Path(result.stdout.strip())
+    except _sp.CalledProcessError:
+        print_error("Not in a git repository")
+        sys.exit(1)
+
+    plan_folder_name = None
+    try:
+        from agenticcli.utils.naming import generate_epic_folder_name
+        plan_folder_name = generate_epic_folder_name(repo_root, description, branch=branch)
+    except Exception:
+        pass
+
+    if is_json_output():
+        print_json({
+            "status": "created",
+            "epic_folder": plan_folder_name or "",
+            "objective": objective,
+            "branch": branch,
+        })
+    else:
+        print_success(f"Epic seeded: {plan_folder_name or branch}")
+        from agenticcli.console import console
+        console.print("[dim]No planner spawned. Add phases/tickets manually.[/dim]")
 
 
 def cmd_from_plan(args, ctx=None):
@@ -1692,15 +1792,8 @@ def cmd_task_add(args, ctx=None):
                 if phase_obj:
                     phase_name_used = phase_obj.name
                 else:
-                    # Try matching by phase name
-                    phases = repo.list_phases(plan_path.name)
-                    for p in phases:
-                        if p.name == phase_id or (hasattr(p, 'phase_id') and getattr(p, 'phase_id', '') == phase_id):
-                            phase_name_used = p.name
-                            break
-                    if not phase_name_used:
-                        print_error(f"Phase '{phase_id}' not found")
-                        sys.exit(1)
+                    print_error(f"Phase '{phase_id}' not found")
+                    sys.exit(1)
             else:
                 phases = repo.list_phases(plan_path.name)
                 if phases:
@@ -2405,13 +2498,15 @@ def cmd_phase_add(args, ctx=None):
             # Ensure the epic is registered in TinyDB (auto-create if folder
             # exists on disk but has no DB record yet).
             if _ensure_epic_in_db(repo, plan_path):
-                # Check for duplicate
-                existing = repo.get_phase(plan_path.name, phase_name)
+                # Check for duplicate by phase_id (primary key)
+                existing = repo.get_phase(plan_path.name, phase_id) if phase_id else None
+                if not existing:
+                    existing = repo.get_phase(plan_path.name, phase_name)
                 if existing:
                     if is_json_output():
-                        print_json({"status": "exists", "phase": phase_name, "message": f"Phase '{phase_name}' already exists"})
+                        print_json({"status": "exists", "phase": phase_id or phase_name, "message": f"Phase '{phase_id or phase_name}' already exists"})
                     else:
-                        print_success(f"Phase '{phase_name}' already exists (skipped)")
+                        print_success(f"Phase '{phase_id or phase_name}' already exists (skipped)")
                     return
 
                 phase_doc = {
@@ -2502,7 +2597,7 @@ def cmd_phase_list(args, ctx=None):
             phases_data = []
             for i, phase in enumerate(plan_data_obj.phases):
                 phases_data.append({
-                    "id": f"P{i + 1}",
+                    "id": phase.phase_id or f"P{i + 1}",
                     "name": phase.name,
                     "status": phase.status or "pending",
                     "tasks": len(phase.tasks),

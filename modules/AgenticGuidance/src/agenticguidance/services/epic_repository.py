@@ -1027,6 +1027,18 @@ class EpicRepository:
 
         with self._retrying_lock:
             Phase = Query()
+
+            # Primary key check: reject duplicate phase_id
+            phase_id = phase_data.get("phase_id", "")
+            if phase_id:
+                existing_by_id = self._phases.search(
+                    (Phase.epic_folder_name == epic_folder_name)
+                    & (Phase.phase_id == phase_id)
+                )
+                if existing_by_id:
+                    return False
+
+            # Secondary guard: reject duplicate phase_name
             existing = self._phases.search(
                 (Phase.epic_folder_name == epic_folder_name)
                 & (Phase.phase_name == phase_name)
@@ -1061,18 +1073,23 @@ class EpicRepository:
 
         Args:
             epic_folder_name: Epic folder name.
-            phase_name: Name of the phase to update.
+            phase_name: Phase name or phase_id to update.
             updates: Dictionary of fields to update.
 
         Returns:
             True if the phase was found and updated.
         """
+        # Resolve by phase_id or phase_name via get_phase()
+        phase_obj = self.get_phase(epic_folder_name, phase_name)
+        if phase_obj is None:
+            return False
+        actual_name = phase_obj.name
         with self._retrying_lock:
             Phase = Query()
             updated = self._phases.update(
                 updates,
                 (Phase.epic_folder_name == epic_folder_name)
-                & (Phase.phase_name == phase_name),
+                & (Phase.phase_name == actual_name),
             )
         return len(updated) > 0
 
@@ -1086,17 +1103,23 @@ class EpicRepository:
         Returns:
             True if the phase was found and removed, False otherwise.
         """
-        # Resolve to actual phase_name field (may be passed as phase_id)
+        # Resolve to actual phase document (may be passed as phase_id)
         phase_obj = self.get_phase(epic_folder_name, phase_name)
         if phase_obj is None:
             return False
-        actual_name = phase_obj.name
         with self._retrying_lock:
             Phase = Query()
-            removed = self._phases.remove(
-                (Phase.epic_folder_name == epic_folder_name)
-                & (Phase.phase_name == actual_name)
-            )
+            # Prefer deletion by phase_id (primary key) when available
+            if phase_obj.phase_id:
+                removed = self._phases.remove(
+                    (Phase.epic_folder_name == epic_folder_name)
+                    & (Phase.phase_id == phase_obj.phase_id)
+                )
+            else:
+                removed = self._phases.remove(
+                    (Phase.epic_folder_name == epic_folder_name)
+                    & (Phase.phase_name == phase_obj.name)
+                )
         return len(removed) > 0
 
     def get_tickets_for_phase(
@@ -1177,15 +1200,15 @@ class EpicRepository:
             PhaseData if found, None otherwise.
         """
         Phase = Query()
+        # Try phase_id first (primary key), then fall back to phase_name
         docs = self._phases.search(
             (Phase.epic_folder_name == epic_folder_name)
-            & (Phase.phase_name == phase_name)
+            & (Phase.phase_id == phase_name)
         )
         if not docs:
-            # Fall back to searching by phase_id
             docs = self._phases.search(
                 (Phase.epic_folder_name == epic_folder_name)
-                & (Phase.phase_id == phase_name)
+                & (Phase.phase_name == phase_name)
             )
         if not docs:
             return None

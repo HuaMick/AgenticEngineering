@@ -848,6 +848,27 @@ def epic_new(
     ))
 
 
+# --- epic seed ---
+@epic_app.command("seed")
+def epic_seed(
+    objective: Annotated[Optional[str], typer.Argument(help="Epic objective description")] = None,
+    branch: Annotated[Optional[str], typer.Option("--branch", "-b", help="Git branch name (auto-generated from objective if omitted)")] = None,
+    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Epic folder description suffix")] = None,
+    base: Annotated[str, typer.Option("--base", help="Base branch for the epic")] = "main",
+):
+    """Create epic shell without spawning a planner agent."""
+    if not objective:
+        from agenticcli.console import print_error
+        print_error("Objective is required. Usage: agentic epic seed \"your objective\"")
+        raise typer.Exit(1)
+    _epic_handle(_ns(
+        command="epic", epic_command="seed",
+        json=_global["json"], debug=_global["debug"],
+        objective=objective, branch=branch, description=description,
+        base=base,
+    ))
+
+
 # --- epic from-plan ---
 @epic_app.command("from-plan")
 def epic_from_plan(
