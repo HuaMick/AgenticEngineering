@@ -1908,13 +1908,12 @@ def cmd_list(args):
         repo = None
 
     for meta in plan_metas:
-        plan_folder = meta.epic_folder
-        folder_name = plan_folder.name
+        folder_name = meta.epic_folder_name
         plan_status = meta.status or "unknown"
 
         # Get ticket counts by status
         try:
-            plan_data_obj = plan_service.get_epic(str(plan_folder))
+            plan_data_obj = plan_service.get_epic(folder_name)
             tasks = plan_data_obj.tasks if plan_data_obj else []
         except Exception:
             tasks = []
