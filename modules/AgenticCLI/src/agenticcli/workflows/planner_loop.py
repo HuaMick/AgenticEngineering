@@ -38,6 +38,36 @@ from agenticcli.utils.subprocess_utils import get_clean_env
 
 logger = logging.getLogger(__name__)
 
+# Map legacy string labels to their numeric equivalents.
+# Used by _to_int_priority() during the string→int migration window.
+_LABEL_TO_INT: dict[str, int] = {
+    "critical": 1,
+    "high": 2,
+    "medium": 3,
+    "low": 4,
+}
+
+
+def _to_int_priority(value) -> int:
+    """Convert a priority value to int, handling None, int, and legacy strings.
+
+    Args:
+        value: Priority from EpicMetadata — may be int, str, or None.
+
+    Returns:
+        Integer priority (1-4).  Defaults to 3 (medium) for None or
+        unrecognised values.
+    """
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return _LABEL_TO_INT.get(value.lower(), 3)
+    return 3
+
+
 # Shared session state store (same as session.py)
 _session_store = StateStore("sessions", id_key="session_id")
 
@@ -233,6 +263,20 @@ class PlannerLoopWorkflow:
                     epic.epic_folder_name, reason,
                 )
                 needs_work.append(epic.epic_folder_name)
+
+        # Sort by priority (lower int = higher priority) then folder name
+        # (newest first).  Handles both legacy string values and new int values.
+        # No dependency filtering — planning should happen even for blocked epics.
+        # @story US-003
+        epic_priority = {
+            e.epic_folder_name: _to_int_priority(e.priority) for e in epics
+        }
+        needs_work.sort(
+            key=lambda name: (
+                epic_priority.get(name, 3),
+                [-ord(c) for c in name],
+            ),
+        )
 
         logger.info("Found %d epics needing orchestration: %s", len(needs_work), needs_work)
         return needs_work

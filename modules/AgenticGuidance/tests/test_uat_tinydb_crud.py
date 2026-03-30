@@ -113,7 +113,7 @@ class TestCreateEpic:
         epic = repo.get_epic("260101DD_fields")
         assert epic is not None
         assert epic.objective == "Test objective"
-        assert epic.priority == "high"
+        assert epic.priority == 2  # "high" normalized to int
         assert epic.branch == "feature/test"
         assert epic.context == "Some context"
 
@@ -186,7 +186,7 @@ class TestUpdateEpic:
         repo.create_epic(_epic_data("260103DD_partial", priority="low", objective="Original"))
         repo.update_epic("260103DD_partial", {"priority": "high"})
         epic = repo.get_epic("260103DD_partial")
-        assert epic.priority == "high"
+        assert epic.priority == 2  # "high" normalized to int
         assert epic.objective == "Original"
 
 

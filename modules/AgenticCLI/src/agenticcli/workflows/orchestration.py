@@ -20,6 +20,35 @@ from agenticcli.workflows.planner_loop import PlannerLoopWorkflow, PlannerLoopRu
 
 logger = logging.getLogger(__name__)
 
+# Map legacy string labels to their numeric equivalents.
+# Used by _to_int_priority() during the string→int migration window.
+_LABEL_TO_INT: dict[str, int] = {
+    "critical": 1,
+    "high": 2,
+    "medium": 3,
+    "low": 4,
+}
+
+
+def _to_int_priority(value) -> int:
+    """Convert a priority value to int, handling None, int, and legacy strings.
+
+    Args:
+        value: Priority from EpicMetadata — may be int, str, or None.
+
+    Returns:
+        Integer priority (1-4).  Defaults to 3 (medium) for None or
+        unrecognised values.
+    """
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return _LABEL_TO_INT.get(value.lower(), 3)
+    return 3
+
 
 class OrchestrationWorkflow(PlannerLoopWorkflow):
     """Orchestration workflow extending PlannerLoopWorkflow with phase discovery.
@@ -33,18 +62,26 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
 
         An epic is included only when:
         1. It has pending/in_progress phases (has_pending_phases), AND
-        2. All phases have agent routing set (validate_phase_routing).
+        2. All phases have agent routing set (validate_phase_routing), AND
+        3. All cross-epic dependencies are satisfied (not blocked).
 
-        This prevents un-routed epics from slipping through to _execute_plan()
-        where they would fail at the per-phase guard in _run_phase().
+        Results are sorted by priority (critical first) then by folder name
+        (newest first).
 
         Returns:
-            List of plan folder names needing execution.
+            List of plan folder names needing execution, priority-sorted.
         """
         repo = self._get_repository()
         if not repo:
             logger.error("No EpicRepository available — cannot discover plans needing execution")
             return []
+
+        # Build dependency service for blocking checks
+        try:
+            from agenticguidance.services.dependency import DependencyService
+            dep_service = DependencyService(repo)
+        except Exception:
+            dep_service = None
 
         epics = repo.list_epics(status="live")
         needs_execution = []
@@ -52,13 +89,38 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
             if not repo.has_pending_phases(epic.epic_folder_name):
                 continue
             is_valid, reason = validate_phase_routing(repo, epic.epic_folder_name)
-            if is_valid:
-                needs_execution.append(epic.epic_folder_name)
-            else:
+            if not is_valid:
                 logger.info(
                     "Skipping %s for execution — has pending phases but: %s",
                     epic.epic_folder_name, reason,
                 )
+                continue
+
+            # Check dependency gating
+            if dep_service:
+                is_blocked, blocked_by = dep_service.is_blocked(epic.epic_folder_name)
+                if is_blocked:
+                    logger.info(
+                        "Skipping %s for execution — blocked by dependencies: %s",
+                        epic.epic_folder_name, blocked_by,
+                    )
+                    continue
+
+            needs_execution.append(epic.epic_folder_name)
+
+        # Sort by priority (lower int = higher priority) then folder name
+        # (newest first).  Handles both legacy string values and new int values.
+        # @story US-003
+        epic_priority = {
+            e.epic_folder_name: _to_int_priority(e.priority) for e in epics
+        }
+
+        needs_execution.sort(
+            key=lambda name: (
+                epic_priority.get(name, 3),
+                [-ord(c) for c in name],
+            ),
+        )
 
         logger.info("Found %d plans needing execution: %s", len(needs_execution), needs_execution)
         return needs_execution
@@ -211,7 +273,7 @@ RETRY_BACKOFF_SECONDS = SPAWN_RETRY_BACKOFF
 
 # Default per-phase wait timeout in seconds.
 # Individual phases can override via PhaseData.timeout.
-DEFAULT_PHASE_TIMEOUT = 1800  # 30 minutes
+DEFAULT_PHASE_TIMEOUT = 3600  # 60 minutes (implementation default)
 
 
 class ExecutionRunner:
@@ -310,8 +372,26 @@ class ExecutionRunner:
 
         logger.info("Executing %d plans: %s", len(plans_to_process), plans_to_process)
 
+        # Build dependency service for runtime re-checks
+        try:
+            from agenticguidance.services.dependency import DependencyService
+            dep_service = DependencyService(repo) if repo else None
+        except Exception:
+            dep_service = None
+
         all_success = True
         for plan in plans_to_process:
+            # Runtime dependency re-check: deps may have been satisfied by
+            # earlier iterations completing prerequisite epics.
+            if dep_service:
+                is_blocked, blocked_by = dep_service.is_blocked(plan)
+                if is_blocked:
+                    logger.warning(
+                        "Skipping %s at runtime — still blocked by dependencies: %s",
+                        plan, blocked_by,
+                    )
+                    continue
+
             if not acquire_epic_lock(plan):
                 logger.error(
                     "Cannot execute %s — another orchestration process holds the lock", plan,

@@ -148,9 +148,77 @@ process:
         3. Agent types exist in the manifest spawns fence
         4. Loop structures match definitions in agent-loops.yml
         5. Feedback trigger targets reference valid phase names
+        6. Cross-epic dependencies were evaluated (see Step 7)
 
         If validation fails, update the phase records and re-validate.
       cli_reference: "agentic epic phase add --help"
+
+    # ========================================
+    # STEP 7: Set Cross-Epic Dependencies
+    # ========================================
+    - name: "Set Cross-Epic Dependencies"
+      action: |
+        Analyze this epic's relationship to other live epics and set dependency
+        links and priority accordingly.
+
+        1. READ ALL LIVE EPICS:
+           ```bash
+           agentic -j epic list
+           ```
+           From the JSON output, collect each epic's name, target_files (from tickets),
+           and current status.
+
+        2. DETECT TARGET FILE OVERLAP:
+           For each other live epic, compare its ticket target_files with this epic's
+           ticket target_files. Overlapping target_files indicate potential ordering
+           dependencies (two epics modifying the same files must run in sequence).
+
+           ```bash
+           # Get this epic's tickets with target_files
+           agentic -j epic ticket list --epic {epic_folder_name}
+           # Get other epic's tickets
+           agentic -j epic ticket list --epic {other_epic_folder_name}
+           ```
+
+           If target_files overlap, the epic with higher priority or earlier date
+           should run first. Set a dependency link so the later epic waits:
+           ```bash
+           agentic epic link --epic {this_epic} --depends-on {earlier_epic}
+           ```
+
+        3. SET EPIC PRIORITY:
+           Determine priority based on the epic's objective:
+           - bugfix / hotfix → critical or high
+           - cleanup / refactor / tech-debt → low
+           - feature / enhancement → medium
+           - infrastructure / tooling → medium
+           - test / validation → low
+
+           ```bash
+           agentic epic set-priority --epic {epic_folder_name} --priority {level}
+           ```
+
+           Priority levels: critical, high, medium, low.
+           These affect execution ordering — higher priority epics are executed
+           first when multiple epics are ready.
+
+        4. VERIFY NO CYCLES:
+           The `agentic epic link` command automatically rejects cyclic dependencies.
+           If a link is rejected due to a cycle, re-evaluate the dependency direction
+           or remove a conflicting link:
+           ```bash
+           agentic epic unlink --epic {epic_name} --depends-on {dep_name}
+           ```
+
+        FENCE: DEPENDENCY-EVALUATION-REQUIRED
+        You MUST evaluate cross-epic dependencies for every plan. If no overlaps
+        exist and no dependencies are needed, document that in the validation
+        output (Step 6 check #6). Do NOT skip this step.
+
+      cli_reference: |
+        agentic epic link --help
+        agentic epic unlink --help
+        agentic epic set-priority --help
 
 guidelines:
   - "NEVER start implementation. Only create TinyDB phase records."

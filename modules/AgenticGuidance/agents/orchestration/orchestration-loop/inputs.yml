@@ -20,6 +20,73 @@ inputs:
       description: "CLI build epics (build-python): run sequentially (shared files)"
       parallel: false
 
+  # ==============================================
+  # CROSS-EPIC DEPENDENCY GATING
+  # ==============================================
+  # The orchestration loop classifies epics during discovery.
+  # Epics with unmet depends_on entries are DEPENDENCY_BLOCKED
+  # and skipped during the execution pass.
+  # ==============================================
+  dependency_gating:
+    description: |
+      Cross-epic dependencies control execution ordering. Each epic can
+      declare depends_on (list of epic folder names that must complete first)
+      and priority (critical, high, medium, low) for ordering among ready epics.
+
+    discovery_classification:
+      DEPENDENCY_BLOCKED: |
+        An epic is classified as DEPENDENCY_BLOCKED when its depends_on list
+        contains epic folder names that have NOT reached 'completed' status.
+        Check via: `agentic --json epic status --epic <folder>`
+        JSON output includes:
+        - dependency_blocked (boolean): true if blocked
+        - blocked_by (list): epic folder names still blocking
+        - depends_on (list): all declared dependencies
+        - blocks (list): downstream epics waiting on this one
+
+      transition_to_EXECUTE: |
+        When a blocking epic completes and is archived, the dependent epic
+        transitions from DEPENDENCY_BLOCKED to EXECUTE on the next discovery
+        pass. No manual intervention needed — the loop re-evaluates on each
+        iteration.
+
+    fence: |
+      FENCE: DEPENDENCY_BLOCKED epics MUST NOT be sent to execution.
+      They are skipped during the execution pass and re-evaluated on the
+      next loop iteration. Sending a blocked epic to orchestration-executor
+      is a fence violation.
+
+  # ==============================================
+  # PRIORITY-BASED EXECUTION ORDERING
+  # ==============================================
+  # When multiple epics are classified as EXECUTE, they are processed
+  # in priority order. Priority is set by planner-orchestration (Step 7)
+  # or manually via `agentic epic set-priority`.
+  # ==============================================
+  priority_ordering:
+    description: |
+      Epics are executed in priority order: critical > high > medium > low.
+      Within the same priority level, newer epics (by folder name) run first.
+      Priority is stored in TinyDB and visible in `agentic --json epic list`.
+
+    priority_levels:
+      critical: "Production outage, security vulnerability, data loss — execute first"
+      high: "Bugfix, hotfix, blocking issue for other epics"
+      medium: "Feature, enhancement, infrastructure, tooling (default)"
+      low: "Cleanup, refactor, tech-debt, test improvements — execute last"
+
+    sort_semantics: |
+      Priority weights: critical=1 < high=2 < medium=3 < low=4 (ascending sort).
+      Within same weight: folder name sorted descending (newest first via char ordinals).
+      This matches both discover_plans_needing_execution() and DependencyService.get_execution_order().
+
+    cli_commands:
+      check_priority: "agentic --json epic list  # shows priority per epic"
+      set_priority: "agentic epic set-priority --epic <folder> --priority <critical|high|medium|low>"
+      check_deps: "agentic --json epic status --epic <folder>  # shows dependency_blocked, blocked_by"
+      add_dependency: "agentic epic link --epic <this_epic> --depends-on <other_epic>"
+      remove_dependency: "agentic epic unlink --epic <this_epic> --depends-on <other_epic>"
+
   cli_error_recovery:
     reference: "modules/AgenticGuidance/assets/guidelines/cli-error-recovery.yml"
     description: "DOGFOOD RULE - mandatory CLI error recovery protocol"

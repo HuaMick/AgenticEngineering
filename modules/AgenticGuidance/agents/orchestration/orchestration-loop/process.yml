@@ -42,17 +42,38 @@ process:
         2. For each epic, check TinyDB phase records:
            - `agentic --json epic status <folder>`
            - If status shows 100% complete -> ARCHIVE
+           - If `dependency_blocked: true` in status -> DEPENDENCY_BLOCKED
            - If epic has phases with agent routing -> EXECUTE
            - If epic has no phases or phases lack routing -> PLAN
 
         Classify each epic:
         - 100% complete -> ARCHIVE (run: `agentic epic archive --epic <folder> --force`)
+        - Has unmet depends_on entries -> DEPENDENCY_BLOCKED
         - Has TinyDB phases with agent routing -> EXECUTE
         - No TinyDB phases or routing missing -> PLAN
+
+        DEPENDENCY_BLOCKED CLASSIFICATION:
+        An epic is DEPENDENCY_BLOCKED when its `depends_on` list contains
+        epic folder names that have NOT reached 'completed' status.
+        Check via: `agentic --json epic status --epic <folder>`
+        The JSON output includes `blocked_by` (list of blocking epic names)
+        and `dependency_blocked` (boolean).
+
+        FENCE: DEPENDENCY_BLOCKED epics MUST NOT be sent to execution.
+        They are skipped during the execution pass and re-evaluated on the
+        next loop iteration. When a blocking epic completes and is archived,
+        the dependent epic will transition from DEPENDENCY_BLOCKED to EXECUTE
+        on the next discovery pass.
 
         QUESTION GATE (MANDATORY): Before processing any epic:
         `agentic epic ticket list --epic <folder>`
         If pending blocking questions exist, mark epic as BLOCKED and skip.
+
+        EXECUTION ORDERING:
+        When multiple epics are classified as EXECUTE, process them in
+        priority order (critical > high > medium > low). Within the same
+        priority level, prefer epics with fewer remaining tickets.
+        The `agentic --json epic list` output includes `priority` per epic.
 
     # =========================================================================
     # PLANNING PASS
@@ -159,4 +180,6 @@ process:
     - "The --json flag is a root-level global flag: agentic --json epic list (not agentic epic list -j)"
     - "--role and --ticket are mutually exclusive on orchestrate session spawn"
     - "Guidance epics can run in parallel. Build epics must run sequentially."
+    - "DEPENDENCY_BLOCKED epics must NOT be sent to execution — skip and re-evaluate next iteration."
+    - "Process EXECUTE epics in priority order (critical > high > medium > low)."
     - "Complete ALL tickets (including LOW priority) before shutdown"

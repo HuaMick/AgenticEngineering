@@ -202,6 +202,58 @@ inputs:
     usage: "Reference during development and testing"
 
   # ==============================================
+  # CROSS-EPIC DEPENDENCY CONTEXT
+  # ==============================================
+  # The executor receives epics that have passed dependency gating in
+  # orchestration-loop, but must perform a runtime re-check because
+  # dependency status can change between discovery and execution.
+  # ==============================================
+  cross_epic_dependency_context:
+    description: |
+      Epics can declare dependencies on other epics via the `depends_on` field.
+      The executor performs a runtime dependency re-check before executing each
+      epic — even though orchestration-loop already filtered DEPENDENCY_BLOCKED
+      epics during discovery. This guards against race conditions where a
+      prerequisite epic was unarchived or a new dependency was added.
+
+    runtime_check_fields:
+      - name: "dependency_blocked"
+        type: "boolean"
+        description: "true if any depends_on epic has not reached 'completed' status"
+        source: "`agentic --json epic status --epic <folder>`"
+
+      - name: "blocked_by"
+        type: "list[string]"
+        description: "Epic folder names that are blocking this epic"
+        source: "`agentic --json epic status --epic <folder>`"
+
+      - name: "depends_on"
+        type: "list[string]"
+        description: "All declared dependency epic folder names"
+        source: "`agentic --json epic status --epic <folder>`"
+
+      - name: "blocks"
+        type: "list[string]"
+        description: "Epics that depend on THIS epic (downstream dependents)"
+        source: "`agentic --json epic status --epic <folder>`"
+
+      - name: "priority"
+        type: "enum"
+        values: ["critical", "high", "medium", "low"]
+        description: "Epic priority — affects execution ordering when multiple epics are ready"
+        default: "medium"
+
+    completion_impact: |
+      When this executor completes an epic successfully, dependent epics that
+      were DEPENDENCY_BLOCKED may become unblocked. The orchestration-loop
+      re-evaluates dependency status on each discovery pass.
+
+    cli_commands:
+      check_status: "agentic --json epic status --epic <folder>"
+      add_dependency: "agentic epic link --epic <this_epic> --depends-on <other_epic>"
+      remove_dependency: "agentic epic unlink --epic <this_epic> --depends-on <other_epic>"
+
+  # ==============================================
   # CLI COMMAND REFERENCE
   # ==============================================
   - type: reference
@@ -210,6 +262,7 @@ inputs:
     required: false
     usage: |
       Key commands used by orchestration-executor:
+      - agentic --json epic status --epic <folder>: Check dependency status and epic info
       - agentic epic status --validate: Validate epic folder before execution
       - agentic epic ticket start/complete: Track phase progress
       - agentic epic archive: Archive completed epics

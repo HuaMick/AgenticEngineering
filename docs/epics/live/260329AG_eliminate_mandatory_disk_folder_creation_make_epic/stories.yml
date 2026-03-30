@@ -1,0 +1,485 @@
+stories:
+  - id: US-001
+    title: "Folder-Free Epic Creation"
+    category: "data-model"
+    priority: critical
+    lifecycle: "proposal"
+
+    description: |
+      As a developer, I want to create an epic via `agentic epic init`
+      that exists only in TinyDB with no disk folder so that epic creation
+      is instant, side-effect-free, and decoupled from the filesystem.
+
+      Currently `epic_folder` is a required field in EpicData/EpicMetadata
+      and `cmd_init` prints "Created epic folder" even though no folder is
+      created. This story makes `epic_folder` optional and fixes the
+      misleading output.
+
+    prerequisites:
+      - "TinyDB global database (~/.agentic/epics.db) is accessible"
+      - "agentic CLI is installed and on PATH"
+
+    steps:
+      - step: 1
+        when: "Developer runs `agentic epic init --branch feature-x`"
+        then:
+          - "A new epic record is created in TinyDB with status=planning"
+          - "No directory is created under docs/epics/live/"
+          - "epic_folder field is None/null in the TinyDB record"
+          - "CLI output does NOT say 'Created epic folder'"
+
+      - step: 2
+        when: "Developer runs `agentic epic status --epic <name>`"
+        then:
+          - "Status is returned from TinyDB regardless of folder existence"
+          - "No error about missing disk folder"
+
+      - step: 3
+        when: "Developer creates an epic with an explicit --folder path"
+        then:
+          - "epic_folder is populated in TinyDB with the given path"
+          - "Folder is created only if the user explicitly requests it"
+
+      - step: 4
+        when: "EpicData or EpicMetadata is constructed without epic_folder"
+        then:
+          - "No validation error is raised"
+          - "epic_folder defaults to None"
+
+    related_commands:
+      - "agentic epic init"
+      - "agentic epic status"
+    related_agents:
+      - "epic-creator"
+
+    related_files: []
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-002
+    title: "TinyDB-Only Epic Discovery"
+    category: "disk-elimination"
+    priority: critical
+    lifecycle: "proposal"
+
+    description: |
+      As a developer, I want `find_epic_folder()` and `_ensure_epic_in_db()`
+      to resolve epics purely from TinyDB without checking disk existence
+      so that CLI commands work reliably even when no disk folder exists.
+
+      Currently `find_epic_folder()` checks `path_obj.exists()` on disk and
+      `_ensure_epic_in_db()` checks `is_dir()` before registering. These
+      filesystem dependencies cause false negatives for folder-free epics.
+
+    prerequisites:
+      - "Epic record exists in TinyDB"
+
+    steps:
+      - step: 1
+        when: "Code calls find_epic_folder() for an epic that has no disk folder"
+        then:
+          - "Returns the epic name/identifier from TinyDB"
+          - "Does NOT check disk path existence"
+          - "Does NOT raise FileNotFoundError"
+
+      - step: 2
+        when: "Code calls _ensure_epic_in_db() for an epic with no disk folder"
+        then:
+          - "Looks up the epic in TinyDB by name"
+          - "Does NOT fall back to is_dir() disk scanning"
+          - "Returns the existing TinyDB record"
+
+      - step: 3
+        when: "Multiple epics exist in TinyDB, some with folders, some without"
+        then:
+          - "find_epic_folder() correctly resolves both types"
+          - "Epic list and status commands display all epics uniformly"
+
+    related_commands:
+      - "agentic epic list"
+      - "agentic epic status"
+    related_agents: []
+
+    related_files: []
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-003
+    title: "TinyDB-Only Epic Archival"
+    category: "disk-elimination"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As a developer, I want epic archival to set status=completed in TinyDB
+      without requiring a disk folder move so that folder-free epics can
+      be archived the same way as folder-based epics.
+
+      Currently `archive_epic_folder()` requires a source folder for
+      shutil.move and forces creation of docs/epics/completed/. This story
+      makes the folder move optional — only performed when a disk folder
+      actually exists.
+
+    prerequisites:
+      - "Epic record exists in TinyDB with status=planning or in-progress"
+
+    steps:
+      - step: 1
+        when: "Developer runs `agentic epic archive --epic <name>` for a folder-free epic"
+        then:
+          - "TinyDB status is set to completed"
+          - "No shutil.move is attempted"
+          - "No error about missing source folder"
+          - "CLI confirms archival success"
+
+      - step: 2
+        when: "Developer runs `agentic epic archive --epic <name>` for an epic that HAS a disk folder"
+        then:
+          - "TinyDB status is set to completed"
+          - "Disk folder is moved from live/ to completed/ (existing behavior preserved)"
+
+      - step: 3
+        when: "Auto-archival triggers because all tickets are completed"
+        then:
+          - "Same conditional behavior applies: folder move only if folder exists"
+          - "TinyDB status update always succeeds"
+
+    related_commands:
+      - "agentic epic archive"
+    related_agents: []
+
+    related_files: []
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-004
+    title: "Lazy Folder Creation in Planner Pipeline"
+    category: "planner-pipeline"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As a planning agent, I want epic folders to be created lazily only
+      when I actually need to write output files so that the planner
+      pipeline does not force folder creation as a side effect of starting
+      a planning session.
+
+      Currently planner_loop.py unconditionally creates the epic folder
+      at line ~1455 before spawning agents. This story defers that mkdir
+      to the point where an agent actually writes to the epic directory.
+
+    prerequisites:
+      - "Planning session is initiated via `agentic orchestrate session plan`"
+      - "Epic exists in TinyDB"
+
+    steps:
+      - step: 1
+        when: "Planner loop starts a planning session for a folder-free epic"
+        then:
+          - "No mkdir is called at planner_loop startup"
+          - "Agent spawning proceeds without requiring a disk folder"
+
+      - step: 2
+        when: "An agent (e.g., build-story-writer) needs to write stories.yml to the epic folder"
+        then:
+          - "The folder is created on-demand just before the write"
+          - "Agent output is written successfully"
+
+      - step: 3
+        when: "A planning session completes without any agent writing to the epic folder"
+        then:
+          - "No folder is created on disk"
+          - "Planning session completes successfully with all data in TinyDB"
+
+      - step: 4
+        when: "stories.yml does not exist because no folder was created"
+        then:
+          - "Story category parsing handles the missing file gracefully"
+          - "No crash or unhandled FileNotFoundError"
+
+    related_commands:
+      - "agentic orchestrate session plan"
+    related_agents:
+      - "planner-orchestration"
+      - "build-story-writer"
+
+    related_files: []
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-005
+    title: "Folder-Free Ticket and Phase Operations"
+    category: "disk-elimination"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As a developer, I want to add phases, add tickets, and manage ticket
+      status on an epic that has no disk folder so that the full ticket
+      lifecycle works without filesystem dependencies.
+
+      Currently TicketPresetWorkflow.__init__ calls mkdir on docs/epics/live/
+      during initialization. This story removes that mandatory mkdir and
+      ensures all ticket/phase operations work purely via TinyDB.
+
+    prerequisites:
+      - "Epic record exists in TinyDB"
+
+    steps:
+      - step: 1
+        when: "Developer runs `agentic epic phase add` on a folder-free epic"
+        then:
+          - "Phase is created in TinyDB"
+          - "No disk folder is created"
+          - "CLI confirms phase creation"
+
+      - step: 2
+        when: "Developer runs `agentic epic ticket add` on a folder-free epic"
+        then:
+          - "Ticket is created in TinyDB"
+          - "No disk folder is created"
+          - "CLI confirms ticket creation"
+
+      - step: 3
+        when: "Developer runs `agentic agent epic ticket start/complete <id>`"
+        then:
+          - "Ticket status is updated in TinyDB"
+          - "No disk folder is checked or required"
+
+      - step: 4
+        when: "TicketPresetWorkflow is initialized"
+        then:
+          - "No mandatory mkdir on docs/epics/live/ parent directory"
+          - "Workflow operates purely against TinyDB"
+
+    related_commands:
+      - "agentic epic phase add"
+      - "agentic epic ticket add"
+      - "agentic agent epic ticket start"
+      - "agentic agent epic ticket complete"
+    related_agents:
+      - "build-python"
+
+    related_files: []
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-006
+    title: "Graceful Stories Handling Without Disk Folder"
+    category: "planner-pipeline"
+    priority: medium
+    lifecycle: "proposal"
+
+    description: |
+      As a planning agent, I want story category parsing and the stories
+      CLI to handle missing epic folders gracefully so that planning
+      pipelines do not crash when stories.yml has not yet been written
+      to disk.
+
+      The stories.py cmd_init creates a user_stories directory under the
+      epic folder. When no epic folder exists, this should be skipped or
+      deferred rather than raising an error.
+
+    prerequisites:
+      - "Epic exists in TinyDB, possibly without a disk folder"
+
+    steps:
+      - step: 1
+        when: "_parse_story_categories() is called for an epic with no stories.yml on disk"
+        then:
+          - "Returns an empty category list or default"
+          - "No FileNotFoundError is raised"
+          - "Planning pipeline continues with available data"
+
+      - step: 2
+        when: "stories.py cmd_init is called for an epic with no disk folder"
+        then:
+          - "user_stories directory creation is skipped"
+          - "No error is raised"
+
+      - step: 3
+        when: "stories.yml exists on disk for an epic that also has TinyDB data"
+        then:
+          - "Disk file is read normally (backward compatibility preserved)"
+
+    related_commands:
+      - "agentic stories"
+    related_agents:
+      - "build-story-writer"
+
+    related_files: []
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-007
+    title: "Test Coverage for Folder-Free Epic Lifecycle"
+    category: "testing"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As a developer, I want comprehensive tests verifying the full epic
+      lifecycle (create, phase/ticket management, archive) works without
+      disk folders so that regressions are caught immediately.
+
+      Existing test fixtures often pre-create disk folders. This story
+      ensures both folder-free and folder-based paths are exercised.
+
+    prerequisites:
+      - "Test infrastructure (pytest, tmp_path) is available"
+      - "EpicRepository is importable from agenticguidance.services"
+
+    steps:
+      - step: 1
+        when: "Test creates an epic via EpicService without providing epic_folder"
+        then:
+          - "Epic is created successfully in TinyDB"
+          - "No disk operations occur"
+          - "Epic can be retrieved by name"
+
+      - step: 2
+        when: "Test adds phases and tickets to a folder-free epic"
+        then:
+          - "Phases and tickets are stored in TinyDB"
+          - "list_phases() and list_tickets() return correct data"
+
+      - step: 3
+        when: "Test archives a folder-free epic"
+        then:
+          - "Status is set to completed in TinyDB"
+          - "No shutil.move is attempted"
+          - "find_epic_folder() still resolves the archived epic"
+
+      - step: 4
+        when: "Full test suite is run after all changes"
+        then:
+          - "All existing tests pass (no regressions)"
+          - "New folder-free tests pass"
+
+    related_commands: []
+    related_agents:
+      - "test-builder"
+
+    related_files: []
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-008
+    title: "End-to-End Folder-Free Epic Validation"
+    category: "testing"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As a developer, I want UAT validation confirming that the complete
+      epic workflow (init → phases → tickets → archive) succeeds without
+      any disk folder so that I can confidently deploy the TinyDB-first
+      architecture.
+
+    prerequisites:
+      - "All code changes from earlier phases are complete"
+      - "Test suite passes"
+
+    steps:
+      - step: 1
+        when: "UAT creates an epic with `agentic epic init --branch test-branch`"
+        then:
+          - "TinyDB record is created"
+          - "No folder exists under docs/epics/live/"
+
+      - step: 2
+        when: "UAT adds phases and tickets to the folder-free epic"
+        then:
+          - "All operations succeed via CLI"
+          - "agentic epic status shows correct counts"
+
+      - step: 3
+        when: "UAT archives the folder-free epic"
+        then:
+          - "TinyDB status = completed"
+          - "No folder move occurs"
+          - "agentic epic list shows the epic as archived"
+
+      - step: 4
+        when: "UAT runs find_epic_folder for the archived folder-free epic"
+        then:
+          - "Returns the epic identifier from TinyDB"
+          - "No disk path check occurs"
+
+      - step: 5
+        when: "UAT repeats the same workflow for an epic WITH a disk folder"
+        then:
+          - "Backward compatibility is confirmed"
+          - "Folder-based archival still moves the folder"
+
+    related_commands:
+      - "agentic epic init"
+      - "agentic epic phase add"
+      - "agentic epic ticket add"
+      - "agentic epic archive"
+      - "agentic epic status"
+      - "agentic epic list"
+    related_agents:
+      - "test-uat"
+
+    related_files: []
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+categories:
+  - name: "data-model"
+    description: "Make epic_folder optional in EpicData/EpicMetadata and fix misleading CLI output"
+    codebase_scope:
+      - "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py"
+      - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+    story_ids:
+      - "US-001"
+
+  - name: "disk-elimination"
+    description: "Remove filesystem dependencies from epic discovery, archival, and ticket operations"
+    codebase_scope:
+      - "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py"
+      - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+      - "modules/AgenticCLI/src/agenticcli/workflows/ticket_workflow.py"
+    story_ids:
+      - "US-002"
+      - "US-003"
+      - "US-005"
+
+  - name: "planner-pipeline"
+    description: "Decouple planner loop and story parsing from mandatory disk folder creation"
+    codebase_scope:
+      - "modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py"
+      - "modules/AgenticCLI/src/agenticcli/commands/stories.py"
+      - "modules/AgenticGuidance/src/agenticguidance/services/story.py"
+    story_ids:
+      - "US-004"
+      - "US-006"
+
+  - name: "testing"
+    description: "Test fixtures, new folder-free tests, and UAT for the complete lifecycle"
+    codebase_scope:
+      - "modules/AgenticCLI/tests/"
+      - "modules/AgenticGuidance/tests/"
+      - "modules/AgenticGuidance/tests/services/"
+    story_ids:
+      - "US-007"
+      - "US-008"

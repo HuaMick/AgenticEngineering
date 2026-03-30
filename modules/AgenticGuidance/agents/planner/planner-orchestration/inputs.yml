@@ -60,6 +60,39 @@ inputs:
     description: "Fix root causes instead of symptoms"
 
 # ==============================================
+# CROSS-EPIC DEPENDENCY INPUTS (Step 7)
+# ==============================================
+# Step 7 requires reading all live epics to detect target_file overlap
+# and setting dependency links and priority via CLI commands.
+# ==============================================
+cross_epic_dependency:
+  description: |
+    Cross-epic dependency analysis compares this epic's ticket target_files
+    against all other live epics. Overlapping files indicate ordering
+    constraints — two epics modifying the same files must run sequentially.
+
+  cli_commands:
+    list_all_epics: "agentic -j epic list"
+    list_epic_tickets: "agentic -j epic ticket list --epic <folder>"
+    add_dependency: "agentic epic link --epic <this_epic> --depends-on <other_epic>"
+    remove_dependency: "agentic epic unlink --epic <this_epic> --depends-on <other_epic>"
+    set_priority: "agentic epic set-priority --epic <folder> --priority <critical|high|medium|low>"
+
+  priority_mapping:
+    critical: "Production outage, security vulnerability, data loss risk"
+    high: "Bugfix, hotfix, blocking issue for other epics"
+    medium: "Feature, enhancement, infrastructure, tooling"
+    low: "Cleanup, refactor, tech-debt, test improvements"
+
+  fields_set:
+    - name: "depends_on"
+      description: "List of epic folder names that must complete before this epic can execute"
+      stored_in: "TinyDB epic record"
+    - name: "priority"
+      description: "Epic priority level (critical, high, medium, low) — affects execution ordering"
+      stored_in: "TinyDB epic record"
+
+# ==============================================
 # PHASE RECORD CREATION FENCE
 # ==============================================
 # This fence is the PRIMARY quality gate for planner-orchestration output.

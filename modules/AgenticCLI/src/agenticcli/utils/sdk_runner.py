@@ -83,21 +83,26 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
 # Role-based timeout budgets (seconds). Used by planner_loop and sdk_pane_runner.
 # If a role is not listed, DEFAULT_TIMEOUT_SECONDS applies.
 ROLE_TIMEOUT_SECONDS: dict[str, int] = {
+    # ── Planning roles: 30 min or less ──
     "epic-creator": 600,           # 10 min — CLI scaffolding only
     "planner-explore": 900,        # 15 min — codebase exploration + ticket updates
     "explore": 600,                # 10 min — lightweight codebase analysis
-    "planner-build": 1800,
-    "planner-test": 1800,
-    "planner-audit": 1800,
+    "planner-build": 1800,         # 30 min
+    "planner-test": 1800,          # 30 min
+    "planner-audit": 1800,         # 30 min
     "planner-orchestration": 900,  # 15 min (observed: 4-5 min)
-    "build-python": 1800,
-    "build-flutter": 1800,
+    # ── Implementation roles: 60 min ──
+    "build-python": 3600,
+    "build-flutter": 3600,
     "build-story-writer": 600,     # 10 min — story generation (lightweight)
-    "build-docs-writer": 1800,
-    "test-builder": 1800,
-    "test-audit": 1800,
-    "test-uat": 1800,
-    "trace-explorer": 1800,
+    "build-docs-writer": 3600,
+    "test-builder": 3600,
+    "test-audit": 3600,
+    "test-uat": 3600,
+    "trace-explorer": 3600,
+    # ── Teacher roles: 60 min ──
+    "teacher-update-guidance": 3600,
+    "teacher-update-assets": 3600,
 }
 
 

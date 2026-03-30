@@ -225,8 +225,14 @@ def handle(args, ctx=None):
         cmd_cancel(args, ctx)
     elif args.epic_command == "from-plan":
         cmd_from_plan(args, ctx)
+    elif args.epic_command == "link":
+        cmd_link(args, ctx)
+    elif args.epic_command == "unlink":
+        cmd_unlink(args, ctx)
+    elif args.epic_command == "set-priority":
+        cmd_set_priority(args, ctx)
     else:
-        print("Usage: agentic epic <new|from-plan|status|ticket|archive|list|phase|cancel>", file=sys.stderr)
+        print("Usage: agentic epic <new|from-plan|status|ticket|archive|list|phase|cancel|link|unlink|set-priority>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -1239,6 +1245,24 @@ def cmd_status(args):
     }
     next_action, next_command = _status_actions.get(plan_status, ("Check epic state", None))
 
+    # Dependency information
+    depends_on = list(plan_data_obj.depends_on or [])
+    priority = _to_int_priority(plan_data_obj.priority)
+    dep_blocked = False
+    blocked_by = []
+    blocks = []
+    try:
+        from agenticguidance.services.dependency import DependencyService
+        repo_for_deps = _get_repo()
+        dep_service = DependencyService(repo_for_deps)
+        dep_blocked, blocked_by = dep_service.is_blocked(epic_folder_name)
+        # Find epics that depend on this one ("blocks" list)
+        graph = dep_service.get_dependency_graph()
+        blocks = [name for name, deps in graph.items() if epic_folder_name in deps]
+        repo_for_deps.close()
+    except Exception:
+        pass
+
     # --validate: collect validation results
     validation_data = None
     if getattr(args, "validate", False):
@@ -1248,10 +1272,15 @@ def cmd_status(args):
         result_data = {
             "plan": plan_path.name,
             "status": plan_status,
+            "priority": priority,
             "has_orchestration": has_orchestration,
             "next_action": next_action,
             "next_command": next_command,
             "deferred_reason": deferred_reason,
+            "depends_on": depends_on,
+            "blocked_by": blocked_by,
+            "blocks": blocks,
+            "dependency_blocked": dep_blocked,
             "files": file_stats,
             "totals": {
                 "pending": total_pending,
@@ -1274,9 +1303,30 @@ def cmd_status(args):
 
         console.print(f"[bold]Status:[/bold] {plan_status}")
 
+        # Priority — display as "N (label)" with color keyed by int
+        # @story US-002
+        _priority_colors = {1: "red bold", 2: "yellow", 3: "white", 4: "dim"}
+        int_p = _to_int_priority(priority)
+        p_color = _priority_colors.get(int_p, "white")
+        p_display = _format_priority(priority)
+        console.print(f"[bold]Priority:[/bold] [{p_color}]{p_display}[/{p_color}]")
+
         # EN-004: Show deferred reason
         if deferred_reason:
             console.print(f"[bold]Deferred Reason:[/bold] [yellow]{deferred_reason}[/yellow]")
+
+        # Dependency information
+        if depends_on:
+            console.print(f"[bold]Depends On:[/bold]")
+            for dep in depends_on:
+                if dep in blocked_by:
+                    console.print(f"  [red]✗[/red] {dep} [red](not completed)[/red]")
+                else:
+                    console.print(f"  [green]✓[/green] {dep} [green](completed)[/green]")
+        if blocks:
+            console.print(f"[bold]Blocks:[/bold] {', '.join(blocks)}")
+        if dep_blocked:
+            console.print(f"[red bold]⚠ BLOCKED by unsatisfied dependencies[/red bold]")
 
         console.print(f"[bold]Next Action:[/bold] {next_action}")
         if next_command:
@@ -1757,7 +1807,7 @@ def cmd_task_add(args, ctx=None):
     plan_path = find_epic_folder(getattr(args, "plan", None))
     phase_id = getattr(args, "phase", None)
     custom_id = getattr(args, "id", None)
-    priority = getattr(args, "priority", "medium")
+    priority = _to_int_priority(getattr(args, "priority", 3))
     agent = getattr(args, "agent", None)
     target_files_raw = getattr(args, "target_files", None)
     success_criteria_raw = getattr(args, "success_criteria", None)
@@ -2047,6 +2097,10 @@ def cmd_list(args):
         if n_phases:
             progress += f", {n_phases_done}/{n_phases} phases"
 
+        # Priority and dependency info
+        priority = _to_int_priority(meta.priority)
+        depends_on = list(meta.depends_on or [])
+
         plans_data.append(
             {
                 "name": folder_name,
@@ -2061,6 +2115,8 @@ def cmd_list(args):
                 "phases_routed": n_phases_routed,
                 "phases_done": n_phases_done,
                 "progress": progress,
+                "priority": priority,
+                "depends_on": depends_on,
             }
         )
 
@@ -2078,21 +2134,42 @@ def cmd_list(args):
             console.print("[dim]No epics found.[/dim]")
             return
 
+        # Build blocked set for dependency indicator
+        try:
+            from agenticguidance.services.dependency import DependencyService
+            dep_service = DependencyService(repo) if repo else None
+            blocked_epics = set(dep_service.get_blocked_epics()) if dep_service else set()
+        except Exception:
+            blocked_epics = set()
+
+        # Priority color mapping — keyed by int (1-4)
+        # @story US-002
+        _priority_colors = {1: "red bold", 2: "yellow", 3: "white", 4: "dim"}
+
         rows = []
         for plan in plans_data:
             status_cell = format_status(plan["status"])
+            # Add blocked indicator to status
+            if plan["name"] in blocked_epics:
+                status_cell = f"{status_cell} [red]BLOCKED[/red]"
             tickets_cell = f"[green]{plan['completed']}[/green]/{plan['tickets']}"
             phases_cell = f"[green]{plan['phases_done']}[/green]/{plan['phases']}" if plan["phases"] else "[dim]—[/dim]"
+            # Priority with color — display as "N (label)"
+            int_p = _to_int_priority(plan.get("priority", 3))
+            p_color = _priority_colors.get(int_p, "white")
+            p_display = _format_priority(plan.get("priority", 3))
+            priority_cell = f"[{p_color}]{p_display}[/{p_color}]"
             rows.append(
                 [
                     f"[bold]{plan['name']}[/bold]",
+                    priority_cell,
                     status_cell,
                     tickets_cell,
                     phases_cell,
                 ]
             )
 
-        print_table("", ["Epic", "Status", "Tickets", "Phases"], rows)
+        print_table("", ["Epic", "Priority", "Status", "Tickets", "Phases"], rows)
 
         needs_planning = sum(1 for p in plans_data if p["status"] == "seed")
         ready = sum(1 for p in plans_data if p["status"] == "ready")
@@ -2899,5 +2976,196 @@ def cmd_phase_remove(args, ctx=None):
             msg += f" and {tickets_removed} ticket(s)"
         msg += f" from {plan_path.name}"
         print_success(msg)
+
+
+def cmd_link(args, ctx=None):
+    """Link an epic dependency: epic depends on another epic.
+
+    Usage: agentic epic link --epic A --depends-on B
+
+    Args:
+        args: Parsed arguments with epic and depends_on fields.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import is_json_output, print_error, print_json, print_success
+
+    epic_name = getattr(args, "epic", None) or getattr(args, "path", None)
+    depends_on = getattr(args, "depends_on", None)
+
+    if not epic_name or not depends_on:
+        print_error("Usage: agentic epic link --epic <epic> --depends-on <epic>")
+        sys.exit(1)
+
+    repo = _get_repo()
+    if repo is None:
+        print_error("Could not connect to TinyDB repository.")
+        sys.exit(1)
+
+    # Resolve epic names
+    epic_folder = find_epic_folder(epic_name)
+    dep_folder = find_epic_folder(depends_on)
+
+    # Validate via DependencyService
+    from agenticguidance.services.dependency import DependencyService
+
+    dep_service = DependencyService(repo)
+    valid, message = dep_service.validate_dependency(epic_folder.name, dep_folder.name)
+    if not valid:
+        if is_json_output():
+            print_json({"error": message, "epic": epic_folder.name, "depends_on": dep_folder.name})
+        else:
+            print_error(message)
+        sys.exit(1)
+
+    # Add the dependency
+    result = repo.add_dependency(epic_folder.name, dep_folder.name)
+    if not result.success:
+        if is_json_output():
+            print_json({"error": result.message})
+        else:
+            print_error(result.message)
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "result": "success",
+            "epic": epic_folder.name,
+            "depends_on": dep_folder.name,
+            "message": result.message,
+        })
+    else:
+        print_success(f"Linked: {epic_folder.name} depends on {dep_folder.name}")
+
+
+def cmd_unlink(args, ctx=None):
+    """Remove an epic dependency.
+
+    Usage: agentic epic unlink --epic A --depends-on B
+
+    Args:
+        args: Parsed arguments with epic and depends_on fields.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import is_json_output, print_error, print_json, print_success
+
+    epic_name = getattr(args, "epic", None) or getattr(args, "path", None)
+    depends_on = getattr(args, "depends_on", None)
+
+    if not epic_name or not depends_on:
+        print_error("Usage: agentic epic unlink --epic <epic> --depends-on <epic>")
+        sys.exit(1)
+
+    repo = _get_repo()
+    if repo is None:
+        print_error("Could not connect to TinyDB repository.")
+        sys.exit(1)
+
+    epic_folder = find_epic_folder(epic_name)
+    dep_folder = find_epic_folder(depends_on)
+
+    result = repo.remove_dependency(epic_folder.name, dep_folder.name)
+    if not result.success:
+        if is_json_output():
+            print_json({"error": result.message})
+        else:
+            print_error(result.message)
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "result": "success",
+            "epic": epic_folder.name,
+            "removed_dependency": dep_folder.name,
+            "message": result.message,
+        })
+    else:
+        print_success(f"Unlinked: {epic_folder.name} no longer depends on {dep_folder.name}")
+
+
+# Priority mapping: int→label for display, label→int for input conversion.
+# @story US-001
+_INT_TO_LABEL: dict[int, str] = {1: "critical", 2: "high", 3: "medium", 4: "low"}
+_LABEL_TO_INT: dict[str, int] = {v: k for k, v in _INT_TO_LABEL.items()}
+
+
+def _to_int_priority(value) -> int:
+    """Convert a priority value to int (1-4).
+
+    Handles int, numeric string, label string, or None.
+    Returns 3 (medium) for unrecognised or missing values.
+    """
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return _LABEL_TO_INT.get(value.lower(), 3)
+    return 3
+
+
+def _format_priority(value) -> str:
+    """Format an int priority as 'N (label)' for display."""
+    n = _to_int_priority(value)
+    label = _INT_TO_LABEL.get(n, "medium")
+    return f"{n} ({label})"
+
+
+def cmd_set_priority(args, ctx=None):
+    """Set the priority of an epic.
+
+    Usage: agentic epic set-priority --epic A --priority 2
+           agentic epic set-priority --epic A --priority high
+
+    Accepts both numeric (1-4) and label (critical/high/medium/low) values.
+
+    Args:
+        args: Parsed arguments with epic and priority fields.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import is_json_output, print_error, print_json, print_success
+
+    epic_name = getattr(args, "epic", None) or getattr(args, "path", None)
+    raw_priority = getattr(args, "priority", None)
+
+    if not epic_name or not raw_priority:
+        print_error("Usage: agentic epic set-priority --epic <epic> --priority <1-4 | critical|high|medium|low>")
+        sys.exit(1)
+
+    # Validate and convert to int
+    int_priority = _to_int_priority(raw_priority)
+    if int_priority not in _INT_TO_LABEL:
+        print_error(f"Invalid priority: {raw_priority}. Valid: 1 (critical), 2 (high), 3 (medium), 4 (low)")
+        sys.exit(1)
+
+    # Extra guard: reject values that didn't match any known label or 1-4 range
+    if isinstance(raw_priority, str) and raw_priority.lower() not in _LABEL_TO_INT and raw_priority not in ("1", "2", "3", "4"):
+        print_error(f"Invalid priority: {raw_priority}. Valid: 1 (critical), 2 (high), 3 (medium), 4 (low)")
+        sys.exit(1)
+
+    repo = _get_repo()
+    if repo is None:
+        print_error("Could not connect to TinyDB repository.")
+        sys.exit(1)
+
+    epic_folder = find_epic_folder(epic_name)
+    result = repo.update_epic(epic_folder.name, {"priority": int_priority})
+
+    if not result.success:
+        if is_json_output():
+            print_json({"error": result.message})
+        else:
+            print_error(result.message)
+        sys.exit(1)
+
+    label = _INT_TO_LABEL[int_priority]
+    if is_json_output():
+        print_json({
+            "result": "success",
+            "epic": epic_folder.name,
+            "priority": int_priority,
+        })
+    else:
+        print_success(f"Set priority of {epic_folder.name} to {int_priority} ({label})")
 
 

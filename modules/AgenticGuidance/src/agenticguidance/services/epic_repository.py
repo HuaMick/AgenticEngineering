@@ -148,6 +148,36 @@ _LIVE_STATUSES: frozenset[str] = frozenset(
     {"proposed", "in_progress", "active", "planning", "approved", "pending", "blocked", "seed"}
 )
 
+# Priority label-to-int mapping for legacy string migration.
+_LABEL_TO_INT: dict[str, int] = {
+    "critical": 1,
+    "high": 2,
+    "medium": 3,
+    "low": 4,
+}
+
+# Default priority for new epics and missing/unknown values.
+DEFAULT_PRIORITY: int = 3
+
+# Deprecated alias — kept for backward compat with tests.
+PRIORITY_WEIGHTS = _LABEL_TO_INT
+
+
+def normalize_priority(value) -> int:
+    """Convert a priority value to int (1-4).
+
+    Handles int, numeric string, label string ('high'), or None.
+    Returns DEFAULT_PRIORITY (3) for unrecognised or missing values.
+    """
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return _LABEL_TO_INT.get(value.lower(), DEFAULT_PRIORITY)
+    return DEFAULT_PRIORITY
+
 
 class EpicRepository:
     """TinyDB-backed repository for epic data access.
@@ -356,10 +386,11 @@ class EpicRepository:
                 "worktree_path": epic_data.get("worktree_path", ""),
                 "branch": epic_data.get("branch", ""),
                 "status": epic_data.get("status", "proposed"),
-                "priority": epic_data.get("priority", "medium"),
+                "priority": normalize_priority(epic_data.get("priority")),
                 "objective": epic_data.get("objective", ""),
                 "created": epic_data.get("created", datetime.now().strftime("%Y-%m-%d")),
                 "context": epic_data.get("context", ""),
+                "depends_on": epic_data.get("depends_on", []),
             }
             self._epics.insert(doc)
 
@@ -443,11 +474,12 @@ class EpicRepository:
             branch=doc.get("branch"),
             name=doc.get("name"),
             worktree_path=doc.get("worktree_path"),
-            priority=doc.get("priority"),
+            priority=normalize_priority(doc.get("priority")),
             context=doc.get("context"),
             created=doc.get("created"),
             deferred_reason=doc.get("deferred_reason"),
             cancelled_date=doc.get("cancelled_date"),
+            depends_on=doc.get("depends_on", []),
             phases=phases,
             tasks=all_tickets,
         )
@@ -495,13 +527,21 @@ class EpicRepository:
                     status=doc.get("status"),
                     created=doc.get("created"),
                     name=doc.get("name"),
-                    priority=doc.get("priority"),
+                    priority=normalize_priority(doc.get("priority")),
                     worktree_path=doc.get("worktree_path"),
                     branch=doc.get("branch"),
+                    depends_on=doc.get("depends_on", []),
                 )
             )
 
-        results.sort(key=lambda m: m.epic_folder_name, reverse=True)
+        # Primary sort: numeric priority ascending (1 = highest priority).
+        # Secondary sort: folder name descending (newest first).
+        results.sort(
+            key=lambda m: (
+                m.priority if m.priority is not None else DEFAULT_PRIORITY,
+                [-ord(c) for c in m.epic_folder_name],
+            ),
+        )
         return results
 
     def update_epic(self, epic_folder_name: str, updates: dict) -> EpicUpdateResult:
@@ -521,6 +561,10 @@ class EpicRepository:
                     success=False,
                     message=f"Epic not found in DB: {epic_folder_name}",
                 )
+
+            # Normalize priority to int on write.
+            if "priority" in updates:
+                updates["priority"] = normalize_priority(updates["priority"])
 
             old_status = doc.get("status")
             Epic = Query()
@@ -687,6 +731,120 @@ class EpicRepository:
             )
 
         return True
+
+    # ------------------------------------------------------------------
+    # Dependency CRUD
+    # ------------------------------------------------------------------
+
+    def add_dependency(self, epic_name: str, depends_on_name: str) -> EpicUpdateResult:
+        """Add a dependency from one epic to another.
+
+        Appends ``depends_on_name`` to the ``depends_on`` list of ``epic_name``
+        if not already present. Both epics must exist.
+
+        Args:
+            epic_name: Epic that depends on another.
+            depends_on_name: Epic that must complete first.
+
+        Returns:
+            EpicUpdateResult indicating success or failure.
+        """
+        with self._retrying_lock:
+            doc = self._find_epic_doc(epic_name)
+            if not doc:
+                return EpicUpdateResult(
+                    success=False,
+                    message=f"Epic not found in DB: {epic_name}",
+                )
+
+            dep_doc = self._find_epic_doc(depends_on_name)
+            if not dep_doc:
+                return EpicUpdateResult(
+                    success=False,
+                    message=f"Dependency epic not found in DB: {depends_on_name}",
+                )
+
+            actual_name = doc["epic_folder_name"]
+            dep_actual_name = dep_doc["epic_folder_name"]
+
+            current_deps: list[str] = doc.get("depends_on", []) or []
+            if dep_actual_name in current_deps:
+                return EpicUpdateResult(
+                    success=True,
+                    message=f"Dependency already exists: {actual_name} -> {dep_actual_name}",
+                )
+
+            new_deps = current_deps + [dep_actual_name]
+            Epic = Query()
+            self._epics.update(
+                {"depends_on": new_deps},
+                Epic.epic_folder_name == actual_name,
+            )
+
+        return EpicUpdateResult(
+            success=True,
+            message=f"Added dependency: {actual_name} depends on {dep_actual_name}",
+        )
+
+    def remove_dependency(self, epic_name: str, depends_on_name: str) -> EpicUpdateResult:
+        """Remove a dependency from an epic.
+
+        Removes ``depends_on_name`` from the ``depends_on`` list of ``epic_name``.
+
+        Args:
+            epic_name: Epic to remove the dependency from.
+            depends_on_name: Dependency to remove.
+
+        Returns:
+            EpicUpdateResult indicating success or failure.
+        """
+        with self._retrying_lock:
+            doc = self._find_epic_doc(epic_name)
+            if not doc:
+                return EpicUpdateResult(
+                    success=False,
+                    message=f"Epic not found in DB: {epic_name}",
+                )
+
+            actual_name = doc["epic_folder_name"]
+
+            # Resolve depends_on_name to its actual name (may be short ID)
+            dep_doc = self._find_epic_doc(depends_on_name)
+            dep_actual_name = dep_doc["epic_folder_name"] if dep_doc else depends_on_name
+
+            current_deps: list[str] = doc.get("depends_on", []) or []
+            if dep_actual_name not in current_deps:
+                return EpicUpdateResult(
+                    success=False,
+                    message=f"Dependency not found: {actual_name} does not depend on {dep_actual_name}",
+                )
+
+            new_deps = [d for d in current_deps if d != dep_actual_name]
+            Epic = Query()
+            self._epics.update(
+                {"depends_on": new_deps},
+                Epic.epic_folder_name == actual_name,
+            )
+
+        return EpicUpdateResult(
+            success=True,
+            message=f"Removed dependency: {actual_name} no longer depends on {dep_actual_name}",
+        )
+
+    def get_dependencies(self, epic_name: str) -> list[str]:
+        """Get the list of epic folder names that an epic depends on.
+
+        Args:
+            epic_name: Epic folder name or short ID.
+
+        Returns:
+            List of epic_folder_name strings that this epic depends on.
+            Empty list if the epic has no dependencies or is not found.
+        """
+        doc = self._find_epic_doc(epic_name)
+        if not doc:
+            return []
+        return doc.get("depends_on", []) or []
 
     # ------------------------------------------------------------------
     # Ticket CRUD

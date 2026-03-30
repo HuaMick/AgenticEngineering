@@ -98,6 +98,41 @@ process:
 
         If ANY required input is missing, report error and STOP.
 
+    - id: "startup_check_dependencies"
+      name: "Runtime Dependency Check"
+      description: |
+        RUNTIME DEPENDENCY RE-CHECK:
+        Before executing any epic, verify its dependencies are satisfied.
+        Dependencies may have changed since orchestration-loop classified this
+        epic as EXECUTE (e.g., a prerequisite epic completed or was unlinked).
+
+        Check dependency status:
+        ```bash
+        agentic --json epic status --epic <epic_folder>
+        ```
+
+        From JSON output, check these fields:
+        - `dependency_blocked` (boolean): true if any depends_on epic is incomplete
+        - `blocked_by` (list): epic folder names that are still blocking
+        - `depends_on` (list): all declared dependency epic folder names
+        - `blocks` (list): epics that depend on THIS epic
+
+        DECISION:
+        - If `dependency_blocked: false` → proceed to phase loading
+        - If `dependency_blocked: true` → SKIP execution with warning:
+          "Skipping {epic} — blocked by dependencies: {blocked_by}"
+          Return to orchestration-loop for re-evaluation.
+
+        NOTE: The ExecutionRunner code performs this same check automatically
+        via DependencyService.is_blocked(). This guidance step ensures the
+        executor agent understands WHY an epic might be skipped at runtime
+        even after orchestration-loop classified it as EXECUTE.
+
+        FENCE: DEPENDENCY-BLOCKED-NO-EXECUTE
+        An epic with `dependency_blocked: true` MUST NOT proceed to phase
+        execution. This is enforced both in code (ExecutionRunner) and in
+        agent guidance (this step).
+
     - id: "startup_load_phases"
       name: "Load Phase Index from TinyDB (JIT)"
       description: |

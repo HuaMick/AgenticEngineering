@@ -58,7 +58,8 @@ from .epic import (
     ValidationResult,
     normalize_epic_status,
 )
-from .epic_repository import EpicRepository
+from .epic_repository import EpicRepository, DEFAULT_PRIORITY, normalize_priority
+from .dependency import DependencyService
 from .preset import (
     PresetLoadResult,
     TaskPresetWorkflow,
@@ -129,6 +130,9 @@ __all__ = [
     "EpicStatus",
     "EpicUpdateResult",
     "EpicRepository",
+    "DEFAULT_PRIORITY",
+    "normalize_priority",
+    "DependencyService",
     "normalize_epic_status",
     # Shared movement types (used by both epic and plan modules)
     "FolderMoveResult",

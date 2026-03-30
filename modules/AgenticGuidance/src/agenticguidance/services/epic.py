@@ -488,15 +488,18 @@ class EpicData:
     branch: Optional[str] = None
     name: Optional[str] = None
     worktree_path: Optional[str] = None
-    priority: Optional[str] = None
+    priority: Optional[int] = None
     context: Optional[str] = None
     created: Optional[str] = None
     deferred_reason: Optional[str] = None
     cancelled_date: Optional[str] = None
+    depends_on: Optional[list[str]] = None
     phases: list = None
     tasks: list = None
 
     def __post_init__(self):
+        if self.depends_on is None:
+            self.depends_on = []
         if self.phases is None:
             self.phases = []
         if self.tasks is None:
@@ -531,9 +534,14 @@ class EpicMetadata:
     status: Optional[str] = None
     created: Optional[str] = None
     name: Optional[str] = None
-    priority: Optional[str] = None
+    priority: Optional[int] = None
     worktree_path: Optional[str] = None
     branch: Optional[str] = None
+    depends_on: Optional[list[str]] = None
+
+    def __post_init__(self):
+        if self.depends_on is None:
+            self.depends_on = []
 
     @property
     def plan_folder(self) -> Optional[Path]:

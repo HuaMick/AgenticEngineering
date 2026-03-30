@@ -526,11 +526,32 @@ def _validate_status(value: str) -> str:
     return value
 
 
-def _validate_priority(value: str) -> str:
-    valid = ["low", "medium", "high"]
-    if value not in valid:
-        raise typer.BadParameter(f"Invalid choice: '{value}'. Choose from: {', '.join(valid)}")
-    return value
+_LABEL_TO_INT: dict[str, int] = {"critical": 1, "high": 2, "medium": 3, "low": 4}
+
+
+# @story US-001
+def _validate_priority(value: str) -> int:
+    """Validate and convert a priority value to int (1-4).
+
+    Accepts: "1"-"4" or label strings "critical", "high", "medium", "low".
+    """
+    # Try numeric first
+    try:
+        n = int(value)
+        if 1 <= n <= 4:
+            return n
+        raise typer.BadParameter(
+            f"Priority must be 1-4, got {n}. Valid: 1 (critical), 2 (high), 3 (medium), 4 (low)"
+        )
+    except ValueError:
+        pass
+    # Try label
+    n = _LABEL_TO_INT.get(value.lower())
+    if n is not None:
+        return n
+    raise typer.BadParameter(
+        f"Invalid priority: '{value}'. Valid: 1 (critical), 2 (high), 3 (medium), 4 (low)"
+    )
 
 # ===========================================================================
 # EPIC (new primary vocabulary: epic list, epic ticket start, etc.)
@@ -594,6 +615,48 @@ def epic_cancel(
     ))
 
 
+# --- epic link ---
+@epic_app.command("link")
+def epic_link(
+    epic: Annotated[str, typer.Option("--epic", "-e", help="Epic that depends on another")] = "",
+    depends_on: Annotated[str, typer.Option("--depends-on", "-d", help="Epic that must complete first")] = "",
+):
+    """Add a cross-epic dependency (A depends on B)."""
+    _epic_handle(_ns(
+        command="epic", epic_command="link",
+        json=_global["json"], debug=_global["debug"],
+        epic=epic, depends_on=depends_on,
+    ))
+
+
+# --- epic unlink ---
+@epic_app.command("unlink")
+def epic_unlink(
+    epic: Annotated[str, typer.Option("--epic", "-e", help="Epic to remove dependency from")] = "",
+    depends_on: Annotated[str, typer.Option("--depends-on", "-d", help="Dependency to remove")] = "",
+):
+    """Remove a cross-epic dependency."""
+    _epic_handle(_ns(
+        command="epic", epic_command="unlink",
+        json=_global["json"], debug=_global["debug"],
+        epic=epic, depends_on=depends_on,
+    ))
+
+
+# --- epic set-priority ---
+@epic_app.command("set-priority")
+def epic_set_priority(
+    epic: Annotated[str, typer.Option("--epic", "-e", help="Epic to set priority for")] = "",
+    priority: Annotated[str, typer.Option("--priority", "-P", help="Priority: 1-4 or critical/high/medium/low")] = "",
+):
+    """Set the priority of an epic."""
+    _epic_handle(_ns(
+        command="epic", epic_command="set-priority",
+        json=_global["json"], debug=_global["debug"],
+        epic=epic, priority=priority,
+    ))
+
+
 # --- epic ticket (nested sub-app) ---
 epic_ticket_app = typer.Typer(help="Manage tickets in epic files", no_args_is_help=True)
 epic_app.add_typer(epic_ticket_app, name="ticket")
@@ -645,7 +708,7 @@ def epic_ticket_add(
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
     phase: Annotated[Optional[str], typer.Option("--phase", "-ph", help="Phase ID")] = None,
     id: Annotated[Optional[str], typer.Option("--id", help="Custom ticket ID")] = None,
-    priority: Annotated[str, typer.Option("--priority", help="Ticket priority", callback=_validate_priority)] = "medium",
+    priority: Annotated[int, typer.Option("--priority", help="Ticket priority: 1-4 or critical/high/medium/low", callback=_validate_priority)] = 3,
     agent: Annotated[Optional[str], typer.Option("--agent", help="Agent type responsible for this ticket")] = None,
     target_files: Annotated[Optional[str], typer.Option("--target-files", help="Comma-separated list of target files")] = None,
     success_criteria: Annotated[Optional[str], typer.Option("--success-criteria", help="Comma-separated success criteria")] = None,
@@ -732,7 +795,7 @@ def epic_phase_add(
     loop_max_iterations: Annotated[Optional[int], typer.Option("--loop-max-iterations", help="Max iterations for the phase")] = None,
     feedback_triggers: Annotated[Optional[str], typer.Option("--feedback-triggers", help="Comma-separated KEY=VALUE pairs (e.g. TEST_FAILURE=Build)")] = None,
     max_turns: Annotated[Optional[int], typer.Option("--max-turns", help="Maximum agentic turns for this phase (overrides default 200)")] = None,
-    timeout: Annotated[Optional[int], typer.Option("--timeout", help="Per-phase timeout in seconds (overrides default 1800s/30min)")] = None,
+    timeout: Annotated[Optional[int], typer.Option("--timeout", help="Per-phase timeout in seconds (overrides default 3600s/60min)")] = None,
 ):
     """Add a new phase to the epic in TinyDB."""
     _epic_handle(_ns(
@@ -769,7 +832,7 @@ def epic_phase_update(
     loop_max_iterations: Annotated[Optional[int], typer.Option("--loop-max-iterations", help="Max iterations for the phase")] = None,
     feedback_triggers: Annotated[Optional[str], typer.Option("--feedback-triggers", help="Comma-separated KEY=VALUE pairs (e.g. TEST_FAILURE=Build)")] = None,
     max_turns: Annotated[Optional[int], typer.Option("--max-turns", help="Maximum agentic turns for this phase (overrides default 200)")] = None,
-    timeout: Annotated[Optional[int], typer.Option("--timeout", help="Per-phase timeout in seconds (overrides default 1800s/30min)")] = None,
+    timeout: Annotated[Optional[int], typer.Option("--timeout", help="Per-phase timeout in seconds (overrides default 3600s/60min)")] = None,
 ):
     """Update a phase in TinyDB."""
     _epic_handle(_ns(

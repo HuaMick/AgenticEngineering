@@ -1,0 +1,256 @@
+stories:
+  - id: US-001
+    title: "Accurate Agent Roster in Project Documentation"
+    category: "docs-cleanup"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As a developer reading project documentation, I want all agent roster
+      tables, example sequences, and inline agent name references in architecture
+      docs, prompt files, blog posts, and user story definitions to reflect the
+      current 20-agent roster so that I don't waste time investigating agents
+      that no longer exist after the 28→20 restructuring.
+
+      Six documentation areas contain stale agent names (test-runner,
+      planner-reviewer, planner-design, deploy-worktree, and others) in roster
+      tables, example sequences, and inline references. These must be updated to
+      reference only current agents or replaced with their successors (e.g.,
+      test-runner → test-builder).
+
+    prerequisites:
+      - "The 28→20 agent restructuring is complete (agents deleted/renamed)"
+      - "The current agent roster is defined in agent-categories.yml"
+
+    steps:
+      - step: 1
+        when: "A developer reads the agent roster table in CCI_CONTEXT_ARCHITECTURE.md"
+        then:
+          - "The agent categories section lists only the current 20 agents"
+          - "Agent counts per category match the actual agent-categories.yml definitions"
+          - "No deleted agent names appear (test-runner, planner-design, etc.)"
+
+      - step: 2
+        when: "A developer reads the agent roster table in JIT_CONTEXT_ARCHITECTURE.md"
+        then:
+          - "The Planner row lists only current planner agents (planner-design removed)"
+          - "The Test row lists only current test agents (test-runner removed)"
+          - "Agent counts per category are accurate"
+
+      - step: 3
+        when: "A developer reads the agent sequence example in SDK_TMUX_ARCHITECTURE.md"
+        then:
+          - "The planning loop agent sequence references only existing agents"
+          - "planner-reviewer is replaced with the current planning flow (pre-flight validation)"
+
+      - step: 4
+        when: "A developer reads the planner workflow description in orchestration_planner.md"
+        then:
+          - "No references to planner-reviewer remain in the workflow steps"
+          - "The review/approval loop description reflects the current pre-flight validation approach"
+
+      - step: 5
+        when: "A reader views the agent orchestration blog post (beyound_agentsmd.md)"
+        then:
+          - "The test-runner example row in the agent table is replaced with test-builder"
+          - "The --role flag example uses a current agent name"
+
+      - step: 6
+        when: "A developer reads user story YAML files in docs/userstories/"
+        then:
+          - "No references to planner-reviewer, planner-design, or deploy-worktree appear in related_agents fields"
+          - "Agent names in all 9 affected YAML files are updated to current successors or removed if no successor exists"
+          - "Story steps referencing deleted agents are rewritten for current agents"
+
+    related_commands: []
+    related_agents:
+      - "build-python"
+
+    related_files:
+      - "docs/CCI_CONTEXT_ARCHITECTURE.md"
+      - "docs/JIT_CONTEXT_ARCHITECTURE.md"
+      - "docs/SDK_TMUX_ARCHITECTURE.md"
+      - "docs/prompts/orchestration_planner.md"
+      - "docs/blog/beyound_agentsmd.md"
+      - "docs/userstories/Planning/01_epic_management.yml"
+      - "docs/userstories/Planning/06_planner_agents.yml"
+      - "docs/userstories/Planning/07_orchestration_agents.yml"
+      - "docs/userstories/Planning/08_planning_workflows.yml"
+      - "docs/userstories/Planning/09_execution_workflows.yml"
+      - "docs/userstories/Planning/11_uat_fences.yml"
+      - "docs/userstories/Guidance/01_agent_definitions.yml"
+      - "docs/userstories/Guidance/09_deployment.yml"
+      - "docs/userstories/Stories/02_story_coverage.yml"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-002
+    title: "Correct Agent References in Guidance and Operational Config"
+    category: "agent-config-cleanup"
+    priority: high
+    lifecycle: "proposal"
+
+    description: |
+      As an automated agent following operational guidance files, I want
+      guidance documents, role definition assets, manifest files, and the agent
+      scope matrix to reference only existing agents so that I don't attempt to
+      spawn, route to, or interact with agents that were deleted in the 28→20
+      restructuring.
+
+      Five files require updates: orchestration-planning.md guidance (references
+      planner-reviewer at lines 23 and 73), plan-creation.md guide (MMD example
+      routing to test-runner), the orchestration-planning manifest.yml (references
+      orchestration-build and orchestration-guidance), the agent-role-scope-matrix.md
+      (references deploy-worktree), and the orphaned test-runner-role.yml asset
+      file that should be deleted entirely.
+
+    prerequisites:
+      - "The 28→20 agent restructuring is complete"
+      - "test-builder is the successor to test-runner for test execution"
+      - "Pre-flight validation replaces planner-reviewer in the planning loop"
+      - "orchestration-executor is the successor to orchestration-build and orchestration-guidance"
+
+    steps:
+      - step: 1
+        when: "The orchestration-planning agent reads its guidance file (.claude/agents/orchestration-planning.md)"
+        then:
+          - "No references to planner-reviewer appear in the responsibilities list (line 23)"
+          - "No references to spawning planner-reviewer appear in the planning loop steps (line 73)"
+          - "The planning loop description uses pre-flight validation instead of reviewer iteration"
+
+      - step: 2
+        when: "A developer reads the plan-creation.md guide for MMD orchestration examples"
+        then:
+          - "The MMD routing example uses test-builder instead of test-runner"
+          - "All agent names in examples correspond to agents that currently exist"
+
+      - step: 3
+        when: "A developer lists role definition files in modules/AgenticGuidance/assets/definitions/"
+        then:
+          - "test-runner-role.yml does not exist (file deleted)"
+          - "Only role definition files for current agents are present"
+
+      - step: 4
+        when: "An orchestration agent reads the orchestration-planning manifest.yml purpose field"
+        then:
+          - "No references to orchestration-build or orchestration-guidance appear"
+          - "The purpose field describes handing off to orchestration-executor (the current agent)"
+
+      - step: 5
+        when: "A developer reads the agent-role-scope-matrix.md to understand agent responsibilities"
+        then:
+          - "No reference to deploy-worktree appears in the matrix"
+          - "The deploy category lists only deploy-cicd (the current deploy agent)"
+
+      - step: 6
+        when: "An orchestration agent attempts to parse role definitions from the assets directory"
+        then:
+          - "No orphaned role definitions cause confusion or incorrect agent routing"
+          - "Agent resolution succeeds for all names referenced in guidance files"
+
+    related_commands:
+      - "agentic spawn"
+    related_agents:
+      - "build-python"
+      - "orchestration-planning"
+
+    related_files:
+      - ".claude/agents/orchestration-planning.md"
+      - "modules/AgenticCLI/docs/guides/plan-creation.md"
+      - "modules/AgenticGuidance/assets/definitions/test-runner-role.yml"
+      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/manifest.yml"
+      - "modules/AgenticGuidance/docs/agent-role-scope-matrix.md"
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+  - id: US-003
+    title: "Verified Zero Stale Agent References After Restructuring"
+    category: "verification-sweep"
+    priority: critical
+    lifecycle: "proposal"
+
+    description: |
+      As an operator maintaining the AgenticEngineering system, I want a
+      comprehensive verification that zero stale references to deleted agents
+      remain in active (non-legacy, non-archived) code so that I have
+      confidence the 28→20 agent restructuring is fully complete and no
+      downstream failures can occur from orphaned agent names.
+
+      The 9 agents deleted in the 28→20 restructuring are: test-runner,
+      test-cleaner, test-final-output, test-guidance-simulator, test-service,
+      planner-cleaning, planner-guidance, planner-guidance-testing, planner-sdk.
+      Additionally, planner-reviewer and planner-design were removed in an
+      earlier restructuring. All 11 names must be verified clean.
+
+    prerequisites:
+      - "All documentation and guidance cleanup stories (US-001, US-002) are complete"
+      - "The current agent roster has 20 agents as defined in agent-categories.yml"
+
+    steps:
+      - step: 1
+        when: "An operator greps the entire repo for each of the 9 agents deleted in the 28→20 restructuring"
+        then:
+          - "Zero matches appear in non-legacy, non-completed-epic code"
+          - "Matches in docs/epics/completed/ are acceptable and ignored"
+          - "Matches in agent-categories.yml NOTE comment (lines 21-24) documenting the restructuring are acceptable"
+
+      - step: 2
+        when: "An operator also greps for planner-reviewer and planner-design"
+        then:
+          - "Zero matches appear in active code outside of completed epics"
+          - "Code comments documenting the removal (e.g., planner_loop.py line 1415) are acceptable"
+
+      - step: 3
+        when: "An operator runs the existing UAT test suite after all documentation changes"
+        then:
+          - "All UAT tests pass with no regressions"
+          - "No test failures related to agent name resolution or guidance file parsing"
+          - "The restructure regression test (test_uat_restructure_regression.py) continues to pass"
+
+    related_commands:
+      - "agentic epic"
+    related_agents:
+      - "test-uat"
+
+    related_files: []
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null
+
+categories:
+  - name: "docs-cleanup"
+    description: "Update architecture docs, prompt files, blog content, and user story definitions to remove references to deleted agents"
+    codebase_scope:
+      - "docs/CCI_CONTEXT_ARCHITECTURE.md"
+      - "docs/JIT_CONTEXT_ARCHITECTURE.md"
+      - "docs/SDK_TMUX_ARCHITECTURE.md"
+      - "docs/prompts/"
+      - "docs/blog/"
+      - "docs/userstories/"
+    story_ids:
+      - "US-001"
+
+  - name: "agent-config-cleanup"
+    description: "Fix agent guidance files, remove orphaned role definition assets, update manifest and scope matrix"
+    codebase_scope:
+      - ".claude/agents/"
+      - "modules/AgenticGuidance/assets/definitions/"
+      - "modules/AgenticGuidance/agents/orchestration/orchestration-planning/"
+      - "modules/AgenticGuidance/docs/"
+      - "modules/AgenticCLI/docs/guides/"
+    story_ids:
+      - "US-002"
+
+  - name: "verification-sweep"
+    description: "Comprehensive grep sweep and UAT regression testing to confirm zero stale references remain in active code"
+    codebase_scope:
+      - "modules/"
+      - ".claude/"
+      - "docs/"
+    story_ids:
+      - "US-003"

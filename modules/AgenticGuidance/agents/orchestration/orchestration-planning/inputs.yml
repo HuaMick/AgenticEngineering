@@ -103,6 +103,80 @@ phase_record_creation_delegation:
     - "agentic epic phase add --epic <folder> --name <phase> --agent <agent-type> --execution sequential"
     - "agentic epic ticket add --epic <folder> --phase <phase> --id <id> --name <name>"
 
+# ==============================================
+# CROSS-EPIC DEPENDENCY FIELDS
+# ==============================================
+# Epic-level fields for dependency management and execution ordering.
+# These fields are set by planner-orchestration (Step 7) and consumed
+# by orchestration-loop and orchestration-executor at runtime.
+# ==============================================
+cross_epic_dependencies:
+  description: |
+    Epics can declare dependencies on other epics via the depends_on field.
+    The orchestration system uses these dependencies to gate execution
+    (blocked epics don't start) and determine optimal execution ordering.
+
+  epic_level_fields:
+    - name: "depends_on"
+      type: "list[string]"
+      description: |
+        List of epic folder names that must reach 'completed' status before
+        this epic can be executed. Set via `agentic epic link` command.
+        An epic with unsatisfied depends_on entries is classified as
+        DEPENDENCY_BLOCKED by the orchestration-loop discovery step.
+      default: "[]"
+      example: ["260301RE_migration_epic", "260305AG_yaml_decommission"]
+      set_by: "planner-orchestration (Step 7) or manual CLI"
+      consumed_by: ["orchestration-loop (discovery)", "orchestration-executor (runtime re-check)"]
+
+    - name: "priority"
+      type: "enum"
+      values: ["critical", "high", "medium", "low"]
+      description: |
+        Epic priority level. Affects execution ordering when multiple epics
+        are ready — higher priority epics are executed first. Set via
+        `agentic epic set-priority` command.
+      default: "medium"
+      set_by: "planner-orchestration (Step 7) or manual CLI"
+      consumed_by: ["orchestration-loop (execution ordering)", "discover_plans_needing_execution()"]
+
+    - name: "execution_order"
+      type: "derived"
+      description: |
+        Not stored directly — computed at runtime by DependencyService.get_execution_order().
+        Returns live epics in topological order respecting depends_on edges,
+        with priority-based tie-breaking within the same topological level.
+      computed_by: "agenticguidance.services.dependency.DependencyService.get_execution_order()"
+
+  cross_epic_ordering_in_pipeline: |
+    Cross-epic dependency analysis is a MANDATORY step in the planning pipeline.
+    It runs as Step 7 in planner-orchestration (after phase records are created
+    and validated). The step:
+    1. Reads all live epics via `agentic -j epic list`
+    2. Compares target_files between epics to detect overlap
+    3. Sets depends_on links for overlapping epics via `agentic epic link`
+    4. Sets priority based on epic objective via `agentic epic set-priority`
+    Reference: modules/AgenticGuidance/agents/planner/planner-orchestration/process.yml#Step 7
+
+  dependency_validation_preflight: |
+    FENCE: DEPENDENCY-VALIDATION-PREFLIGHT
+    Before an epic moves to execution, the orchestration-loop MUST check
+    its dependency status. Epics with unmet depends_on entries are classified
+    as DEPENDENCY_BLOCKED and skipped during the execution pass.
+
+    This is a BLOCKING pre-flight check — not a warning. An epic with even
+    one unsatisfied dependency MUST NOT be sent to orchestration-executor.
+
+    CLI commands for dependency inspection:
+    - `agentic -j epic status --epic <folder>` (shows depends_on, blocked_by, blocks)
+    - `agentic -j epic list` (shows depends_on and priority per epic)
+
+  cli_commands:
+    add_dependency: "agentic epic link --epic <this_epic> --depends-on <other_epic>"
+    remove_dependency: "agentic epic unlink --epic <this_epic> --depends-on <other_epic>"
+    set_priority: "agentic epic set-priority --epic <folder> --priority <critical|high|medium|low>"
+    check_status: "agentic -j epic status --epic <folder>"
+
 # ##############################################
 # ##############################################
 # CRITICAL: LOOP SELECTION OWNERSHIP (READ FIRST)
