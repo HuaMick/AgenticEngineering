@@ -455,12 +455,12 @@ The system supports 26+ thin-client agent files organized by category:
 
 | Category | Agents | Count |
 |----------|--------|-------|
-| Planner | planner-build, planner-test, planner-audit, planner-teach, planner-orchestration, planner-clean, planner-design | 7 |
-| Build | build-python, build-flutter | 2 |
-| Test | test-runner, test-builder, test-audit, test-guidance-simulator, test-orchestration, test-uat, test-cleaner | 7 |
-| Orchestration | orchestration-build, orchestration-planning, orchestration-testing, orchestration-executor, orchestration-ralph | 5 |
-| Teacher | teacher-update-guidance, teacher-update-assets, teacher-update-agents | 3 |
-| Deploy | deploy-cicd, deploy-worktree | 2 |
+| Planner | planner-build, planner-test, planner-audit, planner-explore, planner-orchestration, epic-creator | 6 |
+| Build | build-python, build-flutter, build-docs-writer, build-story-writer | 4 |
+| Test | test-builder, test-audit, test-uat, trace-explorer | 4 |
+| Orchestration | orchestration-executor, orchestration-planning, orchestration-loop | 3 |
+| Teacher | teacher-update-guidance, teacher-update-assets | 2 |
+| Deploy | deploy-cicd | 1 |
 
 Each file is **~350 tokens** (vs. ~2000-5000 in the legacy Push model).
 

@@ -63,6 +63,56 @@ class StateStore:
         with open(state_file) as f:
             return json.load(f)
 
+    def delete(self, record_id: str, *, state_dir: Path | None = None) -> bool:
+        """Delete a state record from disk.
+
+        Args:
+            record_id: The record identifier.
+            state_dir: Optional directory override.
+
+        Returns:
+            True if the file existed and was removed, False if it did not exist.
+        """
+        # @story US-007
+        d = self.get_dir(state_dir)
+        state_file = d / f"{record_id}.json"
+        existed = state_file.exists()
+        state_file.unlink(missing_ok=True)
+        return existed
+
+    def list_stale(
+        self,
+        is_alive_fn: callable,
+        *,
+        state_dir: Path | None = None,
+    ) -> list[dict]:
+        """List state records where the is_alive_fn predicate returns False.
+
+        This enables cleanup services to identify dead/stale sessions without
+        duplicating process-checking logic inside StateStore.
+
+        Args:
+            is_alive_fn: A callable(dict) -> bool that checks if a record
+                represents a still-alive session. Receives the full record dict
+                so the caller can inspect pid, status, age, etc.
+            state_dir: Optional directory override.
+
+        Returns:
+            List of state dicts where is_alive_fn returned False (stale records).
+        """
+        # @story US-007
+        d = self.get_dir(state_dir)
+        stale: list[dict] = []
+        for state_file in d.glob("*.json"):
+            try:
+                with open(state_file) as f:
+                    record = json.load(f)
+                    if not is_alive_fn(record):
+                        stale.append(record)
+            except (json.JSONDecodeError, OSError):
+                continue
+        return stale
+
     def list_all(
         self, *, state_dir: Path | None = None, filter_fn=None,
     ) -> list[dict]:
@@ -98,6 +148,8 @@ def is_process_running(pid: int) -> bool:
     Returns:
         True if process is running, False otherwise.
     """
+    if pid <= 0:
+        return False
     try:
         os.kill(pid, 0)
         return True

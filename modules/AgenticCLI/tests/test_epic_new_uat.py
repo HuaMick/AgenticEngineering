@@ -136,7 +136,7 @@ class TestUSORCH001InitiatePlanning:
     Acceptance criteria:
     - Planning is initiated via _plan_build.yml entrypoint
     - The orchestration-planning agent coordinates the planning process
-    - A worktree is created or verified via deploy-worktree agent
+    - A worktree is created or verified via CLI commands (agentic epic init)
     - A plan folder is created in docs/epics/live/ with YYMMDDXX_description naming
     - The planning objective is captured and validated
     - Required phases are determined based on objective type

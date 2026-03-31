@@ -321,14 +321,14 @@ The CLI is a **persistence layer / external memory**, NOT a planning engine.
 
 ## Generated Agent Files
 
-26 thin-client agent files in `.claude/agents/`:
+20 thin-client agent files in `.claude/agents/`:
 
-- **7 planner agents**: planner-build, planner-test, planner-audit, etc.
-- **2 build agents**: build-python, build-flutter
-- **7 test agents**: test-runner, test-builder, test-audit, etc.
-- **5 orchestration agents**: orchestration-build, orchestration-planning, etc.
-- **3 teacher agents**: teacher-update-guidance, teacher-update-assets, etc.
-- **2 deploy agents**: deploy-cicd, deploy-worktree
+- **6 planner agents**: planner-build, planner-test, planner-audit, planner-explore, planner-orchestration, epic-creator
+- **4 build agents**: build-python, build-flutter, build-docs-writer, build-story-writer
+- **4 test agents**: test-builder, test-audit, test-uat, trace-explorer
+- **3 orchestration agents**: orchestration-executor, orchestration-planning, orchestration-loop
+- **2 teacher agents**: teacher-update-guidance, teacher-update-assets
+- **1 deploy agent**: deploy-cicd
 
 Each file is ~350 tokens (vs. ~2000-5000 in legacy Push model).
 

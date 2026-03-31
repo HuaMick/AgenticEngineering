@@ -102,7 +102,6 @@ This matrix organizes agents by their category, showing how sub-agents fit withi
 |---------|------|--------|----------------------------|
 | **deploy-packaging** | Rebuild and install packages | Build config, pyproject.toml, CLI scripts | Build wheels/sdists, reinstall CLI tools, verify PATH and imports; participates in test-fix-loop |
 | **deploy-cicd** | Sync CI/CD infrastructure | cloudbuild.yaml, Dockerfile.test, pytest.ini, docker-compose | Audit CI config vs test structure, validate Dockerfile, report drift; participates in test-fix-loop |
-| **deploy-worktree** | Create git worktrees | Worktree specs, branch strategy | Create worktrees, update VS Code workspace file; setup task only |
 
 ---
 

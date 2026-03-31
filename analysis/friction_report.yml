@@ -1,437 +1,508 @@
 metadata:
-  epic_folder: "multiple (cross-session analysis)"
-  analysis_date: "2026-03-29"
+  epic_folder: "multiple — see epics_worked_on below"
+  analysis_date: "2026-03-31"
   analyst: "trace-explorer"
+  scope: "March 29, 2026 — full-day, 5 epics, 133 sessions"
+  source_data:
+    - "/tmp/sessions_2026-03-29.json"
+    - "~/.agentic/sessions/context/ (context files for all agent sessions)"
+  supersedes: "prior friction_report.yml (March 28 / early March 29 analysis)"
   agents_analysed:
     - orchestration-executor
-    - planner-orchestration
-    - planner-explore
+    - orchestration (planner loop)
+    - execution (ExecutionRunner)
+    - epic-creator
     - build-story-writer
+    - planner-explore
+    - planner-orchestration
     - build-python
     - test-builder
     - test-uat
-    - epic-creator
+    - teacher-update-guidance
   sessions_covered:
-    # Session 1 (March 28): 260328AG_extract_validate_phase_routing_utility_from_duplic — 6 attempts, partial success
-    # Session 2 (March 29 morning): 260329AG_fix_tinydb_file_lock_not_released_on_agent_crash — clean success
-    # Session 3 (March 29 midday): 260329AG_fix_story_parsing_race_condition_in_planning_pipel — 1 failed retry then success
-    # Session 4 (March 29 afternoon): 260329AG_eliminate_mandatory_disk_folder_creation_make_epic — in-progress
-    - "orch-aefd039c2bdb (failed, 2026-03-28 22:23)"
-    - "orch-64144c1c4672 (failed, 2026-03-28 22:40)"
-    - "exec-5dfd53446d66 (failed, 2026-03-28 22:54)"
-    - "exec-3e68b7136efe (failed, 2026-03-28 23:05)"
-    - "exec-72c1097b61eb (failed, 2026-03-28 23:05)"
-    - "exec-8034e6f9da44 (failed, 2026-03-28 23:11)"
-    - "exec-0af9a1a79abd (completed, 2026-03-28 23:13)"
-    - "orch-63574e8dfb43 (completed, 2026-03-29 06:50-07:14)"
-    - "exec-d64528639736 (completed, 2026-03-29 07:18-07:41)"
-    - "orch-69d788ffe531 (completed, 2026-03-29 12:15-12:35)"
-    - "exec-ea0ce367f8e4 (failed, 2026-03-29 12:57-13:19)"
-    - "exec-d257d6e9f67b (completed, 2026-03-29 13:20-13:55)"
-    - "orch-851711d20063 (running, 2026-03-29 15:15)"
+    total: 133
+    completed: 118
+    failed: 14
+    running: 1
+    epics:
+      - "260328AG_cleanup_stale_agent_references_after_2820_restruct (1 session)"
+      - "260329AG_fix_tinydb_file_lock_not_released_on_agent_crash (10 sessions)"
+      - "260329AG_fix_story_parsing_race_condition_in_planning_pipel (13 sessions)"
+      - "260329AG_eliminate_mandatory_disk_folder_creation_make_epic (21 sessions, 12 failed)"
+      - "260329AG_add_epic_priority_ordering_and_cross_epic_dependen (7 sessions)"
+      - "_orchestration system sessions (81 sessions — orch-* and exec-* metadata)"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EPIC TIMELINES
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# 260329AG_fix_tinydb_file_lock_not_released_on_agent_crash  (06:50 – 07:41, 51 min)
+#   06:50  epic-creator              completed   234s   75 turns  $1.35
+#   06:54  build-story-writer        completed   203s   14 turns  $0.71
+#   06:58  planner-explore x3        completed   482-712s parallel  $8.56 combined
+#   07:10  planner-orchestration     completed   247s   43 turns  $1.46
+#   07:18  build-python              completed   462s   77 turns  $3.12
+#   07:26  build-python              completed   656s
+#   07:37  test-builder              completed    73s
+#   07:38  test-uat                  completed   128s
+#   OUTCOME: clean success, all 4 phases, 51 min end-to-end
+#
+# 260329AG_fix_story_parsing_race_condition_in_planning_pipel  (12:15 – 13:55, 100 min)
+#   12:15  epic-creator              completed   223s   47 turns  $1.36
+#   12:19  build-story-writer        completed   101s   17 turns  $0.61
+#   12:21  planner-explore x3        completed   406-455s parallel  $6.51 combined
+#   12:29  planner-orchestration     completed   358s   61 turns  $1.66
+#   12:57  build-python [EXEC FAILED -- lock contention at startup]
+#   13:20  build-python x2           completed   811s, 667s
+#   13:34  build-python              completed    29s
+#   13:35  build-python              completed   667s   61 turns  $2.50
+#   13:46  test-builder              completed   276s   40 turns  $1.42
+#   13:50  test-uat                  completed   247s
+#   20:27  build-story-writer        status=running (ghost re-plan -- see FP-016)
+#   OUTCOME: success after 1 exec failure, 100 min end-to-end
+#
+# 260329AG_eliminate_mandatory_disk_folder_creation_make_epic  (15:15 – 17:13, 118 min)
+#   15:15  epic-creator              completed   475s   75 turns  $1.99
+#   15:23  build-story-writer        completed   129s   11 turns  $0.60
+#   15:26  planner-explore x4        FAILED (wave 1, ~280s each) -- sdk_pane_failure, 0 turns
+#   15:31  planner-explore x8        FAILED (wave 2, ~5s each)   -- sdk_pane_failure, 0 turns
+#   15:32  orch-851711d              FAILED -- "Parallel explore: 0/4 categories completed"
+#   [44 min manual recovery gap -- 15:32 to 16:21]
+#   16:16  planner-explore           completed   178s  (single, recovery)
+#   16:21  orch-2707130c39ba         completed     2s  (re-triggered)
+#   16:21  execution exec-04faec5    started (concurrent with planner-explore)
+#   16:21  planner-explore           completed   556s   81 turns  $2.83
+#   16:31  build-python              completed  1311s
+#   16:53  build-python              completed    31s
+#   16:54  build-python              completed   211s
+#   16:57  test-builder              completed   141s
+#   17:00  test-uat                  completed   791s   90 turns  $3.45
+#   OUTCOME: success after 12 planner-explore failures + 44 min recovery gap, 118 min total
+#
+# 260329AG_add_epic_priority_ordering_and_cross_epic_dependen  (23:21 – 00:05, 44 min)
+#   [NO planning pipeline sessions -- manually pre-planned]
+#   23:21  build-python              completed   850s  130 turns  $7.62
+#   23:36  build-python              completed   272s   42 turns  $1.71
+#   23:40  build-python              completed   672s   92 turns  $4.43
+#   23:52  build-python              completed    71s
+#   23:54  test-builder              completed   219s
+#   23:59  test-uat                  completed    31s
+#   23:59  teacher-update-guidance   completed   339s   33 turns  $2.12
+#   OUTCOME: clean success, 44 min, manually pre-planned (skipped planning pipeline)
 
 friction_points:
 
-  - id: FP-001
+  - id: FP-011
     type: excessive_iteration
     severity: critical
-    agent: "planner-design / ralph (both decommissioned)"
-    guidance_file: null
-    description: >
-      2,224 session files dated March 10-12 are permanently stale. Of these,
-      891 (40%) are stuck in status=running, 731 (33%) failed, and 602 (27%)
-      completed. The dominant role is planner-design (1,352 sessions), which no
-      longer exists in the current agent roster (removed in the 28-to-20
-      restructure committed 2026-03-29). Also present are 280 ralph sessions
-      (ralph decommissioned 2026-03-20) and 106 explore sessions (renamed
-      planner-explore). None of these sessions can self-heal because the agents
-      that would update them no longer exist. The 891 running sessions will
-      remain in that state permanently, polluting session-list output and
-      inflating live-session counts.
-    evidence:
-      - "Total sessions 2026-03-10/11/12: 2224"
-      - "status breakdown: running=891, failed=731, completed=602"
-      - "role breakdown: planner-design=1352, ralph=280, explore=106, planner-orchestration=61, story-generator=77, others=468"
-      - "No planner-design or ralph directory exists under agents/"
-      - "commit c77f7a0 (2026-03-29): complete 28->20 agent restructure"
-    recommendation: >
-      A one-time cleanup pass should transition all sessions whose role is absent
-      from the current agent roster to status=failed with reason=agent_decommissioned.
-      A CLI command such as `agentic orchestrate debug state cleanup --stale-roles`
-      would operationalise this. Teacher agents should add a cleanup step to
-      orchestration-executor guidance specifying that any agent decommission must
-      be accompanied by a session-store tombstone pass for that role.
-
-  - id: FP-002
-    type: backtracking
-    severity: high
-    agent: "orchestration-executor"
-    guidance_file: "orchestration/orchestration-executor/process.yml"
-    description: >
-      Epic 260328AG_extract_validate_phase_routing_utility_from_duplic required
-      seven execution attempts spanning 57 minutes before the plan was marked
-      complete. The sequence was: two planning failures (story_parsing, story_ids
-      validation) followed by four execution failures (lock timeout after Build,
-      lock timeout after Test+UAT, JSON corruption at start, EpicRepository
-      unavailable at start) followed by a final session that completed only the
-      Cleanup phase. The actual phase work for Build, Test, and UAT ran to
-      completion in failed sessions (exec-5dfd53446d66 and exec-3e68b7136efe)
-      but those sessions marked the plan failed when the lock error occurred
-      during finalise, causing the next executor to treat all phases as un-run.
-      This resulted in duplicate phase execution and lost time.
-    evidence:
-      - "22:16 orch-aefd039c2bdb: status=failed, error='stories.yml missing or invalid'"
-      - "22:24 orch-64144c1c4672: status=failed, error='No tickets reference story_ids'"
-      - "22:41 exec-5dfd53446d66: phases_completed=[Build], failed on lock timeout"
-      - "22:56 exec-3e68b7136efe: phases_completed=[Test, UAT], failed on lock timeout"
-      - "23:05 exec-72c1097b61eb: failed at iteration=1, JSON parse error at offset 3623749"
-      - "23:11 exec-8034e6f9da44: failed at iteration=0, no EpicRepository"
-      - "23:12 exec-0af9a1a79abd: phases_completed=[Cleanup], status=completed"
-      - "epics.db.corrupt (3,623,749 bytes) and epics.db.repaired (3,623,742 bytes) dated 23:05"
-    recommendation: >
-      The executor should perform a phase-status pre-check at each iteration start
-      and skip phases already marked completed in TinyDB. This idempotent resume
-      behaviour would have allowed exec-3e68b7136efe (which completed Test+UAT)
-      to also run Cleanup in the same session rather than failing. Additionally,
-      distinguish lock-timeout-on-finalise from lock-timeout-on-phase-start in
-      the error handler: the former means the plan may actually be complete and
-      should trigger a status re-read before marking failed.
-
-  - id: FP-003
-    type: guidance_gap
-    severity: high
-    agent: "build-story-writer / planner-orchestration"
-    guidance_file: "planner/planner-orchestration/process.yml"
-    description: >
-      The first planning attempt on epic
-      260328AG_extract_validate_phase_routing_utility_from_duplic failed with
-      "stories.yml missing or invalid after build-story-writer completed" (orch-aefd039c2bdb).
-      The orchestrator had no retry or backoff logic when reading stories.yml
-      immediately after the agent completion signal. This race condition — the tmux
-      pane writes the file, the agent signals done, but the orchestrator reads
-      before the filesystem flush propagates — was the subject of epic
-      260329AG_fix_story_parsing_race_condition_in_planning_pipel, which was
-      planned and fully executed on March 29 in 35 minutes. The guidance for
-      planner-orchestration did not document the expected behaviour on a
-      story-parse failure, leaving the system with no documented recovery path.
-    evidence:
-      - "orch-aefd039c2bdb error: 'stories.yml missing or invalid after build-story-writer completed — stories are required'"
-      - "260329AG_fix_story_parsing_race_condition: 5 phases completed, all tickets completed"
-      - "Commits a9f42c5 and 0eae43f on 2026-03-29 address the underlying race conditions"
-      - "US-001 in the fixed epic directly specifies retry-with-backoff acceptance criteria"
-    recommendation: >
-      Add a guidance step in planner-orchestration process.yml documenting the
-      retry-with-backoff behaviour for story parsing (now implemented in code).
-      This ensures future agents reading the guidance understand the expected
-      behaviour rather than treating a missing stories.yml as an unrecoverable
-      error and failing the entire planning session.
-
-  - id: FP-004
-    type: guidance_gap
-    severity: high
     agent: "planner-explore"
     guidance_file: "planner/planner-explore/process.yml"
     description: >
-      All four planner-explore agents for epic
-      260328AG_extract_validate_phase_routing_utility_from_duplic completed
-      successfully, yet the subsequent pre-flight validation failed with
-      "No tickets reference story_ids — stories are required." All four explore
-      agents produced tickets with no story_ids populated. The FENCE: STORY-FIRST
-      requirement exists in planning-standard.yml but the planner-explore guidance
-      apparently did not instruct agents that populating story_ids is mandatory.
-      The same failure did not occur on March 27 or March 29 epics (100% and 94%
-      coverage respectively), suggesting the guidance was updated between
-      those dates.
+      Epic 260329AG_eliminate_mandatory_disk_folder_creation_make_epic experienced
+      12 consecutive planner-explore failures in two distinct waves before eventual
+      success on the 13th and 14th spawns. The root failure mode was sdk_pane_failure
+      (error_code="sdk_pane_failure", error_type="sdk_error") with num_turns=0 and
+      cost_usd=0.0 for every failing session -- meaning the Claude SDK process never
+      started a conversation turn. The retry system (max_retries=3 per category,
+      4 categories in parallel) exhausted all 12 slots (4 x 3) and the orchestration
+      session orch-851711d reported "Parallel explore: 0/4 categories completed."
+      Wave 1 (4 sessions, 15:26): each ran for ~275-308s before the tmux pane
+      process died without producing any turns. Wave 2 (8 sessions, 15:31): each
+      failed in ~4-5s -- fast enough to trigger quick-exit detection but still
+      classified as retryable (retryable=true), so all retry slots were consumed
+      rather than halted. After all retries were exhausted, the orchestration
+      session failed and no automatic recovery occurred. A 44-minute gap (15:32
+      to 16:21) elapsed before a manual re-trigger succeeded. The planner-explore
+      sessions for other epics run on the same day (fix_tinydb, fix_story_parsing)
+      using the same code succeeded without issue, suggesting a transient environment
+      condition (API rate limit, system resource pressure, or tmux session limit)
+      affected this specific burst rather than a code defect.
     evidence:
-      - "orch-64144c1c4672 error: 'Pre-flight validation failed: No tickets reference story_ids'"
-      - "260328AG_extract_validate: tickets=8, with_story_ids=0 (0% coverage)"
-      - "260327AG_mandatory: tickets=16, with_story_ids=16 (100% coverage)"
-      - "260329AG_fix_story_parsing: tickets=16, with_story_ids=15 (94% coverage)"
-      - "All four explore sessions completed: 58c6656b, 8744c0cc, cab7a684, f1b2307c"
+      - "12 sessions: status=failed, exit_code=1, num_turns=0, cost_usd=0.0, error_code=sdk_pane_failure"
+      - "Wave 1 IDs (15:26, ~280s each): c96bf68d, 6ed24d7c, 3405dde5, f6c5fb71"
+      - "Wave 2 IDs (15:31, ~5s each): 01b6100d, e425f8ee, 92d6d252, 3eb7de5c, c2a866a5, 18e85f27, 9a18aa6a, 8c20fb58"
+      - "orch-851711d error: 'Explore agent failed: Parallel explore: 0/4 categories completed'"
+      - "All 12 failure_reason records: {retryable: true, suggested_action: retry}"
+      - "PID gap: wave 1 PIDs 2041794-2041807, wave 2 PIDs 2058879-2059885 (17072 PIDs between batches)"
+      - "44-minute gap: orch-851711d ended 15:32:27, orch-2707130 started 16:21:08"
     recommendation: >
-      Add an explicit self-check step to planner-explore process.yml: after writing
-      tickets the agent must verify each ticket has at least one story_ids entry
-      before marking itself complete. The check should cross-reference the US-*
-      identifiers from the current epic's stories.yml. A teacher agent should
-      review the diff between the March 28 and March 29 planner-explore guidance
-      to confirm this fix was applied and document it as a FENCE.
+      Three separate fixes are needed. (1) Cool-down on total-parallel failure:
+      when ALL parallel explore agents fail with 0 turns simultaneously,
+      introduce a mandatory 60-120s delay before the next retry batch rather
+      than immediately spawning the next wave. The current SPAWN_RETRY_BACKOFF
+      of [5, 15] seconds is appropriate for partial failures but not for
+      environment outages. (2) Bounded retry with environment check: after 2
+      consecutive total-parallel failures (all categories, 0 turns each), halt
+      with a structured error rather than exhausting all 12 retry slots in under
+      10 minutes. (3) Top-level orchestration retry: when the planning loop
+      reports "Parallel explore: 0/N categories completed", the orchestration
+      session should re-enter the planning loop after a 5-minute delay rather
+      than marking the plan permanently failed. The 44-minute manual recovery
+      gap is the most expensive single friction event of the day and would be
+      eliminated by this change. Document the recovery path in
+      orchestration-planning/process.yml.
 
-  - id: FP-005
+  - id: FP-012
     type: input_resolution_failure
     severity: high
     agent: "orchestration-executor"
     guidance_file: "orchestration/orchestration-executor/process.yml"
     description: >
-      exec-ea0ce367f8e4 (March 29 13:19) failed at iteration=1 with
-      "Could not acquire lock after 10.0s (holder pid=1939243, holder age=14.3s)".
-      The lock holder was still alive and only 14 seconds old — a concurrent
-      process had just acquired the lock when this session started. This session
-      was a retry for epic 260329AG_fix_story_parsing, which had been successfully
-      planned by orch-69d788ffe531 at 12:35. The overlapping launch windows
-      (exec-ea0ce367f8e4 started 12:57, orch-69d788ffe531 completed 12:35)
-      suggest the user launched a second execution while the first was finalising.
-      The immediately subsequent session exec-d257d6e9f67b (started 13:20)
-      succeeded completely, completing 5 phases in 35 minutes.
+      exec-ea0ce367f8e4 (13:19) failed at iteration=1 for epic
+      260329AG_fix_story_parsing_race_condition_in_planning_pipel with error
+      "Could not acquire lock: /home/mick/.agentic/epics.db.lock after 10.0s
+      (holder pid=1939243, holder age=14.3s)." The lock holder was not registered
+      as a session -- most likely a build-python subprocess still writing to TinyDB.
+      This execution attempt was a second manual launch while the build-python agent
+      from the planning phase was still active. The failure took the full 10s
+      timeout to manifest, then failed the entire session at iteration=1 with no
+      work done. The subsequent session exec-d257d6e9f67b launched 23 minutes later
+      and completed all 5 phases without issue. Wasted wall time: 22 minutes.
     evidence:
-      - "exec-ea0ce367f8e4: started=12:57, failed=13:19, error='Could not acquire lock after 10.0s'"
-      - "Lock holder pid=1939243, holder_age=14.3s"
-      - "exec-d257d6e9f67b: started=13:20:05, completed=13:55:24, all 5 phases done"
-      - "Commits a9f42c5 raises lock timeout and adds auto-release on crash"
+      - "exec-ea0ce367f8e4: started=12:57:01, failed=13:19:23, iteration=1, phases_completed=[]"
+      - "Error: Could not acquire lock /home/mick/.agentic/epics.db.lock after 10.0s (holder pid=1939243, holder_age=14.3s)"
+      - "Lock holder pid=1939243 not in session store (external subprocess)"
+      - "build-python 2cd4a60e: started=12:57:03, ended=13:19:12 (concurrent with failed exec)"
+      - "exec-d257d6e9f67b: started=13:20:05, completed=13:55:24, phases_completed=5"
     recommendation: >
-      Confirm the default lock timeout was raised from 10s in a9f42c5. The guidance
-      for orchestration-executor should document that a lock-timeout on session start
-      (iteration=1, no phases yet run) is always safe to retry after 15-30 seconds
-      because it means another session is in its writeback phase. This should be
-      distinguished in the error output from a mid-execution timeout.
+      Guidance for orchestration-executor should document: "A TinyDB lock timeout
+      at iteration=1 with phases_completed=[] means another process is still
+      writing; this is safe-to-retry after a 30s wait." Raise the lock acquisition
+      wait from 10s to 30s for iteration=1, or add a single retry after a 30s
+      sleep before declaring failure. This turns a 22-minute wasted session into
+      a 30-second delay.
 
-  - id: FP-006
+  - id: FP-013
     type: guidance_gap
-    severity: medium
-    agent: "planner-orchestration"
-    guidance_file: "planner/planner-orchestration/process.yml"
+    severity: high
+    agent: "orchestration (planner loop)"
+    guidance_file: "orchestration/orchestration-planning/process.yml"
     description: >
-      Epic 260327AG_mandatory_ticket_story_binding_for_build_plans has 6 phases
-      in TinyDB, two of which reference decommissioned agent names: test-runner
-      and test-user-simulator. Neither exists in the current roster (current test
-      agents: test-builder, test-audit, test-uat, trace-explorer). If the executor
-      runs this epic it will encounter a routing failure immediately. The epic is
-      flagged as ready to implement by `agentic epic list`. The decommissioned
-      names originated from the planner-orchestration agent that planned this epic
-      before the 28-to-20 restructure was committed.
+      No planner-orchestration session record exists for epic
+      260329AG_eliminate_mandatory_disk_folder_creation_make_epic in the March 29
+      data. The 2-second orch-2707130 session at 16:21 immediately routed to
+      execution, implying phases were already in TinyDB. The completed phases
+      ("Initial Research and Planning", "Data Model -- Make epic_folder Optional",
+      etc.) are well-structured and consistent with planner-orchestration output,
+      but their origin is untracked. Additionally, execution (exec-04faec5, started
+      16:21:28) launched 2 seconds before a planner-explore session (b001bf0d,
+      started 16:21:30) -- meaning execution began before exploration was complete,
+      a sequencing anomaly that happened to produce a correct result.
     evidence:
-      - "260327AG_mandatory phases: agent=test-runner and agent=test-user-simulator (both absent from agents/)"
-      - "Current test agents: test-builder, test-audit, test-uat, trace-explorer"
-      - "`agentic epic list` shows 260327AG_mandatory as ready with 0/6 phases started"
-      - "Restructure committed 2026-03-29 (c77f7a0)"
+      - "No planner-orchestration session record for eliminate_mandatory in session data"
+      - "orch-2707130c39ba: duration=2s -- immediate routing to execution"
+      - "exec-04faec5 started=16:21:28, planner-explore b001bf0d started=16:21:30 (2s overlap)"
+      - "exec-04faec5 completed 6 phases despite concurrent exploration"
     recommendation: >
-      Before running `agentic orchestrate session implement` on this epic, update
-      the stale phase agent values (test-runner -> test-builder, test-user-simulator
-      -> test-uat) via direct TinyDB update or `agentic epic phase` commands.
-      Teacher agents should update planner-orchestration guidance to reference only
-      current agent names, and a canonical agent-name list in planning-standard.yml
-      would prevent this class of error after future restructures.
+      The planning loop should assert that planner-orchestration completed and
+      wrote phases to TinyDB before routing to execution. If phases already exist
+      (manual population or prior run), the loop should validate that all phases
+      have required fields (agent, loop_type) and log a warning if no
+      planner-orchestration session is recorded for this run. Add to
+      orchestration-planning/process.yml: execution must not start until
+      planner-orchestration completes.
 
-  - id: FP-007
-    type: guidance_gap
-    severity: medium
-    agent: "planner-orchestration"
-    guidance_file: "planner/planner-orchestration/process.yml"
-    description: >
-      The IM_001 "Initial Research and Planning" scaffold ticket in epics
-      260329AG_fix_story_parsing and 260329AG_eliminate_mandatory_disk lacks
-      story_ids (the only ticket without story_ids in those otherwise well-covered
-      epics). This ticket is created before story generation runs and therefore
-      cannot reference a US-* id at creation time. The pre-flight validator's
-      current behaviour (pass if any ticket has story_ids) means this does not
-      block execution, but the ticket remains without traceability. Either the
-      guidance should instruct planner-orchestration to backfill story_ids on
-      IM_001 after story generation completes, or the validator should be
-      updated to require full coverage.
-    evidence:
-      - "260329AG_fix_story_parsing: task_id=IM_001, story_ids=null (1/16 tickets without)"
-      - "260329AG_eliminate_mandatory_disk: task_id=IM_001, story_ids=null (1/17 tickets without)"
-      - "Pre-flight validation passes for both epics (any-coverage check)"
-    recommendation: >
-      Update planner-orchestration process.yml to include a post-story-generation
-      step: backfill story_ids on the IM_001 / research scaffold ticket using the
-      most broadly applicable story from stories.yml. Alternatively update the
-      pre-flight validator to require 100% coverage and exempt only explicitly
-      tagged scaffold tickets.
-
-  - id: FP-008
+  - id: FP-014
     type: excessive_iteration
     severity: medium
-    agent: "orchestration-executor"
-    guidance_file: "orchestration/orchestration-executor/process.yml"
+    agent: "build-python"
+    guidance_file: "build/build-python/process.yml"
     description: >
-      The March 28 execution chain involved six executor launches over 57 minutes.
-      The actual productive work (Build, Test, UAT) completed inside two failed
-      sessions that were each marked failed due to lock errors on finalise, causing
-      duplicate phase execution. Total iteration depth across sessions: 2+3+1+0+2
-      = 8 iterations for a 4-phase epic. Expected iteration count for a healthy
-      4-phase epic (no failures) is 4-5 iterations in a single session.
+      Epic 260329AG_fix_story_parsing_race_condition_in_planning_pipel spawned
+      4 build-python sessions within exec-d257d6e9f67b (13:20 – 13:55), with the
+      executor running 6 iterations for a 5-phase plan. Session 79ad255a (13:34,
+      29s, 0 turns, $0) completed near-instantly, likely detecting no remaining
+      work. Epic 260329AG_add_epic_priority_ordering also required 4 build-python
+      sessions, the first costing $7.62 over 850s and 130 turns -- the highest
+      single-session cost of the day. The phase scope for that session was broad
+      enough to drive 130 turns of back-and-forth, suggesting the ticket guidance
+      was under-specified for the work surface.
     evidence:
-      - "exec-5dfd53446d66: current_iteration=2, phases_completed=[Build]"
-      - "exec-3e68b7136efe: current_iteration=3, phases_completed=[Test, UAT]"
-      - "exec-0af9a1a79abd: current_iteration=2, phases_completed=[Cleanup]"
-      - "Total wall-clock time 22:16 to 23:13 = 57 minutes for 4 phases"
+      - "260329AG_fix_story_parsing: 4 build-python sessions (22min, 13min, 29s, 11min)"
+      - "29s session 79ad255a: num_turns=0, cost_usd=0 -- no work performed"
+      - "exec-d257d6e9f67b: current_iteration=6, phases_completed=5"
+      - "260329AG_add_epic_priority_ordering: build-python 1c20db69 -- 850s, 130 turns, $7.62"
     recommendation: >
-      Implement idempotent phase resume: executor reads TinyDB phase status before
-      attempting each phase and skips phases already marked completed. This would
-      reduce the March 28 scenario from 6 sessions to 2 (plan + execute-all-phases)
-      and eliminate the duplicate Build/Test/UAT execution.
+      Add an early-exit check to build-python process.yml: if all tickets for
+      the current phase are already completed, log and exit with status=completed
+      rather than consuming context turns on bootstrap. The 29s zero-turn session
+      shows the agent already does this sometimes, but guidance should make it
+      explicit. For high-cost phases (>100 turns), consider splitting at the
+      ticket-creation stage into two focused tickets rather than one broad phase.
 
-  - id: FP-009
-    type: input_resolution_failure
-    severity: medium
-    agent: "orchestration-executor"
-    guidance_file: "orchestration/orchestration-executor/process.yml"
-    description: >
-      exec-8034e6f9da44 failed with "No EpicRepository available" at iteration=0
-      in under one second (started and failed at 23:11:56). This occurred one
-      minute after exec-72c1097b61eb detected the corrupt DB at 23:05. The repair
-      process (epics.db.repaired) was likely still in progress when this executor
-      launched, leaving the database in an unreadable state. The executor had no
-      health-check or wait logic and failed immediately.
-    evidence:
-      - "exec-8034e6f9da44: started=23:11:56, failed=23:11:56, current_iteration=0"
-      - "exec-72c1097b61eb (preceding): JSON parse error at char 3623749"
-      - "epics.db.corrupt and epics.db.repaired both dated 23:05"
-      - "exec-0af9a1a79abd (succeeding, started 23:12): EpicRepository available"
-    recommendation: >
-      Add a database-health preflight to the executor: check that epics.db is
-      present and valid JSON before entering the execution loop. If the check fails,
-      wait with exponential backoff (up to ~60s) before aborting. This is distinct
-      from a lock timeout — a corrupt or missing database indicates infrastructure
-      recovery in progress.
-
-  - id: FP-010
+  - id: FP-015
     type: excessive_iteration
-    severity: informational
-    agent: "planner-design / ralph (both decommissioned)"
+    severity: medium
+    agent: "orchestration (planner loop)"
     guidance_file: null
     description: >
-      Historical accumulation: 1,352 planner-design and 280 ralph sessions from
-      March 10-12 are permanently stale with no cleanup path. These are artefacts
-      of intensive testing during the planning pipeline development period.
-      891 remain stuck in status=running. They inflate session-store size
-      (contributing to ~372K files in ~/.agentic/sessions/) and will confuse any
-      tooling that iterates the session store without role-validity filtering.
+      73 of 81 orchestration-system sessions (89%) on March 29 are zero-duration
+      poll records. The orchestration idle loop writes 3 orch-* records per
+      health-check interval, with ~24 poll groups observed across the day
+      (07:44 through 23:55). At 3 records per poll x 24 polls = 72 overhead
+      records with plans_processed=["test_plan"] or plans_processed=[]. These
+      inflate the session count (133 total vs ~35 meaningful sessions), bloat the
+      session store, and obscure signal in session-list output. Meaningful
+      orchestration sessions are only: orch-63574e8 (FileLock planning), orch-69d788f
+      (story_parsing planning), orch-851711d (eliminate, failed), orch-2707130
+      (eliminate, recovered), and the 5 exec-* execution sessions.
     evidence:
-      - "Total sessions 2026-03-10/11/12: 2224 — dominated by planner-design (1352) and ralph (280)"
-      - "891 sessions stuck in status=running"
-      - "~/.agentic/sessions/ contains 357 directory entries at analysis time"
+      - "73 orch-* sessions: duration=0s, status=completed, plans_processed=['test_plan'] or []"
+      - "24 poll groups at: 07:44, 07:47, 07:49, 07:51, 07:53, 07:55, 08:27, 08:34, ..."
+      - "133 total sessions; only ~35 contain diagnostic signal"
     recommendation: >
-      Implement `agentic orchestrate debug state cleanup --stale-roles` to tombstone
-      sessions for absent roles. Document in orchestration-executor process.yml
-      that any role decommission must be followed by a session-store cleanup pass.
+      Orchestration poll-loop records should not be written to the persistent
+      session store when no plan was dispatched and no error occurred. Write idle
+      polls only to a transient in-memory heartbeat log or a separate prunable
+      store. This reduces session record volume by ~55% for a busy day and makes
+      session-list output and session-store scanning practical.
+
+  - id: FP-016
+    type: guidance_gap
+    severity: medium
+    agent: "build-story-writer"
+    guidance_file: "build/build-story-writer/process.yml"
+    description: >
+      Session c9249008 (build-story-writer) started at 20:27 for epic
+      260329AG_fix_story_parsing_race_condition_in_planning_pipel and remained
+      in status=running at analysis time. This epic reached status=completed at
+      13:55 (all 16 tickets done, all 5 phases done). A build-story-writer agent
+      spawned 6.5 hours after epic completion is anomalous. No orchestration session
+      that could have triggered this spawn appears in the data for the 20:27 window,
+      suggesting a manual re-plan invocation. The build-story-writer guidance has
+      no instruction to verify epic status before beginning story generation, so
+      it will overwrite stories.yml on a completed epic if not stopped.
+    evidence:
+      - "c9249008: role=build-story-writer, status=running, started=20:27:30, ended=null"
+      - "Epic 260329AG_fix_story_parsing: status=completed, 16/16 tickets done by 13:55"
+      - "No orch-* session in the 20:25-20:30 window"
+    recommendation: >
+      Add a FENCE to build-story-writer process.yml: before generating stories,
+      check epic status via `agentic -j epic status`. If the epic is already
+      completed or archived, halt immediately with a warning rather than generating
+      new stories. This prevents accidental story overwrites on finished work.
+
+  - id: FP-017
+    type: guidance_gap
+    severity: low
+    agent: "planner-explore"
+    guidance_file: "planner/planner-explore/process.yml"
+    description: >
+      The recovery path after the 12-session cascade failure spawned only 2
+      planner-explore sessions (99dc005a, 178s; b001bf0d, 556s) rather than the
+      original 4 (one per story category). The execution phase then proceeded with
+      ticket enrichment from only 2 of 4 categories. Execution ultimately succeeded,
+      but there is no record of a validation step confirming which categories were
+      covered. The planner-explore guidance contains no instruction for a recovery
+      agent to check which categories already have enriched tickets vs which were
+      skipped.
+    evidence:
+      - "Recovery: 2 planner-explore sessions completed (99dc005a: 178s, b001bf0d: 556s/81t)"
+      - "Original attempt: 4 categories x 3 retries = 12 failed sessions"
+      - "exec-04faec5 completed 6 phases successfully despite partial category coverage"
+    recommendation: >
+      Add a recovery step to planner-explore process.yml: when re-spawned after
+      a cascade failure, check which categories already have enriched tickets
+      (populated target-files and guidance) before deciding scope. Explicitly
+      note skipped categories in the summary output so downstream agents
+      (planner-orchestration) can flag gaps.
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STORY COMPLIANCE
+# ──────────────────────────────────────────────────────────────────────────────
 
 story_compliance:
 
-  - story_id: "inferred from phases"
+  - story_id: "(all user stories -- inferred from phases)"
     epic: "260329AG_fix_tinydb_file_lock_not_released_on_agent_crash"
     status: compliant
     evidence: >
-      All 4 phases completed (Harden FileLock, Harden Epic Lock, Test, UAT).
-      exec-d64528639736 completed in 22 minutes at iteration=5. No phases failed.
-      Commits a9f42c5 and 0eae43f confirm the implementation reached the
-      repository.
+      All 4 phases completed (Harden FileLock, Harden Epic Lock, Test, UAT) in
+      a single exec-d64528639736 session, 22 minutes, iteration=5. Planning pipeline
+      ran cleanly: epic-creator -> story-writer -> 3x planner-explore -> planner-orch.
+      No failures. Total cost $15.20, 399 turns.
 
-  - story_id: "US-001 (Reliable Story Parsing)"
+  - story_id: "(all user stories -- inferred from phases)"
     epic: "260329AG_fix_story_parsing_race_condition_in_planning_pipel"
     status: compliant
     evidence: >
-      15/16 tickets have story_ids. All 16 tickets completed. 5 phases completed
-      via exec-d257d6e9f67b in 35 minutes. Epic status=completed, awaiting archive.
-      US-001 acceptance criteria (retry-with-backoff, structured exceptions, file
-      readiness check) directly addressed by tickets P1-T1, P1-T2, P1-T3.
+      All 5 phases completed (Fix stories.yml Read Race, Harden TinyDB Concurrent
+      Access, Add File Locking to StoryService Writes, Tests, UAT) via
+      exec-d257d6e9f67b. One execution attempt failed at iteration=1 due to lock
+      contention but produced no partial state. Full recovery in the subsequent
+      session. Total cost $14.07. Spurious build-story-writer re-plan at 20:27
+      (FP-016) had no impact on completed epic state.
 
-  - story_id: "US-002 (TinyDB concurrent access)"
-    epic: "260329AG_fix_story_parsing_race_condition_in_planning_pipel"
+  - story_id: "(all user stories -- inferred from phases)"
+    epic: "260329AG_eliminate_mandatory_disk_folder_creation_make_epic"
     status: compliant
     evidence: >
-      P2-T1 through P2-T3 implement TinyDB concurrent access hardening.
-      P5-T2 (UAT: validate parallel explore agents complete with concurrent access)
-      verifies the acceptance criteria. All P2 and P5 tickets marked completed.
+      All 6 phases completed (Initial Research and Planning, Data Model -- Make
+      epic_folder Optional, Remove Disk-Dependent Code Paths, Decouple Planner
+      Pipeline from Mandatory Folders, Test Updates, UAT) via exec-04faec5.
+      Epic status=completed, 21/21 tickets done. Successful UAT session: 62c137a1,
+      791s, 90 turns, $3.45. Story-level compliance assumed given successful UAT.
+      Missing planner-orchestration session record (FP-013) is a traceability
+      gap but does not indicate non-compliance.
 
-  - story_id: "US-002 (ticket CE_001 story_ids field)"
-    epic: "260327AG_mandatory_ticket_story_binding_for_build_plans"
-    status: not_started
+  - story_id: "(all user stories -- inferred from phases)"
+    epic: "260329AG_add_epic_priority_ordering_and_cross_epic_dependen"
+    status: compliant
     evidence: >
-      16 tickets pending, 16/16 have story_ids. 6 phases pending but 2 reference
-      decommissioned agents (test-runner, test-user-simulator). No execution
-      attempted. Story compliance cannot be assessed until stale agent names are
-      corrected.
+      All 7 phases completed (P1_domain_model, P2_dependency_service, P3_cli_commands,
+      P4_orchestration, P5_tests, P6_uat, P4B_agent_guidance) via exec-b8ac7f3,
+      44 minutes, iteration=8. No failures. Planning pipeline bypassed (manual
+      phase population). teacher-update-guidance ran as final phase ($2.12, 33 turns).
+      Commits f8afbb3 in git log confirm implementation reached the repository.
 
-  - story_id: "none (0 story_ids on any ticket)"
-    epic: "260328AG_extract_validate_phase_routing_utility_from_duplic"
+  - story_id: "(all user stories)"
+    epic: "260328AG_cleanup_stale_agent_references_after_2820_restruct"
     status: partial
     evidence: >
-      8 tickets in TinyDB, 0 with story_ids. The epic's implementation reached
-      the repository (commit bb53dcf: extract validate_phase_routing utility) but
-      story traceability was never established. The Build, Test, and UAT phases
-      ran to completion inside sessions that were marked failed due to lock errors.
-      The Cleanup phase completed in the final session. Functional outcome achieved,
-      story compliance absent.
+      Single planner-explore session (a4e23a02, 383s, 52 turns, $2.26) completed.
+      This was the only session recorded for this epic on March 29. Prior friction
+      report (FP-006) noted the epic had 0 story_ids on all tickets. Execution
+      status not verified in this analysis pass.
 
-  - story_id: "none (0 story_ids, not yet executed)"
-    epic: "260328AG_cleanup_stale_agent_references_after_2820_restruct"
-    status: not_started
-    evidence: >
-      5 tickets all status=proposed, none have story_ids. 2 phases pending
-      (teacher-update-assets, test-builder). Epic has not been executed.
-      This epic cannot be planned (story_ids missing) or executed without
-      a re-plan run.
+# ──────────────────────────────────────────────────────────────────────────────
+# SUMMARY
+# ──────────────────────────────────────────────────────────────────────────────
 
 summary:
-  total_friction_points: 10
+  total_friction_points: 7
   by_severity:
-    critical: 1
-    high: 4
-    medium: 4
-    informational: 1
+    critical: 1   # FP-011 (planner-explore cascade -- 12 failures, 44 min recovery gap)
+    high: 2       # FP-012 (lock contention at exec start), FP-013 (missing planner-orch record)
+    medium: 3     # FP-014 (build-python iteration depth), FP-015 (orch poll bloat), FP-016 (ghost re-plan)
+    low: 1        # FP-017 (partial category recovery)
   by_type:
-    excessive_iteration: 3   # FP-001, FP-008, FP-010
-    backtracking: 1          # FP-002
-    guidance_gap: 4          # FP-003, FP-004, FP-006, FP-007
-    input_resolution_failure: 2  # FP-005, FP-009
+    excessive_iteration: 3   # FP-011, FP-014, FP-015
+    input_resolution_failure: 1  # FP-012
+    guidance_gap: 3          # FP-013, FP-016, FP-017
+
+  cost_summary:
+    total_cost_usd: 56.27
+    by_epic:
+      - epic: "260329AG_add_epic_priority_ordering_and_cross_epic_dependen"
+        cost_usd: 15.88
+        sessions: 7
+        failed: 0
+      - epic: "260329AG_fix_tinydb_file_lock_not_released_on_agent_crash"
+        cost_usd: 15.20
+        sessions: 10
+        failed: 0
+      - epic: "260329AG_fix_story_parsing_race_condition_in_planning_pipel"
+        cost_usd: 14.07
+        sessions: 13
+        failed: 0
+      - epic: "260329AG_eliminate_mandatory_disk_folder_creation_make_epic"
+        cost_usd: 8.86
+        sessions: 21
+        failed: 12
+        notes: >
+          12 planner-explore failures had cost_usd=0 (SDK never started a turn).
+          Wasted wall time: 19.5 min across failed sessions.
+          The 44-min manual recovery gap is the dominant waste (operator time).
+      - epic: "260328AG_cleanup_stale_agent_references_after_2820_restruct"
+        cost_usd: 2.26
+        sessions: 1
+        failed: 0
 
   epics_worked_on:
-    - folder: "260328AG_extract_validate_phase_routing_utility_from_duplic"
-      date: "2026-03-28"
-      outcome: >
-        Partial success via 7 attempts over 57 minutes. Build/Test/UAT phases ran
-        inside failed sessions; only Cleanup completed in a session marked
-        successful. Implementation committed to git. Story traceability: zero.
     - folder: "260329AG_fix_tinydb_file_lock_not_released_on_agent_crash"
-      date: "2026-03-29 morning"
-      outcome: "Clean success — 4 phases, 22 minutes, single session."
+      duration_minutes: 51
+      outcome: "Clean success -- 4 phases, single execution session, no failures."
     - folder: "260329AG_fix_story_parsing_race_condition_in_planning_pipel"
-      date: "2026-03-29 midday"
-      outcome: "Success after 1 failed retry — 5 phases, 35 minutes in the final session."
+      duration_minutes: 100
+      outcome: >
+        Success after 1 failed execution attempt (lock contention at startup, no
+        work lost). All 5 phases completed. One anomalous ghost re-plan at 20:27.
     - folder: "260329AG_eliminate_mandatory_disk_folder_creation_make_epic"
-      date: "2026-03-29 afternoon"
-      outcome: "In-progress — planning stage, epic-creator running as of analysis time."
+      duration_minutes: 118
+      outcome: >
+        Success after 12 planner-explore cascade failures and a 44-minute manual
+        recovery gap. All 6 phases completed. Planner-orchestration session record
+        missing. Most disrupted epic of the day -- expected ~60 min, took 118 min.
+    - folder: "260329AG_add_epic_priority_ordering_and_cross_epic_dependen"
+      duration_minutes: 44
+      outcome: >
+        Clean success via manually pre-populated phases (skipped planning pipeline).
+        7 phases. Highest single-session cost of the day ($7.62, build-python, 130 turns).
+    - folder: "260328AG_cleanup_stale_agent_references_after_2820_restruct"
+      duration_minutes: 6.5
+      outcome: "Single planner-explore session completed."
 
   top_recommendations:
     - priority: 1
+      friction_point: FP-011
       action: >
-        Fix stale agent names in 260327AG_mandatory phases before running implement.
-        test-runner -> test-builder, test-user-simulator -> test-uat.
-        Failure to do this will cause an immediate routing error on the next
-        `agentic orchestrate session implement` call.
+        Add total-parallel-failure detection in spawn_explore_agents: when all
+        parallel explore agents fail with num_turns=0, treat this as an environment
+        outage rather than individual agent failures. Insert a 60-120s cool-down
+        before the next batch rather than using the 5-15s SPAWN_RETRY_BACKOFF.
+        After 2 consecutive total-parallel failures, halt with a structured error
+        rather than consuming all 12 retry slots.
+
     - priority: 2
+      friction_point: FP-011
       action: >
-        Implement session-store cleanup for decommissioned roles. The 2,224 stale
-        March 10-12 sessions are permanent noise and will grow with each future
-        agent restructure unless a tombstone mechanism exists.
+        Add a top-level orchestration retry for planning failures: when the
+        planning loop reports "Parallel explore: 0/N categories completed",
+        record the failure and re-enter the planning loop after a 5-minute delay
+        rather than marking the plan permanently failed. The 44-minute manual
+        recovery gap would be eliminated by a single automated retry. Document
+        this recovery path in orchestration-planning/process.yml.
+
     - priority: 3
+      friction_point: FP-012
       action: >
-        Add a FENCE self-check to planner-explore process.yml: agent must not mark
-        itself complete until all created tickets have story_ids populated. This
-        closes the gap that caused the March 28 pre-flight validation failure.
+        Raise lock acquisition wait from 10s to 30s for iteration=1 executions,
+        or add a 30s sleep-and-retry before declaring failure when
+        phases_completed=[]. Document in orchestration-executor/process.yml:
+        "Lock timeout at iteration=1 is always safe to retry." This turns a
+        22-minute wasted session into a 30-second delay.
+
     - priority: 4
+      friction_point: FP-015
       action: >
-        Update orchestration-executor guidance to implement idempotent phase resume:
-        check TinyDB phase status before each iteration and skip already-completed
-        phases. This eliminates the duplicate-execution pattern seen in the March 28
-        six-session cascade.
+        Stop writing zero-duration orchestration poll records to the persistent
+        session store. March 29 had 73 such records (55% of all sessions) with
+        no diagnostic value. Write idle polls to a transient heartbeat log only.
+        This reduces session store write pressure and makes session-list readable.
+
     - priority: 5
+      friction_point: FP-016
       action: >
-        Add a DB health preflight to the executor (valid JSON check with wait/backoff)
-        to prevent the sub-second failures seen in exec-8034e6f9da44 and
-        exec-72c1097b61eb when the database was mid-repair.
+        Add an epic-status FENCE to build-story-writer: if the target epic is
+        already in status=completed, halt immediately and do not overwrite
+        stories.yml. Prevents ghost re-plans on completed work.
+
+    - priority: 6
+      friction_point: FP-013
+      action: >
+        Require a recorded planner-orchestration session before routing to
+        execution. If phases exist in TinyDB but no session record, log a
+        warning and validate phase completeness before proceeding.
 
   system_health_assessment: >
-    The system is functionally healthy for the two successfully completed March 29
-    epics (FileLock hardening and story parsing race fix). The root causes of the
-    March 28 cascade failure — TinyDB corruption, lock contention, missing story_ids
-    on tickets — have all been directly addressed by commits landed today (a9f42c5,
-    0eae43f, bb53dcf, c77f7a0). Three structural issues remain unresolved and require
-    action before the next execute run: (1) 2,224 stale sessions from decommissioned
-    roles with no cleanup path; (2) epic 260327AG_mandatory has stale agent names
-    that will cause a routing failure on the next implement run; (3) epic
-    260328AG_cleanup_stale_agent_references has zero story_ids and cannot be
-    executed without a re-plan. The DB corruption artifact files
-    (epics.db.corrupt, epics.db.repaired) in ~/.agentic/ should be archived or
-    deleted once the repair is confirmed stable.
+    March 29 was the highest-throughput day recorded: 133 sessions, 5 epics,
+    $56.27 total cost. All 5 epics reached status=completed. The system
+    successfully ran the full pipeline (epic-creator -> story-writer -> parallel
+    explore -> planner-orch -> multi-phase build -> test -> UAT) for three epics
+    without manual intervention. Two critical structural issues remain.
+    First, the planner-explore cascade failure (FP-011) wasted 12 session spawns
+    and produced a 44-minute recovery gap that required manual intervention.
+    The retry system amplified a transient environment outage into 12 failed
+    sessions because it treats all-parallel failures the same as partial failures:
+    adding a total-parallel-failure cool-down and a top-level orchestration retry
+    are the two highest-value fixes available. Second, lock contention at
+    execution start (FP-012) wasted 22 minutes on a condition that should have
+    been a 30-second wait.
+    Positive signals: the fix_tinydb and add_epic_priority epics each ran
+    flawlessly. teacher-update-guidance completed as a phase for the priority
+    epic, confirming the guidance update loop is functional. The three successful
+    planning pipelines (fix_tinydb, fix_story_parsing, eliminate_mandatory-recovery)
+    all completed at similar quality. The eliminate_mandatory epic, despite the
+    cascade failure, ultimately produced correct output -- the system's fault
+    tolerance at the phase level is sound; the gap is at the planning-phase
+    retry level.

@@ -1,1 +1,0 @@
-"""Shell operations integration tests."""

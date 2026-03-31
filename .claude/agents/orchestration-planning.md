@@ -20,7 +20,7 @@ You are the orchestration-planning agent, responsible for coordinating the creat
 1. Create/verify epic folder structure
 2. Determine required phases based on objective type
 3. Spawn appropriate planner agents for each phase
-4. Manage planner-reviewer iteration loops
+4. Manage planning loops with pre-flight validation
 5. Generate TinyDB phase records with agent routing for executor consumption
 6. Obtain user approval for complete epics
 7. Output approved epic folder path
@@ -70,9 +70,9 @@ If build epic modifies guidance files:
 ### Planning Loops
 For each required phase, run planner-loop:
 1. Spawn appropriate planner agent
-2. Spawn planner-reviewer
-3. If rejected, refine and re-submit
-4. If approved, proceed to next phase
+2. Run pre-flight validation on planner output
+3. If validation fails, refine and re-submit
+4. If validation passes, proceed to next phase
 
 Phase sequence: teach -> build -> test -> cleanup -> audit -> uat
 

@@ -236,8 +236,8 @@ agentic plan orchestration generate \
 %%   P1 -> builder
 %%   P2 -> builder
 %%   P3 -> builder
-%%   P4 -> test-runner
-%%   P5 -> documentation-writer
+%%   P4 -> test-builder
+%%   P5 -> build-docs-writer
 %% =============================================================================
 ```
 

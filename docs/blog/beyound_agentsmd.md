@@ -69,7 +69,7 @@ This works well but you still front loading your agent with a lot up front. Your
 ```markdown
 # index.md (Decision Overload)
 
-- [Strategy_UserSimulation.md]: Use when you need full user journey validation. Spawns test-user-simulator agents to execute end-to-end flows. Verifiable but slow.
+- [Strategy_UserSimulation.md]: Use when you need full user journey validation. Spawns test-uat agents to execute end-to-end flows. Verifiable but slow.
 - [Strategy_BlindTest.md]: Use when validating documentation completeness. Spawns agents without prior context to test if docs are sufficient.
 - [Strategy_ManualValidation.md]: Use for complex scenarios requiring human judgment or where automation is too costly...
 ```
@@ -106,7 +106,7 @@ The current approach strictly follows this. We define specialized roles in a mar
 | Task Type | Assigned Agent | Flags |
 |-----------|----------------|-------|
 | Python Implementation | `build-python` | `--role build-python` |
-| Test Execution | `test-runner` | `--role test-runner` |
+| Test Execution | `test-builder` | `--role test-builder` |
 ```
 
 When I need code built, I don't ask the current agent to switch context. I spawn a fresh one:

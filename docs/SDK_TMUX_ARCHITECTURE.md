@@ -9,8 +9,8 @@ process becomes a zombie and a second call silently kills the parent process.
 **Root cause:** SDK internal state is never fully cleaned up between calls.
 Tracked as SDK issues #434, #515, #573, #1089.
 
-**Impact:** The planning loop spawns 5+ agents sequentially (explore,
-story-writer, planner-build, planner-reviewer, planner-orchestration).
+**Impact:** The planning loop spawns 3+ agents sequentially (story-writer,
+explore, planner-orchestration).
 Calling `query()` in a loop inside a single process caused the loop to die
 after the first agent.
 

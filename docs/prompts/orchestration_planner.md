@@ -11,8 +11,8 @@ agentic orchestrate --mode planning --plan <folder>
 
 ## What It Does
 
-- Spawns specialized planners (planner-build, planner-test, planner-guidance, etc.)
-- Manages review/approval loops via planner-reviewer
+- Spawns specialized planners (planner-build, planner-test, planner-audit, etc.)
+- Manages planning loops and pre-flight validation
 - Creates orchestration phases in TinyDB via planner-orchestration
 - Enforces story-first planning and UAT fences
 
@@ -78,7 +78,7 @@ This creates the plan folder and updates the workspace file without creating a w
 
 ### Enforcement
 
-The planner agents (planner-build, planner-test, planner-cleaning, planner-audit) have FENCES that check for plan folder existence before proceeding. If the folder doesn't exist, they will STOP and report:
+The planner agents (planner-build, planner-test, planner-audit) have FENCES that check for plan folder existence before proceeding. If the folder doesn't exist, they will STOP and report:
 
 ```
 FENCE VIOLATION: Plan folder not found at docs/plans/live/{plan_folder_name}/
