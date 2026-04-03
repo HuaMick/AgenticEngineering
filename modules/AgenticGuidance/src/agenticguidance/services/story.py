@@ -15,6 +15,71 @@ from .state import FileLock
 
 logger = logging.getLogger(__name__)
 
+# --- Canonical story path resolvers ---
+# @story US-001
+
+
+def get_canonical_stories_dir() -> Path | None:
+    """Return the single source-of-truth directory for all user stories.
+
+    Resolution order:
+    1. ``AGENTIC_REPO_ROOT`` env-var  →  ``$AGENTIC_REPO_ROOT/docs/userstories``
+    2. Common relative paths from cwd (``docs/userstories``, ``../docs/userstories``,
+       ``userstories``)
+    3. Walk up to 5 parent directories looking for a ``.git`` marker, then
+       check ``<repo-root>/docs/userstories``
+
+    Returns ``None`` when no directory can be located.
+    """
+    # 1. AGENTIC_REPO_ROOT env var
+    env_root = os.environ.get("AGENTIC_REPO_ROOT")
+    if env_root:
+        candidate = Path(env_root) / "docs" / "userstories"
+        if candidate.is_dir():
+            return candidate
+
+    # 2. Check common relative paths from cwd
+    search_paths = [
+        Path.cwd() / "docs" / "userstories",
+        Path.cwd().parent / "docs" / "userstories",
+        Path.cwd() / "userstories",
+    ]
+    for path in search_paths:
+        if path.exists():
+            return path
+
+    # 3. Walk up to 5 parents looking for .git to find repo root
+    current = Path.cwd()
+    for _ in range(5):
+        if (current / ".git").is_dir():
+            candidate = current / "docs" / "userstories"
+            if candidate.is_dir():
+                return candidate
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    return None
+
+
+def get_epic_stories_path(epic_name: str) -> Path:
+    """Return the canonical path for an epic-scoped story file.
+
+    Convention: ``docs/userstories/EpicStories/<epic_name>.yml``
+
+    The returned path may not exist yet (the caller is responsible for
+    creating the file/directory as needed).  The ``EpicStories/`` subdirectory
+    is auto-created when the parent ``docs/userstories/`` directory is present.
+    """
+    stories_dir = get_canonical_stories_dir()
+    if stories_dir is None:
+        # Fall back to a reasonable default even when the dir is missing
+        return Path("docs") / "userstories" / "EpicStories" / f"{epic_name}.yml"
+    return stories_dir / "EpicStories" / f"{epic_name}.yml"
+
+
 # Lifecycle states and allowed transitions
 LIFECYCLE_STATES = ("proposal", "under-construction", "implemented", "deprecated", "archived")
 LIFECYCLE_TRANSITIONS = {
@@ -48,8 +113,14 @@ class Story:
 
     @property
     def prefix(self) -> str:
-        """Extract category prefix (e.g., 'US-SET' from 'US-SET-001')."""
-        match = re.match(r"(US-[A-Z]+)", self.id)
+        """Extract category prefix from a story ID.
+
+        Handles both manual story IDs (e.g., 'US-SET' from 'US-SET-001') and
+        epic-namespaced story IDs (e.g., 'US-260402AG' from 'US-260402AG-001').
+        The pattern matches alphanumeric characters after 'US-', so both
+        all-letter prefixes and digit+letter epic prefixes are supported.
+        """
+        match = re.match(r"(US-[A-Z0-9]+)", self.id)
         return match.group(1) if match else "OTHER"
 
     def can_transition_to(self, target: str) -> bool:
@@ -68,37 +139,8 @@ class StoryService:
 
     @staticmethod
     def _find_userstories_dir() -> Path | None:
-        # Check AGENTIC_REPO_ROOT env var first
-        env_root = os.environ.get("AGENTIC_REPO_ROOT")
-        if env_root:
-            candidate = Path(env_root) / "docs" / "userstories"
-            if candidate.is_dir():
-                return candidate
-
-        # Check hardcoded search paths relative to cwd
-        search_paths = [
-            Path.cwd() / "docs" / "userstories",
-            Path.cwd().parent / "docs" / "userstories",
-            Path.cwd() / "userstories",
-        ]
-        for path in search_paths:
-            if path.exists():
-                return path
-
-        # Walk up to 5 parents looking for a .git directory
-        current = Path.cwd()
-        for _ in range(5):
-            if (current / ".git").is_dir():
-                candidate = current / "docs" / "userstories"
-                if candidate.is_dir():
-                    return candidate
-                break
-            parent = current.parent
-            if parent == current:
-                break
-            current = parent
-
-        return None
+        """Delegate to the canonical resolver ``get_canonical_stories_dir()``."""
+        return get_canonical_stories_dir()
 
     def load_all(self) -> list[Story]:
         """Load all stories from YAML files. Caches result."""

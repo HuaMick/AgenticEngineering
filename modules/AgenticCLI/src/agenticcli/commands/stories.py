@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 
-from agenticguidance.services.story import Story, StoryService
+from agenticguidance.services.story import Story, StoryService, get_canonical_stories_dir, get_epic_stories_path
 
 
 def handle(args, ctx=None):
@@ -46,71 +46,26 @@ def handle(args, ctx=None):
         cmd_archive(args)
     elif args.stories_command == "code":
         cmd_code(args)
+    elif args.stories_command == "audit":
+        cmd_audit(args)
     else:
-        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected|sync|run|promote|deprecate|archive|code]", file=sys.stderr)
+        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected|sync|run|promote|deprecate|archive|code|audit]", file=sys.stderr)
         sys.exit(1)
 
 
 def _find_userstories_dir() -> Path | None:
-    """Find the userstories directory."""
-    # Check AGENTIC_REPO_ROOT env var first
-    env_root = os.environ.get("AGENTIC_REPO_ROOT")
-    if env_root:
-        candidate = Path(env_root) / "docs" / "userstories"
-        if candidate.is_dir():
-            return candidate
+    """Find the userstories directory.
 
-    # Look in common locations
-    search_paths = [
-        Path.cwd() / "docs" / "userstories",
-        Path.cwd().parent / "docs" / "userstories",
-        Path.cwd() / "userstories",
-    ]
-
-    for path in search_paths:
-        if path.exists():
-            return path
-
-    # Fallback: walk up from cwd looking for .git to find repo root
-    current = Path.cwd()
-    for _ in range(5):
-        if (current / ".git").exists():
-            userstories = current / "docs" / "userstories"
-            if userstories.is_dir():
-                return userstories
-            break
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-
-    return None
+    Delegates to the canonical resolver in
+    ``agenticguidance.services.story.get_canonical_stories_dir()``.
+    """
+    return get_canonical_stories_dir()
 
 
 def _get_repo_db_path() -> Path:
     """Return the global TinyDB path (~/.agentic/epics.db)."""
     return Path.home() / ".agentic" / "epics.db"
 
-
-def _find_plan_stories_dirs() -> list[Path]:
-    """Find user_stories directories inside live epics, querying TinyDB."""
-    try:
-        from agenticguidance.services.epic_repository import EpicRepository
-        repo = EpicRepository(db_path=_get_repo_db_path(), auto_bootstrap=False)
-        metas = repo.list_epics(status="live")
-    except Exception:
-        metas = []
-
-    story_dirs = []
-    for meta in metas:
-        epic_dir = meta.epic_folder
-        if epic_dir is None:
-            continue
-        if epic_dir.is_dir():
-            story_dir = epic_dir / "user_stories"
-            if story_dir.exists():
-                story_dirs.append(story_dir)
-    return story_dirs
 
 
 def _get_project_from_path(story_file: Path, userstories_dir: Path) -> str:
@@ -216,57 +171,22 @@ def _story_to_dict(s: Story) -> dict:
 
 
 def _collect_all_stories(project_filter: str | None = None) -> list[dict]:
-    """Collect all stories from userstories directory and plan story dirs.
+    """Collect all stories from the unified docs/userstories/ directory.
 
     Each returned dict includes test metadata fields and file path info.
-    Uses StoryService for the main userstories directory and falls back
-    to manual parsing for plan-local story directories.
+    Uses StoryService which reads from docs/userstories/ (including EpicStories/).
     """
     userstories_dir = _find_userstories_dir()
-    plan_story_dirs = _find_plan_stories_dirs()
 
-    if userstories_dir is None and not plan_story_dirs:
+    if userstories_dir is None:
         print(
             "Warning: No userstories directory found. Run from repo root or set AGENTIC_REPO_ROOT.",
             file=sys.stderr,
         )
 
-    # Load main stories via StoryService
+    # Load all stories via StoryService (covers manual + epic-generated)
     svc = StoryService(userstories_dir)
     all_stories = [_story_to_dict(s) for s in svc.load_all()]
-
-    # Also scan plan-local story dirs (epic user_stories/ folders)
-    for d in plan_story_dirs:
-        for f in d.glob("*.yml"):
-            if f.name == "00_metadata.yml":
-                continue
-            try:
-                content = yaml.safe_load(f.read_text())
-            except yaml.YAMLError:
-                continue
-            if not content or not isinstance(content, dict):
-                continue
-
-            project = d.parent.name
-
-            for key in ("stories", "user_stories"):
-                items = content.get(key, [])
-                if not isinstance(items, list):
-                    continue
-                for story in items:
-                    if not isinstance(story, dict):
-                        continue
-                    entry = {
-                        "id": story.get("id", f.stem),
-                        "title": story.get("title", story.get("name", "")),
-                        "project": story.get("project", project),
-                        "file": str(f),
-                        "test_status": story.get("test_status", "untested"),
-                        "last_tested": story.get("last_tested"),
-                        "test_notes": story.get("test_notes", ""),
-                        "tested_by_plan": story.get("tested_by_plan"),
-                    }
-                    all_stories.append(entry)
 
     if project_filter:
         pf = project_filter.lower()
@@ -282,8 +202,8 @@ def _categorize_stories(stories: list[dict]) -> dict:
 
     for story in stories:
         story_id = story.get("id", "")
-        # Extract prefix (e.g., US-INSTALL, US-CLI)
-        match = re.match(r"(US-[A-Z]+)", story_id)
+        # Extract prefix (e.g., US-INSTALL, US-CLI, US-260402AG)
+        match = re.match(r"(US-[A-Z0-9]+)", story_id)
         if match:
             prefix = match.group(1)
         else:
@@ -320,7 +240,7 @@ def cmd_find(args):
             console.print("  [dim]- userstories/[/dim]")
         sys.exit(1)
 
-    # Load stories from main userstories dir via StoryService
+    # Load all stories via StoryService (covers manual + epic-generated in EpicStories/)
     svc = StoryService(userstories_dir)
     all_stories = [
         {
@@ -331,18 +251,6 @@ def cmd_find(args):
         }
         for s in svc.load_all()
     ]
-
-    # Also scan plan-local story dirs (epic user_stories/ folders)
-    plan_story_dirs = _find_plan_stories_dirs()
-    for d in plan_story_dirs:
-        for f in d.glob("*.yml"):
-            if f.name == "00_metadata.yml":
-                continue
-            project = d.parent.name
-            parsed = _parse_story_file(f, userstories_dir)
-            for s in parsed:
-                s["project"] = project
-                all_stories.append(s)
 
     stories = all_stories
 
@@ -453,18 +361,10 @@ def cmd_init(args):
 
     target_dir = Path.cwd()
     if args.plan:
-        epic_dir = Path.cwd() / "docs" / "epics" / "live" / args.plan
-        if not epic_dir.exists():
-            # Fallback to legacy path
-            epic_dir = Path.cwd() / "docs" / "plans" / "live" / args.plan
-        if not epic_dir.exists():
-            print_error(
-                f"Epic directory not found: {args.plan}. "
-                "If this is a folder-free epic, omit --plan to use the current directory."
-            )
-            sys.exit(1)
-        target_dir = epic_dir / "user_stories"
-        target_dir.mkdir(exist_ok=True)
+        # Write epic-scoped stories to docs/userstories/EpicStories/
+        epic_stories_path = get_epic_stories_path(args.plan)
+        target_dir = epic_stories_path.parent
+        target_dir.mkdir(parents=True, exist_ok=True)
 
     file_path = target_dir / f"{args.id}.yml"
     if file_path.exists():
@@ -498,13 +398,11 @@ def cmd_cat(args):
         console.print(Path(found.source_file).read_text())
         return
 
-    # Fallback: scan plan-local story dirs and filename matching
+    # Fallback: scan userstories directory by filename matching
     userstories_dir = _find_userstories_dir()
     story_files = []
     if userstories_dir:
         story_files.extend(list(userstories_dir.glob("**/*.yml")))
-    for d in _find_plan_stories_dirs():
-        story_files.extend(list(d.glob("*.yml")))
 
     target_story = None
     for f in story_files:
@@ -685,7 +583,8 @@ def _scan_pytest_story_markers() -> set[str]:
             )
             if result.stdout:
                 # Extract story IDs from markers like @pytest.mark.story("US-CLI-110")
-                for match in re.findall(r'["\']([A-Z]{2}-[A-Z]+-\d+)["\']', result.stdout):
+                # Also handles epic-namespaced IDs like @pytest.mark.story("US-260402AG-001")
+                for match in re.findall(r'["\']([A-Z]{2}-[A-Z0-9]+-\d+)["\']', result.stdout):
                     marker_ids.add(match)
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
@@ -1575,3 +1474,127 @@ def cmd_code(args):
     print_header(f"Code for {story_id} ({len(code_fns)} functions)")
     for fn in code_fns:
         console.print(f"  {fn}")
+
+
+# @story US-004
+def cmd_audit(args):
+    """Bidirectional story-ticket coverage audit.
+
+    Reports:
+    - Tickets without story_ids (unlinked tickets)
+    - Stories not referenced by any ticket's story_ids (orphan stories)
+
+    Supports --json for machine-readable output and human-readable table otherwise.
+    """
+    from agenticcli.console import console, is_json_output, print_header, print_json
+
+    epic_name = getattr(args, "epic", None) or getattr(args, "plan", None)
+    if not epic_name:
+        print("Error: --epic is required for stories audit.", file=sys.stderr)
+        sys.exit(1)
+
+    # Resolve epic folder via TinyDB lookup
+    from agenticcli.commands.epic import find_epic_folder
+
+    epic_folder = find_epic_folder(epic_name)
+
+    # Deprecation check: warn if stories.yml exists at old epic-folder location
+    old_stories_path = epic_folder / "stories.yml"
+    if old_stories_path.exists():
+        print(
+            f"DEPRECATED: stories.yml found at {old_stories_path} — "
+            f"stories should be at docs/userstories/EpicStories/{epic_folder.name}.yml",
+            file=sys.stderr,
+        )
+
+    # Load stories from docs/userstories/EpicStories/{epic_folder_name}.yml
+    stories_path = get_epic_stories_path(epic_folder.name)
+    stories_list = []
+    stories_missing = False
+    if stories_path.exists():
+        try:
+            raw = yaml.safe_load(stories_path.read_text())
+            stories_list = (raw or {}).get("stories", []) or []
+        except Exception:
+            stories_list = []
+    else:
+        stories_missing = True
+
+    # Get tickets from TinyDB
+    from agenticguidance.services.epic_repository import EpicRepository
+
+    repo = EpicRepository()
+    tickets = repo.get_tickets(epic_folder.name)
+    repo.close()
+
+    # Compute unlinked tickets (tickets with empty story_ids)
+    unlinked_tickets = []
+    for t in tickets:
+        ticket_stories = getattr(t, "story_ids", None) or []
+        if not ticket_stories:
+            unlinked_tickets.append({
+                "ticket_id": t.id,
+                "description": t.name or t.description or "",
+            })
+
+    # Compute all story IDs referenced across all tickets
+    all_ticket_story_ids = set()
+    for t in tickets:
+        ticket_stories = getattr(t, "story_ids", None) or []
+        for sid in ticket_stories:
+            all_ticket_story_ids.add(sid)
+
+    # Compute orphan stories (stories not referenced by any ticket)
+    orphan_stories = []
+    for s in stories_list:
+        story_id = s.get("id", "")
+        if story_id and story_id not in all_ticket_story_ids:
+            orphan_stories.append({
+                "story_id": story_id,
+                "title": s.get("title", ""),
+            })
+
+    summary = {
+        "total_tickets": len(tickets),
+        "unlinked_ticket_count": len(unlinked_tickets),
+        "total_stories": len(stories_list),
+        "orphan_story_count": len(orphan_stories),
+        "stories_yml_missing": stories_missing,
+        "fully_covered": len(unlinked_tickets) == 0 and len(orphan_stories) == 0,
+    }
+
+    if is_json_output():
+        print_json({
+            "epic": epic_folder.name,
+            "unlinked_tickets": unlinked_tickets,
+            "orphan_stories": orphan_stories,
+            "summary": summary,
+        })
+        return
+
+    # Human-readable output
+    print_header(f"Story Audit: {epic_folder.name}")
+
+    if stories_missing:
+        console.print(f"  [yellow]⚠ No story file found at {stories_path}[/yellow]")
+        console.print()
+
+    if summary["fully_covered"] and not stories_missing:
+        console.print("  [green]✓ Full bidirectional coverage — zero gaps[/green]")
+        console.print(f"    {summary['total_tickets']} ticket(s), {summary['total_stories']} story/stories")
+        return
+
+    if unlinked_tickets:
+        console.print(f"  [red]Unlinked Tickets ({len(unlinked_tickets)}):[/red]")
+        for ut in unlinked_tickets:
+            console.print(f"    [dim]•[/dim] {ut['ticket_id']}: {ut['description']}")
+        console.print()
+
+    if orphan_stories:
+        console.print(f"  [yellow]Orphan Stories ({len(orphan_stories)}):[/yellow]")
+        for os_entry in orphan_stories:
+            console.print(f"    [dim]•[/dim] {os_entry['story_id']}: {os_entry['title']}")
+        console.print()
+
+    console.print(f"  [bold]Summary:[/bold] {summary['unlinked_ticket_count']} unlinked ticket(s), "
+                  f"{summary['orphan_story_count']} orphan story/stories")
