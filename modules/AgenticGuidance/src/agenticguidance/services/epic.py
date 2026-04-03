@@ -1088,3 +1088,42 @@ class EpicService:
 
         valid = len(errors) == 0
         return ValidationResult(valid=valid, errors=errors, warnings=warnings)
+
+    # @story US-002
+    def is_build_plan(self, epic_folder_name: str) -> bool:
+        """Classify whether an epic is a build plan based on its phase agents.
+
+        An epic is a build plan if ANY phase has an agent whose name starts with
+        a build-category prefix (e.g., 'build-python', 'build-flutter'). This
+        matches the AGENT_CATEGORIES mapping in agent_help.py where agents
+        starting with 'build-' map to the 'build' category.
+
+        Classification rules:
+        - No phases or no agent fields → False (non-build; avoids blocking
+          skeleton epics during scaffolding)
+        - All phases have non-build agents → False (infra/guidance epic)
+        - Any phase has a build agent → True (build plan)
+        - Mixed agents (some build, some infra) → True (conservative default)
+
+        Args:
+            epic_folder_name: Epic folder name to check (e.g.,
+                '260327AG_mandatory_ticket_story_binding_for_build_plans').
+
+        Returns:
+            True if the epic is a build plan, False otherwise.
+        """
+        BUILD_AGENT_PREFIXES = ("build-",)
+
+        if self._repository is None:
+            return False
+
+        phases = self._repository.list_phases(epic_folder_name)
+        if not phases:
+            return False
+
+        for phase in phases:
+            agent = getattr(phase, "agent", None)
+            if agent and any(agent.startswith(prefix) for prefix in BUILD_AGENT_PREFIXES):
+                return True
+
+        return False

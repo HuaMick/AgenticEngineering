@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from agenticguidance.services.story import get_epic_stories_path
 from agenticcli.utils.epic_lock import acquire_epic_lock, release_epic_lock
 from agenticcli.utils.phase_validation import validate_phase_routing
 from agenticcli.utils.session_id import generate_session_id
@@ -672,7 +673,7 @@ class PlannerLoopWorkflow:
 
         Args:
             epic_folder: Epic folder name.
-            categories: Optional list of category dicts from stories.yml. When
+            categories: Optional list of category dicts from the story file. When
                 provided and contains more than one entry, one agent is spawned
                 per category in parallel.
 
@@ -1194,7 +1195,7 @@ class PlannerLoopRunner:
         logger.warning("Max iterations (%d) reached without completion", max_iterations)
         return False
 
-    # Backoff schedule for stories.yml retry (seconds between attempts)
+    # Backoff schedule for story file retry (seconds between attempts)
     _STORY_PARSE_BACKOFF = [0.5, 1.0, 2.0]
 
     # File readiness check: max wait and poll interval (seconds)
@@ -1237,10 +1238,10 @@ class PlannerLoopRunner:
             return False
 
     def _parse_story_categories(self, epic_folder: str) -> list[dict] | None:
-        """Read categories from stories.yml in the epic folder.
+        """Read categories from the epic story file in docs/userstories/EpicStories/.
 
         Stories are REQUIRED — the build-story-writer agent must produce a valid
-        stories.yml with at least one category before exploration can proceed.
+        story file with at least one category before exploration can proceed.
 
         Retries with exponential backoff (0.5s, 1s, 2s) to handle transient
         file visibility failures — a race condition where the story agent has
@@ -1255,12 +1256,22 @@ class PlannerLoopRunner:
             epic_folder: Epic folder name.
 
         Returns:
-            List of category dicts, or None if stories.yml is missing/invalid
+            List of category dicts, or None if the story file is missing/invalid
             after all retry attempts are exhausted.
         """
         import yaml
 
-        stories_path = self.workflow.epics_dir / epic_folder / "stories.yml"
+        stories_path = get_epic_stories_path(epic_folder)
+
+        # Deprecation check: warn if stories.yml still exists at the old location
+        old_path = self.workflow.epics_dir / epic_folder / "stories.yml"
+        if old_path.exists():
+            logger.warning(
+                "DEPRECATED: stories.yml found at old location %s — "
+                "stories should be at %s. Run migration to consolidate.",
+                old_path, stories_path,
+            )
+
         max_retries = len(self._STORY_PARSE_BACKOFF)
         total_attempts = max_retries + 1  # 1 initial + retries
 
@@ -1269,7 +1280,7 @@ class PlannerLoopRunner:
             if attempt > 0:
                 delay = self._STORY_PARSE_BACKOFF[attempt - 1]
                 logger.info(
-                    "Retry %d/%d for stories.yml read (backoff %.1fs): %s",
+                    "Retry %d/%d for story file read (backoff %.1fs): %s",
                     attempt,
                     max_retries,
                     delay,
@@ -1281,16 +1292,15 @@ class PlannerLoopRunner:
             if not stories_path.exists():
                 if attempt < max_retries:
                     logger.warning(
-                        "stories.yml not found for %s (attempt %d/%d) — retrying",
+                        "Story file not found for %s (attempt %d/%d) — retrying",
                         epic_folder,
                         attempt + 1,
                         total_attempts,
                     )
                     continue
                 logger.error(
-                    "No stories.yml found for %s after %d attempts — stories are required. "
-                    "The build-story-writer agent must produce stories.yml before exploration. "
-                    "If this is a folder-free epic, the epic folder may not exist on disk.",
+                    "No story file found for %s after %d attempts — stories are required. "
+                    "The build-story-writer agent must produce the story file before exploration.",
                     epic_folder,
                     total_attempts,
                 )
@@ -1304,14 +1314,14 @@ class PlannerLoopRunner:
                 if not content.strip():
                     if attempt < max_retries:
                         logger.warning(
-                            "stories.yml is empty for %s (attempt %d/%d) — retrying",
+                            "Story file is empty for %s (attempt %d/%d) — retrying",
                             epic_folder,
                             attempt + 1,
                             total_attempts,
                         )
                         continue
                     logger.error(
-                        "stories.yml is empty for %s after %d attempts",
+                        "Story file is empty for %s after %d attempts",
                         epic_folder,
                         total_attempts,
                     )
@@ -1323,7 +1333,7 @@ class PlannerLoopRunner:
                 categories = data.get("categories", [])
                 if not categories:
                     logger.error(
-                        "stories.yml for %s has no categories — "
+                        "Story file for %s has no categories — "
                         "build-story-writer must define at least one category.",
                         epic_folder,
                     )
@@ -1331,7 +1341,7 @@ class PlannerLoopRunner:
 
                 if attempt > 0:
                     logger.info(
-                        "stories.yml parsed successfully on attempt %d/%d for %s",
+                        "Story file parsed successfully on attempt %d/%d for %s",
                         attempt + 1,
                         total_attempts,
                         epic_folder,
@@ -1342,15 +1352,14 @@ class PlannerLoopRunner:
                 # File disappeared between exists() check and open()
                 if attempt < max_retries:
                     logger.warning(
-                        "stories.yml disappeared for %s (attempt %d/%d) — retrying",
+                        "Story file disappeared for %s (attempt %d/%d) — retrying",
                         epic_folder,
                         attempt + 1,
                         total_attempts,
                     )
                     continue
                 logger.error(
-                    "stories.yml not found for %s after %d attempts. "
-                    "Epic folder may not exist on disk (folder-free epic).",
+                    "Story file not found for %s after %d attempts.",
                     epic_folder,
                     total_attempts,
                 )
@@ -1360,7 +1369,7 @@ class PlannerLoopRunner:
                 # YAML parse error — could be partial write, retry
                 if attempt < max_retries:
                     logger.warning(
-                        "YAML parse error for stories.yml in %s (attempt %d/%d): %s — retrying",
+                        "YAML parse error for story file in %s (attempt %d/%d): %s — retrying",
                         epic_folder,
                         attempt + 1,
                         total_attempts,
@@ -1368,7 +1377,7 @@ class PlannerLoopRunner:
                     )
                     continue
                 logger.error(
-                    "Failed to parse stories.yml for %s after %d attempts: %s",
+                    "Failed to parse story file for %s after %d attempts: %s",
                     epic_folder,
                     total_attempts,
                     e,
@@ -1383,7 +1392,7 @@ class PlannerLoopRunner:
 
         Pipeline (5 steps + promotion):
         1. Epic Creator    → scaffold phases + skeleton tickets
-        2. Story Writer    → generate user stories + categories → stories.yml
+        2. Story Writer    → generate user stories + categories → docs/userstories/EpicStories/
         3. Parallel Explore → N agents, one per category
         4. Pre-flight      → Python validation (advisory, replaces design+review)
         5. Orchestration   → add agent routing to phases
@@ -1466,17 +1475,28 @@ class PlannerLoopRunner:
             if agent and agent not in known_agents:
                 warnings.append(f"Ticket {t.id} references unknown agent '{agent}'")
 
-        # BLOCKING: Story references required on tickets after explore phase
+        # @story US-003
+        # BLOCKING: Story references required per-ticket for build-plan epics
         # Per planning-standard.yml FENCE: STORY-FIRST PLANNING
-        # At this point, build-story-writer has succeeded and stories.yml exists.
+        # At this point, build-story-writer has succeeded and the story file exists.
         # Explore agents should have populated story_ids on tickets.
-        has_story_refs = any(t.story_ids for t in tickets)
-        if not has_story_refs:
-            errors.append(
-                "No tickets reference story_ids — stories are required. "
-                "Explore agents must populate story_ids on tickets "
-                "(per FENCE: STORY-FIRST PLANNING in planning-standard.yml)"
-            )
+        try:
+            from agenticguidance.services.epic import EpicService
+
+            epic_svc = EpicService()
+            is_build = epic_svc.is_build_plan(epic_folder)
+        except ImportError:
+            is_build = False
+
+        if is_build:
+            for t in tickets:
+                ticket_stories = getattr(t, "story_ids", None) or []
+                if not ticket_stories:
+                    errors.append(
+                        f"Ticket {t.id} missing story_ids — "
+                        "required for build-plan epics "
+                        "(per FENCE: STORY-FIRST PLANNING in planning-standard.yml)"
+                    )
 
         for w in warnings:
             logger.warning("Pre-flight validation: %s", w)
@@ -1587,7 +1607,7 @@ class PlannerLoopRunner:
 
         Pipeline (5 steps + promotion):
         1. Epic Creator    → scaffold phases + skeleton tickets
-        2. Story Writer    → generate user stories + categories → stories.yml
+        2. Story Writer    → generate user stories + categories → docs/userstories/EpicStories/
         3. Parallel Explore → N agents, one per category
         4. Pre-flight      → Python validation (advisory, replaces design+review)
         5. Orchestration   → create TinyDB phase records with agent routing
@@ -1649,10 +1669,9 @@ class PlannerLoopRunner:
         if self.workflow._repository:
             self.workflow._repository.refresh()
 
-        # Lazy folder creation: only create epic folder when story agent
-        # needs to write stories.yml output. Folder-free epics skip this.
-        epic_path = self.workflow.epics_dir / epic_folder
-        epic_path.mkdir(parents=True, exist_ok=True)
+        # Ensure EpicStories directory exists for story agent output.
+        stories_dir = get_epic_stories_path(epic_folder).parent
+        stories_dir.mkdir(parents=True, exist_ok=True)
 
         # 2. Story generation: run story agent
         story_result = self.workflow.spawn_story_agent(epic_folder)
@@ -1667,35 +1686,35 @@ class PlannerLoopRunner:
             })
             return False
 
-        # File readiness gate: wait for stories.yml to exist and have content
+        # File readiness gate: wait for story file to exist and have content
         # before attempting to parse.  This guards against filesystem sync delay
         # after the story agent process exits (separate from parse retry logic).
-        stories_path = self.workflow.epics_dir / epic_folder / "stories.yml"
+        stories_path = get_epic_stories_path(epic_folder)
         if not self._wait_for_file_ready(stories_path):
             self.state["errors"].append({
                 "plan": epic_folder,
                 "error": (
-                    "stories.yml not ready after build-story-writer completed — "
+                    "Story file not ready after build-story-writer completed — "
                     "file missing or empty"
                 ),
                 "phase": "story_parsing",
             })
             return False
 
-        # Parse categories from stories.yml (written by the story agent).
+        # Parse categories from story file (written by the story agent).
         # Stories are REQUIRED — if missing or empty, abort the pipeline.
         story_categories = self._parse_story_categories(epic_folder)
         if story_categories is None:
             self.state["errors"].append({
                 "plan": epic_folder,
-                "error": "stories.yml missing or invalid after build-story-writer completed — stories are required",
+                "error": "Story file missing or invalid after build-story-writer completed — stories are required",
                 "phase": "story_parsing",
             })
             return False
         if not story_categories:
             self.state["errors"].append({
                 "plan": epic_folder,
-                "error": "stories.yml has no categories — build-story-writer must define at least one category",
+                "error": "Story file has no categories — build-story-writer must define at least one category",
                 "phase": "story_parsing",
             })
             return False

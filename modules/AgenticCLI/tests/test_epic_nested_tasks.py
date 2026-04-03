@@ -362,3 +362,111 @@ class TestEdgeCases:
         # Verify TinyDB update worked
         status = _get_ticket_status(_isolate_tinydb, "260127SC_special", "TEST-TASK_001-v2")
         assert status == "in_progress"
+
+
+@pytest.fixture
+def plan_with_story_ids(tmp_path, _isolate_tinydb):
+    """Create a plan where tickets have story_ids populated."""
+    plan_dir = tmp_path / "260401SI_story_ids"
+    plan_dir.mkdir()
+
+    yaml_data = {
+        "name": "test-story-ids",
+        "status": "pending",
+        "phases": [
+            {
+                "phase_id": "P1",
+                "name": "Build Phase",
+                "status": "pending",
+                "tickets": [
+                    {
+                        "id": "SI-001",
+                        "name": "Task with stories",
+                        "description": "Has story_ids",
+                        "status": "pending",
+                        "story_ids": ["US-CLI-110", "US-CLI-111"],
+                        "target_files": ["src/foo.py"],
+                    },
+                    {
+                        "id": "SI-002",
+                        "name": "Task without stories",
+                        "description": "No story_ids",
+                        "status": "pending",
+                    },
+                ],
+            },
+        ],
+    }
+
+    populate_tinydb_from_yaml(_isolate_tinydb, "260401SI_story_ids", plan_dir, yaml_data)
+    yield plan_dir
+
+
+@pytest.mark.story("US-PLN-009")
+class TestStoryIdsSerialization:
+    """Tests for story_ids field in cmd_task_current and cmd_task_list output."""
+
+    def test_task_current_includes_story_ids_in_json(
+        self, plan_with_story_ids, cli_runner
+    ):
+        """cmd_task_current JSON output includes story_ids from TinyDB."""
+        import json
+
+        stdout, stderr, code = cli_runner(
+            ["-j", "epic", "ticket", "current", "--plan", str(plan_with_story_ids)]
+        )
+        assert code == 0
+        data = json.loads(stdout)
+        task = data["task"]
+        assert task["id"] == "SI-001"
+        assert task["story_ids"] == ["US-CLI-110", "US-CLI-111"]
+
+    def test_task_current_renders_story_ids_in_console(
+        self, plan_with_story_ids, cli_runner
+    ):
+        """cmd_task_current console output shows Affected Stories section."""
+        stdout, stderr, code = cli_runner(
+            ["epic", "ticket", "current", "--plan", str(plan_with_story_ids)]
+        )
+        assert code == 0
+        assert "Affected Stories" in stdout
+        assert "US-CLI-110" in stdout
+        assert "US-CLI-111" in stdout
+
+    def test_task_current_empty_story_ids(
+        self, plan_with_story_ids, cli_runner, _isolate_tinydb
+    ):
+        """cmd_task_current handles tickets with no story_ids gracefully."""
+        import json
+
+        # Complete SI-001 so SI-002 (no stories) becomes current
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
+        repo.update_ticket_status("260401SI_story_ids", "SI-001", "completed")
+        repo.close()
+
+        stdout, stderr, code = cli_runner(
+            ["-j", "epic", "ticket", "current", "--plan", str(plan_with_story_ids)]
+        )
+        assert code == 0
+        data = json.loads(stdout)
+        task = data["task"]
+        assert task["id"] == "SI-002"
+        assert task["story_ids"] == []
+
+    def test_task_list_verbose_includes_story_ids(
+        self, plan_with_story_ids, cli_runner
+    ):
+        """cmd_task_list verbose JSON output includes story_ids."""
+        import json
+
+        stdout, stderr, code = cli_runner(
+            ["-j", "epic", "ticket", "list", "-v", "--plan", str(plan_with_story_ids)]
+        )
+        assert code == 0
+        data = json.loads(stdout)
+        tasks = data["tasks"]
+        si_001 = next(t for t in tasks if t["id"] == "SI-001")
+        assert si_001["story_ids"] == ["US-CLI-110", "US-CLI-111"]
+        si_002 = next(t for t in tasks if t["id"] == "SI-002")
+        assert si_002["story_ids"] == []

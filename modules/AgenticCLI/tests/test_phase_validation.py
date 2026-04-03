@@ -220,6 +220,39 @@ class TestValidatePhaseRouting:
         assert is_valid is True
         assert reason is None
 
+    def test_invalid_agent_name_rejected(self, tmp_path):
+        """Phase with a non-existent agent name → invalid."""
+        repo = _make_repo(tmp_path)
+        _seed_epic(repo)
+
+        repo.add_phase(EPIC_FOLDER, {"name": "Test", "agent": "test-runner"})
+        repo.add_ticket(EPIC_FOLDER, "Test", {
+            "task_id": "T01", "name": "Task", "status": "pending",
+        })
+
+        is_valid, reason = validate_phase_routing(repo, EPIC_FOLDER)
+
+        assert is_valid is False
+        assert "invalid agent names" in reason
+        assert "test-runner" in reason
+
+    def test_mixed_valid_and_invalid_agents(self, tmp_path):
+        """One valid + one invalid agent → invalid, names the bad one."""
+        repo = _make_repo(tmp_path)
+        _seed_epic(repo)
+
+        repo.add_phase(EPIC_FOLDER, {"name": "Build", "agent": "build-python"})
+        repo.add_phase(EPIC_FOLDER, {"name": "Validate", "agent": "test-user-simulator"})
+        repo.add_ticket(EPIC_FOLDER, "Build", {
+            "task_id": "T01", "name": "Task", "status": "pending",
+        })
+
+        is_valid, reason = validate_phase_routing(repo, EPIC_FOLDER)
+
+        assert is_valid is False
+        assert "test-user-simulator" in reason
+        assert "Build" not in reason  # Valid phase should not be listed
+
 
 # ── has_any_routed_phase tests ───────────────────────────────────────────────
 
@@ -261,3 +294,49 @@ class TestHasAnyRoutedPhase:
 
         phases = repo.list_phases(EPIC_FOLDER)
         assert has_any_routed_phase(phases) is False
+
+
+# ── Stale phase recovery tests ──────────────────────────────────────────────
+
+
+@pytest.mark.story("US-PLN-093")
+class TestStalePhaseRecovery:
+    """Tests for ExecutionRunner._recover_stale_phases."""
+
+    def test_resets_in_progress_to_pending(self, tmp_path):
+        """Phases stuck in in_progress are reset to pending."""
+        from unittest.mock import MagicMock
+        from agenticcli.workflows.orchestration import ExecutionRunner
+
+        repo = _make_repo(tmp_path)
+        _seed_epic(repo)
+        repo.add_phase(EPIC_FOLDER, {"name": "Build", "agent": "build-python", "status": "in_progress"})
+        repo.add_phase(EPIC_FOLDER, {"name": "Test", "agent": "test-builder", "status": "pending"})
+
+        runner = ExecutionRunner.__new__(ExecutionRunner)
+        runner.workflow = MagicMock()
+        runner.state = {"errors": [], "phases_completed": [], "phases_failed": []}
+        runner._recover_stale_phases(repo, EPIC_FOLDER)
+
+        phases = repo.list_phases(EPIC_FOLDER)
+        build_phase = next(p for p in phases if p.name == "Build")
+        test_phase = next(p for p in phases if p.name == "Test")
+        assert build_phase.status == "pending"
+        assert test_phase.status == "pending"  # unchanged
+
+    def test_ignores_completed_phases(self, tmp_path):
+        """Completed phases are not touched by recovery sweep."""
+        from unittest.mock import MagicMock
+        from agenticcli.workflows.orchestration import ExecutionRunner
+
+        repo = _make_repo(tmp_path)
+        _seed_epic(repo)
+        repo.add_phase(EPIC_FOLDER, {"name": "Build", "agent": "build-python", "status": "completed"})
+
+        runner = ExecutionRunner.__new__(ExecutionRunner)
+        runner.workflow = MagicMock()
+        runner.state = {"errors": [], "phases_completed": [], "phases_failed": []}
+        runner._recover_stale_phases(repo, EPIC_FOLDER)
+
+        phases = repo.list_phases(EPIC_FOLDER)
+        assert phases[0].status == "completed"

@@ -57,6 +57,16 @@ def validate_phase_routing(
         names = ", ".join(unrouted)
         return False, f"phases missing agent routing: {names}"
 
+    # 2b. Check all agent names are in the valid roster
+    from agenticcli.commands.epic import get_valid_agent_types
+
+    valid_agents = get_valid_agent_types()
+    if valid_agents:
+        invalid = [(p.name, p.agent) for p in phases if p.agent and p.agent not in valid_agents]
+        if invalid:
+            details = ", ".join(f"{name} (agent={agent})" for name, agent in invalid)
+            return False, f"phases have invalid agent names: {details}"
+
     # 3. Check ticket status — all-proposed means skeleton only, needs planning
     epic_data = repo.get_epic(epic_folder)
     tickets = epic_data.tasks if epic_data else []

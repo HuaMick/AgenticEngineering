@@ -197,6 +197,51 @@ process:
 
         Output: resume_phase (name of phase to start/resume)
 
+    - id: "startup_story_linkage_gate"
+      name: "PRE-EXECUTION STORY LINKAGE GATE"
+      description: |
+        FENCE: Before executing any phase, verify that every ticket in build-plan
+        epics has story_ids populated. This gate prevents unlinked work items from
+        reaching execution.
+
+        PRE-EXECUTION STORY LINKAGE CHECK:
+        1. Query TinyDB for all tickets in the epic:
+           `agentic -j epic ticket list --epic {epic_folder_name}`
+
+        2. Determine if this is a build-plan epic:
+           - Check if any phase has a build-category agent (build-python, build-flutter, etc.)
+           - If NO build agents found → BYPASS this gate (infra/guidance epics are exempt)
+
+        3. For build-plan epics, check every ticket for story_ids:
+           - Iterate ALL tickets from TinyDB
+           - For each ticket where story_ids is empty or missing → record as offending
+
+        4. If ANY ticket lacks story_ids → BLOCK execution:
+           "PRE-EXECUTION STORY LINKAGE GATE FAILURE
+
+            Cannot execute build-plan epic — tickets missing story_ids.
+
+            Offending tickets:
+            - {ticket_id}: {ticket_name}
+
+            REQUIRED ACTION:
+            Add story_ids to each ticket:
+            agentic epic ticket update {ticket_id} --epic {epic_folder_name} --story-ids 'US-XXX,...'
+
+            Or run `agentic stories audit --epic {epic_folder_name}` for full gap report."
+
+        5. If all tickets have story_ids → proceed to state file initialization
+
+        BYPASS CONDITIONS:
+        - Epic has no build-category phase agents (infra/guidance epic)
+        - Epic has no tickets yet (will be caught by phase execution)
+
+      fence: |
+        FENCE: PRE-EXECUTION STORY LINKAGE
+        Build-plan epics MUST NOT proceed to execution with unlinked tickets.
+        This gate runs after startup validation and before state file initialization.
+        Infra/guidance epics bypass this gate entirely.
+
     - id: "startup_init_state_file"
       name: "Initialise Execution State File"
       description: |

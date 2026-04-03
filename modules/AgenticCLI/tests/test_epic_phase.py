@@ -583,3 +583,27 @@ class TestPhaseListEdgeCases:
         assert code == 0
         assert "Phase without tasks key" in stdout
         assert "0" in stdout  # 0 tasks
+
+
+@pytest.mark.story("US-PLN-028")
+class TestPhaseAddAgentValidation:
+    """Tests for agent name validation in cmd_phase_add."""
+
+    def test_rejects_invalid_agent_name(self, empty_plan, cli_runner):
+        """Attempting to add a phase with a non-existent agent name fails."""
+        stdout, stderr, code = cli_runner(
+            ["epic", "phase", "add", "--id", "P1", "--name", "Bad Phase",
+             "--agent", "test-runner", "--plan", str(empty_plan)]
+        )
+        assert code != 0
+        combined = stdout + stderr
+        assert "Unknown agent" in combined or "unknown agent" in combined.lower()
+        assert "test-runner" in combined
+
+    def test_accepts_valid_agent_name(self, empty_plan, cli_runner):
+        """Adding a phase with a valid agent name succeeds."""
+        stdout, stderr, code = cli_runner(
+            ["epic", "phase", "add", "--id", "P1", "--name", "Good Phase",
+             "--agent", "build-python", "--plan", str(empty_plan)]
+        )
+        assert code == 0

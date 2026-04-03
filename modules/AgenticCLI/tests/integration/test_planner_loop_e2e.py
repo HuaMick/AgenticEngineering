@@ -145,7 +145,7 @@ class TestPlannerLoopE2E:
         """Create a PlannerLoopRunner with selected methods monkeypatched.
 
         All spawn methods default to returning _ok_result() unless overridden.
-        Story mocks auto-write stories.yml (stories are required).
+        Story mocks auto-write story files to EpicStories/ (stories are required).
         """
         import yaml
         from agenticcli.workflows.planner_loop import PlannerLoopRunner
@@ -159,11 +159,19 @@ class TestPlannerLoopE2E:
             monkeypatch.setattr(workflow, "discover_plans_needing_orchestration",
                                 overrides["discover"])
 
-        # Story file writer: ensures stories.yml exists (stories are required)
+        # Monkeypatch get_epic_stories_path to write to a test-local
+        # docs/userstories/EpicStories/ directory instead of the real one.
+        userstories_dir = workflow.epics_dir.parent.parent / "userstories" / "EpicStories"
+        userstories_dir.mkdir(parents=True, exist_ok=True)
+
+        import agenticcli.workflows.planner_loop as _plmod
+        def _test_get_epic_stories_path(epic_name):
+            return userstories_dir / f"{epic_name}.yml"
+        monkeypatch.setattr(_plmod, "get_epic_stories_path", _test_get_epic_stories_path)
+
+        # Story file writer: ensures story file exists (stories are required)
         def _write_stories_yml(pf):
-            epic_dir = workflow.epics_dir / pf
-            epic_dir.mkdir(parents=True, exist_ok=True)
-            stories_path = epic_dir / "stories.yml"
+            stories_path = userstories_dir / f"{pf}.yml"
             if not stories_path.exists():
                 stories_path.write_text(yaml.dump({
                     "stories": [{"id": "US-001", "title": "Test story"}],
@@ -174,7 +182,7 @@ class TestPlannerLoopE2E:
             _write_stories_yml(pf)
             return _ok_result()
 
-        # If caller provided a custom spawn_story, wrap it to write stories.yml on success
+        # If caller provided a custom spawn_story, wrap it to write story file on success
         custom_story = overrides.get("spawn_story")
         if custom_story is not None:
             _original = custom_story

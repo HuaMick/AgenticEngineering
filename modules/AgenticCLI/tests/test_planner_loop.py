@@ -28,7 +28,8 @@ _UNSET = object()  # Sentinel for "not provided" vs explicit None
 
 
 def _setup_tinydb_for_workflow(tmp_path, epic_folder_name, *, agent_type=None,
-                                context=None, status=_UNSET, tickets=None):
+                                context=None, status=_UNSET, tickets=None,
+                                phase_agent=None):
     """Set up TinyDB for PlannerLoopWorkflow tests.
 
     Creates a .git marker so the workflow can find the repo root,
@@ -43,6 +44,8 @@ def _setup_tinydb_for_workflow(tmp_path, epic_folder_name, *, agent_type=None,
                 omit the status field entirely; omit the arg to default "active".
         tickets: List of ticket dicts [{id, name, status, agent_type, ...}].
                  If None and agent_type is given, one ticket is created.
+        phase_agent: Agent type for the phase (e.g. "build-python"). When set,
+                     is_build_plan() will classify this epic as a build plan.
 
     Returns:
         db_path: Path to the isolated TinyDB file.
@@ -72,7 +75,10 @@ def _setup_tinydb_for_workflow(tmp_path, epic_folder_name, *, agent_type=None,
     repo.create_epic(epic_doc)
 
     phase_name = "Phase 1"
-    repo.add_phase(epic_folder_name, {"name": phase_name})
+    phase_doc = {"name": phase_name}
+    if phase_agent is not None:
+        phase_doc["agent"] = phase_agent
+    repo.add_phase(epic_folder_name, phase_doc)
 
     # Use provided tickets list OR build one from agent_type
     if tickets is not None:
@@ -251,12 +257,20 @@ class TestPlannerLoopRunner:
 
         workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
 
-        # Story file writer: ensures stories.yml exists (stories are required).
+        # Monkeypatch get_epic_stories_path to write to a test-local
+        # docs/userstories/EpicStories/ directory instead of the real one.
+        userstories_dir = tmp_epics_dir.parent.parent / "userstories" / "EpicStories"
+        userstories_dir.mkdir(parents=True, exist_ok=True)
+
+        import agenticcli.workflows.planner_loop as _plmod
+        def _test_get_epic_stories_path(epic_name):
+            return userstories_dir / f"{epic_name}.yml"
+        monkeypatch.setattr(_plmod, "get_epic_stories_path", _test_get_epic_stories_path)
+
+        # Story file writer: ensures story file exists (stories are required).
         # Wraps any provided spawn_story override so it also writes the file.
         def _write_stories_yml(pf):
-            epic_dir = tmp_epics_dir / pf
-            epic_dir.mkdir(parents=True, exist_ok=True)
-            stories_path = epic_dir / "stories.yml"
+            stories_path = userstories_dir / f"{pf}.yml"
             if not stories_path.exists():
                 stories_path.write_text(yaml.dump({
                     "stories": [{"id": "US-001", "title": "Test story"}],
@@ -267,7 +281,7 @@ class TestPlannerLoopRunner:
             _write_stories_yml(pf)
             return _ok_result(session_id="story-session-default")
 
-        # If caller provided a custom spawn_story, wrap it to also write stories.yml
+        # If caller provided a custom spawn_story, wrap it to also write story file
         # (only on success — failed story agents don't produce output)
         custom_story = overrides.get("spawn_story")
         if custom_story is not None:
@@ -967,16 +981,23 @@ class TestValidateResult:
         (tmp_epics_dir / "my_test_plan").mkdir(exist_ok=True)
 
         workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
+
+        # Monkeypatch get_epic_stories_path to use test-local EpicStories dir
+        import agenticcli.workflows.planner_loop as _plmod
+        epic_stories_dir = tmp_epics_dir.parent.parent / "userstories" / "EpicStories"
+        epic_stories_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(_plmod, "get_epic_stories_path",
+                            lambda name: epic_stories_dir / f"{name}.yml")
+
         monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "in_progress")
         monkeypatch.setattr(workflow, "run_health_check", lambda: None)
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda pf: _ok_result(duration_ms=100))
         monkeypatch.setattr(workflow, "spawn_explore_agents", lambda pf, **kw: _ok_result(duration_ms=100))
 
-        # Story mock: writes stories.yml (stories are required)
+        # Story mock: writes story file to EpicStories (stories are required)
         def _story_mock(pf):
-            story_dir = tmp_epics_dir / pf
-            story_dir.mkdir(parents=True, exist_ok=True)
-            (story_dir / "stories.yml").write_text(yaml.dump({
+            stories_path = epic_stories_dir / f"{pf}.yml"
+            stories_path.write_text(yaml.dump({
                 "stories": [{"id": "US-001", "title": "Test story"}],
                 "categories": [{"name": "default", "story_ids": ["US-001"]}],
             }))
@@ -1374,13 +1395,15 @@ class TestWaitForSessionTmux:
 class TestValidatePlanningOutput:
     """Tests for _validate_planning_output pre-flight validation."""
 
-    def _make_runner_with_repo(self, tmp_path, monkeypatch, epic_folder, tickets):
+    def _make_runner_with_repo(self, tmp_path, monkeypatch, epic_folder, tickets,
+                               phase_agent="build-python"):
         """Create a PlannerLoopRunner with real TinyDB and tickets."""
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
         from agenticguidance.services.epic_repository import EpicRepository
 
         db_path = _setup_tinydb_for_workflow(
             tmp_path, epic_folder, tickets=tickets,
+            phase_agent=phase_agent,
         )
         workflow = PlannerLoopWorkflow(epics_dir=tmp_path / "docs" / "epics" / "live")
         workflow._repository = EpicRepository(db_path=db_path, auto_bootstrap=False)
@@ -1464,54 +1487,145 @@ class TestValidatePlanningOutput:
         assert valid is False
         assert any("story_ids" in e for e in errors)
 
+    # --- TS_003: Per-ticket story_ids checking ---
+
+    def test_build_epic_partial_story_ids_reports_offending_tickets(self, tmp_path, monkeypatch):
+        """Build epic with 5 tickets, 3 missing story_ids → errors for exactly 3 tickets."""
+        runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
+            {"task_id": "T1", "name": "Task 1", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/a.py"],
+             "guidance": "Do A", "story_ids": ["US-PLN-073"]},
+            {"task_id": "T2", "name": "Task 2", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/b.py"],
+             "guidance": "Do B"},
+            {"task_id": "T3", "name": "Task 3", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/c.py"],
+             "guidance": "Do C", "story_ids": ["US-PLN-074"]},
+            {"task_id": "T4", "name": "Task 4", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/d.py"],
+             "guidance": "Do D"},
+            {"task_id": "T5", "name": "Task 5", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/e.py"],
+             "guidance": "Do E"},
+        ])
+        valid, errors = runner._validate_planning_output("test_epic")
+        assert valid is False
+        # Exactly 3 tickets missing story_ids → 3 errors
+        story_errors = [e for e in errors if "story_ids" in e]
+        assert len(story_errors) == 3
+        # Each error mentions the offending ticket ID
+        assert any("T2" in e for e in story_errors)
+        assert any("T4" in e for e in story_errors)
+        assert any("T5" in e for e in story_errors)
+        # T1 and T3 (with story_ids) should NOT appear in story errors
+        assert not any("T1" in e for e in story_errors)
+        assert not any("T3" in e for e in story_errors)
+
+    def test_build_epic_all_tickets_have_story_ids_passes(self, tmp_path, monkeypatch):
+        """Build epic with all tickets having story_ids → valid=True."""
+        runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
+            {"task_id": "T1", "name": "Task 1", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/a.py"],
+             "guidance": "Do A", "story_ids": ["US-PLN-073"]},
+            {"task_id": "T2", "name": "Task 2", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/b.py"],
+             "guidance": "Do B", "story_ids": ["US-PLN-074"]},
+            {"task_id": "T3", "name": "Task 3", "status": "proposed",
+             "agent": "build-python", "target_files": ["src/c.py"],
+             "guidance": "Do C", "story_ids": ["US-PLN-073", "US-PLN-074"]},
+        ])
+        valid, issues = runner._validate_planning_output("test_epic")
+        assert valid is True
+        # No story-related errors
+        assert not any("story_ids" in i for i in issues)
+
+    def test_infra_epic_no_story_ids_passes(self, tmp_path, monkeypatch):
+        """Infra epic (teacher/deploy agents) with NO story_ids → valid=True (exempt)."""
+        runner = self._make_runner_with_repo(
+            tmp_path, monkeypatch, "test_epic",
+            [
+                {"task_id": "T1", "name": "Update guidance", "status": "proposed",
+                 "agent": "teacher-update-guidance", "target_files": ["docs/a.yml"],
+                 "guidance": "Update file"},
+                {"task_id": "T2", "name": "Deploy CI/CD", "status": "proposed",
+                 "agent": "deploy-cicd", "target_files": ["ci/pipeline.yml"],
+                 "guidance": "Setup pipeline"},
+            ],
+            phase_agent="teacher-update-guidance",
+        )
+        valid, issues = runner._validate_planning_output("test_epic")
+        assert valid is True
+        # No story-related errors for infra epics
+        assert not any("story_ids" in i for i in issues)
+
+    def test_advisory_checks_still_work_alongside_story_enforcement(self, tmp_path, monkeypatch):
+        """Advisory warnings (target_files, guidance) still fire even when story check passes."""
+        runner = self._make_runner_with_repo(tmp_path, monkeypatch, "test_epic", [
+            {"task_id": "T1", "name": "Build X", "status": "proposed",
+             "agent": "build-python",
+             "story_ids": ["US-PLN-073"]},
+            # No target_files, no guidance → should produce advisory warnings
+        ])
+        valid, warnings = runner._validate_planning_output("test_epic")
+        assert valid is True  # Advisory only, not blocking
+        assert any("target_files" in w for w in warnings)
+        assert any("guidance" in w for w in warnings)
+
 
 @pytest.mark.story("US-PLN-053")
 class TestParseStoryCategories:
     """Tests for _parse_story_categories — stories are required."""
 
-    def _make_runner(self, tmp_path):
+    def _make_runner(self, tmp_path, monkeypatch):
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
+        import agenticcli.workflows.planner_loop as _plmod
         workflow = PlannerLoopWorkflow(epics_dir=tmp_path)
+        # Monkeypatch get_epic_stories_path to use test-local EpicStories dir
+        epic_stories_dir = tmp_path / "userstories" / "EpicStories"
+        epic_stories_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(_plmod, "get_epic_stories_path",
+                            lambda name: epic_stories_dir / f"{name}.yml")
         return PlannerLoopRunner(workflow=workflow)
 
-    def test_missing_stories_yml_returns_none(self, tmp_path):
-        """Missing stories.yml returns None (not empty list)."""
+    def _epic_stories_path(self, tmp_path, epic_folder):
+        path = tmp_path / "userstories" / "EpicStories" / f"{epic_folder}.yml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def test_missing_stories_yml_returns_none(self, tmp_path, monkeypatch):
+        """Missing story file returns None (not empty list)."""
         epic_folder = "my_epic"
-        (tmp_path / epic_folder).mkdir()
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
         assert result is None
 
-    def test_empty_categories_returns_none(self, tmp_path):
-        """stories.yml with no categories returns None."""
+    def test_empty_categories_returns_none(self, tmp_path, monkeypatch):
+        """Story file with no categories returns None."""
         import yaml
         epic_folder = "my_epic"
-        (tmp_path / epic_folder).mkdir()
-        stories_path = tmp_path / epic_folder / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         stories_path.write_text(yaml.dump({"stories": [{"id": "US-001"}], "categories": []}))
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
         assert result is None
 
-    def test_valid_categories_returned(self, tmp_path):
-        """stories.yml with categories returns the list."""
+    def test_valid_categories_returned(self, tmp_path, monkeypatch):
+        """Story file with categories returns the list."""
         import yaml
         epic_folder = "my_epic"
-        (tmp_path / epic_folder).mkdir()
         categories = [{"name": "cli", "story_ids": ["US-001"]}]
-        stories_path = tmp_path / epic_folder / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         stories_path.write_text(yaml.dump({"stories": [], "categories": categories}))
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
         assert result == categories
 
-    def test_invalid_yaml_returns_none(self, tmp_path):
-        """Unparseable stories.yml returns None."""
+    def test_invalid_yaml_returns_none(self, tmp_path, monkeypatch):
+        """Unparseable story file returns None."""
         epic_folder = "my_epic"
-        (tmp_path / epic_folder).mkdir()
-        stories_path = tmp_path / epic_folder / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         stories_path.write_text(": invalid: yaml: [")
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
         assert result is None
 
@@ -1526,10 +1640,21 @@ class TestParseStoryCategoriesRetry:
     while data errors (valid YAML missing categories) are NOT retried.
     """
 
-    def _make_runner(self, tmp_path):
+    def _make_runner(self, tmp_path, monkeypatch):
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
+        import agenticcli.workflows.planner_loop as _plmod
         workflow = PlannerLoopWorkflow(epics_dir=tmp_path)
+        # Monkeypatch get_epic_stories_path to use test-local EpicStories dir
+        epic_stories_dir = tmp_path / "userstories" / "EpicStories"
+        epic_stories_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(_plmod, "get_epic_stories_path",
+                            lambda name: epic_stories_dir / f"{name}.yml")
         return PlannerLoopRunner(workflow=workflow)
+
+    def _epic_stories_path(self, tmp_path, epic_folder):
+        path = tmp_path / "userstories" / "EpicStories" / f"{epic_folder}.yml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
 
     def test_retry_on_file_not_found_then_success(self, tmp_path, monkeypatch):
         """File appears on 2nd attempt after FileNotFoundError — retries succeed."""
@@ -1538,7 +1663,7 @@ class TestParseStoryCategoriesRetry:
         epic_folder = "my_epic"
         epic_dir = tmp_path / epic_folder
         epic_dir.mkdir()
-        stories_path = epic_dir / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         categories = [{"name": "cli", "story_ids": ["US-001"]}]
 
         # Track sleep calls to verify backoff
@@ -1563,7 +1688,7 @@ class TestParseStoryCategoriesRetry:
 
         monkeypatch.setattr("builtins.open", _mock_open)
 
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
 
         assert result == categories
@@ -1578,7 +1703,7 @@ class TestParseStoryCategoriesRetry:
         epic_folder = "my_epic"
         epic_dir = tmp_path / epic_folder
         epic_dir.mkdir()
-        stories_path = epic_dir / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         categories = [{"name": "backend", "story_ids": ["US-002"]}]
 
         sleep_calls = []
@@ -1602,7 +1727,7 @@ class TestParseStoryCategoriesRetry:
 
         monkeypatch.setattr("builtins.open", _mock_open)
 
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
 
         assert result == categories
@@ -1616,7 +1741,7 @@ class TestParseStoryCategoriesRetry:
         epic_folder = "my_epic"
         epic_dir = tmp_path / epic_folder
         epic_dir.mkdir()
-        stories_path = epic_dir / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         categories = [{"name": "frontend", "story_ids": ["US-003"]}]
 
         sleep_calls = []
@@ -1638,7 +1763,7 @@ class TestParseStoryCategoriesRetry:
 
         monkeypatch.setattr("builtins.open", _mock_open)
 
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
 
         assert result == categories
@@ -1652,13 +1777,13 @@ class TestParseStoryCategoriesRetry:
         epic_folder = "my_epic"
         epic_dir = tmp_path / epic_folder
         epic_dir.mkdir()
-        stories_path = epic_dir / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         stories_path.write_text(yaml.dump({"stories": [{"id": "US-001"}], "categories": []}))
 
         sleep_calls = []
         monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
 
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
 
         assert result is None
@@ -1669,12 +1794,12 @@ class TestParseStoryCategoriesRetry:
         epic_folder = "my_epic"
         epic_dir = tmp_path / epic_folder
         epic_dir.mkdir()
-        # No stories.yml — all attempts will hit FileNotFoundError path
+        # No story file — all attempts will hit FileNotFoundError path
 
         sleep_calls = []
         monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
 
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
 
         assert result is None
@@ -1686,12 +1811,12 @@ class TestParseStoryCategoriesRetry:
         epic_folder = "my_epic"
         epic_dir = tmp_path / epic_folder
         epic_dir.mkdir()
-        # No stories.yml created — stays missing for all attempts
+        # No story file created — stays missing for all attempts
 
         sleep_calls = []
         monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
 
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
 
         assert result is None
@@ -1702,13 +1827,13 @@ class TestParseStoryCategoriesRetry:
         epic_folder = "my_epic"
         epic_dir = tmp_path / epic_folder
         epic_dir.mkdir()
-        stories_path = epic_dir / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         stories_path.write_text("")  # Empty file persists
 
         sleep_calls = []
         monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
 
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
 
         assert result is None
@@ -1719,13 +1844,13 @@ class TestParseStoryCategoriesRetry:
         epic_folder = "my_epic"
         epic_dir = tmp_path / epic_folder
         epic_dir.mkdir()
-        stories_path = epic_dir / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         stories_path.write_text(": invalid: yaml: [")
 
         sleep_calls = []
         monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
 
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         result = runner._parse_story_categories(epic_folder)
 
         assert result is None
@@ -1739,7 +1864,7 @@ class TestParseStoryCategoriesRetry:
         epic_folder = "my_epic"
         epic_dir = tmp_path / epic_folder
         epic_dir.mkdir()
-        stories_path = epic_dir / "stories.yml"
+        stories_path = self._epic_stories_path(tmp_path, epic_folder)
         categories = [{"name": "infra", "story_ids": ["US-004"]}]
 
         sleep_calls = []
@@ -1761,7 +1886,7 @@ class TestParseStoryCategoriesRetry:
 
         monkeypatch.setattr(Path, "exists", _mock_exists)
 
-        runner = self._make_runner(tmp_path)
+        runner = self._make_runner(tmp_path, monkeypatch)
         with caplog.at_level(logging.INFO):
             result = runner._parse_story_categories(epic_folder)
 
@@ -1796,14 +1921,20 @@ class TestTicketPromotion:
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
         workflow._repository = EpicRepository(db_path=db_path, auto_bootstrap=False)
 
+        # Monkeypatch get_epic_stories_path to use test-local EpicStories dir
+        import agenticcli.workflows.planner_loop as _plmod
+        epic_stories_dir = tmp_path / "docs" / "userstories" / "EpicStories"
+        epic_stories_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(_plmod, "get_epic_stories_path",
+                            lambda name: epic_stories_dir / f"{name}.yml")
+
         # Prevent early-exit guard: epic status is "active" (not "completed")
         monkeypatch.setattr(workflow, "get_plan_status", lambda f: "active")
 
-        # Story mock: writes stories.yml (stories are required)
+        # Story mock: writes story file to EpicStories (stories are required)
         def _story_mock(pf):
-            story_dir = epics_dir / pf
-            story_dir.mkdir(parents=True, exist_ok=True)
-            (story_dir / "stories.yml").write_text(_yaml.dump({
+            stories_path = epic_stories_dir / f"{pf}.yml"
+            stories_path.write_text(_yaml.dump({
                 "stories": [{"id": "US-001", "title": "Test story"}],
                 "categories": [{"name": "default", "story_ids": ["US-001"]}],
             }))

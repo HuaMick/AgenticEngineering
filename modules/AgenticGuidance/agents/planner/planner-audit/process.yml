@@ -168,6 +168,14 @@ process:
       AUDIT STORY TRACEABILITY (Bidirectional Coverage Check):
 
       This audit step verifies bidirectional linkage between tickets and user stories.
+
+      QUICK CHECK: Run the stories audit command first for an automated gap report:
+      ```bash
+      agentic stories audit --epic {epic_folder_name}
+      ```
+      This reports: tickets without story_ids AND stories not referenced by any ticket.
+      Use --json for structured output. Then drill into specifics below.
+
       Two directions must be checked:
 
       1. TICKET → STORY (Forward Traceability):
@@ -178,9 +186,10 @@ process:
 
       2. STORY → TICKET (Reverse Traceability):
          Discover affected stories using one of these methods (in priority order):
-         a. Read design_context.yml from the epic folder (contains story_to_phase_map)
-         b. Run: `agentic stories find --project <project_name>`
-         c. Run: `agentic stories report --project <project_name> --coverage`
+         a. Run: `agentic stories audit --epic {epic_folder_name}` (preferred — covers both directions)
+         b. Read design_context.yml from the epic folder (contains story_to_phase_map)
+         c. Run: `agentic stories find --project <project_name>`
+         d. Run: `agentic stories report --project <project_name> --coverage`
             (shows all stories and their pytest marker coverage)
 
          For each affected story:
@@ -282,8 +291,16 @@ process:
       ```bash
       agentic epic ticket add --epic {epic_folder_name} \
         --title "Archive completed files" \
-        --description "Move completed artifacts to completed/ subfolder"
+        --description "Move completed artifacts to completed/ subfolder" \
+        --story-ids "US-XXX-001"
       ```
+
+      STORY_IDS ON CLEANUP TICKETS:
+      For build-plan epics, the CLI enforcement gate requires --story-ids on
+      every ticket, including cleanup tickets. Link cleanup tickets to the
+      most relevant story that benefits from the cleanup (e.g., the story
+      whose implementation produced the artifacts being cleaned). For
+      infra/guidance epics, --story-ids is not required.
 
       Cleanup categories to plan:
       - ARCHIVAL: Move completed/stale files to appropriate subfolders

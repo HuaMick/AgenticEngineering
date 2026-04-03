@@ -341,3 +341,189 @@ class TestCmdTaskUpdateStoryIds:
         mock_success.assert_called_once()
         call_msg = mock_success.call_args[0][0]
         assert "story_ids" in call_msg
+
+
+# ---------------------------------------------------------------------------
+# Tests for build-plan story_ids enforcement (TS_002)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def build_epic_repo(tmp_path, _isolate_tinydb):
+    """Create a build-plan epic (phase with build-python agent) for enforcement tests."""
+    db_path = _isolate_tinydb
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+
+    epic_folder = tmp_path / "docs" / "epics" / "live" / "260327XX_build_epic"
+    epic_folder.mkdir(parents=True)
+    (tmp_path / ".git").mkdir(exist_ok=True)
+
+    repo.create_epic({
+        "epic_folder_name": "260327XX_build_epic",
+        "epic_folder": str(epic_folder),
+        "name": "Build Epic",
+        "status": "active",
+    })
+    repo.add_phase("260327XX_build_epic", {
+        "name": "Build Phase",
+        "agent": "build-python",
+        "status": "pending",
+    })
+
+    yield {
+        "repo": repo,
+        "db_path": db_path,
+        "epic_folder": epic_folder,
+        "epic_folder_name": "260327XX_build_epic",
+        "phase_name": "Build Phase",
+    }
+
+    repo.close()
+
+
+@pytest.fixture
+def infra_epic_repo(tmp_path, _isolate_tinydb):
+    """Create an infra/guidance epic (phase with teacher agent) for bypass tests."""
+    db_path = _isolate_tinydb
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+
+    epic_folder = tmp_path / "docs" / "epics" / "live" / "260327XX_infra_epic"
+    epic_folder.mkdir(parents=True)
+    (tmp_path / ".git").mkdir(exist_ok=True)
+
+    repo.create_epic({
+        "epic_folder_name": "260327XX_infra_epic",
+        "epic_folder": str(epic_folder),
+        "name": "Infra Epic",
+        "status": "active",
+    })
+    repo.add_phase("260327XX_infra_epic", {
+        "name": "Guidance Phase",
+        "agent": "teacher-update-guidance",
+        "status": "pending",
+    })
+
+    yield {
+        "repo": repo,
+        "db_path": db_path,
+        "epic_folder": epic_folder,
+        "epic_folder_name": "260327XX_infra_epic",
+        "phase_name": "Guidance Phase",
+    }
+
+    repo.close()
+
+
+@pytest.mark.story("US-STR-011", "US-PLN-073")
+class TestStoryIdsEnforcement:
+    """Test cmd_task_add enforcement: build-plan tickets require --story-ids."""
+
+    def test_build_plan_rejects_without_story_ids(self, build_epic_repo):
+        """Build-plan epic + ticket add without --story-ids → sys.exit(1)."""
+        from agenticcli.commands.epic import cmd_task_add
+
+        args = SimpleNamespace(
+            description="Feature without stories",
+            plan=str(build_epic_repo["epic_folder"]),
+            phase="Build Phase",
+            id="T1",
+            priority="medium",
+            agent="build-python",
+            target_files=None,
+            success_criteria=None,
+            guidance=None,
+            inputs=None,
+            story_ids=None,
+        )
+
+        with patch("agenticcli.console.is_json_output", return_value=False):
+            with patch("agenticcli.console.print_error") as mock_error:
+                with pytest.raises(SystemExit) as exc_info:
+                    cmd_task_add(args)
+                assert exc_info.value.code == 1
+                mock_error.assert_called_once()
+                error_msg = mock_error.call_args[0][0]
+                assert "story_ids" in error_msg.lower() or "--story-ids" in error_msg
+                assert "build" in error_msg.lower()
+
+    def test_build_plan_succeeds_with_story_ids(self, build_epic_repo):
+        """Build-plan epic + ticket add WITH --story-ids → success."""
+        from agenticcli.commands.epic import cmd_task_add
+
+        args = SimpleNamespace(
+            description="Feature with stories",
+            plan=str(build_epic_repo["epic_folder"]),
+            phase="Build Phase",
+            id="T1",
+            priority="medium",
+            agent="build-python",
+            target_files=None,
+            success_criteria=None,
+            guidance=None,
+            inputs=None,
+            story_ids="US-PLN-073,US-STR-011",
+        )
+
+        with patch("agenticcli.console.is_json_output", return_value=True):
+            with patch("agenticcli.console.print_json") as mock_json:
+                cmd_task_add(args)
+                mock_json.assert_called_once()
+                result = mock_json.call_args[0][0]
+                assert result["story_ids"] == ["US-PLN-073", "US-STR-011"]
+                assert result["task_id"] == "T1"
+
+        # Verify persistence
+        ticket = build_epic_repo["repo"].get_ticket("260327XX_build_epic", "T1")
+        assert ticket is not None
+        assert ticket.story_ids == ["US-PLN-073", "US-STR-011"]
+
+    def test_infra_epic_bypasses_without_story_ids(self, infra_epic_repo):
+        """Infra/guidance epic + ticket add without --story-ids → success (bypass)."""
+        from agenticcli.commands.epic import cmd_task_add
+
+        args = SimpleNamespace(
+            description="Guidance task no stories",
+            plan=str(infra_epic_repo["epic_folder"]),
+            phase="Guidance Phase",
+            id="T1",
+            priority="medium",
+            agent="teacher-update-guidance",
+            target_files=None,
+            success_criteria=None,
+            guidance=None,
+            inputs=None,
+            story_ids=None,
+        )
+
+        with patch("agenticcli.console.is_json_output", return_value=True):
+            with patch("agenticcli.console.print_json") as mock_json:
+                cmd_task_add(args)
+                mock_json.assert_called_once()
+                result = mock_json.call_args[0][0]
+                assert result["story_ids"] == []
+                assert result["task_id"] == "T1"
+
+    def test_build_plan_error_message_mentions_story_ids_flag(self, build_epic_repo):
+        """Error message should mention --story-ids and build-plan."""
+        from agenticcli.commands.epic import cmd_task_add
+
+        args = SimpleNamespace(
+            description="Another feature",
+            plan=str(build_epic_repo["epic_folder"]),
+            phase="Build Phase",
+            id="T2",
+            priority="medium",
+            agent=None,
+            target_files=None,
+            success_criteria=None,
+            guidance=None,
+            inputs=None,
+            story_ids=None,
+        )
+
+        with patch("agenticcli.console.is_json_output", return_value=False):
+            with patch("agenticcli.console.print_error") as mock_error:
+                with pytest.raises(SystemExit):
+                    cmd_task_add(args)
+                error_msg = mock_error.call_args[0][0]
+                assert "--story-ids" in error_msg
+                assert "build" in error_msg.lower()

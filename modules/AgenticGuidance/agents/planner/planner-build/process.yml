@@ -41,7 +41,8 @@ process:
       creation_method: |
         Use CLI to create phases and tickets:
           agentic epic phase add --epic {epic_folder_name} --name '<phase_name>'
-          agentic epic ticket add --epic {epic_folder_name} --phase '<phase_name>' --id '<id>' --name '<name>'
+          agentic epic ticket add --epic {epic_folder_name} --phase '<phase_name>' --id '<id>' --name '<name>' --story-ids '<ids>'
+        For build-plan epics, --story-ids is mandatory on every ticket.
         Do NOT create plan_build.yml or ticket_build.yml YAML files on disk. Store all data in TinyDB via CLI.
 
     # NOTE: TinyDB phase records with routing are created by planner-orchestration, NOT by planners.
@@ -150,6 +151,27 @@ process:
       Review the objective and add IMPLEMENTATION phases to TinyDB for completing the objective.
       Use CLI: `agentic epic phase add` and `agentic epic ticket add` to create phases and tickets.
       Do NOT create plan_build.yml or ticket_build.yml YAML files on disk. Store all data in TinyDB via CLI.
+
+      MANDATORY: --story-ids PER TICKET (build-plan enforcement)
+      Every ticket created via `agentic epic ticket add` MUST include `--story-ids`
+      with the specific story IDs that drive that ticket's work. This is NOT optional
+      for build plans — the CLI enforcement gate rejects ticket creation without
+      --story-ids on build-plan epics.
+
+      Do NOT rely on plan-level affected_stories metadata alone. Each ticket must
+      individually link to its relevant stories. Example:
+      ```bash
+      agentic epic ticket add \
+        --epic {epic_folder_name} \
+        --phase "Build" \
+        --id "B_001" \
+        --name "Implement validation gate" \
+        --story-ids "US-003,US-005" \
+        --agent build-python
+      ```
+      Pre-flight validation will check that EVERY ticket in a build-plan epic has
+      at least one story_id before execution begins. Missing story_ids will block
+      execution.
       For each item gather context and check assumptions. Find where to source
       the required context and add context routing to the plan so that other agents dont have to.
 
@@ -178,6 +200,7 @@ process:
       Example:
         - id: "ticket_001"
           name: "Add health check endpoint"
+          story_ids: ["US-API-001", "US-API-002"]    # <-- REQUIRED: Link to driving stories
           inputs:                                    # <-- REQUIRED: Pre-read context
             - src/api/routes.py                      # Existing route patterns
             - src/domain/services/health_service.py  # Domain interface to use
