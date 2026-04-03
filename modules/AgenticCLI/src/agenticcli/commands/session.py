@@ -41,6 +41,26 @@ def _get_logs_dir() -> Path:
 
 
 
+def _enable_pipe_pane_logging(tmux_session_name: str, session_id: str) -> None:
+    """Enable tmux pipe-pane to capture all pane output to a log file.
+
+    Must be called AFTER the tmux session is created but BEFORE the agent
+    starts producing significant output. The log file is written to
+    ~/.agentic/sessions/logs/{session_id}.pane.log.
+    """
+    logs_dir = _get_logs_dir()
+    pane_log = logs_dir / f"{session_id}.pane.log"
+    try:
+        subprocess.run(
+            ["tmux", "pipe-pane", "-t", tmux_session_name,
+             f"cat >> {pane_log}"],
+            capture_output=True, timeout=5,
+        )
+        logger.debug("Enabled pipe-pane logging: %s -> %s", tmux_session_name, pane_log)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        logger.debug("Failed to enable pipe-pane for %s: %s", tmux_session_name, e)
+
+
 def _tmux_session_name(
     session_id: str,
     epic_folder: Optional[Path] = None,
@@ -79,6 +99,7 @@ def _compile_spawn_context(
     prompt: str,
     role: str | None,
     epic_folder: Path | None,
+    phase_id: str | None = None,
 ) -> str:
     """Compile full context for a spawned session into a markdown document.
 
@@ -90,11 +111,25 @@ def _compile_spawn_context(
         prompt: The base prompt (from _build_role_prompt or _build_ticket_prompt).
         role: Agent role identifier, if known.
         epic_folder: Optional epic folder path.
+        phase_id: Optional phase identifier — when provided, adds a Phase
+            Constraint section instructing the agent to only work on tickets
+            in that phase.
 
     Returns:
         Compiled context as a markdown string.
     """
     sections = [prompt]
+
+    # Add phase constraint when the agent is scoped to a specific phase
+    if phase_id and epic_folder:
+        sections.append(
+            f"\n---\n## Phase Constraint\n\n"
+            f"You are scoped to phase **{phase_id}** of this epic. "
+            f"Only work on tickets belonging to this phase.\n\n"
+            f"When querying for your current ticket, use:\n"
+            f"```\nagentic -j epic ticket current --epic {epic_folder} --phase \"{phase_id}\"\n```\n\n"
+            f"Do NOT start or complete tickets from other phases."
+        )
 
     if not role:
         return "\n".join(sections)
@@ -668,6 +703,7 @@ def cmd_spawn(args, ctx=None):
     background = getattr(args, "background", False)
     use_tmux = getattr(args, "tmux", False)
     dry_run = getattr(args, "dry_run", False)
+    phase_id = getattr(args, "phase", None)
     working_dir = getattr(args, "directory", None) or os.getcwd()
 
     # Safety net: apply a default max_turns for background/tmux sessions to
@@ -711,7 +747,7 @@ def cmd_spawn(args, ctx=None):
     # Compile full context (prompt + bootstrap data) into a temp file
     # This avoids OS argument length limits and removes the need for
     # agents to manually run `agentic -j epic status --epic <epic>`
-    compiled_context = _compile_spawn_context(prompt, role, epic_folder)
+    compiled_context = _compile_spawn_context(prompt, role, epic_folder, phase_id=phase_id)
     context_file = write_context_file(session_id, compiled_context)
 
     short_prompt = (
@@ -802,6 +838,16 @@ def cmd_spawn(args, ctx=None):
     if use_tmux:
         session_data["tmux"] = True
 
+    # ── Write session state BEFORE spawn to avoid race condition ───────
+    # The pane runner and wait_for_session() poll this file. Writing it
+    # before the tmux spawn ensures it exists on disk before the agent
+    # starts, preventing negative durations and missing-state bugs.
+    if role:
+        session_data["role"] = role
+    if epic_folder:
+        session_data["epic_folder"] = str(epic_folder)
+    _store.save(session_data)
+
     # ── SDK-in-tmux path: spawn SDK pane runner inside tmux ───────────
     if spawn_path == SDK_TMUX:
         tmux_session_name = _tmux_session_name(session_id, epic_folder, role)
@@ -846,6 +892,9 @@ def cmd_spawn(args, ctx=None):
                     if not background:
                         _active_tmux_sessions.append(tmux_session_name)
 
+                    # Enable pipe-pane logging before agent produces output
+                    _enable_pipe_pane_logging(tmux_session_name, session_id)
+
                     # Get PID
                     pid_result = subprocess.run(
                         ["tmux", "list-panes", "-t", tmux_session_name, "-F", "#{pane_pid}"],
@@ -863,10 +912,6 @@ def cmd_spawn(args, ctx=None):
                     session_data["transport"] = "sdk-tmux"
                     session_data["tmux_session"] = tmux_session_name
                     session_data["last_activity"] = session_data["started_at"]
-                    if role:
-                        session_data["role"] = role
-                    if epic_folder:
-                        session_data["epic_folder"] = str(epic_folder)
                     _store.save(session_data)
 
                     if background:
@@ -960,6 +1005,9 @@ def cmd_spawn(args, ctx=None):
                         # sessions must survive CLI process exit).
                         if not background:
                             _active_tmux_sessions.append(tmux_session_name)
+
+                        # Enable pipe-pane logging before agent produces output
+                        _enable_pipe_pane_logging(tmux_session_name, session_id)
 
                         # Get PID of the process inside tmux for StateStore compatibility
                         pid_result = subprocess.run(

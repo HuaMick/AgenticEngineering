@@ -235,7 +235,7 @@ class TestRunPhaseTmux:
 
         assert result is True
         # The tmux_session should be parsed and logged (we verify no crash on parsing)
-        workflow.wait_for_session.assert_called_once_with("abc-123", timeout=1800)
+        workflow.wait_for_session.assert_called_once_with("abc-123", timeout=3600)
 
     def test_run_phase_works_without_tmux_in_output(self, tmp_path):
         """Verify normal flow when spawn output has no tmux_session (subprocess fallback)."""
@@ -255,7 +255,7 @@ class TestRunPhaseTmux:
             result = runner._run_phase("test_plan", "phase1", "build-python", {})
 
         assert result is True
-        workflow.wait_for_session.assert_called_once_with("def-456", timeout=1800)
+        workflow.wait_for_session.assert_called_once_with("def-456", timeout=3600)
 
 
 # ── TT_007: Test full spawn chain with CLAUDECODE env isolation ──────
@@ -327,7 +327,7 @@ class TestSpawnChainEnvIsolation:
         )
 
         # Verify session_id was correctly threaded to wait_for_session
-        workflow.wait_for_session.assert_called_once_with("chain-001", timeout=1800)
+        workflow.wait_for_session.assert_called_once_with("chain-001", timeout=3600)
 
     def test_run_phase_spawn_failure_returns_false(self, tmp_path, monkeypatch):
         """When spawn subprocess fails (e.g., tmux unavailable), _run_phase returns False."""

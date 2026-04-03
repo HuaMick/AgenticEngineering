@@ -1749,6 +1749,7 @@ def cmd_task_list(args, ctx=None):
                         if verbose:
                             task_info["guidance"] = td.guidance or ""
                             task_info["success_criteria"] = td.success_criteria or []
+                            task_info["story_ids"] = td.story_ids or []
                         all_tasks.append(task_info)
             repo.close()
     except Exception:
@@ -1820,6 +1821,22 @@ def cmd_task_add(args, ctx=None):
     success_criteria = [s.strip() for s in success_criteria_raw.split(",")] if success_criteria_raw else []
     inputs = [i.strip() for i in inputs_raw.split(",")] if inputs_raw else []
     story_ids = [s.strip() for s in story_ids_raw.split(",")] if story_ids_raw else []
+
+    # @story US-001
+    # Enforce --story-ids for build-plan epics
+    if not story_ids:
+        try:
+            from agenticguidance.services.epic import EpicService
+
+            epic_svc = EpicService()
+            if epic_svc.is_build_plan(plan_path.name):
+                print_error(
+                    "story_ids is required for build-plan epics. "
+                    "Use --story-ids US-XXX,... to link this ticket to user stories."
+                )
+                sys.exit(1)
+        except ImportError:
+            pass  # AgenticGuidance not available; skip enforcement
 
     # TinyDB-first: try to add task via PlanRepository
     tinydb_done = False
@@ -2429,6 +2446,7 @@ def cmd_task_current(args, ctx=None):
     )
 
     plan_path = find_epic_folder(getattr(args, "plan", None))
+    phase_filter = getattr(args, "phase", None)
 
     # Try PlanRepository (TinyDB) first for both current task and all-tasks stats.
     current_task = None
@@ -2442,7 +2460,9 @@ def cmd_task_current(args, ctx=None):
                 and plan_doc.epic_folder_name == plan_path.name
             )
             if folder_matches:
-                repo_task = repo.get_current_ticket(plan_path.name)
+                repo_task = repo.get_current_ticket(
+                    plan_path.name, phase_name=phase_filter,
+                )
                 if repo_task is not None:
                     current_task = {
                         "id": repo_task.id,
@@ -2456,6 +2476,7 @@ def cmd_task_current(args, ctx=None):
                         "guidance": repo_task.guidance or "",
                         "success_criteria": repo_task.success_criteria or [],
                         "agent_type": repo_task.agent or "",
+                        "story_ids": repo_task.story_ids or [],
                         "source_file": "(via TinyDB)",
                     }
                 # Get task counts for all-complete check
@@ -2514,6 +2535,11 @@ def cmd_task_current(args, ctx=None):
                 for tf in current_task["target_files"][:5]:
                     console.print(f"  - {tf}")
 
+            if current_task.get("story_ids"):
+                console.print(f"\n[bold]Affected Stories:[/bold]")
+                for sid in current_task["story_ids"]:
+                    console.print(f"  - {sid}")
+
             if current_task.get("success_criteria"):
                 console.print(f"\n[bold]Success Criteria:[/bold]")
                 for sc in current_task["success_criteria"][:3]:
@@ -2566,6 +2592,16 @@ def cmd_phase_add(args, ctx=None):
             if "=" in item:
                 k, v = item.split("=", 1)
                 triggers[k.strip()] = v.strip()
+
+    # Validate agent name against roster if provided
+    if agent:
+        valid_agents = get_valid_agent_types()
+        if valid_agents and agent not in valid_agents:
+            sorted_agents = sorted(valid_agents)
+            print_error(
+                f"Unknown agent '{agent}'. Valid agents: {', '.join(sorted_agents)}"
+            )
+            sys.exit(1)
 
     # TinyDB-first: add phase via PlanRepository
     tinydb_done = False

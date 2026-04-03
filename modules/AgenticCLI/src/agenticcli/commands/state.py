@@ -134,7 +134,7 @@ def cmd_show(args, ctx=None):
     if entry.ended_at:
         ended = datetime.fromtimestamp(entry.ended_at).strftime("%Y-%m-%d %H:%M:%S")
         console.print(f"[cyan]Ended:[/cyan] {ended}")
-        duration = entry.ended_at - entry.started_at
+        duration = max(0.0, entry.ended_at - entry.started_at)
         console.print(f"[cyan]Duration:[/cyan] {duration:.1f}s")
 
     if entry.metadata:

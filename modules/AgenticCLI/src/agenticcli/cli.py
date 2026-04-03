@@ -384,6 +384,8 @@ def session_spawn(
         "--tmux", help="Spawn session in a tmux pane")] = False,
     dry_run: Annotated[bool, typer.Option(
         "--dry-run", help="Report spawn diagnostics without actually spawning")] = False,
+    phase: Annotated[Optional[str], typer.Option(
+        "--phase", help="Phase ID to scope this agent to")] = None,
 ):
     """Spawn a new Claude Code session with a prompt."""
     # Mutual exclusion check (--role and --task cannot both be set)
@@ -404,6 +406,7 @@ def session_spawn(
         dangerously_skip_permissions=dangerously_skip_permissions,
         tmux=tmux,
         dry_run=dry_run,
+        phase=phase,
     ))
 
 
@@ -769,12 +772,13 @@ def epic_ticket_remove(
 @epic_ticket_app.command("current")
 def epic_ticket_current(
     epic: Annotated[Optional[str], typer.Option("--epic", "--plan", "-p", help="--plan/--epic (use --epic, --plan deprecated)")] = None,
+    phase: Annotated[Optional[str], typer.Option("--phase", help="Filter to tickets in this phase only")] = None,
 ):
     """Get the current ticket to work on."""
     _epic_handle(_ns(
         command="epic", epic_command="ticket", ticket_action="current",
         json=_global["json"], debug=_global["debug"],
-        plan=epic,
+        plan=epic, phase=phase,
     ))
 
 
@@ -1103,6 +1107,17 @@ def stories_code(
     """Show production code tagged with a story ID."""
     _stories_handle(_ns(
         stories_command="code", story_id=story_id,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("audit")
+def stories_audit(
+    epic: str = typer.Option(..., "--epic", help="Epic folder name to audit"),
+):
+    """Audit bidirectional story-ticket coverage gaps."""
+    _stories_handle(_ns(
+        stories_command="audit", epic=epic,
         json=_global["json"], debug=_global["debug"],
     ))
 

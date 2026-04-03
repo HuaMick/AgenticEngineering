@@ -10,6 +10,7 @@ def build_spawn_command(
     background: bool = True,
     use_tmux: bool = True,
     json_output: bool = True,
+    phase_id: Optional[str] = None,
 ) -> list[str]:
     """Build a normalized 'agentic orchestrate session spawn' command.
 
@@ -27,4 +28,6 @@ def build_spawn_command(
         cmd.extend(["--max-turns", str(max_turns)])
     if skip_permissions:
         cmd.append("--dangerously-skip-permissions")
+    if phase_id is not None:
+        cmd.extend(["--phase", phase_id])
     return cmd

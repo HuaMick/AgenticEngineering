@@ -171,19 +171,28 @@ class TicketService:
 
         return []
 
-    def get_current_ticket(self) -> Optional[Ticket]:
+    def get_current_ticket(
+        self,
+        phase_name: Optional[str] = None,
+    ) -> Optional[Ticket]:
         """Get the current actionable ticket.
 
         Uses TinyDB as the sole data source.
         Returns first ticket with status=in_progress. If none found,
         returns first ticket with status=pending.
 
+        Args:
+            phase_name: Optional phase name filter — restricts results to
+                tickets in this phase only.
+
         Returns:
             Ticket dataclass if found, None if no actionable tickets.
         """
         if self._repository is not None:
             try:
-                td = self._repository.get_current_task(self._epic_folder_name)
+                td = self._repository.get_current_ticket(
+                    self._epic_folder_name, phase_name=phase_name,
+                )
                 if td is not None:
                     return self._taskdata_to_ticket(td)
             except Exception:

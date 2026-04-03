@@ -1044,24 +1044,34 @@ class EpicRepository:
             )
         return len(updated) > 0
 
-    def get_current_ticket(self, epic_folder_name: str) -> Optional[TicketData]:
+    def get_current_ticket(
+        self,
+        epic_folder_name: str,
+        phase_name: Optional[str] = None,
+    ) -> Optional[TicketData]:
         """Get the current actionable ticket for an epic.
 
         Returns first in_progress ticket, or first pending ticket if none
-        are in progress.
+        are in progress.  When *phase_name* is provided, only tickets
+        belonging to that phase are considered.
 
         Args:
             epic_folder_name: Epic folder name.
+            phase_name: Optional phase name filter — restricts results to
+                tickets in this phase only.
 
         Returns:
             TicketData if found, None otherwise.
         """
         Ticket = Query()
 
+        base_cond = Ticket.epic_folder_name == epic_folder_name
+        if phase_name:
+            base_cond = base_cond & (Ticket.phase_name == phase_name)
+
         # Try in_progress first
         in_progress = self._tickets.search(
-            (Ticket.epic_folder_name == epic_folder_name)
-            & (Ticket.status == "in_progress")
+            base_cond & (Ticket.status == "in_progress")
         )
         if in_progress:
             d = in_progress[0]
@@ -1082,7 +1092,7 @@ class EpicRepository:
 
         # Fall back to first proposed (or legacy pending)
         pending = self._tickets.search(
-            (Ticket.epic_folder_name == epic_folder_name)
+            base_cond
             & (Ticket.status.test(lambda s: s in ("proposed", "pending")))
         )
         if pending:

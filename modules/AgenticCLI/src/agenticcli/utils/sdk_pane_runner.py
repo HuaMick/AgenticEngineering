@@ -63,6 +63,9 @@ def _write_state_atomic(state_file: Path, data: dict) -> None:
         with os.fdopen(tmp_fd, "w") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp_path, str(state_file))
+        # Force mtime update so polling loops detect the change even when
+        # the filesystem clock resolution is coarse (e.g. 1s on ext4).
+        os.utime(str(state_file), None)
     except Exception:
         # Clean up temp file on failure
         try:

@@ -209,7 +209,7 @@ class SessionCleanupService:
         report.sessions_cleaned += 1
 
         # Log files
-        for suffix in (".stdout.log", ".stderr.log"):
+        for suffix in (".stdout.log", ".stderr.log", ".pane.log"):
             log_file = self._logs_dir / f"{session_id}{suffix}"
             if log_file.exists():
                 bytes_size = self._safe_file_size(log_file)
@@ -407,7 +407,7 @@ class SessionCleanupService:
         Returns:
             The session_id string or None if pattern doesn't match.
         """
-        for suffix in (".stdout.log", ".stderr.log"):
+        for suffix in (".stdout.log", ".stderr.log", ".pane.log"):
             if filename.endswith(suffix):
                 return filename[: -len(suffix)]
         return None

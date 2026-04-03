@@ -111,13 +111,15 @@ class TestExecutePlanMaxTurnsWiring:
         workflow.working_dir = str(tmp_path)
         workflow.epics_dir = epics_dir
 
-        # Mock repository: first call returns pending, second returns completed
-        # (simulating the update_phase call that _execute_plan makes)
+        # Mock repository: first call is recovery sweep, second returns pending,
+        # third returns completed after _run_phase marks it done.
         mock_repo = MagicMock()
         mock_repo.list_phases.side_effect = [
-            [PhaseData(name="Build", status="pending", agent="build-python", max_turns=75)],
-            [PhaseData(name="Build", status="completed", agent="build-python", max_turns=75)],
+            [PhaseData(name="Build", status="pending", agent="build-python", max_turns=75)],  # recovery sweep
+            [PhaseData(name="Build", status="pending", agent="build-python", max_turns=75)],  # first loop iteration
+            [PhaseData(name="Build", status="completed", agent="build-python", max_turns=75)],  # after _run_phase
         ]
+        mock_repo.list_tickets.return_value = []
         workflow._get_repository.return_value = mock_repo
 
         runner = ExecutionRunner(workflow=workflow, plan_folder="test_plan")
@@ -144,9 +146,11 @@ class TestExecutePlanMaxTurnsWiring:
 
         mock_repo = MagicMock()
         mock_repo.list_phases.side_effect = [
-            [PhaseData(name="Test", status="pending", agent="test-builder")],
-            [PhaseData(name="Test", status="completed", agent="test-builder")],
+            [PhaseData(name="Test", status="pending", agent="test-builder")],  # recovery sweep
+            [PhaseData(name="Test", status="pending", agent="test-builder")],  # first loop iteration
+            [PhaseData(name="Test", status="completed", agent="test-builder")],  # after _run_phase
         ]
+        mock_repo.list_tickets.return_value = []
         workflow._get_repository.return_value = mock_repo
 
         runner = ExecutionRunner(workflow=workflow, plan_folder="test_plan")

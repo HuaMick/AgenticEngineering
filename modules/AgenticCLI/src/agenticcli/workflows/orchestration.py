@@ -457,6 +457,9 @@ class ExecutionRunner:
             )
             return False
 
+        # Recovery sweep: reset stale in_progress phases from prior interrupted runs
+        self._recover_stale_phases(repo, plan_folder)
+
         for iteration in range(1, max_iterations + 1):
             self.state["iteration"] = iteration
 
@@ -465,6 +468,19 @@ class ExecutionRunner:
             if not phases:
                 self.state["errors"].append(
                     f"No phases found in TinyDB for {plan_folder}"
+                )
+                return False
+
+            # Bail out if any phase is blocked (terminal after retry exhaustion)
+            blocked = [p for p in phases if p.status == "blocked"]
+            if blocked:
+                names = ", ".join(p.name for p in blocked)
+                logger.error(
+                    "Execution halted for %s — blocked phase(s): %s",
+                    plan_folder, names,
+                )
+                self.state["errors"].append(
+                    f"Blocked phase(s) in {plan_folder}: {names}"
                 )
                 return False
 
@@ -523,6 +539,17 @@ class ExecutionRunner:
             repo.refresh()
 
             if success:
+                # Verify all tickets in this phase are completed before advancing
+                incomplete = self._check_phase_tickets_complete(
+                    repo, plan_folder, next_phase.name,
+                )
+                if incomplete:
+                    logger.warning(
+                        "Phase %s agent reported success but %d ticket(s) still incomplete: %s",
+                        next_phase.name, len(incomplete),
+                        ", ".join(incomplete[:5]),
+                    )
+
                 repo.update_phase(plan_folder, next_phase.name, {"status": "completed"})
                 self.state["phases_completed"].append(f"{plan_folder}:{next_phase.name}")
                 logger.info("Phase %s completed for %s", next_phase.name, plan_folder)
@@ -550,6 +577,30 @@ class ExecutionRunner:
 
         logger.warning("Max iterations (%d) reached for %s", max_iterations, plan_folder)
         return False
+
+    def _recover_stale_phases(self, repo, plan_folder: str) -> None:
+        """Reset in_progress phases left by interrupted prior runs.
+
+        On startup, any phase stuck in in_progress without an active tmux
+        session is presumed orphaned and marked as failed so the normal
+        retry/feedback logic can handle it.
+
+        Also kills orphaned agentic-* tmux sessions that don't belong to
+        any running session in the state store — prevents concurrent TinyDB
+        access from zombie agents.
+        """
+        phases = repo.list_phases(plan_folder)
+        for phase in phases:
+            if phase.status != "in_progress":
+                continue
+            logger.warning(
+                "Recovery sweep: phase '%s' in %s stuck in_progress — resetting to pending",
+                phase.name, plan_folder,
+            )
+            repo.update_phase(plan_folder, phase.name, {"status": "pending"})
+
+        # Kill orphaned tmux sessions from prior interrupted runs
+        self._kill_orphaned_tmux_sessions()
 
     def _run_phase(
         self,
@@ -581,6 +632,7 @@ class ExecutionRunner:
             True if agent completed successfully.
         """
         effective_timeout = timeout if timeout is not None else DEFAULT_PHASE_TIMEOUT
+        last_diagnosis = None
         for attempt in range(1 + MAX_SPAWN_RETRIES):
             retry_label = f" (retry {attempt}/{MAX_SPAWN_RETRIES})" if attempt > 0 else ""
             success, session_id, is_quick_exit = self._spawn_and_wait(
@@ -594,13 +646,19 @@ class ExecutionRunner:
                 return False
             if attempt >= MAX_SPAWN_RETRIES:
                 logger.error(
-                    "Exhausted %d retries for %s:%s — giving up",
+                    "BLOCKED: Exhausted %d retries for %s:%s — "
+                    "phase=%s, failures=%d, last_diagnosis=%s",
                     MAX_SPAWN_RETRIES, plan_folder, phase_id,
+                    phase_id, attempt + 1,
+                    last_diagnosis.error_type.value if last_diagnosis else "unknown",
                 )
+                # Mark phase as blocked so _execute_plan treats it as terminal
+                self._mark_phase_blocked(plan_folder, phase_id)
                 return False
 
             # Quick exit detected — diagnose and decide if retry is worthwhile
             diagnosis = self._diagnose_quick_exit(session_id)
+            last_diagnosis = diagnosis
             if diagnosis and not diagnosis.retryable:
                 logger.error(
                     "Quick exit for %s:%s is not retryable (%s): %s",
@@ -646,6 +704,7 @@ class ExecutionRunner:
             epic_folder=plan_folder,
             max_turns=effective_max_turns,
             skip_permissions=self.dangerously_skip_permissions,
+            phase_id=phase_id,
         )
 
         # SDK-in-tmux: spawn uses sdk_pane_runner.py inside tmux pane for
@@ -737,6 +796,97 @@ class ExecutionRunner:
             session_id[:8], plan_folder, phase_id, retry_label, status, elapsed,
         )
         return False, session_id, is_quick_exit
+
+    def _check_phase_tickets_complete(
+        self,
+        repo,
+        plan_folder: str,
+        phase_name: str,
+    ) -> list[str]:
+        """Check if all tickets in a phase are completed.
+
+        Args:
+            repo: EpicRepository instance.
+            plan_folder: Plan folder name.
+            phase_name: Phase name to check.
+
+        Returns:
+            List of incomplete ticket IDs. Empty list means all complete.
+        """
+        try:
+            tickets = repo.list_tickets(plan_folder)
+            incomplete = []
+            for t in tickets:
+                if t.phase_name == phase_name and t.status != "completed":
+                    incomplete.append(t.id)
+            return incomplete
+        except Exception as e:
+            logger.debug("Could not check phase tickets: %s", e)
+            return []
+
+    def _kill_orphaned_tmux_sessions(self) -> int:
+        """Kill agentic-* tmux sessions not backed by a running session record.
+
+        Reuses the cross-referencing logic from SessionCleanupService but runs
+        inline during recovery to prevent orphaned agents from concurrent
+        TinyDB writes.
+
+        Returns:
+            Number of tmux sessions killed.
+        """
+        import subprocess
+
+        # Collect tmux session names for sessions with alive PIDs
+        from agenticcli.utils.state_store import StateStore, is_process_running
+        store = StateStore("sessions", id_key="session_id")
+        protected_tmux: set[str] = set()
+        for record in store.list_all():
+            status = record.get("status", "")
+            pid = record.get("pid")
+            tmux_name = record.get("tmux_session", "")
+            if status in ("running", "starting") and pid and is_process_running(pid) and tmux_name:
+                protected_tmux.add(tmux_name)
+
+        # List all tmux sessions
+        try:
+            result = subprocess.run(
+                ["tmux", "list-sessions", "-F", "#{session_name}"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode != 0:
+                return 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return 0
+
+        killed = 0
+        for session_name in result.stdout.strip().splitlines():
+            if not session_name.startswith("agentic-"):
+                continue
+            if session_name in protected_tmux:
+                continue
+            try:
+                subprocess.run(
+                    ["tmux", "kill-session", "-t", session_name],
+                    capture_output=True, timeout=5,
+                )
+                killed += 1
+                logger.warning("Killed orphaned tmux session: %s", session_name)
+            except (subprocess.TimeoutExpired, OSError):
+                logger.debug("Failed to kill tmux session %s", session_name)
+
+        if killed:
+            logger.info("Recovery sweep killed %d orphaned tmux session(s)", killed)
+        return killed
+
+    def _mark_phase_blocked(self, plan_folder: str, phase_id: str) -> None:
+        """Mark a phase as 'blocked' in TinyDB after retry exhaustion.
+
+        Blocked is a terminal status — _execute_plan will not retry it.
+        """
+        repo = self.workflow._get_repository()
+        if repo:
+            repo.update_phase(plan_folder, phase_id, {"status": "blocked"})
+            logger.info("Phase %s in %s marked as blocked", phase_id, plan_folder)
 
     def _diagnose_quick_exit(self, session_id: Optional[str]):
         """Run session diagnostics on a quick-exit session.
