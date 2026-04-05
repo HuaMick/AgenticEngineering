@@ -1,0 +1,38 @@
+area: agent_patterns
+description: "Agent spawning and lifecycle patterns"
+patterns:
+- id: PAT-AGT-001
+  title: Agent Spawn Lifecycle
+  description: >
+    Agents spawned via orchestration follow a standard lifecycle:
+    spawn -> running -> completed/failed, with tmux session cleanup.
+  tags: [agent, spawn, lifecycle, tmux]
+  applicable_categories: [US-PLN, US-SES]
+
+  parameters:
+    agent_role:
+      description: "The agent role being spawned"
+      required: true
+    spawn_method:
+      description: "How the agent is spawned (sdk-tmux, tmux, subprocess)"
+      required: false
+      default: "sdk-tmux"
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Spawn {agent_role} via `agentic orchestrate session spawn`"
+        expect: "Agent starts in tmux pane, status shows 'running'"
+      - step: 2
+        action: "Wait for agent to complete"
+        expect: "Status transitions to 'completed' or 'failed'"
+      - step: 3
+        action: "Check tmux sessions after completion"
+        expect: "No orphan tmux sessions remain"
+
+    structural:
+      checks:
+      - description: "Spawn uses sdk_pane_runner or tmux transport"
+        look_for: "sdk_pane_runner|spawn_command|transport"
+        in_files: "modules/AgenticCLI/src/agenticcli/workflows/*.py"

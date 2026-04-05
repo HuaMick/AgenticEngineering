@@ -1,298 +1,80 @@
 area: story_management
-description: "Story find, init, display, status, update, and reporting"
+description: "Story find and health reporting"
 stories:
 - id: US-STR-001
-  title: Find User Stories Across Projects
+  title: Story Discovery and Coverage
   category: story_management
-  priority: medium
-  description: As a test builder creating acceptance tests, I want to search for user stories across all projects, so that
-    I can identify stories that need test coverage.
+  priority: high
+  absorbs: [US-STR-009, US-PLN-071]
+  description: As a developer assessing story inventory and test-to-story traceability, I want to search for user stories,
+    check health summaries, and cross-reference pytest markers against the story inventory, so that I can understand the
+    state of my stories and identify coverage gaps.
   prerequisites: []
+  inherits_patterns:
+  - id: PAT-CLI-001
+    bind:
+      command: "agentic stories find"
+      expected_keys: [id, title, project, category]
+  - id: PAT-CLI-002
+    bind:
+      command: "agentic stories find"
+      filter_field: "project"
   steps:
   - step: 1
     when: the feature is used
     then:
-    - agentic stories find searches docs/userstories/ directory
+    - agentic stories find searches docs/userstories/ directory with --project filter and --changes filter
   - step: 2
     when: the feature is used
     then:
-    - Output lists all stories with ID, title, and project
+    - JSON output supported with --json flag on find and health commands
   - step: 3
     when: the feature is used
     then:
-    - The --project flag filters stories by project name
+    - agentic stories health shows pass/fail/skip/untested counts with --project filter
   - step: 4
     when: the feature is used
     then:
-    - The --changes flag filters stories related to specific files
+    - agentic stories untested lists stories with test_status=untested
   - step: 5
     when: the feature is used
     then:
-    - Stories in plan user_stories/ directories are also searched
+    - --coverage flag activates pytest marker scanning mode
   - step: 6
     when: the feature is used
     then:
-    - JSON output supported with --json flag
+    - Regex extracts story IDs in US-XXX-NNN format from @pytest.mark.story marker arguments
+  - step: 7
+    when: the feature is used
+    then:
+    - 'Output includes: covered_by_markers count, uncovered count, orphan_markers list, coverage_pct'
+  - step: 8
+    when: the feature is used
+    then:
+    - Orphan markers (referencing non-existent stories) are identified and listed
+  - step: 9
+    when: the feature is used
+    then:
+    - STORY_COVERAGE_INCOMPLETE feedback trigger fires when uncovered set is non-empty
+  - step: 10
+    when: max iterations reached with uncovered stories
+    then:
+    - Phase transitions to blocked state with coverage report
   related_commands:
   - agentic stories find
   - agentic stories find --project AgenticCLI
   - agentic stories find --changes src/agenticcli/cli.py
   - agentic st find -p my-project
-  related_agents:
-  - test-builder
-  - planner-test
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-STR-002
-  title: Initialize User Stories Directory
-  category: story_management
-  priority: low
-  description: As a developer starting a new project module, I want to create a user stories directory structure, so that
-    I have a place to document user stories.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic stories init creates docs/userstories/<project>/ directory
-  - step: 2
-    when: the feature is used
-    then:
-    - Template README.md is created explaining story format
-  - step: 3
-    when: the feature is used
-    then:
-    - Example story file is created as reference
-  - step: 4
-    when: an error condition occurs
-    then:
-    - Command fails if directory already exists
-  related_commands:
-  - agentic stories init
-  - agentic stories init --project MyModule
-  related_agents:
-  - planner-build
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-STR-003
-  title: Display User Story Details
-  category: story_management
-  priority: medium
-  description: As a developer reviewing acceptance criteria, I want to view the full contents of a user story, so that I can
-    understand requirements and test expectations.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic stories cat <story-id> displays full story details
-  - step: 2
-    when: the feature is used
-    then:
-    - 'Output includes: ID, title, as_a, i_want, so_that, acceptance criteria'
-  - step: 3
-    when: the feature is used
-    then:
-    - Related commands and agents are displayed
-  - step: 4
-    when: the feature is used
-    then:
-    - Priority and category are shown
-  - step: 5
-    when: the feature is used
-    then:
-    - Command searches across all story directories
-  related_commands:
-  - agentic stories cat US-STR-001
-  - agentic stories cat US-STR-001 --format yaml
-  related_agents:
-  - test-builder
-  - planner-build
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-STR-004
-  title: View Story Test Status
-  category: story_management
-  priority: medium
-  description: As a developer validating test coverage, I want to view the test status of a specific user story, so that I
-    know whether it has been tested and what the result was.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic stories status <id> displays test_status, last_tested, test_notes
-  - step: 2
-    when: the feature is used
-    then:
-    - Displays tested_by_plan if set
-  - step: 3
-    when: the feature is used
-    then:
-    - JSON output supported with --json flag
-  - step: 4
-    when: the feature is used
-    then:
-    - Shows 'never' for untested stories
-  related_commands:
-  - agentic stories status US-STR-001
-  - agentic --json stories status US-STR-001
-  related_agents:
-  - test-builder
-  - planner-test
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-STR-005
-  title: Update Story Test Status
-  category: story_management
-  priority: high
-  description: As a test agent completing validation, I want to record the test result for a user story, so that test progress
-    is tracked in the story files.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: an error condition occurs
-    then:
-    - agentic stories update <id> --status pass|fail|skip sets test_status
-  - step: 2
-    when: the feature is used
-    then:
-    - last_tested is automatically set to current UTC timestamp
-  - step: 3
-    when: an error condition occurs
-    then:
-    - --notes flag records test notes or failure details
-  - step: 4
-    when: the feature is used
-    then:
-    - --epic flag records which epic tested the story
-  - step: 5
-    when: the feature is used
-    then:
-    - YAML file is updated in place
-  - step: 6
-    when: the feature is used
-    then:
-    - JSON output supported with --json flag
-  related_commands:
-  - agentic stories update US-STR-001 --status pass
-  - agentic stories update US-STR-001 --status fail --notes 'Command not found'
-  - agentic stories update US-STR-001 --status pass --epic 260207CL
-  related_agents:
-  - test-builder
-  - test-builder
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-STR-006
-  title: Story Test Report
-  category: story_management
-  priority: medium
-  description: As a developer assessing overall test coverage, I want to see a summary of pass/fail/untested across all stories,
-    so that I can identify coverage gaps.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: an error condition occurs
-    then:
-    - agentic stories report shows pass/fail/skip/untested counts
-  - step: 2
-    when: the feature is used
-    then:
-    - --project flag filters by project
-  - step: 3
-    when: the feature is used
-    then:
-    - Coverage percentage is displayed
-  - step: 4
-    when: the feature is used
-    then:
-    - JSON output supported with --json flag
-  related_commands:
-  - agentic stories report
-  - agentic stories report --project AgenticCLI
-  - agentic --json stories report
-  related_agents:
-  - planner-test
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-STR-007
-  title: List Untested Stories
-  category: story_management
-  priority: medium
-  description: As a test planner prioritizing work, I want to see which stories have not been tested, so that I can plan the
-    next test cycle.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic stories untested lists stories with test_status=untested
-  - step: 2
-    when: the feature is used
-    then:
-    - --project flag filters by project
-  - step: 3
-    when: the feature is used
-    then:
-    - Stories are grouped by project
-  - step: 4
-    when: the feature is used
-    then:
-    - Total count is displayed
-  - step: 5
-    when: the feature is used
-    then:
-    - JSON output supported with --json flag
-  related_commands:
+  - agentic stories health
+  - agentic stories health --project AgenticCLI
+  - agentic stories health --coverage
+  - agentic stories health --coverage --project AgenticCLI
   - agentic stories untested
-  - agentic stories untested --project AgenticCLI
-  - agentic --json stories untested
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/stories.py
   related_agents:
-  - planner-test
   - test-builder
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-STR-008
-  title: Find Related User Stories
-  category: story_management
-  priority: medium
-  description: As a developer working on a feature, I want to find user stories related to my current context, so that I understand
-    the requirements and acceptance criteria for the code I am changing.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic stories find surfaces stories related to context
-  - step: 2
-    when: the feature is used
-    then:
-    - --project flag scopes to specific project
-  - step: 3
-    when: the feature is used
-    then:
-    - --changes flag accepts file paths
-  - step: 4
-    when: the feature is used
-    then:
-    - Results show ID/title/acceptance criteria
-  related_commands:
-  - agentic stories find --project AgenticCLI
-  - agentic st find --changes src/agenticcli/commands/plan.py
+  - planner-test
   last_tested: null
   test_status: untested
   test_notes: ''

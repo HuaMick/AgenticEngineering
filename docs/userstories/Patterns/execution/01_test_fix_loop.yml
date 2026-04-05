@@ -1,0 +1,40 @@
+area: execution_patterns
+description: "Execution workflow and feedback patterns"
+patterns:
+- id: PAT-EXE-001
+  title: Test-Fix Loop
+  description: >
+    Build phases that produce testable output are followed by a
+    test-audit-fix loop with bounded iterations to prevent infinite retries.
+  tags: [execution, testing, loop, bounded-retry]
+  applicable_categories: [US-PLN, US-GDN]
+
+  parameters:
+    phase_type:
+      description: "The type of build phase (e.g., build-python, build-flutter)"
+      required: true
+    max_iterations:
+      description: "Maximum loop iterations before forced exit"
+      required: true
+    exit_condition:
+      description: "Condition that terminates the loop successfully"
+      required: true
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Run {phase_type} phase that produces failing tests"
+        expect: "Test-fix loop triggers automatically"
+      - step: 2
+        action: "Allow loop to run"
+        expect: "Loop terminates when {exit_condition} or after {max_iterations} iterations"
+      - step: 3
+        action: "Force all iterations to fail"
+        expect: "Loop exits after exactly {max_iterations} iterations, not infinite"
+
+    structural:
+      checks:
+      - description: "Loop has bounded iteration count"
+        look_for: "max_iterations|loop_max|MAX_RETRIES"
+        in_files: "modules/AgenticCLI/src/agenticcli/workflows/*.py"

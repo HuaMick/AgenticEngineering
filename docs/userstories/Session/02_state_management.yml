@@ -1,240 +1,56 @@
 area: state_management
-description: "Process state registry and inputs management"
+description: "Process state registry inspection and cleanup"
 stories:
-- id: US-SES-005
-  title: List Process State Registry
+- id: US-SES-006
+  title: Process State Management
   category: state_management
   priority: medium
-  description: As a developer debugging CLI operations, I want to see all registered CLI processes, so that I can track what
-    operations are running or have run.
+  description: As a developer debugging CLI operations, I want to inspect registered CLI processes and clean up stale
+    records, so that I can track what operations are running, diagnose issues, and keep the state registry accurate.
   prerequisites: []
+  inherits_patterns:
+  - id: PAT-CLI-001
+    bind:
+      command: "agentic orchestrate debug state list"
+      expected_keys: [pid, command, status, start_time]
   steps:
   - step: 1
-    when: the feature is used
+    when: state is listed
     then:
-    - agentic state list shows all registered processes
-  - step: 2
-    when: the feature is used
-    then:
-    - Output includes PID, command, status, start time
-  - step: 3
-    when: the feature is used
-    then:
+    - agentic orchestrate debug state list shows all registered processes with PID, command, status, start time
     - The --active flag filters to show only running processes
-  - step: 4
-    when: the feature is used
-    then:
     - Dead processes are automatically cleaned up on list
-  - step: 5
-    when: the feature is used
-    then:
-    - JSON output supported with --json flag
-  related_commands:
-  - agentic state list
-  - agentic state list --active
-  related_agents: []
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-SES-006
-  title: Show Process State Details
-  category: state_management
-  priority: low
-  description: As a developer investigating a specific process, I want to see detailed information about a registered process,
-    so that I can diagnose issues or track execution.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic state show <pid> displays full process details
   - step: 2
-    when: the feature is used
+    when: a specific process is inspected
     then:
+    - agentic orchestrate debug state show <pid> displays full process details
     - Output includes command, args, cwd, environment
-  - step: 3
-    when: the feature is used
-    then:
     - Start time, end time, and duration are shown
-  - step: 4
-    when: the feature is used
-    then:
     - Exit code is displayed if process completed
-  related_commands:
-  - agentic state show 12345
-  related_agents: []
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-SES-007
-  title: Clear State Registry
-  category: state_management
-  priority: low
-  description: As a developer cleaning up test artifacts, I want to clear the process state registry, so that I can remove
-    stale process records.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
+  - step: 3
+    when: completed records are cleared
     then:
-    - agentic state clear removes all completed process records
-  - step: 2
-    when: the feature is used
+    - agentic orchestrate debug state clear removes all completed process records
+    - Active processes are not cleared unless --all is specified
+  - step: 4
+    when: all records are cleared
     then:
     - The --all flag removes all records including active processes
-  - step: 3
-    when: the feature is used
-    then:
     - The --force flag skips confirmation prompt
-  - step: 4
-    when: the feature is used
-    then:
-    - Active processes are not cleared unless --all is specified
-  related_commands:
-  - agentic state clear
-  - agentic state clear --all --force
-  related_agents: []
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-SES-008
-  title: Cleanup Dead Processes
-  category: state_management
-  priority: medium
-  description: As a developer maintaining system hygiene, I want to remove records for processes that are no longer running,
-    so that The state registry stays clean and accurate.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic state cleanup removes dead process records
-  - step: 2
-    when: the feature is used
-    then:
-    - Process liveness is checked via PID
-  - step: 3
-    when: the feature is used
-    then:
-    - Count of cleaned processes is displayed
-  - step: 4
-    when: the feature is used
-    then:
-    - Command is safe to run regularly
-  related_commands:
-  - agentic state cleanup
-  related_agents: []
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-SES-009
-  title: Manage Process State
-  category: state_management
-  priority: high
-  description: As a developer managing agent sessions, I want to list, inspect, and clean up tracked process state, so that I
-    can monitor running agents and remove stale entries.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic state list shows tracked processes
-  - step: 2
-    when: the feature is used
-    then:
-    - --active filters to running
-  - step: 3
-    when: the feature is used
-    then:
-    - agentic state show <pid> shows details
-  - step: 4
-    when: the feature is used
-    then:
-    - agentic state clear removes stale entries
   - step: 5
-    when: the feature is used
+    when: dead records are cleaned
     then:
-    - --all --force clears all
-  - step: 6
-    when: the feature is used
-    then:
-    - agentic state cleanup removes dead processes
+    - agentic orchestrate debug state cleanup removes dead process records
+    - Process liveness is checked via PID
+    - Count of cleaned processes is displayed
   related_commands:
-  - agentic state list --active
-  - agentic state show <pid>
-  - agentic state cleanup
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-SES-010
-  title: Validate Inputs YAML References
-  category: inputs_management
-  priority: medium
-  description: As a developer creating agent inputs.yml, I want to validate that all file references in inputs.yml exist,
-    so that Agents don't fail due to missing input files.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic inputs validate <file> checks all location references
-  - step: 2
-    when: an error condition occurs
-    then:
-    - Missing files are reported with paths
-  - step: 3
-    when: the feature is used
-    then:
-    - Layer references are expanded and checked
-  - step: 4
-    when: an error condition occurs
-    then:
-    - Exit code 1 if validation fails, 0 if all files exist
-  related_commands:
-  - agentic inputs validate inputs.yml
-  - agentic inputs validate agents/planner/planner-build/inputs.yml
-  related_agents:
-  - planner-build
-  - builder
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-SES-011
-  title: Resolve Inputs YAML References
-  category: inputs_management
-  priority: medium
-  description: As a agent bootstrapping context, I want to resolve all layer and file references in inputs.yml, so that I
-    get a flat list of all files to load.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic inputs resolve <file> expands all references
-  - step: 2
-    when: the feature is used
-    then:
-    - Layer references are expanded to full file lists
-  - step: 3
-    when: the feature is used
-    then:
-    - File existence is checked and reported
-  - step: 4
-    when: the feature is used
-    then:
-    - Output is JSON array of resolved file paths
-  related_commands:
-  - agentic inputs resolve inputs.yml
-  - agentic inputs resolve agents/planner/inputs.yml --json
-  related_agents:
-  - planner-build
-  - builder
+  - agentic orchestrate debug state list
+  - agentic orchestrate debug state list --active
+  - agentic orchestrate debug state show 12345
+  - agentic orchestrate debug state clear
+  - agentic orchestrate debug state clear --all --force
+  - agentic orchestrate debug state cleanup
+  related_agents: []
   last_tested: null
   test_status: untested
   test_notes: ''

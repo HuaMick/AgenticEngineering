@@ -1,290 +1,68 @@
 area: epic_management
-description: "Epic init/scaffold/status/list/validate/archive"
+description: "Epic new/seed/status/list/archive"
 stories:
 - id: US-PLN-001
-  title: Initialize Epic with Worktree
+  title: Epic Lifecycle
   category: epic_management
   priority: critical
-  lifecycle: under-construction
-  description: As a developer starting a new feature, I want to run a single command that creates both a worktree and an epic
-    record in TinyDB, so that I have the correct workspace structure without manual naming or setup.
+  description: As a developer, I want to create, monitor, and archive epics through the CLI,
+    so that I can manage the full epic lifecycle from inception to completion with clear visibility at every stage.
   prerequisites: []
+  inherits_patterns:
+  - id: PAT-CLI-001
+    bind:
+      command: "agentic epic status"
+      expected_keys: [name, status, phase_count, ticket_counts]
   steps:
   - step: 1
-    when: the feature is used
+    when: creating an epic with planning
     then:
-    - agentic epic init <branch> creates a git worktree at ../repo-<branch>
+    - agentic epic new "<description>" creates an epic folder in docs/epics/live/ and spawns a planner agent
   - step: 2
-    when: the feature is used
+    when: creating an epic without planning
     then:
-    - An epic record is created in TinyDB with YYMMDDXX_description naming
+    - agentic epic seed "<description>" creates an epic folder and TinyDB record without spawning a planner
   - step: 3
-    when: the feature is used
+    when: an epic is created
     then:
-    - The TinyDB record contains required fields: name, status, epic_folder_name, branch
+    - A TinyDB record is created with YYMMDDXX_description naming and required fields (name, status, epic_folder_name); duplicate names are rejected
   - step: 4
-    when: the feature is used
+    when: viewing a single epic
     then:
-    - The --description flag customizes the epic folder suffix
+    - agentic epic status shows epic name, phase count, ticket counts by status; without arguments, auto-detects the active epic from the current branch
   - step: 5
-    when: the feature is used
+    when: viewing all epics
     then:
-    - The --base flag specifies the base branch for the worktree
+    - agentic epic list shows all epics across live/, completed/, and deferred/ with name, status, creation date, action_required, and ticket counts from TinyDB
   - step: 6
-    when: worktree already exists
+    when: reviewing epic health
     then:
-    - it is reused without error
+    - Each epic includes an action_required field (blocked, needs_planning, execute, archive) indicating what attention is needed
   - step: 7
-    when: the feature is used
+    when: filtering or scripting
     then:
-    - Epic folder name is generated programmatically, not interpreted by agents
+    - Both commands support JSON output (-j) and filtering by status, priority, or branch
   - step: 8
-    when: the feature is used
+    when: archiving a completed epic
     then:
-    - Disk folders in docs/epics/live/ are created lazily only when agents need to write artifacts (stories.yml, README.md)
+    - agentic epic archive copies the epic folder to docs/epics/completed/ and updates TinyDB (status and folder path)
+  - step: 9
+    when: all tickets are completed
+    then:
+    - No auto-archive occurs; epic stays in live/ with action_required "archive" until explicitly archived
+  - step: 10
+    when: an epic is archived
+    then:
+    - Archived epics retain all files and history in docs/epics/completed/
   related_commands:
-  - agentic epic init <branch> --description <desc> --base <base>
-  related_agents:
-  - orchestration-planning  # deploy-worktree removed; worktree ops now via CLI
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-PLN-002
-  title: Scaffold Epic Folder Only
-  category: epic_management
-  priority: high
-  lifecycle: under-construction
-  description: As a developer who already has a worktree, I want to scaffold an epic record without creating a disk folder upfront,
-    so that I can add planning structure to an existing workspace without requiring a physical directory.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic scaffold <name> creates an epic record in TinyDB with YYMMDDXX_description naming
-  - step: 2
-    when: the feature is used
-    then:
-    - The --worktree flag associates the epic with a specific worktree path
-  - step: 3
-    when: the feature is used
-    then:
-    - The scaffolded TinyDB record contains required fields and an initial build phase record
-  - step: 4
-    when: an error condition occurs
-    then:
-    - The command fails clearly if an epic with the same name already exists in TinyDB
-  - step: 5
-    when: the feature is used
-    then:
-    - A disk folder in docs/epics/live/ is only created when an agent first writes an artifact to it
-  related_commands:
-  - agentic epic scaffold <name>
-  - agentic epic scaffold <name> --worktree <path>
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-PLN-003
-  title: View Epic Status
-  category: epic_management
-  priority: high
-  description: As a developer reviewing current work, I want to see the status of an epic at a glance, so that I know how
-    many tickets are completed, in progress, or pending.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic status shows epic name, phase count, ticket counts by status
-  - step: 2
-    when: an error condition occurs
-    then:
-    - Without arguments, auto-detects the active epic from the current branch
-  - step: 3
-    when: the feature is used
-    then:
-    - With a path argument, shows status for the specified epic
-  - step: 4
-    when: the feature is used
-    then:
-    - JSON output mode (-j) returns structured status data
-  related_commands:
+  - agentic epic new "<description>"
+  - agentic epic seed "<description>"
   - agentic epic status
   - agentic epic status <path>
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-PLN-004
-  title: List All Epics
-  category: epic_management
-  priority: high
-  description: As a developer managing multiple features, I want to see all active and completed epics, so that I have visibility
-    into all ongoing and past work.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic list shows all epics in docs/epics/live/ and docs/epics/completed/
-  - step: 2
-    when: the feature is used
-    then:
-    - Each epic shows name, status, and creation date
-  - step: 3
-    when: the feature is used
-    then:
-    - Epics are organized by status (live vs completed)
-  - step: 4
-    when: the feature is used
-    then:
-    - JSON output mode is supported for scripting
-  - step: 5
-    when: the feature is used
-    then:
-    - Epic data is sourced from TinyDB (via EpicService.list_epics) with YAML fallback
-  - step: 6
-    when: the feature is used
-    then:
-    - Each epic entry includes action_required field (blocked, needs_planning, execute, archive)
-  - step: 7
-    when: the feature is used
-    then:
-    - has_orchestration is determined by filesystem check for TinyDB phase records
-  - step: 8
-    when: the feature is used
-    then:
-    - Ticket counts (pending, in_progress, completed) are sourced from TinyDB when available
-  related_commands:
   - agentic epic list
+  - agentic epic list --status active
+  - agentic epic archive
   last_tested: '2026-02-24'
   test_status: passing
-  test_notes: ''
+  test_notes: 'Validated by plan 260222RA: auto-archive removed, explicit archive works correctly'
   tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
-- id: US-PLN-005
-  title: Validate Epic Structure
-  category: epic_management
-  priority: medium
-  description: As a developer or agent, I want to validate that an epic has the correct structure, so that I catch
-    structural issues before execution begins.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic validate checks for required TinyDB records (ticket records and phase records)
-  - step: 2
-    when: an error condition occurs
-    then:
-    - Reports missing or malformed records with clear messages
-  - step: 3
-    when: an error condition occurs
-    then:
-    - Returns exit code 0 on success, non-zero on failure
-  - step: 4
-    when: an error condition occurs
-    then:
-    - The --strict flag treats warnings as errors
-  related_commands:
-  - agentic epic validate <path>
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-PLN-006
-  title: Archive Completed Epics
-  category: archiving
-  priority: high
-  description: As a developer finishing a feature, I want to explicitly archive completed epics from live/ to completed/,
-    so that the live folder only contains active work and archiving is deliberate.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic move folder --epic <name> --force moves epic to docs/epics/completed/
-  - step: 2
-    when: the feature is used
-    then:
-    - Ticket completion does NOT trigger auto-archive (epic stays in live/)
-  - step: 3
-    when: the feature is used
-    then:
-    - Epic status JSON shows action_required "archive" when all tickets are completed
-  - step: 4
-    when: the feature is used
-    then:
-    - agentic epic unarchive --epic <name> moves an epic back to live/
-  - step: 5
-    when: the feature is used
-    then:
-    - The --force flag on unarchive skips confirmation
-  - step: 6
-    when: the feature is used
-    then:
-    - Archived epics retain all files and history
-  - step: 7
-    when: the feature is used
-    then:
-    - The orchestration-loop is responsible for archiving via explicit move command
-  - step: 8
-    when: the feature is used
-    then:
-    - Archiving updates TinyDB via repo.archive_epic (updates status and folder path)
-  - step: 9
-    when: the feature is used
-    then:
-    - Unarchiving updates TinyDB via repo.unarchive_epic (resets status and folder path)
-  - step: 10
-    when: the feature is used
-    then:
-    - Physical folder moves (shutil.move / shutil.copytree) happen independently of TinyDB
-  - step: 11
-    when: an error condition occurs
-    then:
-    - TinyDB updates are non-fatal; physical file operation succeeds even if TinyDB fails
-  related_commands:
-  - agentic epic move folder --epic <name> --force
-  - agentic epic unarchive --epic <name>
-  last_tested: '2026-02-24'
-  test_status: passing
-  test_notes: 'Validated by plan 260222RA: auto-archive removed, explicit archive via epic move folder works correctly'
-  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
-- id: US-PLN-007
-  title: Move Completed Tickets
-  category: archiving
-  priority: medium
-  description: As a developer cleaning up an epic, I want to move completed tickets within an epic's completed/ subfolder,
-    so that the active ticket list stays focused on remaining work.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic move ticket <id> moves a single completed ticket
-  - step: 2
-    when: the feature is used
-    then:
-    - agentic epic move tickets moves all completed tickets at once
-  - step: 3
-    when: the feature is used
-    then:
-    - agentic epic move folder moves the entire epic folder when all tickets complete
-  - step: 4
-    when: an error condition occurs
-    then:
-    - The --dry-run flag previews the move without making changes
-  - step: 5
-    when: the feature is used
-    then:
-    - The --force flag skips confirmation prompts
-  related_commands:
-  - agentic epic move ticket <id>
-  - agentic epic move tickets --dry-run
-  - agentic epic move folder
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null

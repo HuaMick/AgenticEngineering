@@ -8,6 +8,12 @@ stories:
   description: As a planner agent structuring an epic, I want to add, list, and update phases within an epic, so that the
     epic has clear execution milestones.
   prerequisites: []
+  inherits_patterns:
+  - id: PAT-DAT-002
+    bind:
+      entity: phase
+      repository: EpicRepository
+      operations: [add, list, update]
   steps:
   - step: 1
     when: the feature is used
@@ -32,23 +38,15 @@ stories:
   - step: 6
     when: the feature is used
     then:
-    - Phase add uses TinyDB (repo.add_phase) first, then syncs to YAML
+    - Phase data is stored in TinyDB (repo.add_phase, repo.update_phase)
   - step: 7
     when: the feature is used
     then:
-    - Phase update uses TinyDB (repo.update_phase) first, then syncs to YAML
+    - Phase list sources data from TinyDB
   - step: 8
     when: the feature is used
     then:
-    - Phase list sources data from TinyDB (repo.get_epic) when available
-  - step: 9
-    when: an error condition occurs
-    then:
-    - All phase operations fall back to direct TinyDB ticket records (build phase) mutation when TinyDB path fails
-  - step: 10
-    when: the feature is used
-    then:
-    - Status transitions are validated in both TinyDB and YAML fallback paths
+    - Status transitions are validated
   related_commands:
   - agentic epic phase add --id P1 --name 'Core Implementation'
   - agentic epic phase list
@@ -57,45 +55,3 @@ stories:
   test_status: passing
   test_notes: ''
   tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
-- id: US-PLN-016
-  title: Generate Orchestration Phases (TinyDB)
-  category: orchestration
-  priority: high
-  description: As a planner agent finalizing an epic, I want to generate a Mermaid flowchart from the TinyDB via EpicRepository,
-    so that the execution order and agent routing are defined for the executor.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic orchestration generate creates an TinyDB phase records via repo.list_phases()
-  - step: 2
-    when: the feature is used
-    then:
-    - The TinyDB phase records includes phase nodes with TinyDB phase agent field
-  - step: 3
-    when: the feature is used
-    then:
-    - Test phases include test-fix loop structure
-  - step: 4
-    when: an error condition occurs
-    then:
-    - Feedback triggers are defined for failure handling
-  - step: 5
-    when: the feature is used
-    then:
-    - The --force flag overwrites existing TinyDB phase recordss
-  - step: 6
-    when: the feature is used
-    then:
-    - CLI commands are embedded as comments for agent reference
-  related_commands:
-  - agentic epic orchestration generate
-  - agentic epic orchestration validate
-  related_agents:
-  - planner-orchestration
-  - orchestration-executor
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null

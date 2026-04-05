@@ -1,186 +1,64 @@
 area: ticket_management
 description: "Ticket list/current/start/complete/add/update"
 stories:
-- id: US-PLN-008
-  title: List and Test User Stories
-  category: stories
-  priority: medium
-  description: As a developer validating epic completion, I want to list user stories from an epic and generate blind test
-    scenarios, so that I can validate that the epic deliverables meet user needs.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic stories list shows all user stories defined in TinyDB epic records
-  - step: 2
-    when: the feature is used
-    then:
-    - agentic epic stories test generates blind test scenarios
-  - step: 3
-    when: the feature is used
-    then:
-    - Test output can be saved to YAML or JSON files
-  - step: 4
-    when: the feature is used
-    then:
-    - Test scenarios are derived from acceptance criteria
-  related_commands:
-  - agentic epic stories list
-  - agentic epic stories test --output tests.yml --format yaml
-  related_agents:
-  - test-uat
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
 - id: US-PLN-009
-  title: List Epic Tickets
+  title: Ticket Management
   category: ticket_management
   priority: critical
-  description: As a developer or agent working on an epic, I want to see all tickets in the current epic with their status,
-    so that I know what work remains and what is currently in progress.
+  description: As a developer or agent working on an epic, I want to list, add, and manage tickets through their lifecycle,
+    so that epic progress is tracked accurately and I always know what to work on next.
   prerequisites: []
+  inherits_patterns:
+  - id: PAT-CLI-001
+    bind:
+      command: "agentic epic ticket list"
+      expected_keys: [id, name, status, phase]
+  - id: PAT-DAT-001
+    bind:
+      operation: "ticket status transition"
+      target_file: "epics.db"
+      service_method: "repo.update_ticket_status"
   steps:
   - step: 1
-    when: the feature is used
+    when: listing tickets
     then:
-    - agentic epic ticket list shows all tickets with ID, name, status, and phase
+    - agentic epic ticket list shows all tickets with ID, name, status, and phase; --status filters, --verbose shows full details
   - step: 2
-    when: the feature is used
+    when: getting the next ticket
     then:
-    - The --status flag filters by status (pending, in_progress, completed, all)
+    - agentic epic ticket current returns the first in_progress ticket, or the first pending ticket if none are in progress
   - step: 3
-    when: the feature is used
+    when: progressing a ticket
     then:
-    - The --verbose flag shows full ticket details including guidance and criteria
+    - agentic epic ticket start <id> sets status to in_progress; agentic epic ticket complete <id> sets status to completed with timestamp
   - step: 4
-    when: the feature is used
+    when: adding new work
     then:
-    - Auto-detects the epic folder if --epic is not specified
+    - agentic epic ticket add <description> creates a new pending ticket; --phase, --id, --priority flags supported
   - step: 5
     when: the feature is used
     then:
-    - JSON output is supported
+    - Status transitions are validated (pending -> in_progress -> completed); supports statuses pending, in_progress, completed, blocked
   - step: 6
     when: the feature is used
     then:
-    - Ticket data is sourced from TinyDB (repo.get_tickets) when TinyDB has matching data
+    - All ticket data is sourced from TinyDB via atomic FileLock operations; multiple agents cannot corrupt state
   - step: 7
     when: the feature is used
     then:
-    - Falls back to scanning ticket_*.yml files when TinyDB has no matching epic or ticket data
+    - Auto-detects epic folder if --epic is not specified; JSON output (-j) supported on all subcommands
   - step: 8
-    when: the feature is used
+    when: no phases exist in TinyDB
     then:
-    - TinyDB results are only used when stored folder path matches the actual epic path
+    - an "Ad-hoc Tickets" phase is created automatically when adding tickets
   related_commands:
   - agentic epic ticket list
   - agentic epic ticket list --status pending --verbose
-  last_tested: '2026-02-24'
-  test_status: passing
-  test_notes: ''
-  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
-- id: US-PLN-010
-  title: Get Current Ticket
-  category: ticket_management
-  priority: critical
-  description: As a agent beginning a work iteration, I want to know which ticket I should work on next, so that I can start
-    executing without manual ticket selection.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic ticket current returns the first in_progress ticket
-  - step: 2
-    when: no in_progress ticket exists
-    then:
-    - returns the first pending ticket
-  - step: 3
-    when: the feature is used
-    then:
-    - Returns ticket ID, description, phase, guidance, and success criteria
-  - step: 4
-    when: the feature is used
-    then:
-    - Returns empty result with clear message when no tickets remain
-  - step: 5
-    when: the feature is used
-    then:
-    - JSON output includes all ticket metadata
-  - step: 6
-    when: the feature is used
-    then:
-    - Current ticket is sourced from TinyDB (repo.get_current_ticket) when available
-  - step: 7
-    when: the feature is used
-    then:
-    - Falls back to YAML scan if TinyDB has no matching epic or returns no current ticket
-  - step: 8
-    when: the feature is used
-    then:
-    - Ticket counts for completion detection use repo.get_ticket_counts from TinyDB
-  - step: 9
-    when: the feature is used
-    then:
-    - JSON response includes all_complete field when all tickets are done
-  related_commands:
-  - agentic epic ticket current
   - agentic epic ticket current --epic <path>
-  related_agents:
-  - orchestration-executor
-  last_tested: '2026-02-24'
-  test_status: passing
-  test_notes: ''
-  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
-- id: US-PLN-011
-  title: Start and Complete Tickets
-  category: ticket_management
-  priority: critical
-  description: As a agent executing epic tickets, I want to mark tickets as started and completed, so that epic progress is
-    tracked accurately across sessions.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic ticket start <id> sets status to in_progress
-  - step: 2
-    when: the feature is used
-    then:
-    - Start requires TinyDB phase records to exist (epic must be orchestrated)
-  - step: 3
-    when: the feature is used
-    then:
-    - agentic epic ticket complete <id> sets status to completed with timestamp
-  - step: 4
-    when: the feature is used
-    then:
-    - Status transitions are validated (cannot complete a pending ticket directly)
-  - step: 5
-    when: the feature is used
-    then:
-    - Ticket status is updated in TinyDB first (repo.update_ticket_status), then synced to YAML
-  - step: 6
-    when: the feature is used
-    then:
-    - YAML files are kept in sync via repo.sync_to_yaml for git visibility
-  - step: 7
-    when: an error condition occurs
-    then:
-    - Falls back to direct YAML mutation when TinyDB path fails or has no matching epic
-  - step: 8
-    when: the feature is used
-    then:
-    - Multiple agents cannot start the same ticket simultaneously (FileLock protection)
-  - step: 9
-    when: the feature is used
-    then:
-    - Completing the last ticket does NOT trigger auto-archive (epic stays in live/)
-  related_commands:
-  - agentic agent epic ticket start <id>
-  - agentic agent epic ticket complete <id>
+  - agentic epic ticket start <id> --epic <folder>
+  - agentic epic ticket complete <id> --epic <folder>
+  - agentic epic ticket add <desc> --phase P2 --priority high
+  - agentic epic ticket update <id> --status completed
   related_agents:
   - orchestration-executor
   - build-python
@@ -188,135 +66,3 @@ stories:
   test_status: passing
   test_notes: 'Validated by plan 260222RA: ticket start/complete work correctly, no auto-archive side effects'
   tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
-- id: US-PLN-012
-  title: Add Tickets to Epic
-  category: ticket_management
-  priority: high
-  description: As a planner agent discovering new work, I want to add tickets to an existing epic, so that new requirements
-    are captured within the epic structure.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic ticket add <description> creates a new pending ticket
-  - step: 2
-    when: the feature is used
-    then:
-    - The --phase flag assigns the ticket to a specific phase
-  - step: 3
-    when: the feature is used
-    then:
-    - The --id flag allows custom ticket IDs
-  - step: 4
-    when: the feature is used
-    then:
-    - The --priority flag sets ticket priority (low, medium, high)
-  - step: 5
-    when: an error condition occurs
-    then:
-    - Without --phase, the ticket is added to the last phase
-  - step: 6
-    when: the feature is used
-    then:
-    - Auto-generated IDs follow the phase_sequence convention
-  - step: 7
-    when: the feature is used
-    then:
-    - Ticket is added via TinyDB (repo.add_ticket) first, then synced to YAML
-  - step: 8
-    when: an error condition occurs
-    then:
-    - Falls back to direct YAML mutation when TinyDB path fails or has no matching epic
-  - step: 9
-    when: the feature is used
-    then:
-    - YAML is synced via repo.sync_to_yaml after TinyDB insertion for git visibility
-  - step: 10
-    when: no phases exist in TinyDB
-    then:
-    - an "Ad-hoc Tickets" phase is created automatically
-  related_commands:
-  - agentic epic ticket add <desc>
-  - agentic epic ticket add <desc> --phase P2 --priority high
-  last_tested: '2026-02-24'
-  test_status: passing
-  test_notes: ''
-  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
-- id: US-PLN-013
-  title: Update Ticket Status with Notes
-  category: ticket_management
-  priority: high
-  description: As a agent reporting on ticket progress, I want to update a ticket's status and add completion notes, so that
-    the epic captures not just status but context about the work done.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic ticket update <id> --status <status> changes the ticket status
-  - step: 2
-    when: the feature is used
-    then:
-    - 'Supports statuses: pending, in_progress, completed, blocked'
-  - step: 3
-    when: the feature is used
-    then:
-    - The --note flag adds text to the ticket record
-  - step: 4
-    when: marking completed
-    then:
-    - a timestamp is automatically recorded
-  - step: 5
-    when: the feature is used
-    then:
-    - Status transitions are validated
-  - step: 6
-    when: the feature is used
-    then:
-    - Ticket status is updated in TinyDB first (repo.update_ticket_status), then synced to YAML
-  - step: 7
-    when: an error condition occurs
-    then:
-    - Falls back to direct YAML mutation when TinyDB path fails or has no matching epic
-  - step: 8
-    when: the feature is used
-    then:
-    - Updating status to completed does NOT trigger auto-archive (epic stays in live/)
-  related_commands:
-  - agentic agent epic ticket update <id> --status completed --note 'Tests passing'
-  last_tested: '2026-02-24'
-  test_status: passing
-  test_notes: 'Validated by plan 260222RA: ticket update works correctly, no auto-archive side effects'
-  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
-- id: US-PLN-014
-  title: Prefill Tickets from Preset
-  category: ticket_management
-  priority: medium
-  description: As a planner agent setting up a standard workflow, I want to populate an epic with tickets from a known preset
-    template, so that common ticket patterns are reused without manual entry.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic ticket prefill --preset <name> adds template tickets to the epic
-  - step: 2
-    when: the feature is used
-    then:
-    - Available presets include planner-build and builder
-  - step: 3
-    when: an error condition occurs
-    then:
-    - The --dry-run flag previews changes without modifying the epic
-  - step: 4
-    when: the feature is used
-    then:
-    - Tickets are added to appropriate phases based on the preset definition
-  related_commands:
-  - agentic epic ticket prefill --preset planner-build
-  - agentic epic ticket prefill --preset builder --dry-run
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null

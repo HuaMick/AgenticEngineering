@@ -1,0 +1,108 @@
+area: cli_behaviors
+description: "Cross-cutting CLI output patterns"
+patterns:
+- id: PAT-CLI-001
+  title: JSON Output Support
+  description: >
+    Commands that produce structured output support --json flag
+    for machine-readable JSON to stdout.
+  tags: [cli, output, json]
+  applicable_categories: [US-SET, US-PLN, US-STR, US-SES]
+
+  parameters:
+    command:
+      description: "The CLI command under test"
+      required: true
+    expected_keys:
+      description: "Top-level JSON keys expected in output"
+      required: true
+      type: list
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Run `{command} --json`"
+        expect: "stdout is valid JSON parseable by json.loads()"
+      - step: 2
+        action: "Parse JSON output"
+        expect: "All keys in {expected_keys} are present at top level"
+      - step: 3
+        action: "Run `{command}` without --json"
+        expect: "stdout is human-readable text, NOT JSON"
+
+    structural:
+      checks:
+      - description: "Command handler uses console.print_json() or json output path"
+        look_for: "print_json|json_output|json\\.dumps"
+        in_files: "modules/AgenticCLI/src/agenticcli/commands/*.py"
+
+    enforcement:
+      sweep: "all_claimants"
+      method: |
+        For each story inheriting PAT-CLI-001:
+        1. Extract bound {command}
+        2. Run behavioral steps with bound values
+        3. Mark FAIL if any step does not pass
+
+- id: PAT-CLI-002
+  title: Project Filtering Flag
+  description: >
+    Commands that list resources support --project/-p flag to filter
+    results by project scope.
+  tags: [cli, filtering, project]
+  applicable_categories: [US-STR, US-PLN]
+
+  parameters:
+    command:
+      description: "The CLI command under test"
+      required: true
+    filter_field:
+      description: "Field name used for project filtering"
+      required: false
+      default: "project"
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Run `{command} --project SomeProject`"
+        expect: "Only results matching the project filter are shown"
+      - step: 2
+        action: "Run `{command}` without --project"
+        expect: "All results are shown regardless of project"
+
+    structural:
+      checks:
+      - description: "Command accepts --project/-p option"
+        look_for: "--project|-p"
+        in_files: "modules/AgenticCLI/src/agenticcli/cli.py"
+
+- id: PAT-CLI-003
+  title: Error Exit Code
+  description: >
+    Commands that fail due to invalid input or missing resources
+    exit with non-zero status and print to stderr.
+  tags: [cli, errors, exit-code]
+  applicable_categories: [US-SET, US-PLN, US-STR, US-SES]
+
+  parameters:
+    command:
+      description: "The CLI command under test"
+      required: true
+    error_trigger:
+      description: "Input or condition that triggers the error"
+      required: true
+    expected_message:
+      description: "Substring expected in stderr output"
+      required: false
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Run `{command}` with {error_trigger}"
+        expect: "Exit code is non-zero"
+      - step: 2
+        action: "Capture stderr"
+        expect: "Error message is printed to stderr, not stdout"

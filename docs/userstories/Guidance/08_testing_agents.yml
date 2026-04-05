@@ -2,329 +2,74 @@ area: testing_agents
 description: "Test-runner, test-audit, test-builder, simulators"
 stories:
 - id: US-GDN-061
-  title: Execute Python Tests
+  title: Test Execution Isolation
   category: testing
   priority: critical
-  description: As a test-builder agent, I want to execute existing tests and accurately report their status, so that defects
-    are identified through test failures.
+  description: As a test-builder agent, I want to execute tests in isolated worktree context with
+    structured output routing, so that results feed into orchestration loops.
   prerequisites: []
   steps:
   - step: 1
     when: the feature is used
     then:
-    - Execute tests using pytest in specified directory
+    - Tests run from correct worktree directory within orchestration system (not arbitrary repo root)
   - step: 2
-    when: an error condition occurs
+    when: the feature is used
     then:
-    - 'Report: passed, failed, skipped, errors'
+    - 'Role constraint: test-builder executes tests but MUST NOT fix code or modify tests —
+      separation prevents self-validation bias'
   - step: 3
-    when: an error condition occurs
+    when: the feature is used
     then:
-    - Capture stdout/stderr for failed tests
+    - Report saved as structured YAML/JSON to task outputs, enabling orchestration-executor
+      to parse results programmatically
   - step: 4
     when: the feature is used
     then:
-    - Generate test execution summary
-  - step: 5
-    when: the feature is used
-    then:
-    - Do not fix code or modify tests
-  - step: 6
-    when: an error condition occurs
-    then:
-    - Exit with non-zero code if tests fail
-  related_commands:
-  - pytest <directory>
+    - Failed test results feed back into test-fix-loop — orchestration-executor routes failures
+      to build agents for remediation
   related_agents:
   - test-builder
+  - orchestration-executor
   related_files:
   - modules/AgenticGuidance/agents/test/test-builder/process.yml
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-062
-  title: Smoke Test Strategy
-  category: testing
-  priority: high
-  description: As a test-builder agent, I want to execute smoke tests for quick validation, so that major defects are caught
-    early.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - Smoke tests execute in under 30 seconds
-  - step: 2
-    when: the feature is used
-    then:
-    - Smoke tests cover critical paths only
-  - step: 3
-    when: the feature is used
-    then:
-    - Smoke tests run before full test suite
-  - step: 4
-    when: the feature is used
-    then:
-    - Fast feedback on major breakage
-  related_agents:
-  - test-builder
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-063
-  title: Test Execution Report
-  category: testing
-  priority: high
-  description: As a test-builder agent, I want to generate structured test execution report, so that results can be consumed
-    by audit agents and CI/CD.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: an error condition occurs
-    then:
-    - 'Report includes: total tests, passed, failed, skipped'
-  - step: 2
-    when: the feature is used
-    then:
-    - Report includes execution time
-  - step: 3
-    when: an error condition occurs
-    then:
-    - Report includes failed test details with error messages
-  - step: 4
-    when: the feature is used
-    then:
-    - Report saved as YAML or JSON
-  - step: 5
-    when: the feature is used
-    then:
-    - Report location specified in task outputs
-  related_agents:
-  - test-builder
   last_tested: null
   test_status: untested
   test_notes: ''
   tested_by_plan: null
 - id: US-GDN-064
-  title: Review Test Quality
+  title: Test Audit Loop Integration
   category: testing
   priority: critical
-  description: As a test-audit agent, I want to review test quality and detect reward hacking, so that tests validate correctness,
-    not just pass.
+  description: As a test-audit agent, I want to review test quality and feed findings into the
+    audit-test-fix loop, so that test coverage metrics are meaningful and remediation is automated.
   prerequisites: []
   steps:
   - step: 1
     when: the feature is used
     then:
-    - Check if test exercises the code (not just imports)
+    - 'Role separation: test-audit is a distinct agent from test-builder — auditor cannot
+      be the same agent that wrote the tests (prevents self-validation bias)'
   - step: 2
     when: the feature is used
     then:
-    - Check if test has meaningful assertions (not just pass)
+    - Audit checks are defined in injectable guideline assets (reward-hacking-prevention.yml) —
+      the check list is interchangeable content, the audit mechanism is the system mechanic
   - step: 3
     when: the feature is used
     then:
-    - Check if test covers edge cases
+    - Audit report feeds into audit-test-fix-loop — orchestration-executor routes findings
+      to test-builder for remediation, then re-audits
   - step: 4
     when: the feature is used
     then:
-    - Check if test mocks are realistic
-  - step: 5
-    when: the feature is used
-    then:
-    - Identify tests that always pass (reward hacking)
-  - step: 6
-    when: the feature is used
-    then:
-    - Generate audit report with specific issues
+    - Loop bounded by max iterations to prevent infinite audit-fix cycles
   related_agents:
   - test-audit
+  - orchestration-executor
   related_files:
   - modules/AgenticGuidance/agents/test/test-audit/process.yml
   - modules/AgenticGuidance/assets/guidelines/reward-hacking-prevention.yml
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-065
-  title: Reward Hacking Detection
-  category: testing
-  priority: critical
-  description: As a test-audit agent, I want to detect tests that game the system, so that test coverage metrics are meaningful.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - Detect tests with no assertions
-  - step: 2
-    when: the feature is used
-    then:
-    - Detect tests that only import the module
-  - step: 3
-    when: the feature is used
-    then:
-    - Detect tests with trivial assertions (assert True)
-  - step: 4
-    when: the feature is used
-    then:
-    - Detect mocks that bypass actual logic
-  - step: 5
-    when: an error condition occurs
-    then:
-    - Detect tests that don't exercise error paths
-  - step: 6
-    when: the feature is used
-    then:
-    - Flag tests for review or rewrite
-  related_agents:
-  - test-audit
-  related_files:
-  - modules/AgenticGuidance/assets/guidelines/reward-hacking-prevention.yml
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-066
-  title: Test Coverage Alignment
-  category: testing
-  priority: high
-  description: As a test-audit agent, I want to verify test coverage aligns with acceptance criteria, so that implementation
-    is validated against requirements.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - Check each acceptance criterion has corresponding test
-  - step: 2
-    when: the feature is used
-    then:
-    - Check edge cases are tested
-  - step: 3
-    when: an error condition occurs
-    then:
-    - Check error handling is tested
-  - step: 4
-    when: the feature is used
-    then:
-    - Check integration points are tested
-  - step: 5
-    when: the feature is used
-    then:
-    - Identify gaps in test coverage
-  related_agents:
-  - test-audit
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-067
-  title: Build Test Files
-  category: testing
-  priority: critical
-  description: As a test-builder agent, I want to create test files that expose defects, so that implementations are validated
-    through testing.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - Create unit tests for new functions and classes
-  - step: 2
-    when: the feature is used
-    then:
-    - Create integration tests for component interactions
-  - step: 3
-    when: the feature is used
-    then:
-    - Create E2E tests for user workflows
-  - step: 4
-    when: the feature is used
-    then:
-    - Tests use pytest framework
-  - step: 5
-    when: the feature is used
-    then:
-    - Tests include fixtures, mocks, and assertions
-  - step: 6
-    when: the feature is used
-    then:
-    - 'Tests follow naming convention: test_*.py'
-  related_agents:
-  - test-builder
-  related_files:
-  - modules/AgenticGuidance/agents/test/test-builder/process.yml
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-068
-  title: Test Strategy Selection
-  category: testing
-  priority: high
-  description: As a test-builder agent, I want to select appropriate test strategy based on change type, so that tests match
-    risk and complexity.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - Unit tests for pure functions and isolated classes
-  - step: 2
-    when: the feature is used
-    then:
-    - Integration tests for service interactions
-  - step: 3
-    when: the feature is used
-    then:
-    - E2E tests for CLI commands and user workflows
-  - step: 4
-    when: the feature is used
-    then:
-    - Smoke tests for quick validation
-  - step: 5
-    when: the feature is used
-    then:
-    - Regression tests for bug fixes
-  related_agents:
-  - test-builder
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-069
-  title: Test Fixtures and Mocks
-  category: testing
-  priority: high
-  description: As a test-builder agent, I want to create realistic test fixtures and mocks, so that tests accurately simulate
-    production conditions.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - Fixtures represent realistic data structures
-  - step: 2
-    when: the feature is used
-    then:
-    - Mocks simulate expected behavior, not ideal behavior
-  - step: 3
-    when: an error condition occurs
-    then:
-    - Mocks include error conditions and edge cases
-  - step: 4
-    when: the feature is used
-    then:
-    - Fixtures reusable across multiple tests
-  - step: 5
-    when: the feature is used
-    then:
-    - Fixtures stored in conftest.py or fixtures/
-  related_agents:
-  - test-builder
   last_tested: null
   test_status: untested
   test_notes: ''
@@ -357,146 +102,69 @@ stories:
     when: the feature is used
     then:
     - Generate validation report with specific gaps
+  - step: 6
+    when: the feature is used
+    then:
+    - 'Blind test constraint: agent receives only process.yml, inputs.yml, and referenced assets'
+  - step: 7
+    when: the feature is used
+    then:
+    - Identify points where agent gets stuck, confused, or makes assumptions
+  - step: 8
+    when: the feature is used
+    then:
+    - Input file references validated during walkthrough
+  - step: 9
+    when: the feature is used
+    then:
+    - Report includes step-by-step pass/fail on guidance completeness
   related_agents:
   - trace-explorer
+  - teacher-update-guidance
   related_files:
   - modules/AgenticGuidance/agents/test/trace-explorer/process.yml
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-071
-  title: Guidance Blind Test
-  category: testing
-  priority: high
-  description: As a trace-explorer agent, I want to test guidance using only guidance files, no additional context,
-    so that guidance is self-contained and actionable.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - 'Agent receives only: process.yml, inputs.yml, referenced assets'
-  - step: 2
-    when: the feature is used
-    then:
-    - Agent attempts to complete task using only provided guidance
-  - step: 3
-    when: the feature is used
-    then:
-    - Identify points where agent gets stuck or confused
-  - step: 4
-    when: the feature is used
-    then:
-    - Identify points where agent makes assumptions
-  - step: 5
-    when: the feature is used
-    then:
-    - Generate report on guidance completeness
-  related_agents:
-  - trace-explorer
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-072
-  title: Validate Final Outputs
-  category: testing
-  priority: high
-  description: As a trace-explorer agent, I want to validate final outputs of agent processes, so that deliverables are
-    complete and correct.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - Check all expected output files exist
-  - step: 2
-    when: the feature is used
-    then:
-    - Check output files are well-formed (valid YAML, code, etc.)
-  - step: 3
-    when: the feature is used
-    then:
-    - Check outputs meet acceptance criteria
-  - step: 4
-    when: the feature is used
-    then:
-    - Check outputs follow naming conventions
-  - step: 5
-    when: the feature is used
-    then:
-    - Generate validation report
-  related_agents:
-  - trace-explorer
-  related_files:
-  - modules/AgenticGuidance/agents/test/trace-explorer/process.yml
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-073
-  title: Execution Data Validation
-  category: testing
-  priority: medium
-  description: As a trace-explorer agent, I want to validate execution data and metadata, so that execution artifacts are
-    complete for review.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - Check ticket files have all required fields
-  - step: 2
-    when: the feature is used
-    then:
-    - Check ticket status transitions are valid
-  - step: 3
-    when: the feature is used
-    then:
-    - Check timestamps are present and reasonable
-  - step: 4
-    when: the feature is used
-    then:
-    - Check references to files are valid paths
-  - step: 5
-    when: the feature is used
-    then:
-    - Identify incomplete or malformed execution data
-  related_agents:
-  - trace-explorer
   last_tested: null
   test_status: untested
   test_notes: ''
   tested_by_plan: null
 - id: US-GDN-074
-  title: Test User Stories
+  title: User Story UAT
   category: testing
   priority: medium
-  description: As a test-uat agent, I want to test user stories using only project documentation, so that user
-    experience matches documented workflows.
+  description: As a quality assurance process, I want to validate user stories through blind testing — both
+    documentation-based walkthroughs and scenario execution — so that user experience matches documented workflows.
   prerequisites: []
   steps:
   - step: 1
     when: the feature is used
     then:
-    - Agent receives only user-facing documentation (README, guides)
+    - test-uat agent receives only user-facing documentation (README, guides) — no internal guidance
   - step: 2
     when: the feature is used
     then:
-    - Agent attempts to complete user story steps
+    - Agent attempts to complete user story steps using only available docs and CLI help
   - step: 3
     when: the feature is used
     then:
-    - Identify points where documentation is insufficient
+    - Blind test scenarios can be generated from story definitions via orchestration spawn
   - step: 4
     when: the feature is used
     then:
-    - Identify points where actual behavior differs from docs
+    - 'Trigger via: agentic orchestrate session spawn --role test-uat --plan <epic-folder>'
   - step: 5
     when: the feature is used
     then:
-    - Generate report on documentation accuracy
+    - Identify points where documentation is insufficient or behavior differs from docs
+  - step: 6
+    when: the feature is used
+    then:
+    - Identify workflows that require internal knowledge to complete
+  - step: 7
+    when: the feature is used
+    then:
+    - Results report pass/fail with evidence and failure descriptions
+  related_commands:
+  - agentic orchestrate session spawn --role test-uat --plan <epic-folder>
   related_agents:
   - test-uat
   related_files:
@@ -505,342 +173,43 @@ stories:
   test_status: untested
   test_notes: ''
   tested_by_plan: null
-- id: US-GDN-075
-  title: Agent-Blind Testing
-  category: testing
-  priority: medium
-  description: As a test-uat agent, I want to test workflows without agent guidance access, so that user experience
-    is validated independently.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - No access to agent process.yml or internal guidance
-  - step: 2
-    when: the feature is used
-    then:
-    - Only access to user-facing docs and CLI help
-  - step: 3
-    when: the feature is used
-    then:
-    - Identify workflows that require internal knowledge
-  - step: 4
-    when: an error condition occurs
-    then:
-    - Identify missing user documentation
-  - step: 5
-    when: the feature is used
-    then:
-    - Report gaps between user docs and agent guidance
-  related_agents:
-  - test-uat
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-076
-  title: Validate Service Lifecycle
-  category: testing
-  priority: medium
-  description: As a test-builder agent, I want to validate backend service lifecycle, so that services start correctly and
-    remain stable.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: an error condition occurs
-    then:
-    - Start service and verify it runs without errors
-  - step: 2
-    when: the feature is used
-    then:
-    - Check service responds to health checks
-  - step: 3
-    when: the feature is used
-    then:
-    - Check service handles expected requests
-  - step: 4
-    when: the feature is used
-    then:
-    - Monitor service for stability over time
-  - step: 5
-    when: the feature is used
-    then:
-    - Shut down service gracefully
-  - step: 6
-    when: the feature is used
-    then:
-    - Report any lifecycle issues
-  related_agents:
-  - test-builder
-  related_files:
-  - modules/AgenticGuidance/agents/test/test-builder/process.yml
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-077
-  title: Pytest Story Marker Registration
-  category: testing
-  priority: high
-  description: As a test-builder agent writing story-linked tests, I want a registered @pytest.mark.story("US-XXX-NNN") marker
-    available in both test modules, so that tests can be permanently linked to user stories via co-located markers that cannot
-    drift.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - pytest_configure() registers the "story" marker in both AgenticCLI and AgenticGuidance conftest.py
-  - step: 2
-    when: the feature is used
-    then:
-    - 'Marker description: "Links test to user story ID for persistent traceability"'
-  - step: 3
-    when: the feature is used
-    then:
-    - Marker accepts a single string argument (story ID in US-XXX-NNN format)
-  - step: 4
-    when: the feature is used
-    then:
-    - No warning emitted when using @pytest.mark.story("US-STR-001") on a test
-  - step: 5
-    when: the feature is used
-    then:
-    - Multiple story markers can be applied to a single test function
-  related_agents:
-  - test-builder
-  - test-builder
-  related_files:
-  - modules/AgenticGuidance/tests/conftest.py
-  - modules/AgenticCLI/tests/conftest.py
-  related_stories:
-  - US-GDN-078
-  - US-GDN-079
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: 260308PD_planner_design_agent_story_alignment
-- id: US-GDN-078
-  title: Story Marker Validation at Collection Time
-  category: testing
-  priority: high
-  description: As a developer running the test suite, I want the conftest collection plugin to validate that story markers
-    reference valid story IDs, so that typos and stale story references are caught before tests execute.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - pytest_collection_modifyitems() hook loads valid story IDs from docs/userstories/ YAML files
-  - step: 2
-    when: the feature is used
-    then:
-    - _load_valid_story_ids() scans all story YAML files and extracts id fields
-  - step: 3
-    when: the feature is used
-    then:
-    - _find_repo_root_from_tests() locates the repository root from the tests/ directory
-  - step: 4
-    when: an error condition occurs
-    then:
-    - Invalid story IDs trigger a UserWarning (not a hard failure) with the offending ID and test name
-  - step: 5
-    when: the feature is used
-    then:
-    - Valid story IDs pass silently with no warnings
-  - step: 6
-    when: the feature is used
-    then:
-    - Performance is acceptable (story ID loading is fast even with many YAML files)
-  related_agents:
-  - test-builder
-  - test-builder
-  related_files:
-  - modules/AgenticGuidance/tests/conftest.py
-  - modules/AgenticCLI/tests/conftest.py
-  - docs/userstories/
-  related_stories:
-  - US-GDN-077
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: 260308PD_planner_design_agent_story_alignment
-- id: US-GDN-079
-  title: Test-Builder Story Marker Mandate
-  category: testing
-  priority: high
-  description: As a planner-test agent planning test phases, I want test-builder agent guidance to mandate @pytest.mark.story
-    markers on story-linked tests, so that new tests always include traceability markers connecting them to their source stories.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - test-builder process.yml includes a step requiring story markers on UAT and acceptance tests
-  - step: 2
-    when: the feature is used
-    then:
-    - Tests linked to user stories MUST include @pytest.mark.story("US-XXX-NNN") decorator
-  - step: 3
-    when: the feature is used
-    then:
-    - Test-builder guidance references the marker convention and format
-  - step: 4
-    when: the feature is used
-    then:
-    - planner-test process.yml references story marker requirement in UAT task templates
-  - step: 5
-    when: the feature is used
-    then:
-    - Story marker mandate is enforced through guidance, not code-level validation
-  related_agents:
-  - test-builder
-  - planner-test
-  related_files:
-  - modules/AgenticGuidance/agents/test/test-builder/process.yml
-  - modules/AgenticGuidance/agents/planner/planner-test/process.yml
-  related_stories:
-  - US-GDN-077
-  - US-STR-015
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: 260308PD_planner_design_agent_story_alignment
-- id: US-GDN-080
-  title: Run Tests via Agent
-  category: testing
-  priority: critical
-  description: As a developer running tests through the orchestration system, I want the test-builder agent to execute Python tests
-    and report detailed results, so that defects are identified and fix context is provided automatically.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - test-builder executes Python tests using pytest
-  - step: 2
-    when: the feature is used
-    then:
-    - Results include pass/fail/error details
-  - step: 3
-    when: an error condition occurs
-    then:
-    - Failed tests provide fix context
-  - step: 4
-    when: the feature is used
-    then:
-    - Works within plan's test-fix loop
-  - step: 5
-    when: the feature is used
-    then:
-    - Tests run from correct worktree directory
-  related_agents:
-  - test-builder
-  - orchestration-executor
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
 - id: US-GDN-081
-  title: Build Tests from Plan
+  title: Test Phase Planning Architecture
   category: testing
   priority: high
-  description: As a planner-test agent, I want to create test phase plans with appropriate tasks, so that test-builder can implement
-    test files that cover the expected behaviors.
+  description: As a planner-test agent, I want to create test phase plans that enforce mandatory
+    loops, story traceability, and UAT, so that test coverage is systematic and verifiable.
   prerequisites: []
   steps:
   - step: 1
     when: the feature is used
     then:
-    - planner-test creates test phase plans with unit/integration/e2e tasks
+    - 'Planner-builder delegation: planner-test creates the plan, test-builder implements
+      test files — planning and execution are separate roles'
   - step: 2
     when: the feature is used
     then:
-    - test-builder implements test files from plan
+    - 'Mandatory loop inclusion: every test plan MUST include test-fix-loop, audit-test-fix-loop,
+      and story-coverage-loop — these are not optional'
   - step: 3
     when: the feature is used
     then:
-    - Test tasks reference target files and expected behaviors
+    - 'Story marker enforcement: all test files MUST use @pytest.mark.story("US-XXX-NNN")
+      for test-to-story traceability — STORY_COVERAGE_INCOMPLETE triggers remediation'
   - step: 4
     when: the feature is used
     then:
-    - Plans follow testing.yml guidelines
+    - 'Mandatory UAT phase: every test plan MUST include a UAT phase — no escape hatch exists'
+  - step: 5
+    when: the feature is used
+    then:
+    - 'Real CLI testing required: mocked CLI tests are forbidden for UAT — historical failures
+      showed mocked tests masked broken CLIs'
   related_agents:
   - planner-test
   - test-builder
-  - test-builder
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-082
-  title: Validate Guidance via Simulation
-  category: testing
-  priority: high
-  description: As a guidance maintainer, I want to simulate agent walkthroughs of process.yml files, so that missing or ambiguous
-    guidance is identified before agents encounter it in production.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - trace-explorer executes walkthrough
-  - step: 2
-    when: the feature is used
-    then:
-    - Follows process.yml step by step
-  - step: 3
-    when: an error condition occurs
-    then:
-    - Missing/ambiguous guidance flagged
-  - step: 4
-    when: the feature is used
-    then:
-    - Input file refs validated
-  - step: 5
-    when: the feature is used
-    then:
-    - Report includes step-by-step pass/fail
-  related_agents:
-  - trace-explorer
-  - teacher-update-guidance
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-083
-  title: User Story Blind Testing
-  category: testing
-  priority: medium
-  description: As a quality assurance process, I want to generate and execute blind test scenarios from user stories, so that
-    story acceptance criteria are validated without the agent having prior knowledge of the story file.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic epic stories test generates test scenarios from stories
-  - step: 2
-    when: the feature is used
-    then:
-    - test-uat executes scenarios
-  - step: 3
-    when: the feature is used
-    then:
-    - Tests are blind (agent doesn't read story file)
-  - step: 4
-    when: the feature is used
-    then:
-    - Results report pass/fail with evidence
-  - step: 5
-    when: an error condition occurs
-    then:
-    - Failed tests include failure descriptions
-  related_commands:
-  - agentic epic stories test --epic <path>
-  related_agents:
-  - test-uat
+  related_files:
+  - modules/AgenticGuidance/agents/planner/planner-test/process.yml
   last_tested: null
   test_status: untested
   test_notes: ''

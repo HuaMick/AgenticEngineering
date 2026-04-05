@@ -1,0 +1,88 @@
+area: data_integrity
+description: "Data persistence and atomicity patterns"
+patterns:
+- id: PAT-DAT-001
+  title: FileLock Atomicity
+  description: >
+    Operations that modify shared state files (TinyDB, YAML) use
+    FileLock for atomic read-modify-write to prevent corruption
+    from concurrent updates.
+  tags: [data, filelock, atomicity, concurrency]
+  applicable_categories: [US-PLN, US-STR, US-SES]
+
+  parameters:
+    operation:
+      description: "The operation that modifies shared state"
+      required: true
+    target_file:
+      description: "The file being locked (e.g., epics.db, stories.yml)"
+      required: true
+    service_method:
+      description: "The service method that performs the operation"
+      required: false
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Execute {operation} concurrently (2+ processes)"
+        expect: "No data corruption or partial writes in {target_file}"
+      - step: 2
+        action: "Execute {operation} while lock is held by another process"
+        expect: "Second process waits or raises TimeoutError, does not corrupt"
+
+    structural:
+      checks:
+      - description: "Service method wraps write in FileLock context manager"
+        look_for: "with FileLock"
+        in_files: "modules/AgenticGuidance/src/agenticguidance/services/*.py"
+      - description: "FileLock imported from state module"
+        look_for: "from .state import FileLock|from agenticguidance.services.state import FileLock"
+        in_files: "modules/AgenticGuidance/src/agenticguidance/services/*.py"
+
+    enforcement:
+      sweep: "all_claimants"
+      method: |
+        For each story inheriting PAT-DAT-001:
+        1. Identify the service method from binding
+        2. Verify FileLock wraps the write path
+        3. Mark FAIL if write occurs outside FileLock
+
+- id: PAT-DAT-002
+  title: TinyDB CRUD
+  description: >
+    Domain entities stored in TinyDB follow create/read/update/delete
+    patterns through repository services, never direct table manipulation.
+  tags: [data, tinydb, crud, repository]
+  applicable_categories: [US-PLN, US-SES]
+
+  parameters:
+    entity:
+      description: "The domain entity type (e.g., epic, ticket, phase)"
+      required: true
+    repository:
+      description: "The repository class handling persistence"
+      required: true
+    operations:
+      description: "Which CRUD operations are tested"
+      required: true
+      type: list
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Create a {entity} via {repository}"
+        expect: "Entity is persisted and retrievable by ID"
+      - step: 2
+        action: "Update the {entity}"
+        expect: "Changes are persisted and reflected on next read"
+      - step: 3
+        action: "Delete the {entity}"
+        expect: "Entity is no longer retrievable"
+
+    structural:
+      checks:
+      - description: "Repository uses TinyDB table, not direct file I/O"
+        look_for: "self\\._db|self\\.table|TinyDB"
+        in_files: "modules/AgenticGuidance/src/agenticguidance/services/*.py"

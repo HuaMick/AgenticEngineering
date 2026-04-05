@@ -2,109 +2,60 @@ area: configuration
 description: "Configuration and preferences management"
 stories:
 - id: US-SET-005
-  title: Manage Configuration
+  title: CLI Configuration
   category: configuration
   priority: high
-  description: As a developer customizing CLI behavior, I want to get, set, list, and delete configuration values, so that
-    I can adjust CLI settings without editing config files directly.
+  description: As a developer customizing CLI behavior, I want to manage configuration values
+    and control output format, so that I can adjust settings and get human-readable or
+    machine-parseable output as needed.
   prerequisites: []
+  inherits_patterns:
+  - id: PAT-CLI-001
+    bind:
+      command: "all commands"
+      expected_keys: [varies_by_command]
+  - id: PAT-CLI-003
+    bind:
+      command: "all commands"
+      error_trigger: "invalid input"
+      expected_message: "varies"
   steps:
   - step: 1
     when: the feature is used
     then:
-    - agentic config show displays the current configuration
+    - agentic setup config show displays the current configuration
+    - agentic setup config show-path shows the config file location
   - step: 2
     when: the feature is used
     then:
-    - agentic config get <key> retrieves a single value
+    - agentic setup config get <key> retrieves a single value
+    - agentic setup config set <key> <value> stores a value
   - step: 3
     when: the feature is used
     then:
-    - agentic config set <key> <value> stores a value
+    - agentic setup config list shows all key-value pairs
+    - agentic setup config delete <key> removes a value
   - step: 4
     when: the feature is used
     then:
-    - agentic config list shows all key-value pairs
+    - agentic setup config clear --force removes all configuration
   - step: 5
     when: the feature is used
     then:
-    - agentic config delete <key> removes a value
-  - step: 6
-    when: the feature is used
-    then:
-    - agentic config clear --force removes all configuration
-  - step: 7
-    when: the feature is used
-    then:
-    - agentic config show-path shows the config file location
-  related_commands:
-  - agentic config show
-  - agentic config list
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-SET-006
-  title: Manage Preferences
-  category: configuration
-  priority: medium
-  description: As a developer adjusting personal preferences, I want to manage preferences through an alternative interface,
-    so that I have a familiar key-value interface for personal settings.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - agentic prefs get/set/list/delete/clear work as expected
-  - step: 2
-    when: the feature is used
-    then:
-    - Preferences are stored alongside configuration
-  - step: 3
-    when: the feature is used
-    then:
-    - prefs clear requires --force for safety
-  related_commands:
-  - agentic prefs set output.format json
-  - agentic prefs list
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-SET-007
-  title: CLI Output Mode Control
-  category: configuration
-  priority: high
-  description: As a developer integrating CLI output into scripts and workflows, I want to control output format via flags, so
-    that I can get human-readable or machine-parseable output as needed.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
+    - -j flag enables JSON output for all commands; JSON is parseable with all relevant fields
     - Default output is human-readable with Rich
-  - step: 2
-    when: the feature is used
-    then:
-    - -j flag enables JSON for all commands
-  - step: 3
-    when: the feature is used
-    then:
-    - -d flag enables debug logging to stderr
-  - step: 4
-    when: the feature is used
-    then:
-    - JSON output is parseable with all relevant fields
-  - step: 5
-    when: the feature is used
-    then:
-    - Debug output includes timestamps/log levels
   - step: 6
     when: the feature is used
     then:
-    - All commands support both modes
+    - -d flag enables debug logging to stderr with timestamps and log levels
+    - All commands support both JSON and debug modes
   related_commands:
-  - agentic epic status
+  - agentic setup config show
+  - agentic setup config list
+  - agentic setup config set output.format json
+  - agentic setup config get output.format
+  - agentic setup config clear --force
+  - agentic setup config show-path
   - agentic -j epic status
   - agentic -d epic status
   last_tested: null
