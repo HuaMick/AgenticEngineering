@@ -1,36 +1,99 @@
 user_stories: |
-  User stories for UAT testing are centralized in the docs/userstories/ directory.
-  This directory contains the source of truth for all user story definitions, organized by project:
-  - docs/userstories/MyAgents/ - MyAgents CLI user stories
-  - docs/userstories/RemoteAgents/ - RemoteAgents user stories
-  - docs/userstories/MyAgentsFrontend/ - MyAgentsFrontend user stories
+  User stories define concrete, UAT-verifiable features from a user's perspective.
+  They are the source of truth for what the system does and how it behaves.
 
-  Each user story includes:
-  - id: Unique identifier (e.g., US-CLI-001)
-  - name: Human-readable name
-  - category: Grouping (cli_basics, setup, development, etc.)
-  - persona: Who is the user
-  - priority: critical, high, medium, low
-  - starting_state: Initial environment conditions
-  - journey: Step-by-step actions with expected outcomes
-  - success_criteria: What must pass
-  - testing: Local and Docker testing instructions
+  ## Location
 
-  When spawning user simulator agents:
-  - Orchestration agent reads user story files from docs/userstories/<project>/ and extracts relevant user story
-  - One agent per user story
-  - Agent tests BOTH local and Docker environments
-  - Docker uses shared pre-built image (myagents-test) for speed
-  - Orchestration agent passes user story definition in the prompt
-  - Agent receives only: docs/README.md, docs/architecture/architecture.md, and user story definition
-  - Agent does NOT read userstories files directly (keeps it "blind")
+  All stories live in `docs/userstories/` organized by category:
+  - docs/userstories/Setup/       — Setup, installation, configuration
+  - docs/userstories/Session/     — Session management and lifecycle
+  - docs/userstories/Planning/    — Epic planning and orchestration
+  - docs/userstories/Stories/     — Story management and tracking
+  - docs/userstories/Guidance/    — Agent definitions and teaching
+  - docs/userstories/EpicStories/ — Auto-generated stories from planning pipeline
+
+  ## Story ID Format
+
+  Manual stories:  US-{CATEGORY}-{NNN}  (e.g., US-SET-001, US-PLN-042)
+  Epic stories:    US-{YYMMDDXX}-{NNN}  (e.g., US-260402AG-001)
+
+  The prefix is extracted by `re.match(r"(US-[A-Z0-9]+)", story.id)`.
+
+  ## Required Fields
+
+  - `id` (string): Unique identifier matching `US-[A-Z]{2,4}-\d{3}` or epic format
+  - `title` (string): Short descriptive title
+
+  ## Optional Fields
+
+  - `category` (string): Functional grouping within the story file
+  - `priority` (string): low | medium | high | critical (default: medium)
+  - `description` (string): Full story in "As a <role>, I want <action>, so that <benefit>" format
+  - `steps` / `journey` (list): Ordered step objects with BDD or simple format
+  - `success_criteria` (list[str]): Acceptance criteria that must pass
+  - `prerequisites` (list[str]): Dependencies or preconditions
+  - `related_stories` (list[str]): Cross-reference story IDs
+  - `related_commands` (list[str]): CLI commands relevant to this story
+  - `lifecycle` (string): proposal | under-construction | implemented | deprecated | archived
+  - `inherits_patterns` (list): Pattern references with parameter bindings (see below)
+
+  ## Test Metadata Fields
+
+  Updated by test-uat agents, read by orchestration validation gates:
+  - `test_status`: untested | pass | fail | skip | regression
+  - `last_tested`: ISO 8601 timestamp
+  - `test_notes`: Free-text notes from test agent
+  - `tested_by_plan`: Epic folder that last tested this story
+
+  ## Pattern Inheritance
+
+  Stories can inherit reusable cross-cutting verification patterns via `inherits_patterns`:
+
+  ```yaml
+  inherits_patterns:
+  - id: PAT-CLI-001
+    bind:
+      command: "agentic epic list"
+      expected_keys: [name, status, created]
+  ```
+
+  Each entry references a pattern ID and binds concrete values to the pattern's
+  declared parameters. The pattern provides verification steps (behavioral,
+  structural, enforcement) that apply to the story with the bound values.
+
+  Key rules:
+  - Stories HAVE patterns (many-to-many). Patterns don't have stories.
+  - Parameter binding lives in the story, not the pattern — keeps patterns reusable.
+  - All required pattern parameters must be bound.
+  - Stories are UAT-verified directly. Patterns are verified through their claiming stories.
+
+  ## Lifecycle States
+
+  Stories progress through lifecycle states:
+  proposal → under-construction → implemented → deprecated → archived
+
+  This is orthogonal to test_status. A story can be "implemented" but "untested".
+
+  ## Working with Stories
+
+  When spawning test-uat agents:
+  - Orchestration reads story files and extracts the relevant story
+  - One agent per story for blind testing
+  - Agent receives only: docs/README.md, architecture docs, and the story definition
+  - Agent does NOT read story files directly (agent-blind-test principle)
+
+  CLI commands:
+  - `agentic stories find <query>` — search stories
+  - `agentic stories cat <id>` — display a story
+  - `agentic stories health` — two-axis dashboard (status enum + flags), `--all` shows archived, `--json` returns nested struct
+  - `agentic stories update <id> --status <pass|fail>` — update test result
+  - `agentic stories patterns` — list all patterns
+  - `agentic stories pattern-cat <PAT-ID>` — display a pattern
+  - `agentic stories pattern-claimants <PAT-ID>` — find inheriting stories
+  - `agentic stories pattern-check <US-ID>` — show story's inherited patterns
 
 # ==============================================
 # TEST METADATA SCHEMA
-# ==============================================
-# Defines the test-related fields that may appear on each user story.
-# These fields are managed by `agentic stories update` (commands/stories.py)
-# and read by the executor validation gate for coverage checks.
 # ==============================================
 test_metadata:
   description: |

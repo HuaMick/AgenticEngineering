@@ -1,19 +1,40 @@
+# story: US-STR-001
 """Story data model and service for user story management."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import yaml
 
 from .state import FileLock
 
 logger = logging.getLogger(__name__)
+
+# Sentinel returned by _git_changed_files_since() when the commit is unreachable.
+# Callers distinguish: None = transient/unknown error; ANCHOR_UNREACHABLE = commit GC'd or squash-merged.
+ANCHOR_UNREACHABLE = object()
+
+# 7-value canonical status enum for story health.
+StoryStatus = Literal["unhealthy", "stale", "never-passed", "no-test", "passing", "uat-verified", "archived"]
+
+# Sort order for triage: lower index = higher priority.
+STORY_STATUS_SORT_ORDER: dict[str, int] = {
+    "unhealthy": 0,
+    "stale": 1,
+    "never-passed": 2,
+    "no-test": 3,
+    "passing": 4,
+    "uat-verified": 5,
+    "archived": 6,
+}
 
 # --- Canonical story path resolvers ---
 # @story US-001
@@ -92,6 +113,50 @@ LIFECYCLE_TRANSITIONS = {
 
 
 @dataclass
+class Pattern:
+    """Represents a reusable cross-cutting verification pattern."""
+    id: str
+    title: str
+    description: str = ""
+    tags: list[str] = field(default_factory=list)
+    applicable_categories: list[str] = field(default_factory=list)
+    parameters: dict = field(default_factory=dict)
+    verification: dict = field(default_factory=dict)
+    source_file: str = ""
+
+    @property
+    def domain(self) -> str:
+        """Extract domain from pattern ID (e.g., 'CLI' from 'PAT-CLI-001')."""
+        match = re.match(r"PAT-([A-Z]{2,4})", self.id)
+        return match.group(1) if match else "OTHER"
+
+    @property
+    def required_parameters(self) -> list[str]:
+        """Return names of required parameters."""
+        return [
+            name for name, spec in self.parameters.items()
+            if isinstance(spec, dict) and spec.get("required", True)
+        ]
+
+    def resolve(self, bindings: dict) -> dict:
+        """Resolve verification steps by substituting parameter bindings.
+
+        Returns a copy of the verification dict with {param} placeholders
+        replaced by bound values.
+        """
+        import copy
+        import json
+
+        resolved = copy.deepcopy(self.verification)
+        text = json.dumps(resolved)
+        for key, value in bindings.items():
+            placeholder = "{" + key + "}"
+            replacement = str(value) if not isinstance(value, list) else ", ".join(str(v) for v in value)
+            text = text.replace(placeholder, replacement)
+        return json.loads(text)
+
+
+@dataclass
 class Story:
     """Represents a single user story."""
     id: str
@@ -107,9 +172,15 @@ class Story:
     tested_by_plan: str = ""
     related_stories: list[str] = field(default_factory=list)
     related_commands: list[str] = field(default_factory=list)
+    related_files: list[str] = field(default_factory=list)
+    last_pass_commit: str = ""
+    last_uat_commit: str = ""
     source_file: str = ""
     project: str = ""
     lifecycle: str = "implemented"
+    inherits_patterns: list[dict] = field(default_factory=list)
+    flaky: bool = False
+    last_pass_tree_hash: str = ""
 
     @property
     def prefix(self) -> str:
@@ -215,9 +286,15 @@ class StoryService:
                     tested_by_plan=item.get("tested_by_plan", ""),
                     related_stories=item.get("related_stories", []),
                     related_commands=item.get("related_commands", []),
+                    related_files=item.get("related_files", []),
+                    last_pass_commit=item.get("last_pass_commit", ""),
+                    last_uat_commit=item.get("last_uat_commit", ""),
                     source_file=str(path),
                     project=project,
                     lifecycle=item.get("lifecycle", "implemented"),
+                    inherits_patterns=item.get("inherits_patterns", []),
+                    flaky=item.get("flaky", False),
+                    last_pass_tree_hash=item.get("last_pass_tree_hash", ""),
                 )
                 result.append(story)
         return result
@@ -343,3 +420,456 @@ class StoryService:
         except Exception:
             return False
         return False
+
+    def update_commit_status(
+        self,
+        story_id: str,
+        commit: str,
+        commit_type: str = "test",
+    ) -> bool:
+        """Update the commit hash where tests or UAT last passed.
+
+        Args:
+            story_id: The story ID to update.
+            commit: Short or full git commit hash.
+            commit_type: "test" updates last_pass_commit, "uat" updates last_uat_commit.
+
+        Returns True on success, False on failure.
+        """
+        field_name = "last_uat_commit" if commit_type == "uat" else "last_pass_commit"
+
+        story = self.get_by_id(story_id)
+        if not story or not story.source_file:
+            return False
+
+        path = Path(story.source_file)
+        try:
+            with FileLock(path):
+                content = yaml.safe_load(path.read_text())
+                if not content or not isinstance(content, dict):
+                    return False
+
+                for key in ("stories", "user_stories"):
+                    items = content.get(key, [])
+                    if not isinstance(items, list):
+                        continue
+                    for item in items:
+                        if isinstance(item, dict) and item.get("id") == story_id:
+                            item[field_name] = commit
+                            path.write_text(
+                                yaml.dump(content, sort_keys=False, default_flow_style=False)
+                            )
+                            self._stories = None
+                            return True
+        except TimeoutError:
+            logger.error("FileLock timeout updating %s for %s", field_name, story_id)
+            return False
+        except Exception:
+            return False
+        return False
+
+    def get_stale_stories(
+        self,
+        repo_root: Path | None = None,
+        global_watch: list[str] | None = None,
+    ) -> list[Story]:
+        """Return stories whose watched files changed since last_pass_commit.
+
+        A story is stale when:
+        - It has related_files AND last_pass_commit set
+        - git diff shows at least one file in (related_files | global_watch) changed since that commit
+
+        Args:
+            repo_root: Git repository root. If None, auto-detected from cwd.
+            global_watch: Optional extra file patterns to include in the staleness diff.
+                When provided, any change in global_watch also triggers staleness.
+                Pass the result of expand_watch_patterns() for glob-expanded paths.
+        """
+        if repo_root is None:
+            repo_root = _find_repo_root()
+        if repo_root is None:
+            return []
+
+        extra = set(global_watch or [])
+
+        stale = []
+        for story in self.load_all():
+            if not story.related_files or not story.last_pass_commit:
+                continue
+            watch_set = set(story.related_files) | extra
+            changed = _git_changed_files_since(story.last_pass_commit, repo_root)
+            if changed is None or changed is ANCHOR_UNREACHABLE:
+                continue
+            if watch_set & changed:
+                stale.append(story)
+        return stale
+
+    def compute_story_status(
+        self,
+        story: Story,
+        repo_root: Path | None = None,
+        story_markers: set[str] | None = None,
+        global_watch: list[str] | None = None,
+    ) -> str:
+        """Compute effective status for a story using the 7-value canonical enum.
+
+        Priority order (first match wins):
+          1. archived   — lifecycle is deprecated or archived
+          2. unhealthy  — test_status is fail or regression
+          3. never-passed / no-test — test not passing and no last_pass_commit
+          4. stale      — files changed since last_pass_commit (or anchor unreachable)
+          5. uat-verified — last_uat_commit matches last_pass_commit (simple equality check;
+                            full git-ancestry comparison is not implemented — when commits differ,
+                            we conservatively treat the story as passing, not uat-verified)
+          6. passing    — default
+
+        Args:
+            story: The story to evaluate.
+            repo_root: Git repository root. If None, auto-detected from cwd.
+            story_markers: Set of story IDs that have a @pytest.mark.story marker in tests.
+                When provided, distinguishes never-passed from no-test.
+                When None, all untested stories degrade to no-test.
+            global_watch: Extra file patterns (already expanded) included in staleness diff.
+        """
+        # 1. Archived / deprecated lifecycle overrides everything.
+        if story.lifecycle in ("deprecated", "archived"):
+            return "archived"
+
+        ts = (story.test_status or "").lower()
+
+        # 2. Failing test.
+        if ts in ("fail", "regression"):
+            return "unhealthy"
+
+        # 3. Not yet passing — distinguish never-passed from no-test.
+        if ts not in ("pass", "passing"):
+            if story_markers is not None and story.id in story_markers:
+                return "never-passed"
+            return "no-test"
+
+        # Story has passed at least once (test_status == pass/passing).
+        # 4. Staleness check.
+        if story.related_files or global_watch:
+            if repo_root is None:
+                repo_root = _find_repo_root()
+
+            if repo_root is not None and story.last_pass_commit:
+                extra = set(global_watch or [])
+                watch_set = set(story.related_files) | extra
+                changed = _git_changed_files_since(story.last_pass_commit, repo_root)
+
+                if changed is ANCHOR_UNREACHABLE:
+                    # Commit unreachable — try tree_hash fallback.
+                    match = _tree_hash_matches(story, repo_root, list(watch_set))
+                    if match is True:
+                        pass  # Tree unchanged — not stale, continue.
+                    else:
+                        # match is False or None (couldn't compute) — treat as stale.
+                        return "stale"
+                elif changed is not None and watch_set & changed:
+                    return "stale"
+
+        # 5. UAT-verified check.
+        # Simple equality: if last_uat_commit is set and equals last_pass_commit, uat-verified.
+        # When they differ we cannot easily check git ancestry here, so conservatively return passing.
+        if story.last_uat_commit and story.last_uat_commit == story.last_pass_commit:
+            return "uat-verified"
+
+        # 6. Default.
+        return "passing"
+
+    def compute_story_flags(
+        self,
+        story: Story,
+        repo_root: Path | None = None,
+        global_watch: list[str] | None = None,
+        flaky_ids: set[str] | None = None,
+    ) -> dict:
+        """Return orthogonal flags for a story: flaky and stale_reason.
+
+        Returns:
+            dict with keys:
+              - ``flaky`` (bool): True if story.flaky is set or story.id in flaky_ids.
+              - ``stale_reason`` (str | None): Only populated when status is stale.
+                Values: "related_file", "global_config", "anchor_unreachable".
+        """
+        is_flaky = story.flaky or (flaky_ids is not None and story.id in flaky_ids)
+
+        stale_reason: str | None = None
+
+        if story.related_files or global_watch:
+            if repo_root is None:
+                repo_root = _find_repo_root()
+
+            if repo_root is not None and story.last_pass_commit:
+                extra = set(global_watch or [])
+                watch_set = set(story.related_files) | extra
+                changed = _git_changed_files_since(story.last_pass_commit, repo_root)
+
+                if changed is ANCHOR_UNREACHABLE:
+                    match = _tree_hash_matches(story, repo_root, list(watch_set))
+                    if match is not True:
+                        stale_reason = "anchor_unreachable"
+                elif changed is not None and watch_set & changed:
+                    related_changed = bool(set(story.related_files) & changed)
+                    global_changed = bool(extra & changed)
+                    if global_changed:
+                        stale_reason = "global_config"
+                    elif related_changed:
+                        stale_reason = "related_file"
+
+        return {"flaky": is_flaky, "stale_reason": stale_reason}
+
+
+def _find_repo_root() -> Path | None:
+    """Find the git repository root from cwd."""
+    current = Path.cwd()
+    for _ in range(10):
+        if (current / ".git").is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return None
+
+
+def _git_changed_files_since(commit: str, repo_root: Path) -> set[str] | None | object:
+    """Return set of files changed between commit and HEAD.
+
+    Return values:
+      - ``set[str]``: files changed (may be empty when nothing changed).
+      - ``None``: transient/unknown error — callers should skip staleness check.
+      - ``ANCHOR_UNREACHABLE``: commit is GC'd or squash-merged (git reports
+        "fatal: bad object" / "unknown revision"). Callers should attempt the
+        tree_hash fallback before deciding staleness.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"{commit}..HEAD"],
+            capture_output=True, text=True, cwd=str(repo_root), timeout=30,
+        )
+        if result.returncode != 0:
+            stderr = result.stderr or ""
+            if (
+                "bad object" in stderr
+                or "unknown revision" in stderr
+                or "Invalid revision range" in stderr
+                or "ambiguous argument" in stderr
+            ):
+                return ANCHOR_UNREACHABLE
+            return None
+        return {f.strip() for f in result.stdout.strip().split("\n") if f.strip()}
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
+def _compute_tree_hash(files: list[str], repo_root: Path, ref: str = "HEAD") -> str | None:
+    """Hash the blob SHAs for a set of files at a given git ref.
+
+    Uses ``git ls-tree -r <ref> -- <files...>`` and SHA-256 hashes the output.
+    Returns None when git fails or the file list is empty.
+    """
+    if not files:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "ls-tree", "-r", ref, "--"] + files,
+            capture_output=True, text=True, cwd=str(repo_root), timeout=30,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        # Hash the full ls-tree output — deterministic for the same tree state.
+        return hashlib.sha256(result.stdout.encode()).hexdigest()
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
+def _tree_hash_matches(story: Story, repo_root: Path, watched_files: list[str]) -> bool | None:
+    """Compare HEAD tree hash of watched_files against story.last_pass_tree_hash.
+
+    Returns:
+      - True if hashes match (files unchanged).
+      - False if hashes differ (files changed).
+      - None if we can't compute the current tree hash.
+    """
+    if not story.last_pass_tree_hash:
+        return None
+    current = _compute_tree_hash(watched_files, repo_root)
+    if current is None:
+        return None
+    return current == story.last_pass_tree_hash
+
+
+# Default global_watch patterns (used when docs/userstories/.config.yml is absent).
+_DEFAULT_GLOBAL_WATCH: list[str] = [
+    "pyproject.toml",
+    "modules/*/pyproject.toml",
+    "conftest.py",
+    "modules/**/conftest.py",
+    ".env.example",
+    "modules/AgenticCLI/src/agenticcli/cli.py",
+]
+
+
+def load_global_watch(userstories_dir: Path | None = None) -> list[str]:
+    """Load global_watch patterns from docs/userstories/.config.yml.
+
+    Returns raw glob patterns (not expanded). Pass the result through
+    expand_watch_patterns() to get concrete file paths relative to repo root.
+
+    Falls back to a sensible built-in default when the file is missing or malformed.
+    """
+    if userstories_dir is None:
+        userstories_dir = get_canonical_stories_dir()
+
+    if userstories_dir is not None:
+        config_path = userstories_dir / ".config.yml"
+        if config_path.exists():
+            try:
+                raw = config_path.read_text()
+                content = yaml.safe_load(raw)
+                if isinstance(content, dict):
+                    patterns = content.get("global_watch")
+                    if isinstance(patterns, list):
+                        return [str(p) for p in patterns if p]
+            except (OSError, yaml.YAMLError):
+                pass  # Fall through to default.
+
+    return list(_DEFAULT_GLOBAL_WATCH)
+
+
+def expand_watch_patterns(patterns: list[str], repo_root: Path) -> set[str]:
+    """Expand glob patterns relative to repo_root into a concrete set of file paths.
+
+    Patterns are matched against repo_root using pathlib.Path.glob().
+    Returned paths are relative to repo_root (as strings, using forward slashes).
+    """
+    result: set[str] = set()
+    for pattern in patterns:
+        try:
+            matched = list(repo_root.glob(pattern))
+            for p in matched:
+                if p.is_file():
+                    try:
+                        rel = p.relative_to(repo_root)
+                        result.add(str(rel))
+                    except ValueError:
+                        pass
+        except (OSError, ValueError):
+            pass
+    return set(result)
+
+
+class PatternService:
+    """Service for loading and querying verification patterns."""
+
+    PATTERNS_DIR_NAME = "Patterns"
+
+    def __init__(self, userstories_dir: Path | None = None):
+        self._userstories_dir = userstories_dir or get_canonical_stories_dir()
+        self._patterns: list[Pattern] | None = None
+
+    @property
+    def patterns_dir(self) -> Path | None:
+        """Return the Patterns directory path, or None if not found."""
+        if not self._userstories_dir:
+            return None
+        d = self._userstories_dir / self.PATTERNS_DIR_NAME
+        return d if d.is_dir() else None
+
+    def load_all(self) -> list[Pattern]:
+        """Load all patterns from YAML files. Caches result."""
+        if self._patterns is not None:
+            return self._patterns
+
+        patterns_dir = self.patterns_dir
+        if not patterns_dir:
+            self._patterns = []
+            return self._patterns
+
+        patterns = []
+        for yml_file in sorted(patterns_dir.glob("**/*.yml")):
+            if yml_file.name == "00_metadata.yml":
+                continue
+            patterns.extend(self._parse_file(yml_file))
+
+        self._patterns = patterns
+        return self._patterns
+
+    def _parse_file(self, path: Path) -> list[Pattern]:
+        """Parse a single YAML pattern file into Pattern objects."""
+        try:
+            raw = path.read_text()
+        except (FileNotFoundError, OSError) as e:
+            logger.warning("Could not read pattern file %s: %s", path, e)
+            return []
+
+        if not raw.strip():
+            return []
+
+        try:
+            content = yaml.safe_load(raw)
+        except yaml.YAMLError as e:
+            logger.warning("YAML error in pattern file %s: %s", path, e)
+            return []
+
+        if not content or not isinstance(content, dict):
+            return []
+
+        items = content.get("patterns", [])
+        if not isinstance(items, list):
+            return []
+
+        result = []
+        for item in items:
+            if not isinstance(item, dict) or "id" not in item:
+                continue
+            pattern = Pattern(
+                id=item["id"],
+                title=item.get("title", ""),
+                description=item.get("description", ""),
+                tags=item.get("tags", []),
+                applicable_categories=item.get("applicable_categories", []),
+                parameters=item.get("parameters", {}),
+                verification=item.get("verification", {}),
+                source_file=str(path),
+            )
+            result.append(pattern)
+        return result
+
+    def get_by_id(self, pattern_id: str) -> Pattern | None:
+        """Find a pattern by its ID."""
+        for pattern in self.load_all():
+            if pattern.id == pattern_id:
+                return pattern
+        return None
+
+    def get_by_domain(self, domain: str) -> list[Pattern]:
+        """Get all patterns for a domain (e.g., 'CLI', 'DAT')."""
+        domain_upper = domain.upper()
+        return [p for p in self.load_all() if p.domain == domain_upper]
+
+    def get_claimants(self, pattern_id: str, story_svc: StoryService) -> list[Story]:
+        """Find all stories that inherit a given pattern."""
+        return [
+            s for s in story_svc.load_all()
+            if any(ref.get("id") == pattern_id for ref in s.inherits_patterns)
+        ]
+
+    def resolve_pattern(self, pattern: Pattern, bindings: dict) -> dict:
+        """Resolve a pattern's verification with concrete bindings.
+
+        Validates that all required parameters are bound before resolving.
+        Returns the resolved verification dict.
+        Raises ValueError if required parameters are missing.
+        """
+        missing = [
+            name for name in pattern.required_parameters
+            if name not in bindings
+        ]
+        if missing:
+            raise ValueError(
+                f"Pattern {pattern.id} missing required bindings: {', '.join(missing)}"
+            )
+        return pattern.resolve(bindings)

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# story: US-SET-001
 """AgenticCLI main command structure.
 
 Uses Typer for command parsing with native shell completion.
@@ -463,6 +464,22 @@ def debug_logs(
     ))
 
 
+@orch_session_app.command("ledger")
+def session_ledger(
+    session_id: Annotated[str, typer.Argument(help="Session ID to query the ledger for")],
+    summary: Annotated[bool, typer.Option("--summary", "-s", help="Show fixed-size summary digest (≤1KB)")] = False,
+    event_type: Annotated[Optional[str], typer.Option("--type", "-t", help="Filter by event type (e.g. error, tool_use)")] = None,
+    last: Annotated[Optional[int], typer.Option("--last", "-n", help="Show only the last N events")] = None,
+):
+    """Query the session event ledger for a session."""
+    _session_handle(_ns(
+        command="session", session_command="ledger",
+        json=_global["json"], debug=_global["debug"],
+        session_id=session_id, summary=summary,
+        event_type=event_type, last=last,
+    ))
+
+
 @orch_session_app.command("plan")
 def orchestrate_session_plan(
     epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder name or short ID (e.g. '260305AG')")] = None,
@@ -837,6 +854,7 @@ def epic_phase_update(
     feedback_triggers: Annotated[Optional[str], typer.Option("--feedback-triggers", help="Comma-separated KEY=VALUE pairs (e.g. TEST_FAILURE=Build)")] = None,
     max_turns: Annotated[Optional[int], typer.Option("--max-turns", help="Maximum agentic turns for this phase (overrides default 200)")] = None,
     timeout: Annotated[Optional[int], typer.Option("--timeout", help="Per-phase timeout in seconds (overrides default 3600s/60min)")] = None,
+    blocked_reason: Annotated[Optional[str], typer.Option("--blocked-reason", help="Reason for blocking (used with --status blocked)")] = None,
 ):
     """Update a phase in TinyDB."""
     _epic_handle(_ns(
@@ -845,7 +863,7 @@ def epic_phase_update(
         phase_id=phase_id, status=status, name=name, plan=epic,
         agent=agent, execution=execution, loop_type=loop_type,
         loop_max_iterations=loop_max_iterations, feedback_triggers=feedback_triggers,
-        max_turns=max_turns, timeout=timeout,
+        max_turns=max_turns, timeout=timeout, blocked_reason=blocked_reason,
     ))
 
 
@@ -994,14 +1012,16 @@ def stories_find(
     ))
 
 
-@stories_app.command("report")
-def stories_report(
+@stories_app.command("health")
+def stories_health(
     project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
     coverage: Annotated[bool, typer.Option("--coverage", help="Include pytest marker coverage analysis")] = False,
+    all_stories: Annotated[bool, typer.Option("--all", help="Include archived stories (hidden by default)")] = False,
 ):
-    """Show test status summary across stories."""
+    """Show all stories in a dashboard with test status summary."""
     _stories_handle(_ns(
-        stories_command="report", project=project, coverage=coverage,
+        stories_command="health", project=project, coverage=coverage,
+        all=all_stories,
         json=_global["json"], debug=_global["debug"],
     ))
 
@@ -1055,14 +1075,15 @@ def stories_untested(
 def stories_affected(
     plan: Annotated[Optional[str], typer.Argument(help="Epic/plan folder name")] = None,
     changes: Annotated[Optional[str], typer.Option("--changes", help="Comma-separated changed files, or 'git' for git diff")] = None,
+    commit: Annotated[Optional[str], typer.Option("--commit", help="Git commit hash to detect affected stories (e.g. HEAD, abc123)")] = None,
 ):
-    """List affected stories for a plan or by file changes (via testmon)."""
-    if not plan and not changes:
+    """List affected stories for a plan, by file changes, or by commit."""
+    if not plan and not changes and not commit:
         from agenticcli.console import print_error
-        print_error("Provide either a plan folder name or --changes flag")
+        print_error("Provide a plan folder name, --changes flag, or --commit flag")
         raise typer.Exit(1)
     _stories_handle(_ns(
-        stories_command="affected", plan=plan, changes=changes,
+        stories_command="affected", plan=plan, changes=changes, commit=commit,
         json=_global["json"], debug=_global["debug"],
     ))
 
@@ -1113,11 +1134,74 @@ def stories_code(
 
 @stories_app.command("audit")
 def stories_audit(
-    epic: str = typer.Option(..., "--epic", help="Epic folder name to audit"),
+    epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder name to audit")] = None,
+    check_files: Annotated[bool, typer.Option("--check-files", help="Validate YAML↔header bidirectional consistency")] = False,
+    check_tickets: Annotated[bool, typer.Option("--check-tickets", help="Check tickets have story_ids on live epics")] = False,
+    strict: Annotated[bool, typer.Option("--strict", help="Exit non-zero on any mismatch (for CI)")] = False,
 ):
-    """Audit bidirectional story-ticket coverage gaps."""
+    """Audit story-ticket coverage, file↔YAML consistency, or ticket traceability."""
+    if not epic and not check_files and not check_tickets:
+        from agenticcli.console import print_error
+        print_error("Provide --epic, --check-files, or --check-tickets")
+        raise typer.Exit(1)
     _stories_handle(_ns(
-        stories_command="audit", epic=epic,
+        stories_command="audit", epic=epic, check_files=check_files,
+        check_tickets=check_tickets, strict=strict,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("patterns")
+def stories_patterns(
+    domain: Annotated[Optional[str], typer.Option("--domain", "-d", help="Filter by domain (CLI, DAT, EXE, CTX, TST, AGT)")] = None,
+):
+    """List all verification patterns."""
+    _stories_handle(_ns(
+        stories_command="patterns", domain=domain,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("pattern-cat")
+def stories_pattern_cat(
+    id: str = typer.Argument(..., help="Pattern ID (e.g., PAT-CLI-001)"),
+):
+    """Display a verification pattern's content."""
+    _stories_handle(_ns(
+        stories_command="pattern-cat", id=id,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("pattern-claimants")
+def stories_pattern_claimants(
+    id: str = typer.Argument(..., help="Pattern ID (e.g., PAT-CLI-001)"),
+):
+    """List stories that inherit a verification pattern."""
+    _stories_handle(_ns(
+        stories_command="pattern-claimants", id=id,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("pattern-verify")
+def stories_pattern_verify(
+    id: str = typer.Argument(..., help="Pattern ID to verify (e.g., PAT-CLI-001)"),
+):
+    """Run enforcement sweep for a pattern across all claimant stories."""
+    _stories_handle(_ns(
+        stories_command="pattern-verify", id=id,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
+@stories_app.command("pattern-check")
+def stories_pattern_check(
+    id: str = typer.Argument(..., help="Story ID to check patterns for (e.g., US-PLN-004)"),
+):
+    """Show inherited patterns and binding status for a story."""
+    _stories_handle(_ns(
+        stories_command="pattern-check", id=id,
         json=_global["json"], debug=_global["debug"],
     ))
 

@@ -1,0 +1,93 @@
+area: story_health_dashboard
+description: "Two-axis story health dashboard with status enum, flags, and git-anchor safety"
+stories:
+- id: US-STR-020
+  title: Story Health Dashboard with Two-Axis Status
+  category: story_management
+  priority: high
+  description: As a developer or agent operating on the codebase, I want `agentic stories health` to show a single rich
+    status per story plus orthogonal flags (flaky, stale reason) with preserved commit anchors, so that I can triage
+    recovery actions without parsing boolean columns or markdown tables.
+  prerequisites: []
+  inherits_patterns:
+  - id: PAT-CLI-001
+    bind:
+      command: "agentic stories health"
+      expected_keys: [id, title, status, flags, test, uat, staleness, lifecycle]
+  steps:
+  - step: 1
+    when: agentic stories health runs
+    then:
+    - Each row shows exactly one status token from the 7-value enum (unhealthy, stale, never-passed, no-test, passing, uat-verified, archived)
+    - The table has 6 columns ID | Title | Status | Flags | testpass_commithash | uatpass_commithash
+    - Commit hashes render as short 7-char SHAs with — for null
+  - step: 2
+    when: a story has lifecycle=archived or lifecycle=deprecated
+    then:
+    - The row is hidden from the default dashboard
+    - agentic stories health --all surfaces archived rows with grey styling
+    - Archived state overrides test state in status computation
+  - step: 3
+    when: staleness is computed
+    then:
+    - Staleness diff is taken across related_files ∪ global_watch
+    - global_watch is loaded from docs/userstories/.config.yml (with sensible default if missing)
+    - A stale row carries a stale_reason of related_file, global_config, or anchor_unreachable
+    - Touching a file in global_watch flips affected stories to stale with stale_reason=global_config
+  - step: 4
+    when: a linked test carries @pytest.mark.flaky
+    then:
+    - The row shows a !flaky badge in the Flags column
+    - agentic stories health --json emits flags.flaky=true for that story
+    - Flaky is orthogonal to status — a flaky story can still be passing, stale, or unhealthy
+  - step: 5
+    when: last_pass_commit is unreachable in git history
+    then:
+    - Status computation falls back to last_pass_tree_hash comparison over the watched files
+    - If the tree_hash path also fails, status is stale with stale_reason=anchor_unreachable
+    - The agent-facing JSON makes the anchor failure explicit — no silent pass-through
+  - step: 6
+    when: agentic stories health --json runs
+    then:
+    - Output is a struct with stories[] and summary{} keys
+    - Each story contains nested test{last_pass_commit, last_pass_tree_hash, last_tested, status}, uat{last_uat_commit}, staleness{is_stale, reason, related_files_changed, global_config_changed}, flags{flaky, blocked}
+    - Full-length SHAs are preserved in JSON (short SHAs are a human-table concern only)
+    - Status values in JSON are a subset of the 7 canonical enum values
+  - step: 7
+    when: rows are sorted for triage
+    then:
+    - Default sort order is unhealthy > stale > never-passed > no-test > passing > uat-verified
+    - Archived rows appear last when surfaced via --all
+  - step: 8
+    when: a story has no pytest.mark.story marker
+    then:
+    - Status is no-test (routes to test-builder)
+    - When a marker exists but no pass has been recorded, status is never-passed (routes to build-python)
+    - The no-test vs never-passed distinction is computed without requiring --coverage
+  - step: 9
+    when: the summary footer renders
+    then:
+    - Footer shows counts per status (unhealthy, stale, never-passed, no-test, passing, uat-verified) plus a flaky count
+    - Footer notes how many archived rows are hidden and how to reveal them
+  success_criteria:
+  - All 7 canonical status values are emitted by compute_story_status() and round-trip through --json
+  - Touching a file in global_watch flips affected stories to stale with stale_reason=global_config
+  - A story with @pytest.mark.flaky on any linked test reports flags.flaky=true in JSON and !flaky in the table
+  - Archived lifecycle overrides test state and is hidden unless --all
+  - Unreachable last_pass_commit falls back to last_pass_tree_hash, or surfaces stale_reason=anchor_unreachable
+  - Sort order matches unhealthy > stale > never-passed > no-test > passing > uat-verified
+  - Flags column is empty when no modifiers are active; supports multiple space-separated badges
+  related_commands:
+  - agentic stories health
+  - agentic stories health --json
+  - agentic stories health --all
+  - agentic stories update
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/stories.py
+  - modules/AgenticGuidance/src/agenticguidance/services/story.py
+  - docs/userstories/.config.yml
+  related_stories:
+  - US-STR-001
+  last_tested: null
+  test_status: untested
+  test_notes: ''

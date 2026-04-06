@@ -2,13 +2,15 @@
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-STR-005")
+pytestmark = pytest.mark.story("US-STR-020")
 
 from agenticguidance.services.story import (
+    ANCHOR_UNREACHABLE,
     LIFECYCLE_STATES,
     LIFECYCLE_TRANSITIONS,
     Story,
@@ -166,3 +168,164 @@ class TestUpdateLifecycle:
             assert result is True, f"Failed transition to {target}"
         story = svc.get_by_id("US-TEST-001")
         assert story.lifecycle == "archived"
+
+
+# ---------------------------------------------------------------------------
+# US-STR-020: compute_story_status — lifecycle-override and anchor fallback
+# ---------------------------------------------------------------------------
+
+class TestArchivedOverridesTestState:
+    """Archived/deprecated lifecycle overrides any test state in status computation."""
+
+    def test_archived_lifecycle_with_failing_test(self):
+        """lifecycle=archived + test_status=fail → 'archived', not 'unhealthy'."""
+        svc = StoryService(userstories_dir=None)
+        story = Story(
+            id="US-TEST-001",
+            title="Archived Story",
+            lifecycle="archived",
+            test_status="fail",
+        )
+        status = svc.compute_story_status(story)
+        assert status == "archived"
+
+    def test_deprecated_lifecycle_with_failing_test(self):
+        """lifecycle=deprecated + test_status=fail → 'archived', not 'unhealthy'."""
+        svc = StoryService(userstories_dir=None)
+        story = Story(
+            id="US-TEST-001",
+            title="Deprecated Story",
+            lifecycle="deprecated",
+            test_status="fail",
+        )
+        status = svc.compute_story_status(story)
+        assert status == "archived"
+
+    def test_archived_lifecycle_with_passing_test(self):
+        """lifecycle=archived + test_status=pass → still 'archived'."""
+        svc = StoryService(userstories_dir=None)
+        story = Story(
+            id="US-TEST-001",
+            title="Archived Story",
+            lifecycle="archived",
+            test_status="pass",
+        )
+        status = svc.compute_story_status(story)
+        assert status == "archived"
+
+    def test_implemented_lifecycle_with_failing_test_is_unhealthy(self):
+        """Sanity check: lifecycle=implemented + test_status=fail → 'unhealthy'."""
+        svc = StoryService(userstories_dir=None)
+        story = Story(
+            id="US-TEST-001",
+            title="Implemented Story",
+            lifecycle="implemented",
+            test_status="fail",
+        )
+        status = svc.compute_story_status(story)
+        assert status == "unhealthy"
+
+
+class TestTreeHashFallback:
+    """When last_pass_commit is unreachable, tree_hash provides a fallback."""
+
+    def test_unreachable_commit_with_matching_tree_hash_is_not_stale(self, tmp_path):
+        """ANCHOR_UNREACHABLE + _tree_hash_matches=True → story is NOT stale."""
+        svc = StoryService(userstories_dir=None)
+        story = Story(
+            id="US-TEST-001",
+            title="Story with squash-merged commit",
+            test_status="pass",
+            last_pass_commit="dead0000deadbeef",
+            last_pass_tree_hash="abc123",
+            related_files=["modules/foo/bar.py"],
+        )
+        _git_module = "agenticguidance.services.story._git_changed_files_since"
+        _hash_module = "agenticguidance.services.story._tree_hash_matches"
+
+        with patch(_git_module, return_value=ANCHOR_UNREACHABLE):
+            with patch(_hash_module, return_value=True):
+                status = svc.compute_story_status(story, repo_root=tmp_path)
+        # Tree hash matched → not stale → falls through to "passing"
+        assert status == "passing"
+
+    def test_unreachable_commit_with_mismatched_tree_hash_is_stale(self, tmp_path):
+        """ANCHOR_UNREACHABLE + _tree_hash_matches=False → story IS stale."""
+        svc = StoryService(userstories_dir=None)
+        story = Story(
+            id="US-TEST-001",
+            title="Story with moved tree",
+            test_status="pass",
+            last_pass_commit="dead0000deadbeef",
+            last_pass_tree_hash="old_hash_xyz",
+            related_files=["modules/foo/bar.py"],
+        )
+        _git_module = "agenticguidance.services.story._git_changed_files_since"
+        _hash_module = "agenticguidance.services.story._tree_hash_matches"
+
+        with patch(_git_module, return_value=ANCHOR_UNREACHABLE):
+            with patch(_hash_module, return_value=False):
+                status = svc.compute_story_status(story, repo_root=tmp_path)
+        assert status == "stale"
+
+
+class TestAnchorUnreachableReason:
+    """compute_story_flags returns stale_reason=anchor_unreachable when appropriate."""
+
+    def test_flags_anchor_unreachable_when_commit_gone_and_hash_mismatch(self, tmp_path):
+        """ANCHOR_UNREACHABLE + tree_hash mismatch → stale_reason='anchor_unreachable'."""
+        svc = StoryService(userstories_dir=None)
+        story = Story(
+            id="US-TEST-001",
+            title="Anchor-unreachable story",
+            test_status="pass",
+            last_pass_commit="dead0000deadbeef",
+            last_pass_tree_hash="mismatch_hash",
+            related_files=["modules/foo/bar.py"],
+        )
+        _git_module = "agenticguidance.services.story._git_changed_files_since"
+        _hash_module = "agenticguidance.services.story._tree_hash_matches"
+
+        with patch(_git_module, return_value=ANCHOR_UNREACHABLE):
+            with patch(_hash_module, return_value=False):
+                flags = svc.compute_story_flags(story, repo_root=tmp_path)
+
+        assert flags["stale_reason"] == "anchor_unreachable"
+
+    def test_status_is_stale_when_anchor_unreachable_and_hash_none(self, tmp_path):
+        """ANCHOR_UNREACHABLE + _tree_hash_matches=None → stale, anchor_unreachable reason."""
+        svc = StoryService(userstories_dir=None)
+        story = Story(
+            id="US-TEST-001",
+            title="Anchor-unreachable story no hash",
+            test_status="pass",
+            last_pass_commit="dead0000deadbeef",
+            last_pass_tree_hash="",  # empty — _tree_hash_matches returns None
+            related_files=["modules/foo/bar.py"],
+        )
+        _git_module = "agenticguidance.services.story._git_changed_files_since"
+
+        with patch(_git_module, return_value=ANCHOR_UNREACHABLE):
+            status = svc.compute_story_status(story, repo_root=tmp_path)
+            flags = svc.compute_story_flags(story, repo_root=tmp_path)
+
+        assert status == "stale"
+        assert flags["stale_reason"] == "anchor_unreachable"
+
+    def test_anchor_unreachable_not_triggered_when_commit_reachable(self, tmp_path):
+        """When commit IS reachable and no files changed, stale_reason is None."""
+        svc = StoryService(userstories_dir=None)
+        story = Story(
+            id="US-TEST-001",
+            title="Normal passing story",
+            test_status="pass",
+            last_pass_commit="abc1234",
+            related_files=["modules/foo/bar.py"],
+        )
+        _git_module = "agenticguidance.services.story._git_changed_files_since"
+
+        # Commit reachable, no files changed
+        with patch(_git_module, return_value=set()):
+            flags = svc.compute_story_flags(story, repo_root=tmp_path)
+
+        assert flags["stale_reason"] is None

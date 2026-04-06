@@ -1,3 +1,4 @@
+# story: US-STR-001
 """User stories discovery and test tracking commands.
 
 Find, filter, and track test status of user stories.
@@ -5,13 +6,20 @@ Find, filter, and track test status of user stories.
 
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 
-from agenticguidance.services.story import Story, StoryService, get_canonical_stories_dir, get_epic_stories_path
+from agenticguidance.services.story import (
+    Pattern, PatternService, Story, StoryService,
+    get_canonical_stories_dir, get_epic_stories_path,
+    _find_repo_root, _git_changed_files_since,
+    load_global_watch, expand_watch_patterns, STORY_STATUS_SORT_ORDER,
+    ANCHOR_UNREACHABLE,
+)
 
 
 def handle(args, ctx=None):
@@ -26,8 +34,8 @@ def handle(args, ctx=None):
         cmd_status(args)
     elif args.stories_command == "update":
         cmd_update(args)
-    elif args.stories_command == "report":
-        cmd_report(args)
+    elif args.stories_command == "health":
+        cmd_health(args)
     elif args.stories_command == "untested":
         cmd_untested(args)
     elif args.stories_command == "batch-update":
@@ -48,8 +56,18 @@ def handle(args, ctx=None):
         cmd_code(args)
     elif args.stories_command == "audit":
         cmd_audit(args)
+    elif args.stories_command == "patterns":
+        cmd_patterns(args)
+    elif args.stories_command == "pattern-cat":
+        cmd_pattern_cat(args)
+    elif args.stories_command == "pattern-claimants":
+        cmd_pattern_claimants(args)
+    elif args.stories_command == "pattern-verify":
+        cmd_pattern_verify(args)
+    elif args.stories_command == "pattern-check":
+        cmd_pattern_check(args)
     else:
-        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected|sync|run|promote|deprecate|archive|code|audit]", file=sys.stderr)
+        print("Usage: agentic stories [find|init|cat|status|update|report|untested|batch-update|affected|sync|run|promote|deprecate|archive|code|audit|patterns|pattern-cat|pattern-claimants|pattern-verify|pattern-check]", file=sys.stderr)
         sys.exit(1)
 
 
@@ -167,6 +185,9 @@ def _story_to_dict(s: Story) -> dict:
         "tested_by_plan": s.tested_by_plan or None,
         "related_stories": s.related_stories,
         "related_commands": s.related_commands,
+        "related_files": s.related_files,
+        "last_pass_commit": s.last_pass_commit or None,
+        "last_uat_commit": s.last_uat_commit or None,
     }
 
 
@@ -194,6 +215,23 @@ def _collect_all_stories(project_filter: str | None = None) -> list[dict]:
 
     return all_stories
 
+
+
+_PREFIX_TO_MODULE = {
+    "US-SET": "AgenticCLI",
+    "US-SES": "AgenticCLI",
+    "US-PLN": "AgenticCLI",
+    "US-STR": "AgenticCLI",
+    "US-GDN": "AgenticGuidance",
+}
+
+
+def _story_module(story_id: str) -> str:
+    """Derive the module (AgenticCLI or AgenticGuidance) from a story ID prefix."""
+    match = re.match(r"(US-[A-Z]+)", story_id)
+    if match:
+        return _PREFIX_TO_MODULE.get(match.group(1), "Unknown")
+    return "Unknown"
 
 
 def _categorize_stories(stories: list[dict]) -> dict:
@@ -592,6 +630,66 @@ def _scan_pytest_story_markers() -> set[str]:
     return marker_ids
 
 
+def _scan_pytest_flaky_markers(story_marker_ids: set[str]) -> set[str]:
+    """Return the set of story IDs whose test files contain @pytest.mark.flaky.
+
+    Strategy (regex, not AST — coarse but sufficient):
+    For each test file, if the file contains both @pytest.mark.flaky AND a
+    @pytest.mark.story("US-XXX-NNN") referencing a known story ID, that story
+    ID is considered flaky.
+
+    This is intentionally coarse: if ANY test in the file is flaky and the
+    file covers a story, that story is flagged. Per-function precision requires
+    AST; the regex approach is used here because test files are usually focused
+    on one story and the cost of false positives is low.
+
+    Args:
+        story_marker_ids: Set of story IDs already known to have test markers
+            (from _scan_pytest_story_markers). Used to restrict scanning.
+
+    Returns:
+        Set of story IDs that have at least one linked test with @pytest.mark.flaky.
+    """
+    flaky_story_ids: set[str] = set()
+
+    # Find the repo root
+    cwd = Path.cwd()
+    repo_root = cwd
+    while repo_root != repo_root.parent:
+        if (repo_root / ".git").exists():
+            break
+        repo_root = repo_root.parent
+
+    test_dirs = [
+        repo_root / "modules" / "AgenticCLI" / "tests",
+        repo_root / "modules" / "AgenticGuidance" / "tests",
+    ]
+
+    story_id_pattern = re.compile(r'["\']([A-Z]{2}-[A-Z0-9]+-\d+)["\']')
+    flaky_marker_pattern = re.compile(r'@pytest\.mark\.flaky')
+
+    for test_dir in test_dirs:
+        if not test_dir.exists():
+            continue
+        for test_file in sorted(test_dir.rglob("test_*.py")):
+            try:
+                content = test_file.read_text()
+            except OSError:
+                continue
+
+            if not flaky_marker_pattern.search(content):
+                continue  # File has no flaky markers — skip
+
+            # File has at least one @pytest.mark.flaky — find all story IDs in file
+            story_ids_in_file = {
+                m for m in story_id_pattern.findall(content)
+                if m in story_marker_ids
+            }
+            flaky_story_ids |= story_ids_in_file
+
+    return flaky_story_ids
+
+
 def _scan_pytest_story_markers_detailed() -> dict[str, list[str]]:
     """Parse test files with ast to extract story_id -> [test_nodeids] mappings.
 
@@ -835,34 +933,104 @@ def _scan_production_code_story_markers() -> dict[str, list[str]]:
     return mappings
 
 
-def cmd_report(args):
-    """Show test status summary across stories."""
+def cmd_health(args):
+    """Show all stories in a dashboard table with test status summary.
+
+    Columns: ID | Title | Status | Flags | testpass_commithash | uatpass_commithash
+
+    Status values (7-value canonical enum):
+      unhealthy, stale, never-passed, no-test, passing, uat-verified, archived
+
+    Flags column: space-separated badges (e.g. !flaky). Empty when no modifiers.
+
+    Use --all to include archived stories (hidden by default).
+    """
+    from rich.table import Table
+
     from agenticcli.console import console, is_json_output, print_header, print_json
 
     project_filter = getattr(args, "project", None)
     coverage_mode = getattr(args, "coverage", False)
-    stories = _collect_all_stories(project_filter=project_filter)
+    show_all = getattr(args, "all", False)
 
-    # Tally
-    counts = {"pass": 0, "fail": 0, "skip": 0, "regression": 0, "untested": 0}
-    for s in stories:
-        ts = s.get("test_status", "untested")
-        if ts in counts:
-            counts[ts] += 1
-        else:
-            counts["untested"] += 1
+    userstories_dir = _find_userstories_dir()
+    story_svc = StoryService(userstories_dir)
+    repo_root = _find_repo_root()
 
-    total = len(stories)
+    # Load global watch config (Phase 1 service function)
+    global_watch_patterns = load_global_watch(userstories_dir)
+    global_watch_files: list[str] = []
+    if repo_root and global_watch_patterns:
+        global_watch_files = list(expand_watch_patterns(global_watch_patterns, repo_root))
 
-    # Pytest marker coverage analysis
+    # Unconditionally scan pytest markers (needed for never-passed vs no-test split)
+    story_marker_ids: set[str] = _scan_pytest_story_markers()
+
+    # Flaky marker detection (regex approach — coarse, per-file granularity)
+    flaky_story_ids: set[str] = _scan_pytest_flaky_markers(story_marker_ids)
+
+    all_story_objs = story_svc.load_all()
+    if project_filter:
+        pf = project_filter.lower()
+        all_story_objs = [s for s in all_story_objs if pf in s.project.lower()]
+
+    # --- Compute status and flags for every story ---
+    # Each entry: (story, status, flags_dict)
+    story_results: list[tuple] = []
+    for s in all_story_objs:
+        status = story_svc.compute_story_status(
+            s, repo_root,
+            story_markers=story_marker_ids,
+            global_watch=global_watch_files,
+        )
+        flags = story_svc.compute_story_flags(
+            s, repo_root,
+            global_watch=global_watch_files,
+            flaky_ids=flaky_story_ids,
+        )
+        story_results.append((s, status, flags))
+
+    # --- Separate archived from visible ---
+    archived_results = [(s, st, fl) for s, st, fl in story_results if st == "archived"]
+    visible_results = [(s, st, fl) for s, st, fl in story_results if st != "archived"]
+
+    if show_all:
+        display_results = sorted(
+            story_results,
+            key=lambda r: (STORY_STATUS_SORT_ORDER.get(r[1], 999), _story_module(r[0].id), r[0].id),
+        )
+        hidden_archived_count = 0
+    else:
+        display_results = sorted(
+            visible_results,
+            key=lambda r: (STORY_STATUS_SORT_ORDER.get(r[1], 999), _story_module(r[0].id), r[0].id),
+        )
+        hidden_archived_count = len(archived_results)
+
+    # --- Tally counts across ALL stories (not just shown) ---
+    status_counts: dict[str, int] = {
+        "unhealthy": 0,
+        "stale": 0,
+        "never-passed": 0,
+        "no-test": 0,
+        "passing": 0,
+        "uat-verified": 0,
+        "archived": 0,
+    }
+    for _, status, _ in story_results:
+        if status in status_counts:
+            status_counts[status] += 1
+
+    flaky_count = sum(1 for _, _, fl in story_results if fl.get("flaky"))
+    total_shown = len(display_results)
+
+    # --- Pytest marker coverage analysis (--coverage mode) ---
     marker_coverage = None
     if coverage_mode:
-        marker_ids = _scan_pytest_story_markers()
-        all_story_ids = {s["id"] for s in stories}
-        covered = all_story_ids & marker_ids
-        uncovered = all_story_ids - marker_ids
-        orphan_markers = marker_ids - all_story_ids  # Markers referencing non-existent stories
-
+        all_story_ids = {s.id for s in all_story_objs}
+        covered = all_story_ids & story_marker_ids
+        uncovered = all_story_ids - story_marker_ids
+        orphan_markers = story_marker_ids - all_story_ids
         marker_coverage = {
             "total_stories": len(all_story_ids),
             "covered_by_markers": len(covered),
@@ -871,44 +1039,168 @@ def cmd_report(args):
             "coverage_pct": (len(covered) / len(all_story_ids) * 100) if all_story_ids else 0,
         }
 
+    # ==========================================================================
+    # JSON output
+    # ==========================================================================
     if is_json_output():
+        stories_json = []
+        for s, status, flags in display_results:
+            # Determine staleness detail arrays
+            # We share a single git diff call via compute_story_flags' stale_reason.
+            # For related_files_changed / global_config_changed, do one diff call.
+            related_files_changed: list[str] = []
+            global_config_changed: list[str] = []
+            stale_reason = flags.get("stale_reason")
+            if stale_reason in ("related_file", "global_config") and repo_root and s.last_pass_commit:
+                changed = _git_changed_files_since(s.last_pass_commit, repo_root)
+                if changed and changed is not ANCHOR_UNREACHABLE:
+                    related_files_changed = sorted(set(s.related_files) & changed)
+                    global_config_changed = sorted(set(global_watch_files) & changed)
+
+            stories_json.append({
+                "id": s.id,
+                "module": _story_module(s.id),
+                "title": s.title,
+                "status": status,
+                "flags": {
+                    "flaky": flags.get("flaky", False),
+                    "blocked": False,
+                },
+                "test": {
+                    "status": s.test_status or None,
+                    "last_pass_commit": s.last_pass_commit or None,
+                    "last_pass_tree_hash": s.last_pass_tree_hash or None,
+                    "last_tested": s.last_tested or None,
+                },
+                "uat": {
+                    "last_uat_commit": s.last_uat_commit or None,
+                },
+                "staleness": {
+                    "is_stale": status == "stale",
+                    "reason": stale_reason,
+                    "related_files_changed": related_files_changed,
+                    "global_config_changed": global_config_changed,
+                },
+                "related_files": s.related_files,
+                "lifecycle": s.lifecycle,
+            })
+
         result = {
-            "total": total,
-            "pass": counts["pass"],
-            "fail": counts["fail"],
-            "skip": counts["skip"],
-            "regression": counts["regression"],
-            "untested": counts["untested"],
-            "project_filter": project_filter,
+            "stories": stories_json,
+            "summary": {
+                "total_shown": total_shown,
+                "hidden_archived": hidden_archived_count,
+                "counts": status_counts,
+                "flaky_count": flaky_count,
+                "project_filter": project_filter,
+            },
         }
         if marker_coverage is not None:
             result["marker_coverage"] = marker_coverage
         print_json(result)
         return
 
-    title = "Story Test Report"
+    # ==========================================================================
+    # Table output
+    # ==========================================================================
+    _status_style = {
+        "unhealthy": "red",
+        "stale": "yellow",
+        "never-passed": "cyan",
+        "no-test": "dim",
+        "passing": "green",
+        "uat-verified": "bright_green",
+        "archived": "grey50",
+    }
+
+    title = "Stories Health Dashboard"
     if project_filter:
         title += f" (project: {project_filter})"
     print_header(title)
 
-    console.print(f"  [green]Pass:[/green]       {counts['pass']}")
-    console.print(f"  [red]Fail:[/red]       {counts['fail']}")
-    console.print(f"  [red]Regression:[/red] {counts['regression']}")
-    console.print(f"  [yellow]Skip:[/yellow]       {counts['skip']}")
-    console.print(f"  [dim]Untested:[/dim]   {counts['untested']}")
-    console.print(f"  [bold]Total:[/bold]      {total}")
+    _module_style = {
+        "AgenticCLI": "blue",
+        "AgenticGuidance": "magenta",
+    }
 
-    if total > 0:
-        pct = (counts["pass"] / total) * 100
-        console.print(f"\n  [bold]Coverage:[/bold] {pct:.0f}% passing")
+    table = Table(show_header=True, header_style="bold", expand=True, pad_edge=False)
+    table.add_column("ID", style="cyan", no_wrap=True, min_width=14)
+    table.add_column("Module", no_wrap=True, min_width=14)
+    table.add_column("Title", ratio=1)
+    table.add_column("Status", no_wrap=True, min_width=12)
+    table.add_column("Flags", no_wrap=True)
+    table.add_column("testpass_commithash", no_wrap=True, style="dim")
+    table.add_column("uatpass_commithash", no_wrap=True, style="dim")
 
+    for s, status, flags in display_results:
+        style = _status_style.get(status, "dim")
+
+        # Status cell — append stale_reason when available
+        stale_reason = flags.get("stale_reason")
+        if status == "stale" and stale_reason:
+            status_cell = f"[{style}]stale ({stale_reason})[/{style}]"
+        else:
+            status_cell = f"[{style}]{status}[/{style}]"
+
+        # Flags cell — space-separated badges
+        badges = []
+        if flags.get("flaky"):
+            badges.append("!flaky")
+        flags_cell = f"[yellow bold]{' '.join(badges)}[/yellow bold]" if badges else ""
+
+        # Short commit hashes
+        pass_hash = s.last_pass_commit[:7] if s.last_pass_commit else "\u2014"
+        uat_hash = s.last_uat_commit[:7] if s.last_uat_commit else "\u2014"
+
+        # Module cell
+        module = _story_module(s.id)
+        mod_style = _module_style.get(module, "dim")
+        module_cell = f"[{mod_style}]{module}[/{mod_style}]"
+
+        table.add_row(
+            s.id,
+            module_cell,
+            s.title,
+            status_cell,
+            flags_cell,
+            pass_hash,
+            uat_hash,
+        )
+
+    console.print(table)
+    console.print()
+
+    # --- Summary footer ---
+    status_label_style = {
+        "unhealthy": "red",
+        "stale": "yellow",
+        "never-passed": "cyan",
+        "no-test": "dim",
+        "passing": "green",
+        "uat-verified": "bright_green",
+    }
+    count_parts = [f"[bold]{total_shown} shown[/bold]"]
+    for key in ("unhealthy", "stale", "never-passed", "no-test", "passing", "uat-verified"):
+        n = status_counts.get(key, 0)
+        if n:
+            sty = status_label_style.get(key, "default")
+            count_parts.append(f"[{sty}]{n} {key}[/{sty}]")
+    if flaky_count:
+        count_parts.append(f"[yellow bold]{flaky_count} flaky[/yellow bold]")
+
+    footer = "  [bold]Stories:[/bold] " + " | ".join(count_parts)
+    if hidden_archived_count:
+        footer += f"   [dim]({hidden_archived_count} archived hidden \u2014 use --all)[/dim]"
+    console.print(footer)
+
+    # --- Pytest marker coverage (--coverage mode) ---
     if marker_coverage is not None:
-        console.print(f"\n  [bold cyan]Pytest Marker Coverage:[/bold cyan]")
         mc = marker_coverage
+        console.print(f"\n  [bold cyan]Pytest Marker Coverage:[/bold cyan]")
         console.print(f"  [green]Covered:[/green]    {mc['covered_by_markers']}/{mc['total_stories']} ({mc['coverage_pct']:.0f}%)")
         if mc["uncovered"]:
             console.print(f"  [red]Uncovered:[/red]  {len(mc['uncovered'])} stories without @pytest.mark.story markers")
-            for sid in mc["uncovered"][:20]:  # Show first 20
+            for sid in mc["uncovered"][:20]:
                 console.print(f"    [dim]- {sid}[/dim]")
             if len(mc["uncovered"]) > 20:
                 console.print(f"    [dim]... and {len(mc['uncovered']) - 20} more[/dim]")
@@ -1057,13 +1349,20 @@ def cmd_batch_update(args):
 
 
 def cmd_affected(args):
-    """List affected stories for a plan with their test status.
+    """List affected stories for a plan, by file changes, or by commit hash.
 
+    When --commit is provided, uses git diff + story related_files and # story: headers
+    to identify affected stories.
     When --changes is provided (comma-separated file paths or 'git' for git diff),
     cross-references testmon data and story_tests TinyDB to show which stories
     are affected by the file changes.
     """
     from agenticcli.console import console, is_json_output, print_error, print_header, print_json
+
+    commit = getattr(args, "commit", None)
+    if commit:
+        _cmd_affected_by_commit(args, commit)
+        return
 
     changes = getattr(args, "changes", None)
     if changes:
@@ -1162,6 +1461,105 @@ def cmd_affected(args):
         console.print(f"  [cyan]{r['id']}[/cyan]: {title} [{status_str}]")
 
     console.print(f"\n  [bold]Total:[/bold] {len(results)} affected stories")
+
+
+def _cmd_affected_by_commit(args, commit: str):
+    """Handle --commit flag for cmd_affected: git-based story impact detection."""
+    from agenticcli.console import console, is_json_output, print_header, print_json
+
+    repo_root = _find_repo_root()
+    if repo_root is None:
+        print("Error: Not in a git repository.", file=sys.stderr)
+        sys.exit(1)
+
+    # Get changed files from commit
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"{commit}~1..{commit}"],
+            capture_output=True, text=True, cwd=str(repo_root), timeout=30,
+        )
+        if result.returncode != 0:
+            # Fallback for initial commits or ranges
+            result = subprocess.run(
+                ["git", "diff", "--name-only", f"{commit}"],
+                capture_output=True, text=True, cwd=str(repo_root), timeout=30,
+            )
+        changed_files = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        print("Error: git command failed.", file=sys.stderr)
+        sys.exit(1)
+
+    if not changed_files:
+        if is_json_output():
+            print_json({"commit": commit, "changed_files": [], "affected_stories": [], "count": 0})
+        else:
+            print_header(f"Stories Affected by Commit: {commit}")
+            console.print("  [dim]No files changed in this commit[/dim]")
+        return
+
+    # Two detection methods:
+    # 1. Grep # story: headers in changed files
+    # 2. Check story YAML related_files for matches
+    affected: dict[str, dict] = {}  # story_id -> {title, source, status}
+
+    svc = StoryService(_find_userstories_dir())
+    all_stories = svc.load_all()
+
+    # Method 1: scan # story: headers in changed files
+    for f in changed_files:
+        fpath = repo_root / f
+        if not fpath.exists() or not fpath.suffix == ".py":
+            continue
+        try:
+            first_lines = fpath.read_text().split("\n")[:5]
+            for line in first_lines:
+                m = re.match(r"^#\s*story:\s*(.+)$", line)
+                if m:
+                    for sid in re.findall(r"US-[A-Z0-9]+-\d+", m.group(1)):
+                        if sid not in affected:
+                            story_obj = svc.get_by_id(sid)
+                            affected[sid] = {
+                                "id": sid,
+                                "title": story_obj.title if story_obj else "(unknown)",
+                                "status": svc.compute_story_status(story_obj, repo_root) if story_obj else "unknown",
+                                "source": "header",
+                            }
+        except OSError:
+            continue
+
+    # Method 2: check related_files on all stories
+    changed_set = set(changed_files)
+    for story in all_stories:
+        if story.id in affected:
+            continue
+        if story.related_files and set(story.related_files) & changed_set:
+            affected[story.id] = {
+                "id": story.id,
+                "title": story.title,
+                "status": svc.compute_story_status(story, repo_root),
+                "source": "related_files",
+            }
+
+    results = sorted(affected.values(), key=lambda x: x["id"])
+
+    if is_json_output():
+        print_json({
+            "commit": commit,
+            "changed_files": changed_files,
+            "affected_stories": results,
+            "count": len(results),
+        })
+        return
+
+    print_header(f"Stories Affected by Commit: {commit}")
+    if not results:
+        console.print("  [dim]No stories affected by this commit[/dim]")
+    else:
+        _eff_style = {"passing": "green", "stale": "yellow", "broken": "red", "untested": "dim"}
+        for r in results:
+            style = _eff_style.get(r["status"], "dim")
+            console.print(f"  [cyan]{r['id']}[/cyan]: {r['title'][:50]} [{style}]{r['status']}[/{style}]")
+    console.print(f"\n  Changed files: {len(changed_files)} | Affected stories: {len(results)}")
 
 
 def _testmon_affected_tests(changed_files: list[str]) -> set[str]:
@@ -1478,19 +1876,23 @@ def cmd_code(args):
 
 # @story US-004
 def cmd_audit(args):
-    """Bidirectional story-ticket coverage audit.
+    """Story audit: epic coverage, file↔YAML consistency, or ticket traceability."""
+    check_files = getattr(args, "check_files", False)
+    check_tickets = getattr(args, "check_tickets", False)
 
-    Reports:
-    - Tickets without story_ids (unlinked tickets)
-    - Stories not referenced by any ticket's story_ids (orphan stories)
+    if check_files:
+        _cmd_audit_check_files(args)
+        return
+    if check_tickets:
+        _cmd_audit_check_tickets(args)
+        return
 
-    Supports --json for machine-readable output and human-readable table otherwise.
-    """
+    # Original epic-based audit
     from agenticcli.console import console, is_json_output, print_header, print_json
 
     epic_name = getattr(args, "epic", None) or getattr(args, "plan", None)
     if not epic_name:
-        print("Error: --epic is required for stories audit.", file=sys.stderr)
+        print("Error: --epic, --check-files, or --check-tickets is required.", file=sys.stderr)
         sys.exit(1)
 
     # Resolve epic folder via TinyDB lookup
@@ -1598,3 +2000,446 @@ def cmd_audit(args):
 
     console.print(f"  [bold]Summary:[/bold] {summary['unlinked_ticket_count']} unlinked ticket(s), "
                   f"{summary['orphan_story_count']} orphan story/stories")
+
+
+def _cmd_audit_check_files(args):
+    """Validate bidirectional consistency between YAML related_files and # story: headers."""
+    from agenticcli.console import console, is_json_output, print_header, print_json
+
+    strict = getattr(args, "strict", False)
+    repo_root = _find_repo_root()
+    if repo_root is None:
+        print("Error: Not in a git repository.", file=sys.stderr)
+        sys.exit(1)
+
+    svc = StoryService(_find_userstories_dir())
+    all_stories = svc.load_all()
+
+    # Build YAML-side mapping: file → story IDs from related_files
+    yaml_file_to_stories: dict[str, set[str]] = {}
+    for story in all_stories:
+        for f in story.related_files:
+            yaml_file_to_stories.setdefault(f, set()).add(story.id)
+
+    # Build header-side mapping: file → story IDs from # story: comments
+    header_file_to_stories: dict[str, set[str]] = {}
+    for f in yaml_file_to_stories:
+        fpath = repo_root / f
+        if not fpath.exists():
+            continue
+        try:
+            first_lines = fpath.read_text().split("\n")[:5]
+            for line in first_lines:
+                m = re.match(r"^#\s*story:\s*(.+)$", line)
+                if m:
+                    for sid in re.findall(r"US-[A-Z0-9]+-\d+", m.group(1)):
+                        header_file_to_stories.setdefault(f, set()).add(sid)
+        except OSError:
+            continue
+
+    # Also scan all source files for headers not in YAML
+    src_dirs = list((repo_root / "modules").glob("*/src"))
+    for src_dir in src_dirs:
+        for py_file in sorted(src_dir.rglob("*.py")):
+            if py_file.name in ("__init__.py", "conftest.py"):
+                continue
+            rel = str(py_file.relative_to(repo_root))
+            if rel in header_file_to_stories:
+                continue
+            try:
+                first_lines = py_file.read_text().split("\n")[:5]
+                for line in first_lines:
+                    m = re.match(r"^#\s*story:\s*(.+)$", line)
+                    if m:
+                        for sid in re.findall(r"US-[A-Z0-9]+-\d+", m.group(1)):
+                            header_file_to_stories.setdefault(rel, set()).add(sid)
+            except OSError:
+                continue
+
+    # Find mismatches
+    mismatches = []
+
+    # Files in YAML but missing header or with wrong IDs
+    all_files = set(yaml_file_to_stories) | set(header_file_to_stories)
+    for f in sorted(all_files):
+        yaml_ids = yaml_file_to_stories.get(f, set())
+        header_ids = header_file_to_stories.get(f, set())
+        if yaml_ids != header_ids:
+            mismatches.append({
+                "file": f,
+                "yaml_stories": sorted(yaml_ids),
+                "header_stories": sorted(header_ids),
+                "missing_in_header": sorted(yaml_ids - header_ids),
+                "missing_in_yaml": sorted(header_ids - yaml_ids),
+            })
+
+    if is_json_output():
+        print_json({
+            "check": "files",
+            "total_files": len(all_files),
+            "mismatches": mismatches,
+            "mismatch_count": len(mismatches),
+            "consistent": len(mismatches) == 0,
+        })
+        if strict and mismatches:
+            sys.exit(1)
+        return
+
+    print_header("Story File Audit: YAML ↔ Header Consistency")
+    if not mismatches:
+        console.print(f"  [green]All {len(all_files)} files are consistent[/green]")
+        return
+
+    for mm in mismatches:
+        console.print(f"  [yellow]{mm['file']}[/yellow]")
+        if mm["missing_in_header"]:
+            console.print(f"    [red]Missing in header:[/red] {', '.join(mm['missing_in_header'])}")
+        if mm["missing_in_yaml"]:
+            console.print(f"    [red]Missing in YAML:[/red] {', '.join(mm['missing_in_yaml'])}")
+
+    console.print(f"\n  {len(mismatches)} file(s) with mismatches out of {len(all_files)}")
+    if strict:
+        sys.exit(1)
+
+
+def _cmd_audit_check_tickets(args):
+    """Check that tickets on live epics have story_ids."""
+    from agenticcli.console import console, is_json_output, print_header, print_json
+
+    from agenticguidance.services.epic_repository import EpicRepository
+
+    strict = getattr(args, "strict", False)
+    repo = EpicRepository()
+    all_epics = repo.list_epics()
+
+    unlinked_by_epic = {}
+    total_tickets = 0
+    total_unlinked = 0
+
+    for epic in all_epics:
+        if epic.status in ("completed", "archived"):
+            continue
+        epic_name = epic.epic_folder_name
+        tickets = repo.get_tickets(epic_name)
+        epic_unlinked = []
+        for t in tickets:
+            total_tickets += 1
+            ticket_stories = getattr(t, "story_ids", None) or []
+            if not ticket_stories:
+                total_unlinked += 1
+                epic_unlinked.append({
+                    "ticket_id": t.id,
+                    "description": getattr(t, "name", "") or getattr(t, "description", "") or "",
+                })
+        if epic_unlinked:
+            unlinked_by_epic[epic_name] = epic_unlinked
+
+    repo.close()
+
+    if is_json_output():
+        print_json({
+            "check": "tickets",
+            "total_tickets": total_tickets,
+            "unlinked_count": total_unlinked,
+            "unlinked_by_epic": unlinked_by_epic,
+            "all_linked": total_unlinked == 0,
+        })
+        if strict and total_unlinked > 0:
+            sys.exit(1)
+        return
+
+    print_header("Story Audit: Ticket Traceability")
+    if not unlinked_by_epic:
+        console.print(f"  [green]All {total_tickets} tickets across live epics have story_ids[/green]")
+        return
+
+    for epic_name, tickets in sorted(unlinked_by_epic.items()):
+        console.print(f"  [yellow]{epic_name}[/yellow] — {len(tickets)} unlinked ticket(s):")
+        for t in tickets[:10]:
+            console.print(f"    [dim]-[/dim] {t['ticket_id']}: {t['description'][:60]}")
+        if len(tickets) > 10:
+            console.print(f"    [dim]... and {len(tickets) - 10} more[/dim]")
+
+    console.print(f"\n  {total_unlinked}/{total_tickets} tickets missing story_ids")
+    if strict:
+        sys.exit(1)
+
+
+# ===========================================================================
+# PATTERN COMMANDS
+# ===========================================================================
+
+
+def cmd_patterns(args):
+    """List all verification patterns, optionally filtered by domain."""
+    from agenticcli.console import console, is_json_output, print_json
+
+    pat_svc = PatternService(_find_userstories_dir())
+    patterns = pat_svc.load_all()
+
+    domain_filter = getattr(args, "domain", None)
+    if domain_filter:
+        patterns = [p for p in patterns if p.domain == domain_filter.upper()]
+
+    if is_json_output():
+        print_json([
+            {"id": p.id, "title": p.title, "domain": p.domain,
+             "tags": p.tags, "param_count": len(p.parameters),
+             "source_file": p.source_file}
+            for p in patterns
+        ])
+        return
+
+    if not patterns:
+        console.print("[dim]No patterns found.[/dim]")
+        return
+
+    console.print(f"[bold]Patterns ({len(patterns)}):[/bold]\n")
+    current_domain = None
+    for p in sorted(patterns, key=lambda x: x.id):
+        if p.domain != current_domain:
+            current_domain = p.domain
+            console.print(f"  [bold cyan]{current_domain}[/bold cyan]")
+        params = ", ".join(p.parameters.keys()) if p.parameters else "none"
+        console.print(f"    {p.id}  {p.title}  [dim]params: {params}[/dim]")
+
+
+def cmd_pattern_cat(args):
+    """Display a pattern's full content."""
+    from agenticcli.console import console, is_json_output, print_error, print_json
+
+    pat_svc = PatternService(_find_userstories_dir())
+    pattern = pat_svc.get_by_id(args.id)
+
+    if not pattern:
+        print_error(f"Pattern not found: {args.id}")
+        sys.exit(1)
+
+    if is_json_output():
+        print_json({
+            "id": pattern.id,
+            "title": pattern.title,
+            "description": pattern.description,
+            "domain": pattern.domain,
+            "tags": pattern.tags,
+            "applicable_categories": pattern.applicable_categories,
+            "parameters": pattern.parameters,
+            "verification": pattern.verification,
+            "source_file": pattern.source_file,
+        })
+        return
+
+    console.print(f"[bold]{pattern.id}[/bold] — {pattern.title}\n")
+    if pattern.description:
+        console.print(f"  {pattern.description.strip()}\n")
+    if pattern.tags:
+        console.print(f"  [dim]Tags:[/dim] {', '.join(pattern.tags)}")
+    if pattern.applicable_categories:
+        console.print(f"  [dim]Applies to:[/dim] {', '.join(pattern.applicable_categories)}")
+
+    if pattern.parameters:
+        console.print("\n  [bold]Parameters:[/bold]")
+        for name, spec in pattern.parameters.items():
+            req = "[red]*[/red]" if (isinstance(spec, dict) and spec.get("required", True)) else ""
+            desc = spec.get("description", "") if isinstance(spec, dict) else str(spec)
+            console.print(f"    {req}{name}: {desc}")
+
+    verification = pattern.verification
+    if verification.get("behavioral"):
+        console.print("\n  [bold]Behavioral Verification:[/bold]")
+        for step in verification["behavioral"].get("steps", []):
+            console.print(f"    Step {step.get('step', '?')}: {step.get('action', '')}")
+            console.print(f"      [green]Expect:[/green] {step.get('expect', '')}")
+
+    if verification.get("structural"):
+        console.print("\n  [bold]Structural Checks:[/bold]")
+        for check in verification["structural"].get("checks", []):
+            console.print(f"    {check.get('description', '')}")
+            console.print(f"      [dim]grep:[/dim] {check.get('look_for', '')} [dim]in[/dim] {check.get('in_files', '')}")
+
+    if verification.get("enforcement"):
+        console.print("\n  [bold]Enforcement:[/bold]")
+        console.print(f"    Sweep: {verification['enforcement'].get('sweep', 'N/A')}")
+
+
+def cmd_pattern_claimants(args):
+    """List stories that inherit a given pattern."""
+    from agenticcli.console import console, is_json_output, print_error, print_json
+
+    userstories_dir = _find_userstories_dir()
+    pat_svc = PatternService(userstories_dir)
+    story_svc = StoryService(userstories_dir)
+
+    pattern = pat_svc.get_by_id(args.id)
+    if not pattern:
+        print_error(f"Pattern not found: {args.id}")
+        sys.exit(1)
+
+    claimants = pat_svc.get_claimants(args.id, story_svc)
+
+    if is_json_output():
+        print_json({
+            "pattern_id": args.id,
+            "pattern_title": pattern.title,
+            "claimant_count": len(claimants),
+            "claimants": [
+                {"id": s.id, "title": s.title, "source_file": s.source_file}
+                for s in claimants
+            ],
+        })
+        return
+
+    console.print(f"[bold]{args.id}[/bold] — {pattern.title}")
+    console.print(f"  Claimants: {len(claimants)}\n")
+
+    if not claimants:
+        console.print("  [dim]No stories inherit this pattern.[/dim]")
+        return
+
+    for s in claimants:
+        # Find the binding for this pattern
+        binding = next(
+            (ref.get("bind", {}) for ref in s.inherits_patterns if ref.get("id") == args.id),
+            {},
+        )
+        bind_summary = ", ".join(f"{k}={v}" for k, v in binding.items()) if binding else "no bindings"
+        console.print(f"  {s.id}  {s.title}  [dim]({bind_summary})[/dim]")
+
+
+def cmd_pattern_verify(args):
+    """Run enforcement sweep for a pattern across all claimant stories."""
+    from agenticcli.console import console, is_json_output, print_error, print_json
+
+    userstories_dir = _find_userstories_dir()
+    pat_svc = PatternService(userstories_dir)
+    story_svc = StoryService(userstories_dir)
+
+    pattern = pat_svc.get_by_id(args.id)
+    if not pattern:
+        print_error(f"Pattern not found: {args.id}")
+        sys.exit(1)
+
+    claimants = pat_svc.get_claimants(args.id, story_svc)
+    results = []
+
+    for story in claimants:
+        ref = next(
+            (r for r in story.inherits_patterns if r.get("id") == args.id),
+            None,
+        )
+        if not ref:
+            continue
+
+        bindings = ref.get("bind", {})
+        missing = [
+            name for name in pattern.required_parameters
+            if name not in bindings
+        ]
+
+        if missing:
+            results.append({
+                "story_id": story.id,
+                "status": "FAIL",
+                "reason": f"Missing required bindings: {', '.join(missing)}",
+            })
+        else:
+            try:
+                pat_svc.resolve_pattern(pattern, bindings)
+                results.append({
+                    "story_id": story.id,
+                    "status": "PASS",
+                    "reason": "All required parameters bound",
+                })
+            except ValueError as e:
+                results.append({
+                    "story_id": story.id,
+                    "status": "FAIL",
+                    "reason": str(e),
+                })
+
+    pass_count = sum(1 for r in results if r["status"] == "PASS")
+    fail_count = sum(1 for r in results if r["status"] == "FAIL")
+
+    if is_json_output():
+        print_json({
+            "pattern_id": args.id,
+            "total_claimants": len(claimants),
+            "pass": pass_count,
+            "fail": fail_count,
+            "results": results,
+        })
+        return
+
+    console.print(f"[bold]{args.id}[/bold] — Enforcement Sweep\n")
+    console.print(f"  Claimants: {len(claimants)}  [green]PASS: {pass_count}[/green]  [red]FAIL: {fail_count}[/red]\n")
+
+    for r in results:
+        status_color = "green" if r["status"] == "PASS" else "red"
+        console.print(f"  [{status_color}]{r['status']}[/{status_color}]  {r['story_id']}  [dim]{r['reason']}[/dim]")
+
+
+def cmd_pattern_check(args):
+    """Show inherited patterns and binding status for a story."""
+    from agenticcli.console import console, is_json_output, print_error, print_json
+
+    userstories_dir = _find_userstories_dir()
+    pat_svc = PatternService(userstories_dir)
+    story_svc = StoryService(userstories_dir)
+
+    story = story_svc.get_by_id(args.id)
+    if not story:
+        print_error(f"Story not found: {args.id}")
+        sys.exit(1)
+
+    if not story.inherits_patterns:
+        if is_json_output():
+            print_json({"story_id": args.id, "patterns": []})
+        else:
+            console.print(f"[bold]{args.id}[/bold] — {story.title}")
+            console.print("  [dim]No inherited patterns.[/dim]")
+        return
+
+    pattern_results = []
+    for ref in story.inherits_patterns:
+        pat_id = ref.get("id", "")
+        bindings = ref.get("bind", {})
+        pattern = pat_svc.get_by_id(pat_id)
+
+        if not pattern:
+            pattern_results.append({
+                "pattern_id": pat_id,
+                "status": "NOT_FOUND",
+                "title": "",
+                "bindings": bindings,
+                "missing_params": [],
+            })
+            continue
+
+        missing = [
+            name for name in pattern.required_parameters
+            if name not in bindings
+        ]
+        pattern_results.append({
+            "pattern_id": pat_id,
+            "status": "FAIL" if missing else "OK",
+            "title": pattern.title,
+            "bindings": bindings,
+            "missing_params": missing,
+        })
+
+    if is_json_output():
+        print_json({"story_id": args.id, "title": story.title, "patterns": pattern_results})
+        return
+
+    console.print(f"[bold]{args.id}[/bold] — {story.title}\n")
+    for pr in pattern_results:
+        if pr["status"] == "NOT_FOUND":
+            console.print(f"  [red]NOT FOUND[/red]  {pr['pattern_id']}")
+        elif pr["status"] == "FAIL":
+            console.print(f"  [red]FAIL[/red]  {pr['pattern_id']}  {pr['title']}")
+            console.print(f"    [red]Missing:[/red] {', '.join(pr['missing_params'])}")
+        else:
+            console.print(f"  [green]OK[/green]  {pr['pattern_id']}  {pr['title']}")
+        if pr["bindings"]:
+            for k, v in pr["bindings"].items():
+                console.print(f"    [dim]{k}={v}[/dim]")
