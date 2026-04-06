@@ -41,7 +41,7 @@ def _setup_epic_in_tinydb(service: EpicService, epic_folder: Path, epic_data: di
         "epic_folder_name": epic_folder_name,
         "epic_folder": str(epic_folder),
         "name": epic_data.get("name", epic_folder_name),
-        "status": epic_data.get("status", "active"),
+        "status": epic_data.get("status", "planning"),
         "objective": epic_data.get("objective", ""),
         "worktree_path": epic_data.get("worktree_path", ""),
         "branch": epic_data.get("branch", "main"),
@@ -249,7 +249,7 @@ class TestGetEpic:
             "name": "test-plan",
             "worktree_path": str(repo_path),
             "branch": "main",
-            "status": "active",
+            "status": "planning",
             "objective": "Test objective",
             "phases": [
                 {
@@ -294,7 +294,7 @@ class TestGetEpic:
             "name": "test-plan",
             "worktree_path": str(repo_path),
             "branch": "main",
-            "status": "active",
+            "status": "planning",
             "objective": "Test objective",
             "phases": [],
         }
@@ -326,7 +326,7 @@ class TestGetEpic:
             "name": "test-plan",
             "worktree_path": str(repo_path),
             "branch": "main",
-            "status": "active",
+            "status": "planning",
             "objective": "Test objective",
             "phases": [],
         }
@@ -358,7 +358,7 @@ class TestGetEpic:
             "name": "test-plan",
             "worktree_path": str(repo_path),
             "branch": "main",
-            "status": "active",
+            "status": "planning",
             "objective": "Test objective",
             "phases": [],
         }
@@ -402,7 +402,7 @@ class TestGetEpic:
             "name": "test-plan",
             "worktree_path": str(repo_path),
             "branch": "main",
-            "status": "active",
+            "status": "planning",
             "objective": "Test objective",
             "phases": [
                 {
@@ -482,7 +482,7 @@ class TestListEpics:
             epic_data = {
                 "name": f"plan-{i}",
                 "worktree_path": str(repo_path),
-                "status": "active",
+                "status": "planning",
                 "objective": f"Objective {i}",
                 "phases": [],
             }
@@ -595,7 +595,7 @@ class TestListEpics:
             epic_data = {
                 "name": name,
                 "worktree_path": str(repo_path),
-                "status": "active",
+                "status": "planning",
                 "objective": "Test",
                 "phases": [],
             }
@@ -630,7 +630,7 @@ class TestListEpics:
         epic_data = {
             "name": "valid",
             "worktree_path": str(repo_path),
-            "status": "active",
+            "status": "planning",
             "objective": "Test",
             "phases": [],
         }
@@ -679,15 +679,15 @@ class TestUpdateEpicStatus:
 
         _setup_epic_in_tinydb(service, epic_folder, epic_data)
 
-        result = service.update_epic_status("260203PS", "active")
+        result = service.update_epic_status("260203PS", "planning")
 
         assert result.success is True
         assert result.old_status == "pending"
-        assert result.new_status == "active"  # "active" is now a canonical status
+        assert result.new_status == "planning"  # "active" normalizes to "planning"
 
         # Verify TinyDB was updated
         updated_epic = service._repository.get_epic("260203PS_test_plan")
-        assert updated_epic.status == "active"
+        assert updated_epic.status == "planning"
 
     def test_update_epic_status_invalid_status(self, tmp_path):
         """Test update_epic_status rejects invalid status values."""
@@ -710,7 +710,7 @@ class TestUpdateEpicStatus:
 
         service = EpicService(repo_path=repo_path)
 
-        result = service.update_epic_status("260203XX", "active")
+        result = service.update_epic_status("260203XX", "planning")
 
         assert result.success is False
         assert "not found" in result.message
@@ -744,7 +744,7 @@ class TestUpdateEpicStatus:
         assert result.success is True
         assert "[dry-run]" in result.message
         assert result.old_status == "pending"
-        assert result.new_status == "active"
+        assert result.new_status == "planning"
 
         # Verify TinyDB was NOT updated (dry-run)
         unchanged_epic = service._repository.get_epic("260203PS_test_plan")
@@ -774,15 +774,15 @@ class TestUpdateEpicStatus:
 
         _setup_epic_in_tinydb(service, epic_folder, plan_build)
 
-        result = service.update_epic_status("260203PS", "active")
+        result = service.update_epic_status("260203PS", "planning")
 
         assert result.success is True
         assert result.old_status == "pending"
-        assert result.new_status == "active"
+        assert result.new_status == "planning"
 
         # Verify TinyDB was updated (YAML sync is permanently disabled)
         updated_epic = service._repository.get_epic("260203PS_test_plan")
-        assert updated_epic.status == "active"
+        assert updated_epic.status == "planning"
 
 
 @pytest.mark.story("US-PLN-086")
@@ -804,7 +804,7 @@ class TestGetEpicTickets:
         epic_data = {
             "name": "test-plan",
             "worktree_path": str(repo_path),
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase 1",
@@ -842,7 +842,7 @@ class TestGetEpicTickets:
         epic_data = {
             "name": "test-plan",
             "worktree_path": str(repo_path),
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase 1",
@@ -878,7 +878,7 @@ class TestGetEpicTickets:
         assert tasks == []
 
 
-@pytest.mark.story("US-PLN-036", "US-PLN-040", "US-PLN-070", "US-PLN-082", "US-PLN-083", "US-SET-024")
+@pytest.mark.story("US-PLN-036", "US-PLN-040", "US-PLN-082", "US-PLN-083", "US-SET-024")
 class TestValidateEpicStructure:
     """Tests for validate_epic_structure() method."""
 
@@ -897,7 +897,7 @@ class TestValidateEpicStructure:
         epic_data = {
             "name": "test-plan",
             "worktree_path": str(repo_path),
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "id": "phase_001",
@@ -939,7 +939,7 @@ class TestValidateEpicStructure:
         epic_data = {
             "name": "test-plan",
             "worktree_path": str(repo_path),
-            "status": "active",
+            "status": "planning",
             "phases": [],
         }
 
@@ -1016,7 +1016,7 @@ class TestValidateEpicStructure:
         epic_data = {
             "name": "test-plan",
             "worktree_path": str(repo_path),
-            "status": "active",
+            "status": "planning",
             "phases": [],
         }
 
@@ -1027,7 +1027,7 @@ class TestValidateEpicStructure:
             "epic_folder_name": "260203PS_test_plan",
             "epic_folder": str(epic_folder),
             "name": "test-plan",
-            "status": "active",
+            "status": "planning",
         })
 
         # Force-insert duplicate ticket IDs directly (bypassing add_ticket dedup guard)
@@ -1068,7 +1068,7 @@ class TestValidateEpicStructure:
         epic_data = {
             "name": "test-plan",
             "worktree_path": str(repo_path),
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase 1",
@@ -1130,7 +1130,7 @@ class TestValidateEpicStructure:
         assert any("TinyDB" in e or "not found" in e for e in result.errors)
 
 
-@pytest.mark.story("US-PLN-043", "US-PLN-044", "US-PLN-045", "US-PLN-083", "US-PLN-086")
+@pytest.mark.story("US-PLN-083", "US-PLN-086")
 class TestValidateTicketNesting:
     """Tests for ticket validation in validate_epic_structure() using TinyDB.
 
@@ -1212,7 +1212,7 @@ class TestValidateTicketNesting:
         with open(epic_folder / "plan_build.yml", "w") as f:
             yaml.dump({
                 "name": "good-epic",
-                "status": "active",
+                "status": "planning",
                 "phases": [
                     {
                         "name": "Phase 1",
@@ -1234,7 +1234,7 @@ class TestValidateTicketNesting:
         """Epic registered in TinyDB with no tickets must trigger a warning."""
         service, epic_folder = self._make_epic(tmp_path, {
             "name": "empty-epic",
-            "status": "active",
+            "status": "planning",
             "phases": [],
         })
 
@@ -1251,7 +1251,7 @@ class TestValidateTicketNesting:
         """Epic with tickets registered in TinyDB should not trigger no-tickets warning."""
         service, epic_folder = self._make_epic(tmp_path, {
             "name": "good-epic",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase with tasks",
@@ -1276,7 +1276,7 @@ class TestValidateTicketNesting:
         """Epic with tickets in multiple phases must not trigger no-tickets warning."""
         service, epic_folder = self._make_epic(tmp_path, {
             "name": "multi-phase-epic",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase 1",
@@ -1341,7 +1341,7 @@ class TestValidateTicketNesting:
         """Epic with proper phases[].tasks[] nesting in TinyDB must pass validation."""
         service, epic_folder = self._make_epic(tmp_path, {
             "name": "good-epic",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase 1",
@@ -1367,7 +1367,7 @@ class TestValidateTicketNesting:
         """Epic with multiple phases each containing tickets must pass."""
         service, epic_folder = self._make_epic(tmp_path, {
             "name": "multi-phase-epic",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase 1",
@@ -1406,7 +1406,7 @@ class TestValidateTicketNesting:
 
         epic_data = {
             "name": "stub-epic",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase 1",

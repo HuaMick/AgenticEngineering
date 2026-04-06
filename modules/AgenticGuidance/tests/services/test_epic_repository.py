@@ -6,7 +6,7 @@ Validates:
 - Cache refresh after cross-process writes
 - No data loss under concurrent ticket updates
 
-@story US-PLN-055, US-PLN-057
+@story US-PLN-055
 """
 
 import json
@@ -30,7 +30,7 @@ from agenticguidance.services.state import (
     FILELOCK_RETRY_BACKOFF_BASE,
 )
 
-pytestmark = pytest.mark.story("US-PLN-055", "US-PLN-057")
+pytestmark = pytest.mark.story("US-PLN-055")
 
 _SRC_DIR = str(Path(__file__).resolve().parent.parent.parent / "src")
 
@@ -468,3 +468,217 @@ class TestNoDataLossUnderContention:
         assert ticket.status == "in_progress"
 
         repo.close()
+
+
+# ── PhaseStatus.BLOCKED and PhaseData model tests ─────────────────────────
+
+
+@pytest.mark.story("US-RES-001")
+class TestPhaseStatusBlockedEnum:
+    """PhaseStatus enum should include BLOCKED with correct string value."""
+
+    def test_blocked_enum_exists(self):
+        """PhaseStatus.BLOCKED should be a valid enum member."""
+        from agenticguidance.services.epic import PhaseStatus
+
+        assert hasattr(PhaseStatus, "BLOCKED")
+        assert PhaseStatus.BLOCKED.value == "blocked"
+
+    def test_all_expected_statuses_present(self):
+        """PhaseStatus should contain PENDING, IN_PROGRESS, COMPLETED, FAILED, BLOCKED."""
+        from agenticguidance.services.epic import PhaseStatus
+
+        expected = {"pending", "in_progress", "completed", "failed", "blocked"}
+        actual = {s.value for s in PhaseStatus}
+        assert expected == actual
+
+    def test_blocked_is_distinct_from_failed(self):
+        """BLOCKED and FAILED should be distinct enum members."""
+        from agenticguidance.services.epic import PhaseStatus
+
+        assert PhaseStatus.BLOCKED != PhaseStatus.FAILED
+        assert PhaseStatus.BLOCKED.value != PhaseStatus.FAILED.value
+
+
+@pytest.mark.story("US-RES-001")
+class TestPhaseDataBlockedReason:
+    """PhaseData model should support blocked_reason field."""
+
+    def test_blocked_reason_defaults_to_none(self):
+        """PhaseData.blocked_reason should default to None."""
+        from agenticguidance.services.epic import PhaseData
+
+        phase = PhaseData(name="P1")
+        assert phase.blocked_reason is None
+
+    def test_blocked_reason_can_be_set(self):
+        """PhaseData should accept blocked_reason in constructor."""
+        from agenticguidance.services.epic import PhaseData
+
+        phase = PhaseData(
+            name="P1",
+            status="blocked",
+            blocked_reason="Retry exhaustion: network timeout",
+        )
+        assert phase.status == "blocked"
+        assert phase.blocked_reason == "Retry exhaustion: network timeout"
+
+    def test_blocked_reason_with_agent_and_phase_id(self):
+        """PhaseData blocked_reason should work alongside all other fields."""
+        from agenticguidance.services.epic import PhaseData
+
+        phase = PhaseData(
+            name="Build Phase",
+            status="blocked",
+            agent="build-python",
+            phase_id="P1-BUILD",
+            blocked_reason="3 consecutive spawn failures",
+        )
+        assert phase.name == "Build Phase"
+        assert phase.agent == "build-python"
+        assert phase.phase_id == "P1-BUILD"
+        assert phase.blocked_reason == "3 consecutive spawn failures"
+
+
+@pytest.mark.story("US-RES-001")
+class TestEpicRepositoryBlockedState:
+    """EpicRepository should persist and retrieve blocked status and blocked_reason."""
+
+    def test_update_phase_sets_blocked_status(self, repo):
+        """update_phase should set status to 'blocked' in TinyDB."""
+        epic_name = "test_blocked_epic"
+        repo.create_epic({
+            "plan_folder_name": epic_name,
+            "plan_folder": "/tmp/epics/" + epic_name,
+            "name": epic_name,
+            "status": "active",
+            "objective": "Test blocked state",
+        })
+        repo.add_phase(epic_name, {
+            "phase_id": "P1",
+            "name": "P1 - Build",
+            "agent": "build-python",
+            "status": "in_progress",
+        })
+
+        # Set phase to blocked
+        updated = repo.update_phase(epic_name, "P1", {"status": "blocked"})
+        assert updated is True
+
+        # Verify the status was persisted
+        phase = repo.get_phase(epic_name, "P1")
+        assert phase is not None
+        assert phase.status == "blocked"
+
+    def test_update_phase_sets_blocked_reason(self, repo):
+        """update_phase should persist blocked_reason alongside blocked status."""
+        epic_name = "test_reason_epic"
+        repo.create_epic({
+            "plan_folder_name": epic_name,
+            "plan_folder": "/tmp/epics/" + epic_name,
+            "name": epic_name,
+            "status": "active",
+            "objective": "Test blocked reason",
+        })
+        repo.add_phase(epic_name, {
+            "phase_id": "P1",
+            "name": "P1 - Build",
+            "agent": "build-python",
+            "status": "in_progress",
+        })
+
+        updated = repo.update_phase(epic_name, "P1", {
+            "status": "blocked",
+            "blocked_reason": "Retry exhaustion after 3 failures",
+        })
+        assert updated is True
+
+        phase = repo.get_phase(epic_name, "P1")
+        assert phase is not None
+        assert phase.status == "blocked"
+        assert phase.blocked_reason == "Retry exhaustion after 3 failures"
+
+    def test_list_phases_returns_blocked_reason(self, repo):
+        """list_phases should include blocked_reason in returned PhaseData objects."""
+        epic_name = "test_list_blocked"
+        repo.create_epic({
+            "plan_folder_name": epic_name,
+            "plan_folder": "/tmp/epics/" + epic_name,
+            "name": epic_name,
+            "status": "active",
+            "objective": "Test list blocked",
+        })
+        repo.add_phase(epic_name, {
+            "phase_id": "P1",
+            "name": "P1 - Setup",
+            "agent": "build-python",
+            "status": "completed",
+        })
+        repo.add_phase(epic_name, {
+            "phase_id": "P2",
+            "name": "P2 - Build",
+            "agent": "build-python",
+            "status": "in_progress",
+        })
+
+        # Mark P2 as blocked with reason
+        repo.update_phase(epic_name, "P2", {
+            "status": "blocked",
+            "blocked_reason": "SDK cold start failure",
+        })
+
+        phases = repo.list_phases(epic_name)
+        assert len(phases) == 2
+
+        blocked_phase = next(p for p in phases if p.name == "P2 - Build")
+        assert blocked_phase.status == "blocked"
+        assert blocked_phase.blocked_reason == "SDK cold start failure"
+
+        # Non-blocked phase should have None
+        completed_phase = next(p for p in phases if p.name == "P1 - Setup")
+        assert completed_phase.blocked_reason is None
+
+    def test_get_phase_returns_blocked_reason(self, repo):
+        """get_phase should return blocked_reason in the PhaseData."""
+        epic_name = "test_get_blocked"
+        repo.create_epic({
+            "plan_folder_name": epic_name,
+            "plan_folder": "/tmp/epics/" + epic_name,
+            "name": epic_name,
+            "status": "active",
+            "objective": "Test get blocked",
+        })
+        repo.add_phase(epic_name, {
+            "phase_id": "P1",
+            "name": "Build Phase",
+            "agent": "build-python",
+            "status": "blocked",
+            "blocked_reason": "3 consecutive network timeouts",
+        })
+
+        phase = repo.get_phase(epic_name, "P1")
+        assert phase is not None
+        assert phase.status == "blocked"
+        assert phase.blocked_reason == "3 consecutive network timeouts"
+
+    def test_add_phase_with_blocked_reason(self, repo):
+        """add_phase should persist blocked_reason from phase data."""
+        epic_name = "test_add_blocked"
+        repo.create_epic({
+            "plan_folder_name": epic_name,
+            "plan_folder": "/tmp/epics/" + epic_name,
+            "name": epic_name,
+            "status": "active",
+            "objective": "Test add blocked",
+        })
+        repo.add_phase(epic_name, {
+            "phase_id": "P1",
+            "name": "Blocked Phase",
+            "agent": "build-python",
+            "status": "blocked",
+            "blocked_reason": "Pre-blocked during migration",
+        })
+
+        phase = repo.get_phase(epic_name, "P1")
+        assert phase is not None
+        assert phase.blocked_reason == "Pre-blocked during migration"

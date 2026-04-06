@@ -82,7 +82,7 @@ class TestAgentNameDetection:
             assert category in valid_categories, f"Invalid category {category} for {agent}"
 
 
-@pytest.mark.story("US-GDN-022", "US-GDN-009", "US-GDN-010", "US-GDN-014", "US-GDN-058")
+@pytest.mark.story("US-GDN-022", "US-GDN-010", "US-GDN-014", "US-GDN-058")
 class TestAgentHelpContent:
     """Tests for agent help content generation."""
 
@@ -234,7 +234,7 @@ class TestAgentDirectoryFinding:
         assert agent_dir is None
 
 
-@pytest.mark.story("US-GDN-001", "US-GDN-022", "US-GDN-008", "US-GDN-009")
+@pytest.mark.story("US-GDN-001", "US-GDN-022")
 class TestCLIIntegration:
     """Integration tests for CLI invocation with CCI positional syntax."""
 

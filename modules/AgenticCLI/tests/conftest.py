@@ -14,12 +14,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 def pytest_addoption(parser):
-    """Register story_strict ini option."""
+    """Register story_strict ini option and --check-story-coverage flag."""
     parser.addini(
         "story_strict",
         type="bool",
         default=False,
         help="When true, unknown @pytest.mark.story IDs cause test failure instead of warnings",
+    )
+    parser.addoption(
+        "--check-story-coverage",
+        action="store_true",
+        default=False,
+        help="Fail if source files in modules/*/src/ lack # story: headers",
     )
 
 
@@ -30,6 +36,73 @@ def pytest_configure(config):
         "story(*story_ids): marks tests that validate specific user stories "
         "(format: @pytest.mark.story('US-XXX-NNN'))",
     )
+
+
+# Exclusion list for --check-story-coverage
+_STORY_COVERAGE_EXCLUDE = {
+    "__init__.py", "conftest.py", "markers.py", "py.typed",
+}
+
+
+def _load_story_coverage_excludes(repo_root):
+    """Load exclusion list from pyproject.toml [tool.agentic.story_coverage].exclude."""
+    excludes = set()
+    for pyproject_path in repo_root.glob("modules/*/pyproject.toml"):
+        try:
+            import tomllib
+        except ImportError:
+            try:
+                import tomli as tomllib  # type: ignore[no-redef]
+            except ImportError:
+                continue
+        try:
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+            exclude_list = data.get("tool", {}).get("agentic", {}).get("story_coverage", {}).get("exclude", [])
+            excludes.update(exclude_list)
+        except Exception:
+            continue
+    return excludes
+
+
+def pytest_sessionstart(session):
+    """Run --check-story-coverage scan if requested."""
+    if not session.config.getoption("--check-story-coverage", default=False):
+        return
+
+    import re as _re
+
+    repo_root = _find_repo_root_from_tests()
+    if not repo_root:
+        return
+
+    # Load exclusions from pyproject.toml
+    excluded_files = _load_story_coverage_excludes(repo_root)
+
+    missing = []
+    src_dirs = list((repo_root / "modules").glob("*/src"))
+    for src_dir in src_dirs:
+        for py_file in sorted(src_dir.rglob("*.py")):
+            if py_file.name in _STORY_COVERAGE_EXCLUDE:
+                continue
+            rel = str(py_file.relative_to(repo_root))
+            if rel in excluded_files:
+                continue
+            try:
+                first_lines = py_file.read_text().split("\n")[:5]
+            except OSError:
+                continue
+            has_header = any(_re.match(r"^#\s*story:", line) for line in first_lines)
+            if not has_header:
+                missing.append(rel)
+
+    if missing:
+        msg_lines = [f"--check-story-coverage: {len(missing)} source file(s) missing # story: header:"]
+        for f in missing[:20]:
+            msg_lines.append(f"  {f}")
+        if len(missing) > 20:
+            msg_lines.append(f"  ... and {len(missing) - 20} more")
+        pytest.exit("\n".join(msg_lines), returncode=1)
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +291,7 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
         "epic_folder_name": epic_folder_name,
         "epic_folder": str(epic_folder) if epic_folder else "",
         "name": yaml_data.get("name", epic_folder_name),
-        "status": yaml_data.get("status", "active"),
+        "status": yaml_data.get("status", "planning"),
     }
     # Carry over optional metadata fields
     for field in ("objective", "context", "branch", "priority", "worktree_path"):
@@ -267,7 +340,7 @@ def tinydb_populator(_isolate_tinydb):
             epic_dir.mkdir()
             tinydb_populator("my_epic", epic_dir, {
                 "name": "My Epic",
-                "status": "active",
+                "status": "planning",
                 "phases": [{"name": "P1", "tickets": [...]}]
             })
 
@@ -275,7 +348,7 @@ def tinydb_populator(_isolate_tinydb):
         def test_folder_free(tinydb_populator):
             tinydb_populator("my_epic", None, {
                 "name": "My Epic",
-                "status": "active",
+                "status": "planning",
             })
     """
     db_path = _isolate_tinydb

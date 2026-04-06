@@ -1,8 +1,13 @@
+# story: US-GDN-097, US-PLN-061
 """Phase routing validation utilities.
 
 Validates that epic phases have complete agent routing configuration
-in TinyDB. Extracts the shared 'all phases have agent routing' predicate
-that was previously duplicated across discovery and execution code paths.
+in TinyDB. Used by ``transition_epic_status()`` for in_progress
+precondition checks and by display/status commands.
+
+Canonical enforcement of routing validity is in
+``EpicRepository.transition_epic_status()`` — this module provides
+the shared predicate.
 
 Also provides ``has_any_routed_phase()`` for the weaker 'any phase has
 routing' check used by status/display code paths.

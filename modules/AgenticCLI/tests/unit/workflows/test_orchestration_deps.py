@@ -1,10 +1,10 @@
 """Integration tests for orchestration dependency gating and priority sorting.
 
 Tests:
-- discover_plans_needing_execution filters blocked epics and sorts by priority
-- discover_plans_needing_orchestration sorts by priority
-- ExecutionRunner.run() skips blocked epics at runtime
-- Logging output for blocked/skipped epics
+- discover_plans_needing_execution returns in_progress epics (simple query)
+- discover_plans_needing_orchestration returns seed/planning epics
+- refresh_blocked_statuses transitions epics based on dep changes
+- ExecutionRunner.run() processes in_progress epics without runtime dep checks
 """
 
 import logging
@@ -68,18 +68,37 @@ def _make_workflow(repo, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# discover_plans_needing_execution - dependency gating
+# discover_plans_needing_execution - status-based query
 # ---------------------------------------------------------------------------
 
 
 class TestDiscoverPlansNeedingExecution:
-    """Tests for OrchestrationWorkflow.discover_plans_needing_execution()."""
+    """Tests for OrchestrationWorkflow.discover_plans_needing_execution().
 
-    def test_filters_blocked_epics(self, repo, tmp_path):
-        """Blocked epics (unmet deps) are excluded from execution discovery."""
-        _create_epic(repo, "epic_A", depends_on=["epic_B"])
+    Discovery is now a simple status query: list_epics(status="in_progress").
+    Preconditions are enforced at transition time, not at discovery time.
+    """
+
+    def test_returns_in_progress_epics(self, repo, tmp_path):
+        """Only in_progress epics are returned."""
+        _create_epic(repo, "epic_A", status="in_progress")
         _add_phase(repo, "epic_A", "P1")
-        _create_epic(repo, "epic_B")  # B is live (not completed) -> A is blocked
+        _create_epic(repo, "epic_B", status="planning")
+        _create_epic(repo, "epic_C", status="seed")
+        _create_epic(repo, "epic_D", status="blocked")
+
+        workflow = _make_workflow(repo, tmp_path)
+        plans = workflow.discover_plans_needing_execution()
+
+        assert "epic_A" in plans
+        assert "epic_B" not in plans
+        assert "epic_C" not in plans
+        assert "epic_D" not in plans
+
+    def test_excludes_completed_epics(self, repo, tmp_path):
+        """Completed epics are excluded."""
+        _create_epic(repo, "epic_A", status="completed")
+        _create_epic(repo, "epic_B", status="in_progress")
         _add_phase(repo, "epic_B", "P1")
 
         workflow = _make_workflow(repo, tmp_path)
@@ -88,34 +107,13 @@ class TestDiscoverPlansNeedingExecution:
         assert "epic_A" not in plans
         assert "epic_B" in plans
 
-    def test_includes_unblocked_epics(self, repo, tmp_path):
-        """Epics whose deps are completed are included."""
-        _create_epic(repo, "epic_A", depends_on=["epic_B"])
-        _add_phase(repo, "epic_A", "P1")
-        _create_epic(repo, "epic_B", status="completed")
-
-        workflow = _make_workflow(repo, tmp_path)
-        plans = workflow.discover_plans_needing_execution()
-
-        assert "epic_A" in plans
-
-    def test_no_deps_included(self, repo, tmp_path):
-        """Epics with no dependencies are always included."""
-        _create_epic(repo, "epic_A")
-        _add_phase(repo, "epic_A", "P1")
-
-        workflow = _make_workflow(repo, tmp_path)
-        plans = workflow.discover_plans_needing_execution()
-
-        assert "epic_A" in plans
-
     def test_sorted_by_priority(self, repo, tmp_path):
         """Results are sorted: critical first, then high, medium, low."""
-        _create_epic(repo, "260101AA_low", priority="low")
+        _create_epic(repo, "260101AA_low", status="in_progress", priority="low")
         _add_phase(repo, "260101AA_low", "P1")
-        _create_epic(repo, "260101BB_critical", priority="critical")
+        _create_epic(repo, "260101BB_critical", status="in_progress", priority="critical")
         _add_phase(repo, "260101BB_critical", "P1")
-        _create_epic(repo, "260101CC_high", priority="high")
+        _create_epic(repo, "260101CC_high", status="in_progress", priority="high")
         _add_phase(repo, "260101CC_high", "P1")
 
         workflow = _make_workflow(repo, tmp_path)
@@ -124,50 +122,55 @@ class TestDiscoverPlansNeedingExecution:
         assert plans.index("260101BB_critical") < plans.index("260101CC_high")
         assert plans.index("260101CC_high") < plans.index("260101AA_low")
 
-    def test_logs_blocked_reason(self, repo, tmp_path, caplog):
-        """Blocked epics are logged with their blockers."""
-        _create_epic(repo, "epic_A", depends_on=["epic_B"])
-        _add_phase(repo, "epic_A", "P1")
-        _create_epic(repo, "epic_B")
-        _add_phase(repo, "epic_B", "P1")
-
-        workflow = _make_workflow(repo, tmp_path)
-        with caplog.at_level(logging.INFO, logger="agenticcli.workflows.orchestration"):
-            workflow.discover_plans_needing_execution()
-
-        blocked_logs = [r for r in caplog.records if "blocked by dependencies" in r.message]
-        assert len(blocked_logs) >= 1
-        assert "epic_A" in blocked_logs[0].message
-
-    def test_empty_when_all_blocked(self, repo, tmp_path):
-        """Returns empty when all epics are blocked."""
-        _create_epic(repo, "epic_A", depends_on=["epic_B"])
-        _add_phase(repo, "epic_A", "P1")
-        _create_epic(repo, "epic_B", depends_on=["epic_A"])
-        _add_phase(repo, "epic_B", "P1")
+    def test_empty_when_none_in_progress(self, repo, tmp_path):
+        """Returns empty when no epics have in_progress status."""
+        _create_epic(repo, "epic_A", status="planning")
+        _create_epic(repo, "epic_B", status="blocked")
 
         workflow = _make_workflow(repo, tmp_path)
         plans = workflow.discover_plans_needing_execution()
 
-        # Both are in a cycle, both blocked
-        assert "epic_A" not in plans
-        assert "epic_B" not in plans
+        assert plans == []
+
+    def test_refresh_blocked_unblocks_epic(self, repo, tmp_path):
+        """refresh_blocked_statuses promotes blocked → in_progress when deps satisfied."""
+        _create_epic(repo, "epic_A", status="blocked", depends_on=["epic_B"])
+        _add_phase(repo, "epic_A", "P1")
+        _create_epic(repo, "epic_B", status="completed")
+
+        workflow = _make_workflow(repo, tmp_path)
+        # Discovery calls refresh_blocked_statuses which should unblock epic_A
+        plans = workflow.discover_plans_needing_execution()
+
+        assert "epic_A" in plans
 
 
 # ---------------------------------------------------------------------------
-# discover_plans_needing_orchestration - priority sorting
+# discover_plans_needing_orchestration - seed/planning query
 # ---------------------------------------------------------------------------
 
 
 class TestDiscoverPlansNeedingOrchestration:
     """Tests for PlannerLoopWorkflow.discover_plans_needing_orchestration()."""
 
+    def test_returns_seed_and_planning(self, repo, tmp_path):
+        """Returns epics with seed or planning status."""
+        _create_epic(repo, "epic_A", status="seed")
+        _create_epic(repo, "epic_B", status="planning")
+        _create_epic(repo, "epic_C", status="in_progress")
+
+        workflow = _make_workflow(repo, tmp_path)
+        plans = workflow.discover_plans_needing_orchestration()
+
+        assert "epic_A" in plans
+        assert "epic_B" in plans
+        assert "epic_C" not in plans
+
     def test_sorted_by_priority(self, repo, tmp_path):
         """Results sorted by priority: critical first."""
-        # These epics need orchestration because they have no phases
-        _create_epic(repo, "260101AA_low", priority="low")
-        _create_epic(repo, "260101BB_critical", priority="critical")
-        _create_epic(repo, "260101CC_high", priority="high")
+        _create_epic(repo, "260101AA_low", status="seed", priority="low")
+        _create_epic(repo, "260101BB_critical", status="seed", priority="critical")
+        _create_epic(repo, "260101CC_high", status="planning", priority="high")
 
         workflow = _make_workflow(repo, tmp_path)
         plans = workflow.discover_plans_needing_orchestration()
@@ -175,129 +178,46 @@ class TestDiscoverPlansNeedingOrchestration:
         assert plans.index("260101BB_critical") < plans.index("260101CC_high")
         assert plans.index("260101CC_high") < plans.index("260101AA_low")
 
-    def test_includes_blocked_epics_for_planning(self, repo, tmp_path):
-        """Planning happens even for blocked epics (no dep filtering)."""
-        _create_epic(repo, "epic_A", depends_on=["epic_B"])
-        _create_epic(repo, "epic_B")
-
-        workflow = _make_workflow(repo, tmp_path)
-        plans = workflow.discover_plans_needing_orchestration()
-
-        # Both need planning (no phases), and both should be included
-        assert "epic_A" in plans
-        assert "epic_B" in plans
-
-    def test_empty_when_all_fully_routed(self, repo, tmp_path):
-        """Returns empty when all epics have all phases routed."""
-        _create_epic(repo, "epic_A")
+    def test_empty_when_all_in_progress(self, repo, tmp_path):
+        """Returns empty when all epics are past the planning stage."""
+        _create_epic(repo, "epic_A", status="in_progress")
         _add_phase(repo, "epic_A", "P1")
 
         workflow = _make_workflow(repo, tmp_path)
         plans = workflow.discover_plans_needing_orchestration()
 
-        # epic_A has a routed phase, so it shouldn't need orchestration
         assert "epic_A" not in plans
 
 
 # ---------------------------------------------------------------------------
-# ExecutionRunner runtime dependency re-check
+# ExecutionRunner processes in_progress epics
 # ---------------------------------------------------------------------------
 
 
-class TestExecutionRunnerDependencyGating:
-    """Tests that ExecutionRunner.run() re-checks deps at runtime."""
+class TestExecutionRunnerExecution:
+    """Tests that ExecutionRunner.run() processes in_progress epics."""
 
-    def test_skips_blocked_at_runtime(self, repo, tmp_path):
-        """ExecutionRunner skips epics that are blocked at runtime."""
-        from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
+    def test_executes_in_progress_epics(self, repo, tmp_path):
+        """ExecutionRunner executes all in_progress epics from discovery."""
+        from agenticcli.workflows.orchestration import ExecutionRunner
 
-        _create_epic(repo, "epic_A", depends_on=["epic_B"])
+        _create_epic(repo, "epic_A", status="in_progress")
         _add_phase(repo, "epic_A", "P1")
-        _create_epic(repo, "epic_B")
+        _create_epic(repo, "epic_B", status="in_progress")
         _add_phase(repo, "epic_B", "P1")
 
         workflow = _make_workflow(repo, tmp_path)
-
         runner = ExecutionRunner(workflow=workflow)
 
-        # Mock health check and get_plan_status
         workflow.run_health_check = MagicMock()
         workflow.get_plan_status = MagicMock(return_value="in_progress")
 
-        # Force plans_to_process to include blocked epic_A
-        runner.plan_folder = None
         with patch.object(workflow, "discover_plans_needing_execution", return_value=["epic_A", "epic_B"]):
-            # Mock _execute_plan so we don't actually spawn agents
             with patch.object(runner, "_execute_plan", return_value=True):
-                # Mock lock acquisition
                 with patch("agenticcli.workflows.orchestration.acquire_epic_lock", return_value=True), \
                      patch("agenticcli.workflows.orchestration.release_epic_lock"):
                     result = runner.run(max_iterations=5)
 
-        # epic_A should be skipped (blocked), epic_B should be executed
+        assert result is True
+        assert "epic_A" in runner.state["plans_processed"]
         assert "epic_B" in runner.state["plans_processed"]
-        # epic_A shouldn't be in plans_processed (it was skipped)
-
-    def test_logs_runtime_blocked(self, repo, tmp_path, caplog):
-        """ExecutionRunner logs when an epic is blocked at runtime."""
-        from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
-
-        _create_epic(repo, "epic_A", depends_on=["epic_B"])
-        _add_phase(repo, "epic_A", "P1")
-        _create_epic(repo, "epic_B")
-        _add_phase(repo, "epic_B", "P1")
-
-        workflow = _make_workflow(repo, tmp_path)
-
-        runner = ExecutionRunner(workflow=workflow)
-        workflow.run_health_check = MagicMock()
-        workflow.get_plan_status = MagicMock(return_value="in_progress")
-
-        with patch.object(workflow, "discover_plans_needing_execution", return_value=["epic_A", "epic_B"]):
-            with patch.object(runner, "_execute_plan", return_value=True):
-                with patch("agenticcli.workflows.orchestration.acquire_epic_lock", return_value=True), \
-                     patch("agenticcli.workflows.orchestration.release_epic_lock"):
-                    with caplog.at_level(logging.WARNING, logger="agenticcli.workflows.orchestration"):
-                        runner.run(max_iterations=5)
-
-        blocked_logs = [r for r in caplog.records if "still blocked by dependencies" in r.message]
-        assert len(blocked_logs) >= 1
-        assert "epic_A" in blocked_logs[0].message
-
-    def test_unblocked_after_dep_completes(self, repo, tmp_path):
-        """An epic becomes unblocked when its dependency is completed."""
-        from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
-
-        # Start with B as live (so A is blocked)
-        _create_epic(repo, "epic_A", depends_on=["epic_B"])
-        _add_phase(repo, "epic_A", "P1")
-        _create_epic(repo, "epic_B")
-        _add_phase(repo, "epic_B", "P1")
-
-        workflow = _make_workflow(repo, tmp_path)
-
-        runner = ExecutionRunner(workflow=workflow)
-        workflow.run_health_check = MagicMock()
-        workflow.get_plan_status = MagicMock(return_value="in_progress")
-
-        execute_count = {"epic_A": 0, "epic_B": 0}
-
-        def mock_execute(plan_folder, max_iterations):
-            execute_count[plan_folder] += 1
-            if plan_folder == "epic_B":
-                # Simulate completing epic_B which unblocks epic_A
-                repo.update_epic("epic_B", {"status": "completed"})
-            return True
-
-        with patch.object(workflow, "discover_plans_needing_execution", return_value=["epic_A", "epic_B"]):
-            with patch.object(runner, "_execute_plan", side_effect=mock_execute):
-                with patch("agenticcli.workflows.orchestration.acquire_epic_lock", return_value=True), \
-                     patch("agenticcli.workflows.orchestration.release_epic_lock"):
-                    runner.run(max_iterations=5)
-
-        # epic_B was executed. epic_A was initially blocked but might get skipped
-        # at runtime because dependency check happens per-plan in the loop.
-        assert execute_count["epic_B"] == 1
-        # Note: epic_A is still blocked in the first pass because the runtime check
-        # happens before _execute_plan for epic_A. The runtime re-check sees epic_B
-        # as not-yet-completed at the point epic_A is evaluated (depends on order).

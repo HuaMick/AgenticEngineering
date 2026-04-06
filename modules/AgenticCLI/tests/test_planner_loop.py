@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-053", "US-PLN-041", "US-PLN-042", "US-GDN-061", "US-GDN-063", "US-PLN-039")
+pytestmark = pytest.mark.story("US-PLN-053", "US-PLN-042", "US-GDN-061", "US-GDN-063", "US-PLN-039")
 
 from agenticcli.utils.sdk_runner import SessionResult
 
@@ -101,7 +101,7 @@ def _setup_tinydb_for_workflow(tmp_path, epic_folder_name, *, agent_type=None,
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053", "US-PLN-041")
+@pytest.mark.story("US-PLN-053")
 class TestDiscoverPlansNeedingOrchestration:
     """Test discover_plans_needing_orchestration method.
 
@@ -109,7 +109,7 @@ class TestDiscoverPlansNeedingOrchestration:
     """
 
     def test_finds_plans_without_phases_in_tinydb(self, tmp_path):
-        """Live epics with no phases in TinyDB are returned."""
+        """Seed/planning epics are returned by discover_plans_needing_orchestration."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
         from agenticguidance.services.epic_repository import EpicRepository
 
@@ -120,11 +120,11 @@ class TestDiscoverPlansNeedingOrchestration:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-        # Epic with routed phases - should NOT be returned (uses "active" which maps to "live")
-        repo.create_epic({"epic_folder_name": "260210AA_with_phases", "status": "active"})
+        # in_progress epic - should NOT be returned (already past planning)
+        repo.create_epic({"epic_folder_name": "260210AA_with_phases", "status": "in_progress"})
         repo.add_phase("260210AA_with_phases", {"name": "Phase 1", "agent": "build-python"})
-        # Epic without phases - should be returned (uses "active" which maps to "live")
-        repo.create_epic({"epic_folder_name": "260210BB_no_phases", "status": "active"})
+        # seed epic - should be returned
+        repo.create_epic({"epic_folder_name": "260210BB_no_phases", "status": "seed"})
         repo.close()
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
@@ -132,8 +132,8 @@ class TestDiscoverPlansNeedingOrchestration:
 
         assert result == ["260210BB_no_phases"]
 
-    def test_returns_empty_when_all_have_phases(self, tmp_path):
-        """No plans returned when all live epics have phases in TinyDB."""
+    def test_returns_empty_when_all_in_progress(self, tmp_path):
+        """No plans returned when all epics are past the planning stage."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
         from agenticguidance.services.epic_repository import EpicRepository
 
@@ -144,8 +144,7 @@ class TestDiscoverPlansNeedingOrchestration:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-        # "active" maps to "live" via STATUS_DIR_MAP
-        repo.create_epic({"epic_folder_name": "260210AA_done", "status": "active"})
+        repo.create_epic({"epic_folder_name": "260210AA_done", "status": "in_progress"})
         repo.add_phase("260210AA_done", {"name": "Phase 1", "agent": "build-python"})
         repo.close()
 
@@ -227,7 +226,7 @@ class TestRunHealthCheck:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-027", "US-PLN-028", "US-PLN-038", "US-PLN-047", "US-PLN-053")
+@pytest.mark.story("US-PLN-027", "US-PLN-038", "US-PLN-047", "US-PLN-053")
 class TestPlannerLoopRunner:
     """Test PlannerLoopRunner orchestration.
 
@@ -548,19 +547,19 @@ class TestGetPlanStatus:
     # Core bug regression: active status must NOT be overridden
     # ------------------------------------------------------------------
 
-    def test_active_status_not_overridden_by_all_tasks_complete(self, tmp_path):
-        """TinyDB status: active is preserved even when all tickets are completed.
+    def test_planning_status_not_overridden_by_all_tasks_complete(self, tmp_path):
+        """TinyDB status: planning is preserved even when all tickets are completed.
 
         This is the regression test for the auto-archive bug: an epic whose
-        TinyDB record has status='active' must NOT be reported as 'completed'
+        TinyDB record has status='planning' must NOT be reported as 'completed'
         just because every ticket carries status='completed'.
         """
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         self._make_tinydb_plan(
-            tmp_path, epics_dir, "active_plan",
-            status="active",
+            tmp_path, epics_dir, "planning_plan",
+            status="planning",
             tickets=[
                 {"task_id": "t1", "name": "task1", "status": "completed"},
                 {"task_id": "t2", "name": "task2", "status": "completed"},
@@ -568,7 +567,7 @@ class TestGetPlanStatus:
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        assert workflow.get_plan_status("active_plan") == "active"
+        assert workflow.get_plan_status("planning_plan") == "planning"
 
     def test_in_progress_status_not_overridden(self, tmp_path):
         """Any non-completed TinyDB status is respected regardless of tickets."""
@@ -590,19 +589,18 @@ class TestGetPlanStatus:
     # Pending status: returned as-is (non-completed, non-active)
     # ------------------------------------------------------------------
 
-    def test_pending_status_with_all_tasks_complete_returns_pending(self, tmp_path):
-        """Epic with status=pending is returned as-is even when all tickets are done.
+    def test_planning_status_with_all_tasks_complete_returns_planning(self, tmp_path):
+        """Epic with status=planning is returned as-is even when all tickets are done.
 
-        TinyDB always stores a status (defaulting to 'pending'), so task counting
-        is only triggered when the status field is missing. Since TinyDB always
-        has a status, 'pending' is honoured like any non-completed status.
+        TinyDB always stores a status, so task counting is only triggered when
+        the status field is missing. 'planning' is honoured like any non-completed status.
         """
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         self._make_tinydb_plan(
-            tmp_path, epics_dir, "pending_done",
-            status="pending",
+            tmp_path, epics_dir, "planning_done",
+            status="planning",
             tickets=[
                 {"task_id": "t1", "name": "task1", "status": "completed"},
                 {"task_id": "t2", "name": "task2", "status": "completed"},
@@ -610,17 +608,17 @@ class TestGetPlanStatus:
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        # "pending" != "completed" and is not None → returned directly
-        assert workflow.get_plan_status("pending_done") == "pending"
+        # "planning" != "completed" and is not None → returned directly
+        assert workflow.get_plan_status("planning_done") == "planning"
 
-    def test_pending_status_with_mixed_tasks_returns_pending(self, tmp_path):
-        """Epic with status=pending and mixed ticket statuses returns 'pending'."""
+    def test_planning_status_with_mixed_tasks_returns_planning(self, tmp_path):
+        """Epic with status=planning and mixed ticket statuses returns 'planning'."""
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
         self._make_tinydb_plan(
             tmp_path, epics_dir, "partial_plan",
-            status="pending",
+            status="planning",
             tickets=[
                 {"task_id": "t1", "name": "task1", "status": "completed"},
                 {"task_id": "t2", "name": "task2", "status": "pending"},
@@ -628,7 +626,7 @@ class TestGetPlanStatus:
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        assert workflow.get_plan_status("partial_plan") == "pending"
+        assert workflow.get_plan_status("partial_plan") == "planning"
 
     # ------------------------------------------------------------------
     # Explicit completed status in TinyDB
@@ -704,16 +702,16 @@ class TestGetPlanStatus:
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
         epics_dir = tmp_path / "epics"
-        # Create epic with no tickets - TinyDB defaults status to "pending"
+        # Create epic with no tickets
         self._make_tinydb_plan(
             tmp_path, epics_dir, "empty_plan",
-            status="pending",
+            status="planning",
             tickets=[],
         )
 
         workflow = PlannerLoopWorkflow(epics_dir=epics_dir)
-        # "pending" is not None and not "completed" → returned as-is
-        assert workflow.get_plan_status("empty_plan") == "pending"
+        # "planning" is not None and not "completed" → returned as-is
+        assert workflow.get_plan_status("empty_plan") == "planning"
 
 
 @pytest.mark.story("US-PLN-051", "US-PLN-053")
@@ -1127,13 +1125,26 @@ class TestWaitForSessionTmux:
     """TT_005: Tests for tmux-aware completion detection in wait_for_session."""
 
     def _make_workflow(self, monkeypatch):
-        """Create a PlannerLoopWorkflow with controlled defaults."""
+        """Create a PlannerLoopWorkflow with controlled defaults.
+
+        Patches the event-bus wait path to fall back to polling immediately.
+        These tests exercise the tmux/session-state polling path, not the
+        event bus.  Without this patch, the event-bus grace period (which
+        uses real wall-clock time even when time.sleep is mocked) would
+        consume the entire timeout budget before polling starts.
+        """
         import tempfile
-        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
+        from agenticcli.workflows.planner_loop import PlannerLoopWorkflow, _FALLBACK_TO_POLLING
 
         tmp_epics_dir = Path(tempfile.mkdtemp()) / "docs" / "epics" / "live"
         tmp_epics_dir.mkdir(parents=True, exist_ok=True)
-        return PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
+        # Skip event-bus path so tests exercise the polling fallback only.
+        monkeypatch.setattr(
+            workflow, "_try_event_bus_wait",
+            lambda session_id, timeout, start_time, quick_exit_threshold: _FALLBACK_TO_POLLING,
+        )
+        return workflow
 
     def test_wait_for_session_checks_tmux_when_present(self, monkeypatch):
         """Session data has tmux_session field — verify session_exists is called."""
@@ -1391,7 +1402,7 @@ class TestWaitForSessionTmux:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-040", "US-PLN-048", "US-PLN-053", "US-PLN-056", "US-PLN-062", "US-GDN-079")
+@pytest.mark.story("US-PLN-040", "US-PLN-048", "US-PLN-053", "US-PLN-056", "US-PLN-062")
 class TestValidatePlanningOutput:
     """Tests for _validate_planning_output pre-flight validation."""
 
@@ -1453,7 +1464,7 @@ class TestValidatePlanningOutput:
         db_path = tmp_path / ".agentic" / "epics.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
-        repo.create_epic({"epic_folder_name": "empty_epic", "status": "active"})
+        repo.create_epic({"epic_folder_name": "empty_epic", "status": "planning"})
         repo.close()
 
         workflow = PlannerLoopWorkflow(epics_dir=tmp_path / "docs" / "epics" / "live")
@@ -1897,7 +1908,7 @@ class TestParseStoryCategoriesRetry:
         assert any("parsed successfully on attempt 3/4" in r.message for r in caplog.records)
 
 
-@pytest.mark.story("US-PLN-048", "US-PLN-053", "US-PLN-057")
+@pytest.mark.story("US-PLN-048", "US-PLN-053")
 class TestTicketPromotion:
     """Tests for ticket promotion step in _process_plan (Bug 1 fix)."""
 
@@ -2161,7 +2172,7 @@ class TestProcessPlanAutoRegister:
             "epic_folder_name": epic_name,
             "epic_folder": str(epics_dir / epic_name),
             "name": "Test epic",
-            "status": "active",
+            "status": "planning",
         })
         assert repo.get_epic(epic_name) is not None
         repo.close()
@@ -2281,7 +2292,7 @@ class TestBudgetEnforcement:
         repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
         repo.create_epic({
             "epic_folder_name": "test_plan",
-            "status": "active",
+            "status": "planning",
         })
         repo.add_phase("test_plan", {"name": "P1", "agent": "build-python"})
         repo.close()

@@ -452,7 +452,7 @@ class TestBuildPlannerPrompt:
         assert "STORY DISCOVERY" in prompt
         assert "docs/userstories/" in prompt
 
-    @pytest.mark.story("US-PLN-070", "US-PLN-074", "US-PLN-079")
+    @pytest.mark.story("US-PLN-079")
     def test_prompt_includes_uat_fence_reference(self, tmp_path):
         """Test prompt references UAT mandatory fence."""
         from agenticcli.utils.planner_prompt import build_planner_prompt
@@ -494,7 +494,7 @@ class TestBuildPlannerPrompt:
         # Prompt should instruct planner to create tickets - either via YAML file or TinyDB CLI
         assert "ticket" in prompt.lower() or "TinyDB" in prompt
 
-    @pytest.mark.story("US-PLN-073", "US-PLN-075")
+    @pytest.mark.story("US-PLN-075")
     def test_prompt_includes_story_first_fence(self, tmp_path):
         """Test prompt includes STORY-FIRST PLANNING fence."""
         from agenticcli.utils.planner_prompt import build_planner_prompt

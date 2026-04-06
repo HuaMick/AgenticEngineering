@@ -1,3 +1,4 @@
+# story: US-SET-005
 """Configuration workflow - core logic for configuration management.
 
 Separates business logic from CLI handlers, enabling testability

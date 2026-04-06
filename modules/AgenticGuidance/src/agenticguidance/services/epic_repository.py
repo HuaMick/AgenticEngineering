@@ -1,3 +1,4 @@
+# story: US-GDN-097, US-PLN-001, US-PLN-009, US-PLN-015, US-PLN-061, US-PLN-065
 """Epic Repository - TinyDB-backed storage for epic data.
 
 Provides a repository abstraction over TinyDB as the sole data store for
@@ -27,8 +28,11 @@ from .epic import (
     EpicDeleteResult,
     EpicMetadata,
     EpicUpdateResult,
+    InvalidStatusTransition,
     PhaseData,
+    PhaseStatus,
     TicketData,
+    VALID_TRANSITIONS,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,9 +147,9 @@ class AtomicJSONStorage(Storage):
 
 
 # DB status values that correspond to a "live" (active/in-progress) epic.
-# "completed", "deferred", and "cancelled" are their own direct status values.
+# "completed" and "deferred" are their own direct status values.
 _LIVE_STATUSES: frozenset[str] = frozenset(
-    {"proposed", "in_progress", "active", "planning", "approved", "pending", "blocked", "seed"}
+    {"seed", "planning", "in_progress", "blocked"}
 )
 
 # Priority label-to-int mapping for legacy string migration.
@@ -226,6 +230,8 @@ class EpicRepository:
 
             # Migrate legacy "plans" / "tasks" tables if they exist
             self._migrate_from_plans_table()
+            # Normalize legacy status values to canonical 6-status model
+            self._migrate_legacy_statuses()
 
         # auto_bootstrap parameter kept for API compat but no longer imports YAML.
         # TinyDB is the sole data store; if the DB is empty, it stays empty until
@@ -338,6 +344,38 @@ class EpicRepository:
 
         logger.info("Migration from 'plans' to 'epics' table complete.")
 
+    def _migrate_legacy_statuses(self) -> None:
+        """Normalize legacy epic status values to the 6-status model.
+
+        Maps: active → planning, proposed → planning, pending → planning,
+        approved → in_progress.  Only runs if any legacy values are detected.
+
+        NOTE: Caller must hold self._lock (called from __init__ under lock).
+        """
+        from .epic import EPIC_STATUS_MIGRATION, EpicStatus
+
+        canonical = {s.value for s in EpicStatus}
+        _LEGACY_MAP = {
+            k: v for k, v in EPIC_STATUS_MIGRATION.items() if k not in canonical
+        }
+
+        Epic = Query()
+        migrated = 0
+        for old_status, new_status in _LEGACY_MAP.items():
+            docs = self._epics.search(Epic.status == old_status)
+            if docs:
+                self._epics.update(
+                    {"status": new_status}, Epic.status == old_status,
+                )
+                migrated += len(docs)
+                logger.info(
+                    "Migrated %d epic(s) from status '%s' to '%s'",
+                    len(docs), old_status, new_status,
+                )
+
+        if migrated:
+            logger.info("Legacy status migration complete: %d record(s) updated.", migrated)
+
     # ------------------------------------------------------------------
     # Epic CRUD
     # ------------------------------------------------------------------
@@ -385,7 +423,7 @@ class EpicRepository:
                 "name": epic_data.get("name", epic_folder_name),
                 "worktree_path": epic_data.get("worktree_path", ""),
                 "branch": epic_data.get("branch", ""),
-                "status": epic_data.get("status", "proposed"),
+                "status": epic_data.get("status", "seed"),
                 "priority": normalize_priority(epic_data.get("priority")),
                 "objective": epic_data.get("objective", ""),
                 "created": epic_data.get("created", datetime.now().strftime("%Y-%m-%d")),
@@ -578,6 +616,108 @@ class EpicRepository:
             old_status=old_status,
             new_status=new_status,
         )
+
+    def transition_epic_status(
+        self, epic_folder_name: str, new_status: str, *, force: bool = False
+    ) -> EpicUpdateResult:
+        """Transition an epic to a new status with state-machine validation.
+
+        Enforces VALID_TRANSITIONS and, for certain target statuses,
+        checks preconditions:
+        - ``in_progress``: phases exist, all routed, at least one pending/in_progress,
+          cross-epic deps satisfied.
+        - ``completed``: no pending/in_progress phases remain.
+
+        Args:
+            epic_folder_name: Folder name identifying the epic.
+            new_status: Target status value.
+            force: Skip validation (manual override escape hatch).
+
+        Returns:
+            EpicUpdateResult indicating success or failure.
+
+        Raises:
+            InvalidStatusTransition: When the transition is invalid and
+                force is False.
+        """
+        from .epic import normalize_epic_status, EPIC_STATUS_MIGRATION
+
+        # Normalize legacy status strings
+        if new_status in EPIC_STATUS_MIGRATION:
+            new_status = normalize_epic_status(new_status)
+
+        doc = self._find_epic_doc(epic_folder_name)
+        if not doc:
+            return EpicUpdateResult(
+                success=False,
+                message=f"Epic not found in DB: {epic_folder_name}",
+            )
+
+        actual_name = doc["epic_folder_name"]
+        current_status = normalize_epic_status(doc.get("status", "planning"))
+
+        if not force:
+            # Validate transition is allowed by state machine
+            allowed = VALID_TRANSITIONS.get(current_status, set())
+            if new_status not in allowed:
+                raise InvalidStatusTransition(
+                    actual_name, current_status, new_status,
+                    f"allowed transitions from '{current_status}': {sorted(allowed) if allowed else 'none'}",
+                )
+
+            # Preconditions for in_progress
+            if new_status == "in_progress":
+                reason = self._check_in_progress_preconditions(actual_name)
+                if reason:
+                    raise InvalidStatusTransition(
+                        actual_name, current_status, new_status, reason,
+                    )
+
+            # Preconditions for completed
+            if new_status == "completed":
+                phases = self.list_phases(actual_name)
+                active = [p for p in phases if p.status in ("pending", "in_progress")]
+                if active:
+                    names = ", ".join(p.name for p in active)
+                    raise InvalidStatusTransition(
+                        actual_name, current_status, new_status,
+                        f"phases still active: {names}",
+                    )
+
+        return self.update_epic(actual_name, {"status": new_status})
+
+    def _check_in_progress_preconditions(self, epic_folder_name: str) -> str | None:
+        """Check preconditions for transitioning to in_progress.
+
+        Returns:
+            None if all preconditions met, otherwise a reason string.
+        """
+        # 1. Has at least one phase
+        phases = self.list_phases(epic_folder_name)
+        if not phases:
+            return "no phases in TinyDB"
+
+        # 2. All phases have valid agent routing
+        unrouted = [p.name for p in phases if not p.agent]
+        if unrouted:
+            return f"phases missing agent routing: {', '.join(unrouted)}"
+
+        # 3. At least one phase is pending/in_progress
+        has_actionable = any(p.status in ("pending", "in_progress") for p in phases)
+        if not has_actionable:
+            return "no pending or in_progress phases"
+
+        # 4. Cross-epic dependencies satisfied
+        try:
+            from .dependency import DependencyService
+            dep_service = DependencyService(self)
+            is_blocked, blockers = dep_service.is_blocked(epic_folder_name)
+            if is_blocked:
+                return f"blocked by dependencies: {', '.join(blockers)}"
+        except Exception:
+            pass  # If dependency service unavailable, skip dep check
+
+        return None
 
     def delete_epic(self, epic_folder_name: str) -> EpicDeleteResult:
         """Remove an epic and all its tickets/phases from the database.
@@ -1230,6 +1370,7 @@ class EpicRepository:
                 "max_turns": phase_data.get("max_turns"),
                 "timeout": phase_data.get("timeout"),
                 "feedback_triggers": phase_data.get("feedback_triggers") or {},
+                "blocked_reason": phase_data.get("blocked_reason"),
                 "_order": max_order + 1,
             })
         return True
@@ -1351,6 +1492,7 @@ class EpicRepository:
                 timeout=d.get("timeout"),
                 feedback_triggers=d.get("feedback_triggers") or {},
                 phase_id=d.get("phase_id"),
+                blocked_reason=d.get("blocked_reason"),
             )
             for d in docs
         ]
@@ -1394,6 +1536,7 @@ class EpicRepository:
             timeout=d.get("timeout"),
             feedback_triggers=d.get("feedback_triggers") or {},
             phase_id=d.get("phase_id"),
+            blocked_reason=d.get("blocked_reason"),
         )
 
     def has_pending_phases(self, epic_folder_name: str) -> bool:

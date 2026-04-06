@@ -128,7 +128,7 @@ def _make_workflow(tmp_path, epic_folder_name="260309XX_transport_test"):
     repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
     repo.create_epic({
         "name": epic_folder_name,
-        "status": "active",
+        "status": "planning",
     })
     repo.add_phase(epic_folder_name, {"name": "Phase 1"})
     repo.close()

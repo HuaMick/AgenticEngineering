@@ -193,7 +193,7 @@ class TestSessionHelperFunctions:
         # Very high PID unlikely to exist
         assert session.is_process_running(99999999) is False
 
-    @pytest.mark.story("US-SES-008", "US-SES-009")
+    @pytest.mark.story("US-SES-008")
     def test_update_session_status_marks_completed(self, mock_sessions_dir, sample_session_data):
         """Test that update_session_status marks dead processes as completed."""
         from agenticcli.commands import session
@@ -848,7 +848,7 @@ class TestBuildTaskPrompt:
             "epic_folder_name": "260207TA_test",
             "epic_folder": str(plan_folder),
             "name": "260207TA_test",
-            "status": "active",
+            "status": "planning",
         })
         repo.add_phase("260207TA_test", {"name": "Test Phase"})
         repo.add_ticket("260207TA_test", "Test Phase", {
@@ -962,7 +962,7 @@ class TestSpawnWithRoleAndPlan:
             "epic_folder_name": "260207TA_test",
             "epic_folder": str(plan_dir),
             "name": "260207TA_test",
-            "status": "active",
+            "status": "planning",
         })
         repo.add_phase("260207TA_test", {"name": "Build Phase"})
         repo.add_ticket("260207TA_test", "Build Phase", {

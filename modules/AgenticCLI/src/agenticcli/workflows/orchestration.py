@@ -1,3 +1,4 @@
+# story: US-GDN-061, US-GDN-064, US-GDN-097, US-PLN-046, US-PLN-061, US-PLN-065
 """Orchestration workflow for plan management.
 
 Extends PlannerLoopWorkflow with phase discovery utilities.
@@ -11,7 +12,6 @@ import time
 from typing import Optional
 
 from agenticcli.utils.epic_lock import acquire_epic_lock, release_epic_lock
-from agenticcli.utils.phase_validation import validate_phase_routing
 from agenticcli.utils.retry import SPAWN_RETRY_BACKOFF, static_backoff
 from agenticcli.utils.session_diagnostics import diagnose_quick_exit
 from agenticcli.utils.session_state import read_sdk_metrics
@@ -19,6 +19,63 @@ from agenticcli.utils.spawn_command import build_spawn_command
 from agenticcli.workflows.planner_loop import PlannerLoopWorkflow, PlannerLoopRunner
 
 logger = logging.getLogger(__name__)
+
+
+# @story US-RES-005
+class PhaseLoggerAdapter(logging.LoggerAdapter):
+    """LoggerAdapter that auto-prefixes log messages with phase context.
+
+    Provides consistent structured logging for ExecutionRunner by
+    including phase_id, phase_name, and epic_name in every log message.
+
+    Usage::
+
+        phase_log = PhaseLoggerAdapter(logger, epic_name="my_epic", phase_name="P1")
+        phase_log.info("Phase started")
+        # => "[my_epic:P1] Phase started"
+
+    Extra keys:
+        epic_name: Name of the epic being executed.
+        phase_name: Name of the current phase.
+        phase_id: Optional phase identifier (defaults to phase_name).
+    """
+
+    def __init__(
+        self,
+        base_logger: logging.Logger,
+        *,
+        epic_name: str,
+        phase_name: str,
+        phase_id: Optional[str] = None,
+    ):
+        """Initialize PhaseLoggerAdapter with phase context.
+
+        Args:
+            base_logger: The underlying logger to delegate to.
+            epic_name: Epic folder name for context.
+            phase_name: Phase name for context.
+            phase_id: Optional phase ID (defaults to phase_name if not provided).
+        """
+        extra = {
+            "epic_name": epic_name,
+            "phase_name": phase_name,
+            "phase_id": phase_id or phase_name,
+        }
+        super().__init__(base_logger, extra)
+
+    def process(self, msg, kwargs):
+        """Prefix the log message with [epic:phase] context.
+
+        Args:
+            msg: The log message.
+            kwargs: Keyword arguments passed to the logging call.
+
+        Returns:
+            Tuple of (prefixed_message, kwargs).
+        """
+        prefix = f"[{self.extra['epic_name']}:{self.extra['phase_name']}]"
+        return f"{prefix} {msg}", kwargs
+
 
 # Map legacy string labels to their numeric equivalents.
 # Used by _to_int_priority() during the string→int migration window.
@@ -58,15 +115,19 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
     """
 
     def discover_plans_needing_execution(self) -> list[str]:
-        """Find live epics that have pending phases AND are fully routed.
+        """Find epics with status ``in_progress`` — ready for execution.
 
-        An epic is included only when:
-        1. It has pending/in_progress phases (has_pending_phases), AND
-        2. All phases have agent routing set (validate_phase_routing), AND
-        3. All cross-epic dependencies are satisfied (not blocked).
+        The ``in_progress`` status is the sole readiness signal. Preconditions
+        (phases exist, routing valid, deps satisfied) are enforced when
+        transitioning INTO ``in_progress`` via ``transition_epic_status()``,
+        not as post-hoc filters here.
+
+        Before querying, refreshes blocked/in_progress statuses via the
+        dependency service to handle dynamic dep changes.
 
         Results are sorted by priority (critical first) then by folder name
-        (newest first).
+        (newest first).  The sort order is already applied by
+        ``list_epics()``, so no additional sorting is needed.
 
         Returns:
             List of plan folder names needing execution, priority-sorted.
@@ -76,51 +137,16 @@ class OrchestrationWorkflow(PlannerLoopWorkflow):
             logger.error("No EpicRepository available — cannot discover plans needing execution")
             return []
 
-        # Build dependency service for blocking checks
+        # Refresh blocked/in_progress statuses based on current dep state
         try:
             from agenticguidance.services.dependency import DependencyService
             dep_service = DependencyService(repo)
+            dep_service.refresh_blocked_statuses()
         except Exception:
-            dep_service = None
+            pass
 
-        epics = repo.list_epics(status="live")
-        needs_execution = []
-        for epic in epics:
-            if not repo.has_pending_phases(epic.epic_folder_name):
-                continue
-            is_valid, reason = validate_phase_routing(repo, epic.epic_folder_name)
-            if not is_valid:
-                logger.info(
-                    "Skipping %s for execution — has pending phases but: %s",
-                    epic.epic_folder_name, reason,
-                )
-                continue
-
-            # Check dependency gating
-            if dep_service:
-                is_blocked, blocked_by = dep_service.is_blocked(epic.epic_folder_name)
-                if is_blocked:
-                    logger.info(
-                        "Skipping %s for execution — blocked by dependencies: %s",
-                        epic.epic_folder_name, blocked_by,
-                    )
-                    continue
-
-            needs_execution.append(epic.epic_folder_name)
-
-        # Sort by priority (lower int = higher priority) then folder name
-        # (newest first).  Handles both legacy string values and new int values.
-        # @story US-003
-        epic_priority = {
-            e.epic_folder_name: _to_int_priority(e.priority) for e in epics
-        }
-
-        needs_execution.sort(
-            key=lambda name: (
-                epic_priority.get(name, 3),
-                [-ord(c) for c in name],
-            ),
-        )
+        epics = repo.list_epics(status="in_progress")
+        needs_execution = [e.epic_folder_name for e in epics]
 
         logger.info("Found %d plans needing execution: %s", len(needs_execution), needs_execution)
         return needs_execution
@@ -307,6 +333,7 @@ class ExecutionRunner:
         self.dangerously_skip_permissions = dangerously_skip_permissions
         self.budget_usd: float = budget_usd
         self.total_cost_usd = 0.0
+        self._phase_log: logging.LoggerAdapter = logger  # type: ignore[assignment]
         self.state = {
             "iteration": 0,
             "plans_processed": [],
@@ -315,6 +342,26 @@ class ExecutionRunner:
             "phases_failed": [],
             "errors": [],
         }
+
+    def _make_phase_logger(
+        self, epic_name: str, phase_name: str, phase_id: Optional[str] = None,
+    ) -> PhaseLoggerAdapter:
+        """Create a PhaseLoggerAdapter for the given phase context.
+
+        Args:
+            epic_name: Epic folder name.
+            phase_name: Phase display name.
+            phase_id: Optional phase identifier (defaults to phase_name).
+
+        Returns:
+            PhaseLoggerAdapter wrapping the module logger.
+        """
+        return PhaseLoggerAdapter(
+            logger,
+            epic_name=epic_name,
+            phase_name=phase_name,
+            phase_id=phase_id,
+        )
 
     def run(
         self,
@@ -372,26 +419,8 @@ class ExecutionRunner:
 
         logger.info("Executing %d plans: %s", len(plans_to_process), plans_to_process)
 
-        # Build dependency service for runtime re-checks
-        try:
-            from agenticguidance.services.dependency import DependencyService
-            dep_service = DependencyService(repo) if repo else None
-        except Exception:
-            dep_service = None
-
         all_success = True
         for plan in plans_to_process:
-            # Runtime dependency re-check: deps may have been satisfied by
-            # earlier iterations completing prerequisite epics.
-            if dep_service:
-                is_blocked, blocked_by = dep_service.is_blocked(plan)
-                if is_blocked:
-                    logger.warning(
-                        "Skipping %s at runtime — still blocked by dependencies: %s",
-                        plan, blocked_by,
-                    )
-                    continue
-
             if not acquire_epic_lock(plan):
                 logger.error(
                     "Cannot execute %s — another orchestration process holds the lock", plan,
@@ -405,11 +434,13 @@ class ExecutionRunner:
 
             try:
                 logger.info("Starting execution for plan: %s", plan)
-                # Mark epic as in_progress when execution begins
+                # Confirm epic is in_progress (should already be from discovery)
                 try:
                     repo_exec = self.workflow._get_repository()
                     if repo_exec:
-                        repo_exec.update_epic(plan, {"status": "in_progress"})
+                        epic_data = repo_exec.get_epic(plan)
+                        if epic_data and epic_data.status != "in_progress":
+                            repo_exec.transition_epic_status(plan, "in_progress", force=True)
                 except Exception:
                     pass  # Non-fatal — status update is best-effort
                 try:
@@ -475,10 +506,12 @@ class ExecutionRunner:
             blocked = [p for p in phases if p.status == "blocked"]
             if blocked:
                 names = ", ".join(p.name for p in blocked)
-                logger.error(
-                    "Execution halted for %s — blocked phase(s): %s",
-                    plan_folder, names,
-                )
+                for bp in blocked:
+                    reason = getattr(bp, "blocked_reason", None) or "no reason recorded"
+                    blocked_log = self._make_phase_logger(plan_folder, bp.name)
+                    blocked_log.error(
+                        "Execution halted — blocked (reason: %s)", reason,
+                    )
                 self.state["errors"].append(
                     f"Blocked phase(s) in {plan_folder}: {names}"
                 )
@@ -495,18 +528,24 @@ class ExecutionRunner:
                 logger.info("All phases complete for %s", plan_folder)
                 # Mark the epic as completed in TinyDB
                 try:
-                    repo.update_epic(plan_folder, {"status": "completed"})
+                    repo.transition_epic_status(plan_folder, "completed")
                     logger.info("Epic %s marked as completed", plan_folder)
                 except Exception as e:
                     logger.warning("Failed to mark epic %s as completed: %s", plan_folder, e)
                 return True
 
             agent_type = next_phase.agent
+
+            # Create structured phase logger for this phase iteration
+            self._phase_log = self._make_phase_logger(
+                plan_folder, next_phase.name,
+            )
+
             if not agent_type:
-                logger.error(
-                    "Phase %s in %s has no agent field set in TinyDB — skipping with error. "
+                self._phase_log.error(
+                    "No agent field set in TinyDB — skipping with error. "
                     "Use 'agentic epic phase update %s --agent <agent-name>' to fix.",
-                    next_phase.name, plan_folder, next_phase.name,
+                    next_phase.name,
                 )
                 self.state["errors"].append(
                     f"No agent routing for phase {next_phase.name} in {plan_folder}: "
@@ -518,9 +557,9 @@ class ExecutionRunner:
 
             effective_turns = next_phase.max_turns if next_phase.max_turns is not None else DEFAULT_PHASE_MAX_TURNS
             effective_timeout = next_phase.timeout if next_phase.timeout is not None else DEFAULT_PHASE_TIMEOUT
-            logger.info(
-                "Executing phase %s with agent %s for %s (iteration %d/%d, max_turns=%d, timeout=%ds)",
-                next_phase.name, agent_type, plan_folder, iteration, max_iterations,
+            self._phase_log.info(
+                "Executing with agent %s (iteration %d/%d, max_turns=%d, timeout=%ds)",
+                agent_type, iteration, max_iterations,
                 effective_turns, effective_timeout,
             )
 
@@ -544,24 +583,23 @@ class ExecutionRunner:
                     repo, plan_folder, next_phase.name,
                 )
                 if incomplete:
-                    logger.warning(
-                        "Phase %s agent reported success but %d ticket(s) still incomplete: %s",
-                        next_phase.name, len(incomplete),
+                    self._phase_log.warning(
+                        "Agent reported success but %d ticket(s) still incomplete: %s",
+                        len(incomplete),
                         ", ".join(incomplete[:5]),
                     )
 
                 repo.update_phase(plan_folder, next_phase.name, {"status": "completed"})
                 self.state["phases_completed"].append(f"{plan_folder}:{next_phase.name}")
-                logger.info("Phase %s completed for %s", next_phase.name, plan_folder)
+                self._phase_log.info("Phase completed")
             else:
                 # Check feedback triggers from TinyDB PhaseData
                 rerun_phase = self._check_feedback_triggers_tinydb(
                     next_phase, plan_folder, repo,
                 )
                 if rerun_phase:
-                    logger.info(
-                        "Feedback trigger: re-running phase %s for %s",
-                        rerun_phase, plan_folder,
+                    self._phase_log.info(
+                        "Feedback trigger: re-running phase %s", rerun_phase,
                     )
                     repo.update_phase(plan_folder, next_phase.name, {"status": "failed"})
                     repo.update_phase(plan_folder, rerun_phase, {"status": "pending"})
@@ -573,6 +611,7 @@ class ExecutionRunner:
                 self.state["errors"].append(
                     f"Phase {next_phase.name} failed for {plan_folder}"
                 )
+                self._phase_log.error("Phase failed")
                 return False
 
         logger.warning("Max iterations (%d) reached for %s", max_iterations, plan_folder)
@@ -593,9 +632,9 @@ class ExecutionRunner:
         for phase in phases:
             if phase.status != "in_progress":
                 continue
-            logger.warning(
-                "Recovery sweep: phase '%s' in %s stuck in_progress — resetting to pending",
-                phase.name, plan_folder,
+            recovery_log = self._make_phase_logger(plan_folder, phase.name)
+            recovery_log.warning(
+                "Recovery sweep: stuck in_progress — resetting to pending",
             )
             repo.update_phase(plan_folder, phase.name, {"status": "pending"})
 
@@ -632,6 +671,7 @@ class ExecutionRunner:
             True if agent completed successfully.
         """
         effective_timeout = timeout if timeout is not None else DEFAULT_PHASE_TIMEOUT
+        plog = self._phase_log
         last_diagnosis = None
         for attempt in range(1 + MAX_SPAWN_RETRIES):
             retry_label = f" (retry {attempt}/{MAX_SPAWN_RETRIES})" if attempt > 0 else ""
@@ -645,11 +685,11 @@ class ExecutionRunner:
                 # Not a quick exit — no point retrying
                 return False
             if attempt >= MAX_SPAWN_RETRIES:
-                logger.error(
-                    "BLOCKED: Exhausted %d retries for %s:%s — "
-                    "phase=%s, failures=%d, last_diagnosis=%s",
-                    MAX_SPAWN_RETRIES, plan_folder, phase_id,
-                    phase_id, attempt + 1,
+                plog.error(
+                    "BLOCKED: Exhausted %d retries — "
+                    "failures=%d, last_diagnosis=%s",
+                    MAX_SPAWN_RETRIES,
+                    attempt + 1,
                     last_diagnosis.error_type.value if last_diagnosis else "unknown",
                 )
                 # Mark phase as blocked so _execute_plan treats it as terminal
@@ -660,17 +700,17 @@ class ExecutionRunner:
             diagnosis = self._diagnose_quick_exit(session_id)
             last_diagnosis = diagnosis
             if diagnosis and not diagnosis.retryable:
-                logger.error(
-                    "Quick exit for %s:%s is not retryable (%s): %s",
-                    plan_folder, phase_id, diagnosis.error_type.value, diagnosis.detail[:200],
+                plog.error(
+                    "Quick exit is not retryable (%s): %s",
+                    diagnosis.error_type.value, diagnosis.detail[:200],
                 )
                 return False
 
             backoff = static_backoff(attempt, SPAWN_RETRY_BACKOFF)
-            logger.warning(
-                "Quick exit detected for %s:%s (attempt %d/%d). "
+            plog.warning(
+                "Quick exit detected (attempt %d/%d). "
                 "Retrying in %ds... (diagnosis: %s)",
-                plan_folder, phase_id, attempt + 1, 1 + MAX_SPAWN_RETRIES,
+                attempt + 1, 1 + MAX_SPAWN_RETRIES,
                 backoff,
                 diagnosis.error_type.value if diagnosis else "unknown",
             )
@@ -697,6 +737,7 @@ class ExecutionRunner:
         import subprocess
         import time as _time
 
+        plog = self._phase_log
         effective_max_turns = max_turns if max_turns is not None else DEFAULT_PHASE_MAX_TURNS
 
         cmd = build_spawn_command(
@@ -717,18 +758,18 @@ class ExecutionRunner:
                 cwd=self.workflow.working_dir,
             )
         except subprocess.TimeoutExpired:
-            logger.error(
-                "Spawn timed out for %s:%s%s (agent=%s, 60s limit)",
-                plan_folder, phase_id, retry_label, agent_type,
+            plog.error(
+                "Spawn timed out%s (agent=%s, 60s limit)",
+                retry_label, agent_type,
             )
             self.state["errors"].append(
                 f"Spawn timed out for {plan_folder}:{phase_id}{retry_label}"
             )
             return False, None, False
         if result.returncode != 0:
-            logger.error(
-                "Failed to spawn %s for %s:%s%s: %s",
-                agent_type, plan_folder, phase_id, retry_label, result.stderr,
+            plog.error(
+                "Failed to spawn %s%s: %s",
+                agent_type, retry_label, result.stderr,
             )
             self.state["errors"].append(
                 f"Spawn failed for {plan_folder}:{phase_id}{retry_label}: {result.stderr}"
@@ -739,24 +780,24 @@ class ExecutionRunner:
             data = json.loads(result.stdout)
             session_id = data.get("session_id")
         except (json.JSONDecodeError, KeyError):
-            logger.error("Could not parse spawn output for %s:%s%s", plan_folder, phase_id, retry_label)
+            plog.error("Could not parse spawn output%s", retry_label)
             return False, None, False
 
         if not session_id:
-            logger.error("No session_id returned for %s:%s%s", plan_folder, phase_id, retry_label)
+            plog.error("No session_id returned%s", retry_label)
             return False, None, False
 
         # Log tmux session name for operator visibility (attach for debugging)
         tmux_session = data.get("tmux_session")
         if tmux_session:
-            logger.info(
-                "Spawned%s %s for %s:%s -> session %s (tmux: %s, attach: tmux attach -t %s)",
-                retry_label, agent_type, plan_folder, phase_id, session_id, tmux_session, tmux_session,
+            plog.info(
+                "Spawned%s %s -> session %s (tmux: %s, attach: tmux attach -t %s)",
+                retry_label, agent_type, session_id, tmux_session, tmux_session,
             )
         else:
-            logger.info(
-                "Spawned%s %s for %s:%s -> session %s",
-                retry_label, agent_type, plan_folder, phase_id, session_id,
+            plog.info(
+                "Spawned%s %s -> session %s",
+                retry_label, agent_type, session_id,
             )
 
         # Wait for session to complete (configurable per-phase timeout)
@@ -768,21 +809,20 @@ class ExecutionRunner:
         try:
             sdk_metrics = read_sdk_metrics(session_id)
             if sdk_metrics["cost_usd"] > 0:
-                logger.info(
-                    "SDK metrics for %s:%s — cost=$%.4f, duration=%dms, turns=%d, transport=%s",
-                    plan_folder, phase_id,
+                plog.info(
+                    "SDK metrics — cost=$%.4f, duration=%dms, turns=%d, transport=%s",
                     sdk_metrics["cost_usd"],
                     sdk_metrics["duration_ms"],
                     sdk_metrics["num_turns"],
                     sdk_metrics["transport"],
                 )
         except Exception as e:
-            logger.debug("Could not read SDK metrics for %s: %s", session_id[:8], e)
+            plog.debug("Could not read SDK metrics for %s: %s", session_id[:8], e)
             sdk_metrics = {"cost_usd": 0.0}
 
         self.total_cost_usd += sdk_metrics.get("cost_usd", 0.0)
         if self.budget_usd and self.total_cost_usd >= self.budget_usd:
-            logger.error(
+            plog.error(
                 "Budget exhausted: $%.2f >= $%.2f limit",
                 self.total_cost_usd, self.budget_usd,
             )
@@ -791,9 +831,9 @@ class ExecutionRunner:
         if status == "completed":
             return True, session_id, False
 
-        logger.error(
-            "Session %s for %s:%s%s ended with status: %s (%.1fs)",
-            session_id[:8], plan_folder, phase_id, retry_label, status, elapsed,
+        plog.error(
+            "Session %s%s ended with status: %s (%.1fs)",
+            session_id[:8], retry_label, status, elapsed,
         )
         return False, session_id, is_quick_exit
 
@@ -886,7 +926,7 @@ class ExecutionRunner:
         repo = self.workflow._get_repository()
         if repo:
             repo.update_phase(plan_folder, phase_id, {"status": "blocked"})
-            logger.info("Phase %s in %s marked as blocked", phase_id, plan_folder)
+            self._phase_log.info("Marked as blocked")
 
     def _diagnose_quick_exit(self, session_id: Optional[str]):
         """Run session diagnostics on a quick-exit session.
@@ -931,15 +971,14 @@ class ExecutionRunner:
             # Verify target phase exists in TinyDB
             target_phase = repo.get_phase(plan_folder, target)
             if target_phase:
-                logger.info(
-                    "Feedback trigger %s -> %s for %s",
-                    failure_key, target, plan_folder,
+                self._phase_log.info(
+                    "Feedback trigger %s -> %s", failure_key, target,
                 )
                 return target
             else:
-                logger.warning(
-                    "Feedback trigger target %s not found in TinyDB for %s",
-                    target, plan_folder,
+                self._phase_log.warning(
+                    "Feedback trigger target %s not found in TinyDB",
+                    target,
                 )
 
         return None

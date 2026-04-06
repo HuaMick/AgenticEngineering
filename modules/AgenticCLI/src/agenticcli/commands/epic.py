@@ -1,3 +1,4 @@
+# story: US-PLN-001, US-PLN-009, US-PLN-015, US-STR-011
 """Epic management commands.
 
 Handles epic folder operations and ticket tracking.
@@ -1094,7 +1095,7 @@ def cmd_init(args, ctx=None):
             "epic_folder": "",
             "name": description,
             "branch": branch,
-            "status": "active",
+            "status": "seed",
             "priority": "high",
         }
         if objective:
@@ -1236,8 +1237,8 @@ def cmd_status(args):
 
     # Derive next_action and next_command from the unified status field
     _status_actions = {
-        "active": ("Spawn planning agent", f"agentic orchestrate session plan --epic {epic_folder_name}"),
-        "planning": ("Planning in progress", None),
+        "seed": ("Spawn planning agent", f"agentic orchestrate session plan --epic {epic_folder_name}"),
+        "planning": ("Planning in progress", f"agentic orchestrate session plan --epic {epic_folder_name}"),
         "in_progress": ("Execute current ticket", f"agentic epic ticket current --epic {epic_folder_name}"),
         "completed": ("Archive epic", f"agentic epic archive {epic_folder_name}"),
         "deferred": ("Resolve blockers", None),
@@ -2091,14 +2092,13 @@ def cmd_list(args):
         n_phases_done = sum(1 for p in phases if p.status == "completed")
 
         # Normalize display status based on actual state
-        # "active" with unplanned tickets is really just "seed"
-        # "planning" that's stale (no running planner) is also "seed"
+        # "planning" that's stale (no running planner) is effectively "seed"
         if repo:
             is_valid, _reason = validate_phase_routing(repo, folder_name)
         else:
             is_valid = False
 
-        if plan_status in ("seed", "active", "planning") and not is_valid:
+        if plan_status in ("seed", "planning") and not is_valid:
             display_status = "seed"
         elif is_valid and n_completed == n_total and n_total > 0:
             display_status = "completed"
@@ -2777,6 +2777,7 @@ def cmd_phase_update(args, ctx=None):
     new_max_turns = getattr(args, "max_turns", None)
     new_timeout = getattr(args, "timeout", None)
     feedback_triggers_str = getattr(args, "feedback_triggers", None)
+    new_blocked_reason = getattr(args, "blocked_reason", None)
 
     # Parse --feedback-triggers from comma-separated KEY=VALUE string to dict
     new_triggers = None
@@ -2792,10 +2793,10 @@ def cmd_phase_update(args, ctx=None):
         new_status, new_name, new_agent, new_execution,
         new_loop_type, new_loop_max_iterations is not None,
         new_max_turns is not None, new_timeout is not None,
-        new_triggers is not None,
+        new_triggers is not None, new_blocked_reason is not None,
     ])
     if not has_updates:
-        print_error("At least one field to update must be provided (--status, --name, --agent, --execution, --loop-type, --loop-max-iterations, --max-turns, --timeout, --feedback-triggers)")
+        print_error("At least one field to update must be provided (--status, --name, --agent, --execution, --loop-type, --loop-max-iterations, --max-turns, --timeout, --feedback-triggers, --blocked-reason)")
         sys.exit(1)
 
     # TinyDB-first: update phase via PlanRepository
@@ -2847,6 +2848,8 @@ def cmd_phase_update(args, ctx=None):
                     updates["timeout"] = new_timeout
                 if new_triggers is not None:
                     updates["feedback_triggers"] = new_triggers
+                if new_blocked_reason is not None:
+                    updates["blocked_reason"] = new_blocked_reason
 
                 if updates:
                     updated = repo.update_phase(plan_path.name, phase_id, updates)
@@ -2886,6 +2889,8 @@ def cmd_phase_update(args, ctx=None):
             result["max_turns"] = new_max_turns
         if new_triggers is not None:
             result["feedback_triggers"] = new_triggers
+        if new_blocked_reason is not None:
+            result["blocked_reason"] = new_blocked_reason
         print_json(result)
     else:
         changes = []
@@ -2905,6 +2910,8 @@ def cmd_phase_update(args, ctx=None):
             changes.append(f"max_turns={new_max_turns}")
         if new_triggers is not None:
             changes.append(f"feedback_triggers={len(new_triggers)} items")
+        if new_blocked_reason is not None:
+            changes.append(f"blocked_reason='{new_blocked_reason}'")
         print_success(f"Updated phase '{phase_id}' in {plan_path.name} ({', '.join(changes)})")
 
 

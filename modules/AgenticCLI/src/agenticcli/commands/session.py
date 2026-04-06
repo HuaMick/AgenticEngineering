@@ -1,3 +1,4 @@
+# story: US-SES-001
 """Session management commands for Claude Code sessions.
 
 Commands for spawning, listing, stopping, and monitoring Claude Code sessions.
@@ -394,6 +395,8 @@ def handle(args, ctx=None):
         cmd_healthcheck(args, ctx)
     elif args.session_command == "logs":
         cmd_logs(args, ctx)
+    elif args.session_command == "ledger":
+        cmd_ledger(args, ctx)
     else:
         print("Usage: agentic orchestrate session <spawn|list|stop>", file=sys.stderr)
         sys.exit(1)
@@ -1721,3 +1724,186 @@ def cmd_logs(args, ctx=None):
         console.print(f"[dim]... showing last {num_lines} of {len(lines)} lines ...[/dim]")
     for line in display_lines:
         console.print(line)
+
+
+# @story US-260401AG-007
+# @story US-260401AG-008
+def cmd_ledger(args, ctx=None):
+    """Query the session event ledger for a session.
+
+    Reads events.jsonl for the given session and returns either:
+
+    - A fixed-size summary digest (``--summary``): event counts by type,
+      truncated error messages, total duration, and final status (≤1KB).
+    - Filtered event slices (``--type``, ``--last``): scoped views into
+      the ledger for failure investigation.
+
+    When no mode flags are given, defaults to showing all events (equivalent
+    to running without ``--type`` or ``--last``).
+
+    Args:
+        args: Parsed command arguments with session_id and flags.
+        ctx: Optional CLIContext.
+    """
+    from agenticcli.console import console, is_json_output, print_error, print_json
+
+    session_id = getattr(args, "session_id", "")
+    summary = getattr(args, "summary", False)
+    event_type = getattr(args, "event_type", None)
+    last_n = getattr(args, "last", None)
+    json_output = is_json_output()
+
+    if not session_id:
+        print_error("session-id is required")
+        sys.exit(1)
+
+    # --- summary mode ---
+    if summary:
+        _cmd_ledger_summary(session_id, json_output, console, print_error, print_json)
+        return
+
+    # --- filter mode (--type, --last, or bare) ---
+    _cmd_ledger_filter(session_id, event_type, last_n, json_output, console, print_error, print_json)
+
+
+def _cmd_ledger_summary(session_id, json_output, console, print_error, print_json):
+    """Handle ``agentic session ledger <id> --summary``."""
+    try:
+        from agenticcli.utils.event_bus import summarize_session_ledger
+
+        result = summarize_session_ledger(session_id)
+    except FileNotFoundError as exc:
+        if json_output:
+            print_json({"error": str(exc), "session_id": session_id})
+        else:
+            print_error(str(exc))
+        sys.exit(1)
+    except Exception as exc:
+        if json_output:
+            print_json({"error": f"Failed to read ledger: {exc}", "session_id": session_id})
+        else:
+            print_error(f"Failed to read ledger: {exc}")
+        sys.exit(1)
+
+    if json_output:
+        print_json(result)
+        return
+
+    # --- rich display ---
+    console.print(f"\n[bold]Session Ledger Summary: {session_id[:8]}…[/bold]")
+    status = result["final_status"]
+    color = "green" if status == "completed" else "red" if status == "failed" else "yellow"
+    console.print(f"  Status: [{color}]{status}[/]")
+
+    if result["duration_ms"] is not None:
+        dur_s = result["duration_ms"] / 1000.0
+        if dur_s >= 60:
+            console.print(f"  Duration: {dur_s / 60:.1f}m ({result['duration_ms']}ms)")
+        else:
+            console.print(f"  Duration: {dur_s:.1f}s ({result['duration_ms']}ms)")
+    else:
+        console.print("  Duration: N/A")
+
+    console.print(f"  Total events: {result['total_events']}")
+    console.print()
+
+    # Event counts
+    console.print("  [bold]Event counts:[/bold]")
+    for etype, count in result["event_counts"].items():
+        if count > 0:
+            console.print(f"    {etype}: {count}")
+
+    # Errors
+    if result["errors"]:
+        console.print()
+        console.print(f"  [bold red]Errors ({len(result['errors'])}):[/bold red]")
+        for i, err in enumerate(result["errors"], 1):
+            console.print(f"    {i}. {err}")
+
+
+def _cmd_ledger_filter(session_id, event_type, last_n, json_output, console, print_error, print_json):
+    """Handle ``agentic session ledger <id> [--type X] [--last N]``."""
+    try:
+        from agenticcli.utils.event_bus import filter_session_ledger
+
+        events = filter_session_ledger(
+            session_id,
+            event_type=event_type,
+            last=last_n,
+        )
+    except FileNotFoundError as exc:
+        if json_output:
+            print_json({"error": str(exc), "session_id": session_id})
+        else:
+            print_error(str(exc))
+        sys.exit(1)
+    except ValueError as exc:
+        if json_output:
+            print_json({"error": str(exc), "session_id": session_id})
+        else:
+            print_error(str(exc))
+        sys.exit(1)
+    except Exception as exc:
+        if json_output:
+            print_json({"error": f"Failed to read ledger: {exc}", "session_id": session_id})
+        else:
+            print_error(f"Failed to read ledger: {exc}")
+        sys.exit(1)
+
+    if json_output:
+        print_json(events)
+        return
+
+    # --- rich display ---
+    if not events:
+        filter_desc = ""
+        if event_type:
+            filter_desc += f" type={event_type}"
+        if last_n:
+            filter_desc += f" last={last_n}"
+        console.print(f"[dim]No matching events for session {session_id[:8]}…{filter_desc}[/dim]")
+        return
+
+    header = f"Session Ledger: {session_id[:8]}…"
+    if event_type:
+        header += f"  [dim](type={event_type})[/dim]"
+    if last_n:
+        header += f"  [dim](last {last_n})[/dim]"
+    console.print(f"\n[bold]{header}[/bold]")
+    console.print(f"  Showing {len(events)} event(s)")
+    console.print()
+
+    for evt in events:
+        ts = evt.get("timestamp", "")
+        etype = evt.get("type", "?")
+        # Compact one-line display per event
+        detail = _format_event_line(evt)
+        console.print(f"  [{_event_type_color(etype)}]{etype:12s}[/] {ts}  {detail}")
+
+
+def _format_event_line(evt: dict) -> str:
+    """Format a single event dict into a compact display string."""
+    etype = evt.get("type", "")
+    if etype == "started":
+        return f"role={evt.get('role', '?')}"
+    elif etype == "tool_use":
+        return f"{evt.get('tool_name', '?')} → {evt.get('tool_input_preview', '')[:80]}"
+    elif etype == "tool_result":
+        err_flag = " [ERROR]" if evt.get("is_error") else ""
+        return f"{evt.get('tool_name', '?')}{err_flag} → {evt.get('output_preview', '')[:80]}"
+    elif etype == "error":
+        return f"{evt.get('error_type', '?')}: {evt.get('error_message', '')[:120]}"
+    elif etype == "completed":
+        return f"status={evt.get('status', '?')} cost=${evt.get('cost_usd', 0):.4f} turns={evt.get('num_turns', 0)}"
+    return str(evt)
+
+
+def _event_type_color(etype: str) -> str:
+    """Return a Rich color string for the event type."""
+    return {
+        "started": "cyan",
+        "tool_use": "blue",
+        "tool_result": "green",
+        "error": "red",
+        "completed": "magenta",
+    }.get(etype, "white")

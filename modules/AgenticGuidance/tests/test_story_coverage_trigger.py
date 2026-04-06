@@ -24,7 +24,7 @@ pytestmark = pytest.mark.story("US-STR-009", "US-PLN-080", "US-PLN-081")
 # Tests for STORY_COVERAGE_INCOMPLETE trigger in executor
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-STR-009", "US-STR-014", "US-GDN-040", "US-GDN-041", "US-GDN-045", "US-GDN-054", "US-GDN-064", "US-GDN-065", "US-PLN-080", "US-PLN-071")
+@pytest.mark.story("US-STR-009", "US-STR-014", "US-GDN-041", "US-GDN-045", "US-GDN-054", "US-GDN-064", "US-GDN-065", "US-PLN-080", "US-PLN-071")
 class TestStoryCoverageIncompleteTrigger:
     """Test the STORY_COVERAGE_INCOMPLETE feedback trigger definition."""
 
@@ -98,7 +98,7 @@ class TestStoryCoverageIncompleteTrigger:
 # Tests for validation_gate pytest marker check
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-STR-010", "US-STR-014", "US-GDN-033", "US-GDN-046", "US-GDN-054", "US-GDN-064", "US-GDN-066", "US-PLN-081", "US-PLN-078")
+@pytest.mark.story("US-STR-014", "US-GDN-033", "US-GDN-046", "US-GDN-054", "US-GDN-064", "US-GDN-066", "US-PLN-081", "US-PLN-078")
 class TestValidationGateMarkerCheck:
     """Test the validation_gate checks pytest story markers."""
 

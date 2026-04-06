@@ -43,7 +43,7 @@ def folder_free_repo(tmp_path, _isolate_tinydb):
         None,  # No disk folder — folder-free epic
         {
             "name": "Folder-Free Epic",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase 1",
@@ -80,7 +80,7 @@ def mixed_epics_repo(tmp_path, _isolate_tinydb):
         epic_with_folder,
         {
             "name": "Epic With Folder",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "P1",
@@ -101,7 +101,7 @@ def mixed_epics_repo(tmp_path, _isolate_tinydb):
         None,  # No disk folder
         {
             "name": "Epic Without Folder",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "P1",
@@ -133,7 +133,7 @@ def folder_free_with_tickets_repo(tmp_path, _isolate_tinydb):
         None,  # folder-free
         {
             "name": "Status Test Epic",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase 1",

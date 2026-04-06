@@ -1,3 +1,4 @@
+# story: US-SET-001
 """Setup command for initial configuration.
 
 Provides a guided setup experience for AgenticCLI.

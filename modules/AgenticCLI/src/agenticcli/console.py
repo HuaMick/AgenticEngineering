@@ -1,3 +1,4 @@
+# story: US-SET-014
 """Console output utilities using rich library.
 
 Provides colored and formatted output for CLI commands.
@@ -177,9 +178,8 @@ def format_status(status: str) -> str:
     """
     _colors = {
         "seed": "[magenta]seed[/magenta]",
-        "active": "[blue]active[/blue]",
         "ready": "[cyan]ready[/cyan]",
-        "planning": "[cyan]planning[/cyan]",
+        "planning": "[blue]planning[/blue]",
         "in_progress": "[yellow]in_progress[/yellow]",
         "completed": "[green]completed[/green]",
         "deferred": "[dim]deferred[/dim]",
@@ -190,7 +190,8 @@ def format_status(status: str) -> str:
     }
     # Legacy aliases — map to canonical status before lookup
     _legacy = {
-        "pending": "active",
+        "pending": "planning",
+        "active": "planning",
         "approved": "in_progress",
     }
     status_lower = status.lower()

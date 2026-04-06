@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.story("US-GDN-021", "US-PLN-090")
+pytestmark = pytest.mark.story("US-PLN-090")
 
 from agenticguidance.models.question import (
     AnswerConfidence,

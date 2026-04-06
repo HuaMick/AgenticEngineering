@@ -275,7 +275,7 @@ class TestNoOldPathReads:
             "epic_folder_name": "260401XX_test",
             "epic_folder": str(epic_folder),
             "name": "Test Epic",
-            "status": "active",
+            "status": "planning",
         })
         repo.add_phase("260401XX_test", {
             "name": "Build", "agent": "build-python", "status": "pending",

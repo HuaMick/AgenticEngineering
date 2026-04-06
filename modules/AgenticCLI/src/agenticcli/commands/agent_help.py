@@ -1,3 +1,4 @@
+# story: US-GDN-035
 """Agent-specific help command handler.
 
 Provides quick help output for agent names as positional arguments:

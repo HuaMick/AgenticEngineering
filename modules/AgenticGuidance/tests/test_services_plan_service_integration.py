@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-036", "US-PLN-040", "US-PLN-043", "US-PLN-044", "US-PLN-082", "US-PLN-085")
+pytestmark = pytest.mark.story("US-PLN-036", "US-PLN-040", "US-PLN-082", "US-PLN-085")
 
 from agenticguidance.services.epic import EpicService
 

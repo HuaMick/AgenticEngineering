@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-pytestmark = [pytest.mark.story("US-STR-009"), pytest.mark.story("US-GDN-079")]
+pytestmark = [pytest.mark.story("US-STR-009")]
 
 
 def _load_conftest_module():
@@ -31,7 +31,6 @@ def _load_conftest_module():
 # Tests for _find_repo_root_from_tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-GDN-077")
 class TestFindRepoRootCLI:
     """Test repo root discovery from AgenticCLI conftest location."""
 
@@ -62,7 +61,6 @@ class TestFindRepoRootCLI:
 # Tests for _load_valid_story_ids
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-GDN-077")
 class TestLoadValidStoryIdsCLI:
     """Test story ID loading from docs/userstories/ via CLI conftest."""
 
@@ -234,7 +232,7 @@ class TestLoadValidStoryIdsCLI:
 # Tests for pytest_configure (marker registration)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-GDN-077", "US-GDN-067", "US-GDN-069")
+@pytest.mark.story("US-GDN-067", "US-GDN-069")
 class TestMarkerRegistrationCLI:
     """Test that the story marker is registered in AgenticCLI tests."""
 
@@ -259,7 +257,7 @@ class TestMarkerRegistrationCLI:
 # Tests for pytest_collection_modifyitems (validation plugin)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-GDN-078", "US-GDN-059")
+@pytest.mark.story("US-GDN-059")
 class TestCollectionValidationCLI:
     """Test the collection plugin validates story markers at collection time."""
 
@@ -401,7 +399,6 @@ class TestCollectionValidationCLI:
 # A sample test with story marker (proves the infrastructure works end-to-end)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-GDN-077")
 def test_story_marker_does_not_block_cli_test_execution():
     """This test uses a real story ID to validate end-to-end marker infrastructure.
 

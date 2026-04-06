@@ -57,7 +57,7 @@ def task_repo(temp_dir, _isolate_tinydb):
     # Populate TinyDB with plan data
     plan_content = {
         "name": "task-test-plan",
-        "status": "active",
+        "status": "planning",
         "worktree_path": str(repo_dir),
         "context": "Test plan for task command validation",
         "phases": [

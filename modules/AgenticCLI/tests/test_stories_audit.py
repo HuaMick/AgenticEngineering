@@ -8,7 +8,7 @@ Validates:
 
 Ticket: TS_004 — 260327AG_mandatory_ticket_story_binding_for_build_plans
 
-@story US-STR-009, US-PLN-073
+@story US-STR-009
 """
 
 import json
@@ -22,7 +22,7 @@ import yaml
 
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = pytest.mark.story("US-STR-009", "US-PLN-073")
+pytestmark = pytest.mark.story("US-STR-009")
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ def audit_epic(tmp_path, _isolate_tinydb, monkeypatch):
         "epic_folder_name": "260327XX_audit_test",
         "epic_folder": str(epic_folder),
         "name": "Audit Test Epic",
-        "status": "active",
+        "status": "planning",
     })
     repo.add_phase("260327XX_audit_test", {
         "name": "Build Phase",
@@ -113,7 +113,7 @@ def full_coverage_epic(tmp_path, _isolate_tinydb, monkeypatch):
         "epic_folder_name": "260327XX_full_cov",
         "epic_folder": str(epic_folder),
         "name": "Full Coverage Epic",
-        "status": "active",
+        "status": "planning",
     })
     repo.add_phase("260327XX_full_cov", {
         "name": "Build Phase",
@@ -170,7 +170,7 @@ def no_stories_epic(tmp_path, _isolate_tinydb, monkeypatch):
         "epic_folder_name": "260327XX_no_stories",
         "epic_folder": str(epic_folder),
         "name": "No Stories Epic",
-        "status": "active",
+        "status": "planning",
     })
     repo.add_phase("260327XX_no_stories", {
         "name": "Build Phase",
@@ -215,7 +215,7 @@ def no_tickets_epic(tmp_path, _isolate_tinydb, monkeypatch):
         "epic_folder_name": "260327XX_no_tickets",
         "epic_folder": str(epic_folder),
         "name": "No Tickets Epic",
-        "status": "active",
+        "status": "planning",
     })
 
     # Write stories to EpicStories/ (consolidated location)

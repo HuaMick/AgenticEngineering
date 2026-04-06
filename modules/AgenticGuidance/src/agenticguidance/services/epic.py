@@ -1,3 +1,4 @@
+# story: US-PLN-001
 """Epic Movement Workflow - automated ticket and folder movement.
 
 Handles ticket status management via TinyDB and folder archival with
@@ -18,10 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 class EpicStatus(Enum):
-    """Canonical epic statuses (7 lifecycle values)."""
+    """Canonical epic statuses (6 lifecycle values)."""
 
     SEED = "seed"
-    ACTIVE = "active"
     PLANNING = "planning"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -29,24 +29,64 @@ class EpicStatus(Enum):
     BLOCKED = "blocked"
 
 
-# Maps all legacy status strings to the 7 canonical values
+# @story US-RES-001
+class PhaseStatus(Enum):
+    """Canonical phase status values.
+
+    Matches the phase_status_values state model in
+    orchestration-executor-specification.yml.
+    """
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+
+
+# Maps all legacy status strings to the 6 canonical values
 EPIC_STATUS_MIGRATION: dict[str, str] = {
     # Canonical values (identity)
     "seed": "seed",
-    "active": "active",
     "planning": "planning",
     "in_progress": "in_progress",
     "completed": "completed",
     "deferred": "deferred",
     "blocked": "blocked",
     # Legacy mappings
-    "proposed": "active",
-    "pending": "active",
+    "active": "planning",
+    "proposed": "planning",
+    "pending": "planning",
     "approved": "in_progress",
     "partially_completed": "in_progress",
     "fully_completed": "completed",
     "cancelled": "completed",
 }
+
+# Valid state transitions for the epic lifecycle state machine.
+# Key = current status, value = set of statuses that can be transitioned to.
+VALID_TRANSITIONS: dict[str, set[str]] = {
+    "seed": {"planning", "deferred"},
+    "planning": {"in_progress", "blocked", "deferred"},
+    "in_progress": {"completed", "blocked", "deferred"},
+    "blocked": {"in_progress", "planning"},
+    "completed": {"planning"},
+    "deferred": {"planning", "seed"},
+}
+
+
+class InvalidStatusTransition(Exception):
+    """Raised when an epic status transition violates the state machine."""
+
+    def __init__(self, epic_name: str, from_status: str, to_status: str, reason: str):
+        self.epic_name = epic_name
+        self.from_status = from_status
+        self.to_status = to_status
+        self.reason = reason
+        super().__init__(
+            f"Cannot transition epic '{epic_name}' from '{from_status}' to "
+            f"'{to_status}': {reason}"
+        )
 
 
 def normalize_epic_status(status: str) -> str:
@@ -56,10 +96,10 @@ def normalize_epic_status(status: str) -> str:
         status: Any status string (old or new).
 
     Returns:
-        One of 'seed', 'active', 'planning', 'in_progress', 'completed',
+        One of 'seed', 'planning', 'in_progress', 'completed',
         'deferred', 'blocked'.
     """
-    return EPIC_STATUS_MIGRATION.get(status.lower().strip(), "active")
+    return EPIC_STATUS_MIGRATION.get(status.lower().strip(), "planning")
 
 
 class MoveResult(Enum):
@@ -596,6 +636,7 @@ class ValidationResult:
             self.warnings = []
 
 
+# @story US-RES-001
 @dataclass
 class PhaseData:
     """Data for a single phase."""
@@ -612,6 +653,7 @@ class PhaseData:
     phase_id: Optional[str] = None
     max_turns: Optional[int] = None
     timeout: Optional[int] = None  # Per-phase timeout in seconds (None = use default)
+    blocked_reason: Optional[str] = None  # Reason for blocked status (set on retry exhaustion)
 
     def __post_init__(self):
         if self.tasks is None:
@@ -809,7 +851,7 @@ class EpicService:
                     "name": folder_name.replace("_", "-"),
                     "worktree_path": str(self.repo_path),
                     "branch": branch,
-                    "status": "proposed",
+                    "status": "seed",
                     "priority": "medium",
                     "objective": objective,
                     "created": datetime.now().strftime("%Y-%m-%d"),

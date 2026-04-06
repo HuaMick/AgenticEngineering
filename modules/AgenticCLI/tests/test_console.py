@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SET-014", "US-SET-016")
+pytestmark = pytest.mark.story("US-SET-014")
 
 
 class TestJsonOutputMode:
@@ -152,12 +152,12 @@ class TestFormatStatus:
         assert "in_progress" in result
         assert "yellow" in result
 
-    def test_format_pending_normalizes_to_active(self):
-        """Test formatting pending status normalizes to active."""
+    def test_format_pending_normalizes_to_planning(self):
+        """Test formatting pending status normalizes to planning."""
         from agenticcli.console import format_status
 
         result = format_status("pending")
-        assert "active" in result
+        assert "planning" in result
         assert "blue" in result
 
     def test_format_proposed(self):
@@ -176,12 +176,12 @@ class TestFormatStatus:
         assert "failed" in result
         assert "red" in result
 
-    def test_format_active(self):
-        """Test formatting active status (canonical)."""
+    def test_format_active_normalizes_to_planning(self):
+        """Test formatting active status normalizes to planning."""
         from agenticcli.console import format_status
 
         result = format_status("active")
-        assert "active" in result
+        assert "planning" in result
         assert "blue" in result
 
     def test_format_planning(self):
@@ -190,7 +190,7 @@ class TestFormatStatus:
 
         result = format_status("planning")
         assert "planning" in result
-        assert "cyan" in result
+        assert "blue" in result
 
     def test_format_deferred(self):
         """Test formatting deferred status."""

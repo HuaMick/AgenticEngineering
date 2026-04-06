@@ -1,3 +1,4 @@
+# story: US-SES-006
 """State Registry - structured process and state management.
 
 Replaces raw PID/state files with a centralized JSON registry that tracks

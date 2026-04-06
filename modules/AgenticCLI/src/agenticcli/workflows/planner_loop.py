@@ -1,3 +1,4 @@
+# story: US-GDN-064, US-GDN-070, US-GDN-074, US-GDN-081, US-PLN-046, US-PLN-065
 """Planner Loop workflow for automated orchestration planning.
 
 Encapsulates the orchestration planner logic: discovers epics needing
@@ -71,6 +72,15 @@ def _to_int_priority(value) -> int:
 
 # Shared session state store (same as session.py)
 _session_store = StateStore("sessions", id_key="session_id")
+
+# Sentinel value: returned by _try_event_bus_wait() when the event-bus path
+# cannot determine session status and the caller should fall back to polling.
+_FALLBACK_TO_POLLING = object()
+
+#: Grace period (seconds) to wait for events.jsonl to appear before falling
+#: back to session-state-JSON polling.  Must be long enough for the pane runner
+#: to start writing but short enough to avoid blocking the orchestrator.
+_EVENT_BUS_GRACE_PERIOD = 15
 
 DEFAULT_COMPLETION_PROMISE = "Planning complete. All epics have phases in TinyDB."
 
@@ -232,13 +242,12 @@ class PlannerLoopWorkflow:
         logger.info("Health check passed")
 
     def discover_plans_needing_orchestration(self) -> list[str]:
-        """Find live epics that need planning.
+        """Find epics with status ``seed`` or ``planning`` — need planning.
 
-        An epic needs orchestration when:
-        - It has no phases in TinyDB, OR
-        - Not all phases have an agent routing set, OR
-        - All phases are still in 'proposed' status (skeleton created but
-          real planning hasn't happened yet).
+        The status is the sole signal for whether planning is needed.
+        Preconditions are enforced at transition boundaries, not here.
+
+        Results are priority-sorted (already applied by ``list_epics()``).
 
         Returns:
             List of epic folder names needing orchestration.
@@ -247,34 +256,22 @@ class PlannerLoopWorkflow:
             logger.error("No EpicRepository available — cannot discover epics needing orchestration")
             return []
 
-        epics = self._repository.list_epics(status="live")
-        # Also include seed epics (not yet in "live" set for some filters)
         seed_epics = self._repository.list_epics(status="seed")
-        seen = {e.epic_folder_name for e in epics}
-        for se in seed_epics:
-            if se.epic_folder_name not in seen:
-                epics.append(se)
+        planning_epics = self._repository.list_epics(status="planning")
 
-        needs_work = []
-        for epic in epics:
-            is_valid, reason = validate_phase_routing(self._repository, epic.epic_folder_name)
-            if not is_valid:
-                logger.info(
-                    "Epic %s needs orchestration: %s",
-                    epic.epic_folder_name, reason,
-                )
+        # Merge and deduplicate while preserving priority order
+        seen: set[str] = set()
+        needs_work: list[str] = []
+        for epic in seed_epics + planning_epics:
+            if epic.epic_folder_name not in seen:
+                seen.add(epic.epic_folder_name)
                 needs_work.append(epic.epic_folder_name)
 
-        # Sort by priority (lower int = higher priority) then folder name
-        # (newest first).  Handles both legacy string values and new int values.
-        # No dependency filtering — planning should happen even for blocked epics.
-        # @story US-003
-        epic_priority = {
-            e.epic_folder_name: _to_int_priority(e.priority) for e in epics
-        }
+        # Re-sort by priority since we merged two lists
+        all_epics = {e.epic_folder_name: e for e in seed_epics + planning_epics}
         needs_work.sort(
             key=lambda name: (
-                epic_priority.get(name, 3),
+                _to_int_priority(all_epics[name].priority) if name in all_epics else 3,
                 [-ord(c) for c in name],
             ),
         )
@@ -742,16 +739,19 @@ class PlannerLoopWorkflow:
     def wait_for_session(self, session_id: str, timeout: int = 600, poll_interval: int = 10) -> Optional[str]:
         """Wait for a subprocess or tmux session to complete.
 
-        Polls the session state store directly (no CLI call required).
-        Short-circuits on consecutive read failures to avoid wasting the
-        full timeout when the session process dies before writing state.
+        **Primary path** — event-bus watching (US-260401AG-004):
+        If the ``event_bus`` module is available, creates an
+        :class:`~agenticcli.utils.event_bus.EventWatcher` and waits for
+        ``events.jsonl`` to appear.  Once the file is detected the method
+        observes real-time events (tool_use, tool_result, error) and returns
+        immediately when a ``CompletedEvent`` arrives.
 
-        For tmux-spawned sessions, also checks tmux session existence as a
-        supplemental liveness probe. The PID check remains primary; tmux
-        existence is used to catch edge cases (PID reuse, orphaned state).
-
-        Note: This method is only used in the subprocess/tmux fallback path.
-        SDK sessions complete synchronously and don't need polling.
+        **Fallback path** — session-state-JSON polling (US-260401AG-005):
+        If the event file does not appear within a grace period, the
+        ``event_bus`` module is unavailable, or the event file becomes
+        unreadable mid-stream, the method falls back to the original
+        StateStore polling loop with full PID liveness checks and tmux
+        supplemental probes.
 
         Args:
             session_id: Session UUID to wait for.
@@ -763,7 +763,33 @@ class PlannerLoopWorkflow:
         """
         QUICK_EXIT_THRESHOLD = 30  # seconds — agent sessions shorter than this are suspicious
         start_time = time.time()
-        deadline = start_time + timeout
+
+        # --- Event-bus fast path (US-260401AG-004, US-260401AG-005) ----------
+        try:
+            from agenticcli.utils.event_bus import EventWatcher, EventType  # noqa: F811
+            _has_event_bus = True
+        except ImportError:
+            _has_event_bus = False
+            logger.debug("event_bus module unavailable, using session-state polling")
+
+        if _has_event_bus:
+            event_result = self._try_event_bus_wait(
+                session_id, timeout, start_time, QUICK_EXIT_THRESHOLD,
+            )
+            if event_result is not _FALLBACK_TO_POLLING:
+                # Got a definitive result from the event bus.
+                if event_result is None:
+                    # Timed out — persist failure in session state.
+                    self._persist_timeout_failure(session_id, timeout)
+                    logger.warning("Session %s timed out after %ds", session_id[:8], timeout)
+                return event_result
+
+        # --- Existing polling fallback ---------------------------------------
+        # Adjust deadline for wall-clock time already consumed by the
+        # event-bus grace period so the overall budget is honoured.
+        elapsed_so_far = time.time() - start_time
+        remaining = max(timeout - elapsed_so_far, 0)
+        deadline = time.time() + remaining
         consecutive_failures = 0
         while time.time() < deadline:
             status = self._get_session_status(session_id)
@@ -873,6 +899,143 @@ class PlannerLoopWorkflow:
             time.sleep(poll_interval)
 
         # Persist timeout failure into session state (P6_001/P6_003)
+        self._persist_timeout_failure(session_id, timeout)
+        logger.warning("Session %s timed out after %ds", session_id[:8], timeout)
+        return None
+
+    # -- event-bus wait helpers (US-260401AG-004 / US-260401AG-005) -----------
+
+    def _try_event_bus_wait(
+        self,
+        session_id: str,
+        timeout: int,
+        start_time: float,
+        quick_exit_threshold: int,
+    ) -> "str | None | object":
+        """Attempt to wait for session completion via the event-bus side-channel.
+
+        Returns a status string (``"completed"``, ``"failed"``, etc.) when a
+        :class:`~agenticcli.utils.event_bus.CompletedEvent` is received, ``None``
+        when the overall *timeout* expires, or the module-level sentinel
+        :data:`_FALLBACK_TO_POLLING` when the caller should fall back to
+        session-state-JSON polling.
+
+        Fallback triggers:
+        * ``events.jsonl`` does not appear within :data:`_EVENT_BUS_GRACE_PERIOD`.
+        * An unrecoverable I/O error occurs while reading the event file.
+
+        Args:
+            session_id: Session UUID to wait for.
+            timeout: Overall timeout budget in seconds.
+            start_time: ``time.time()`` recorded at the top of
+                :meth:`wait_for_session` — used for quick-exit detection.
+            quick_exit_threshold: Seconds threshold for suspicious quick exits.
+
+        Returns:
+            Status string, ``None`` (timeout), or :data:`_FALLBACK_TO_POLLING`.
+        """
+        from agenticcli.utils.event_bus import EventWatcher, EventType
+
+        watcher = EventWatcher(session_id)
+
+        # -- Grace period: wait for events.jsonl to appear -------------------
+        grace_deadline = time.time() + min(_EVENT_BUS_GRACE_PERIOD, timeout)
+        file_appeared = False
+        while time.time() < grace_deadline:
+            if watcher.path.exists():
+                file_appeared = True
+                break
+            time.sleep(1.0)
+
+        if not file_appeared:
+            logger.debug(
+                "Session %s: events.jsonl not found within %ds grace period, "
+                "falling back to session-state polling",
+                session_id[:8],
+                _EVENT_BUS_GRACE_PERIOD,
+            )
+            return _FALLBACK_TO_POLLING
+
+        # -- Event-watching mode ---------------------------------------------
+        logger.info(
+            "Session %s: events.jsonl detected, using event-bus watching",
+            session_id[:8],
+        )
+        remaining = max(timeout - (time.time() - start_time), 0)
+
+        try:
+            for event in watcher.iter_events(timeout=remaining, poll_interval=1.0):
+                if event.type == EventType.tool_use:
+                    logger.debug(
+                        "Session %s: tool_use → %s",
+                        session_id[:8],
+                        getattr(event, "tool_name", "unknown"),
+                    )
+                elif event.type == EventType.tool_result:
+                    logger.debug(
+                        "Session %s: tool_result → %s (error=%s)",
+                        session_id[:8],
+                        getattr(event, "tool_name", "unknown"),
+                        getattr(event, "is_error", False),
+                    )
+                elif event.type == EventType.error:
+                    logger.warning(
+                        "Session %s: error event — %s: %s",
+                        session_id[:8],
+                        getattr(event, "error_type", "unknown"),
+                        getattr(event, "error_message", ""),
+                    )
+                elif event.type == EventType.completed:
+                    status = getattr(event, "status", "completed")
+                    elapsed = time.time() - start_time
+                    if elapsed < quick_exit_threshold:
+                        logger.warning(
+                            "⚠ Session %s exited in %.1fs (status=%s) — "
+                            "suspiciously fast (event-bus path)",
+                            session_id[:8],
+                            elapsed,
+                            status,
+                        )
+                    else:
+                        logger.info(
+                            "Session %s finished via event bus: status=%s (%.1fs)",
+                            session_id[:8],
+                            status,
+                            elapsed,
+                        )
+                    # Normalise to known terminal states.
+                    if status in ("completed", "failed", "stopped"):
+                        return status
+                    return "completed"
+        except Exception as exc:
+            # Event file became unreadable mid-stream — fall back to polling.
+            logger.warning(
+                "Session %s: event-bus read failed (%s), "
+                "falling back to session-state polling",
+                session_id[:8],
+                exc,
+            )
+            return _FALLBACK_TO_POLLING
+
+        # iter_events exhausted without a CompletedEvent — genuine timeout.
+        logger.debug(
+            "Session %s: event stream ended without CompletedEvent, treating as timeout",
+            session_id[:8],
+        )
+        return None
+
+    @staticmethod
+    def _persist_timeout_failure(session_id: str, timeout: int) -> None:
+        """Persist timeout failure info into session state (best-effort).
+
+        Writes ``error_code``, ``failure_reason``, ``status``, and
+        ``ended_at`` fields to the session state store.  No-ops if the
+        session already has a ``failure_reason`` recorded.
+
+        Args:
+            session_id: Session UUID.
+            timeout: The timeout budget that was exhausted.
+        """
         try:
             data = _session_store.load(session_id)
             if data and "failure_reason" not in data:
@@ -890,8 +1053,6 @@ class PlannerLoopWorkflow:
                 _session_store.save(data)
         except Exception:
             pass  # Best-effort; don't mask the timeout
-        logger.warning("Session %s timed out after %ds", session_id[:8], timeout)
-        return None
 
     def _get_session_status(self, session_id: str) -> Optional[str]:
         """Get current session status by reading the state store directly.
@@ -1826,6 +1987,24 @@ class PlannerLoopRunner:
                                 self.workflow._repository.update_ticket(
                                     epic_folder, t.id, {"status": "pending"}
                                 )
+
+        # Promote epic status: planning → in_progress (if preconditions met)
+        # or planning → blocked (if deps unsatisfied)
+        if self.workflow._repository:
+            try:
+                self.workflow._repository.transition_epic_status(epic_folder, "in_progress")
+                logger.info("Epic %s promoted to in_progress", epic_folder)
+            except Exception as e:
+                # If in_progress fails (e.g. blocked deps), try blocked
+                logger.info(
+                    "Cannot promote %s to in_progress (%s), trying blocked",
+                    epic_folder, e,
+                )
+                try:
+                    self.workflow._repository.transition_epic_status(epic_folder, "blocked")
+                    logger.info("Epic %s set to blocked", epic_folder)
+                except Exception:
+                    logger.warning("Could not transition %s after planning", epic_folder)
 
         logger.info("Epic %s processed successfully (with orchestration phases)", epic_folder)
         return True

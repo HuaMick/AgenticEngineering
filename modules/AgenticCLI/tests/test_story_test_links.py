@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = [pytest.mark.story("US-STR-009"), pytest.mark.story("US-GDN-079"), pytest.mark.story("US-PLN-081"), pytest.mark.story("US-STR-001", "US-STR-002", "US-STR-003")]
+pytestmark = [pytest.mark.story("US-STR-009"), pytest.mark.story("US-PLN-081"), pytest.mark.story("US-STR-001", "US-STR-002", "US-STR-003")]
 
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,7 @@ import pytest
 
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = pytest.mark.story("US-STR-009", "US-SET-029")
+pytestmark = pytest.mark.story("US-STR-009")
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ def epic_repo(tmp_path, _isolate_tinydb):
         "epic_folder_name": "260308PD_test",
         "epic_folder": str(epic_folder),
         "name": "Test Epic",
-        "status": "active",
+        "status": "planning",
     })
     repo.add_phase("260308PD_test", {
         "name": "Build Phase",
@@ -361,7 +361,7 @@ def build_epic_repo(tmp_path, _isolate_tinydb):
         "epic_folder_name": "260327XX_build_epic",
         "epic_folder": str(epic_folder),
         "name": "Build Epic",
-        "status": "active",
+        "status": "planning",
     })
     repo.add_phase("260327XX_build_epic", {
         "name": "Build Phase",
@@ -394,7 +394,7 @@ def infra_epic_repo(tmp_path, _isolate_tinydb):
         "epic_folder_name": "260327XX_infra_epic",
         "epic_folder": str(epic_folder),
         "name": "Infra Epic",
-        "status": "active",
+        "status": "planning",
     })
     repo.add_phase("260327XX_infra_epic", {
         "name": "Guidance Phase",
@@ -413,7 +413,7 @@ def infra_epic_repo(tmp_path, _isolate_tinydb):
     repo.close()
 
 
-@pytest.mark.story("US-STR-011", "US-PLN-073")
+@pytest.mark.story("US-STR-011")
 class TestStoryIdsEnforcement:
     """Test cmd_task_add enforcement: build-plan tickets require --story-ids."""
 

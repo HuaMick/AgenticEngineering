@@ -313,7 +313,7 @@ class TestCLIImplementIntegration:
         epic_dir.mkdir(exist_ok=True)
         tinydb_populator(epic_name, epic_dir, {
             "name": epic_name,
-            "status": "active",
+            "status": "planning",
             "phases": phases,
         })
 
@@ -341,7 +341,7 @@ class TestCLIImplementIntegration:
 
         monkeypatch.setattr(ExecutionRunner, "_run_phase", _mock_run_phase)
         monkeypatch.setattr(workflow, "run_health_check", lambda: None)
-        monkeypatch.setattr(workflow, "get_plan_status", lambda folder: "active")
+        monkeypatch.setattr(workflow, "get_plan_status", lambda folder: "planning")
         monkeypatch.setattr(
             "agenticcli.workflows.orchestration.acquire_epic_lock", lambda *a: True
         )
@@ -397,7 +397,7 @@ class TestCLIImplementIntegration:
 
         monkeypatch.setattr(subprocess, "run", _mock_subprocess_run)
         monkeypatch.setattr(workflow, "run_health_check", lambda: None)
-        monkeypatch.setattr(workflow, "get_plan_status", lambda folder: "active")
+        monkeypatch.setattr(workflow, "get_plan_status", lambda folder: "planning")
         monkeypatch.setattr(workflow, "wait_for_session", lambda *a, **kw: "completed")
         monkeypatch.setattr(
             "agenticcli.workflows.orchestration.acquire_epic_lock", lambda *a: True

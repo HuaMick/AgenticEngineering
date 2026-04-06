@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-PLN-007", "US-SET-025")
+pytestmark = pytest.mark.story("US-PLN-007")
 
 
 def _populate_tinydb_for_movement(db_path, epic_folder_name, tickets):
@@ -26,7 +26,7 @@ def _populate_tinydb_for_movement(db_path, epic_folder_name, tickets):
         "epic_folder_name": epic_folder_name,
         "epic_folder": str(db_path.parent.parent / "docs" / "epics" / "live" / epic_folder_name),
         "name": epic_folder_name,
-        "status": "active",
+        "status": "planning",
     })
     phase_name = "Test Phase"
     repo.add_phase(epic_folder_name, {"name": phase_name})
@@ -218,7 +218,7 @@ class TestGitSafetyChecker:
         assert "newfile.txt" in changes
 
 
-@pytest.mark.story("US-PLN-084", "US-PLN-006")
+@pytest.mark.story("US-PLN-006")
 class TestFolderArchive:
     """Tests for folder archival."""
 
@@ -303,7 +303,6 @@ class TestMoveCommands:
         assert code in (1, 2)
 
 
-@pytest.mark.story("US-PLN-084")
 class TestArchiveSourceRemoval:
     """Tests for archive removing source folder after successful archive."""
 

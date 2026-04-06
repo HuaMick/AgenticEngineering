@@ -107,7 +107,7 @@ class TestGetStoriesForTest:
         assert repo.get_stories_for_test("tests/nonexistent.py::test_x") == []
 
 
-@pytest.mark.story("US-STR-010", "US-STR-007", "US-GDN-066")
+@pytest.mark.story("US-GDN-066")
 class TestGetUncoveredStories:
     """Test get_uncovered_stories() gap analysis."""
 

@@ -369,7 +369,7 @@ class TestErrorRecoverySequence:
 class TestStateWorkflowSequence:
     """Test state management workflows."""
 
-    pytestmark = pytest.mark.story("US-PLN-001", "US-SES-009")
+    pytestmark = pytest.mark.story("US-PLN-001")
 
     @pytest.fixture
     def state_repo(self):
@@ -442,7 +442,7 @@ class TestStateWorkflowSequence:
 
         os.chdir(original_cwd)
 
-    @pytest.mark.story("US-SES-007", "US-SES-008", "US-SES-009")
+    @pytest.mark.story("US-SES-007", "US-SES-008")
     def test_state_list_cleanup_workflow(self, state_cli):
         """Test: list state -> cleanup stale entries."""
         stdout, stderr, code = state_cli("configure", "state", "list")
@@ -451,7 +451,6 @@ class TestStateWorkflowSequence:
         stdout, stderr, code = state_cli("configure", "state", "cleanup")
         assert code == 0
 
-    @pytest.mark.story("US-SES-009")
     def test_state_json_output(self, state_cli):
         """Test state commands with JSON output."""
         stdout, stderr, code = state_cli("--json", "configure", "state", "list")
@@ -464,7 +463,7 @@ class TestEnvWorkflowSequence:
     """Test environment variable management workflows."""
 
     # US-SET-010 (env run) has no dedicated test; closest coverage is here
-    pytestmark = pytest.mark.story("US-PLN-001", "US-SET-010", "US-SET-011")
+    pytestmark = pytest.mark.story("US-PLN-001", "US-SET-010")
 
     @pytest.fixture
     def env_repo(self):

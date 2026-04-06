@@ -4,22 +4,28 @@ Provides a unified domain service that cleans ALL session artifacts:
 - Session JSON state files for dead/completed sessions
 - Stdout/stderr log files in sessions/logs/
 - Context files in sessions/context/
+- Event bus JSONL files in /tmp/agentic/sessions/{session_id}/
 - Stale .json.lock files
 - Orphaned agentic-* tmux sessions
 
 Supports age-based purging, dry-run mode, and produces a cleanup report.
 Never cleans running sessions with alive PIDs.
+
+@story US-260401AG-009
 """
 
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from agenticcli.utils.event_bus import get_event_file_path
+from agenticcli.utils.session_state import cleanup_event_ledger
 from agenticcli.utils.state_store import StateStore, is_process_running
 
 logger = logging.getLogger(__name__)
@@ -35,6 +41,7 @@ class CleanupReport:
     sessions_cleaned: int = 0
     log_files_removed: int = 0
     context_files_removed: int = 0
+    event_files_removed: int = 0
     lock_files_removed: int = 0
     tmux_sessions_killed: int = 0
     bytes_freed: int = 0
@@ -46,6 +53,7 @@ class CleanupReport:
             "sessions_cleaned": self.sessions_cleaned,
             "log_files_removed": self.log_files_removed,
             "context_files_removed": self.context_files_removed,
+            "event_files_removed": self.event_files_removed,
             "lock_files_removed": self.lock_files_removed,
             "tmux_sessions_killed": self.tmux_sessions_killed,
             "bytes_freed": self.bytes_freed,
@@ -229,6 +237,10 @@ class SessionCleanupService:
             report.context_files_removed += 1
             report.bytes_freed += bytes_size
 
+        # Event bus JSONL file and session directory
+        # @story US-260401AG-009
+        self._clean_event_files(session_id, detail, report, dry_run=dry_run)
+
         report.details.append(detail)
 
     def _clean_orphaned_artifacts(
@@ -312,6 +324,35 @@ class SessionCleanupService:
                     "file": str(ctx_file),
                     "session_id": sid,
                 })
+
+    def _clean_event_files(
+        self,
+        session_id: str,
+        detail: dict,
+        report: CleanupReport,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Remove event bus JSONL file and session directory for a session.
+
+        Delegates to :func:`~agenticcli.utils.session_state.cleanup_event_ledger`
+        for the actual file removal.  Idempotent — no error if the event file
+        or directory is already missing.
+
+        @story US-260401AG-009
+        """
+        event_file = get_event_file_path(session_id)
+
+        if event_file.exists():
+            bytes_size = self._safe_file_size(event_file)
+            detail["files_removed"].append(str(event_file))
+            if not dry_run:
+                cleanup_event_ledger(session_id)
+            report.event_files_removed += 1
+            report.bytes_freed += bytes_size
+        elif not dry_run:
+            # Even if the file is gone, attempt directory cleanup
+            cleanup_event_ledger(session_id)
 
     def _clean_lock_files(
         self,

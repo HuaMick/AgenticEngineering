@@ -41,6 +41,7 @@ from .environment import (
 )
 from .epic import (
     EPIC_STATUS_MIGRATION,
+    VALID_TRANSITIONS,
     EpicCreateResult,
     EpicData,
     EpicDeleteResult,
@@ -51,6 +52,7 @@ from .epic import (
     EpicUpdateResult,
     FolderMoveResult,
     GitSafetyChecker,
+    InvalidStatusTransition,
     MoveResult,
     PhaseData,
     TicketData,
@@ -121,6 +123,8 @@ __all__ = [
     "is_secret_name",
     # Epic services (new canonical names)
     "EPIC_STATUS_MIGRATION",
+    "VALID_TRANSITIONS",
+    "InvalidStatusTransition",
     "EpicCreateResult",
     "EpicData",
     "EpicDeleteResult",

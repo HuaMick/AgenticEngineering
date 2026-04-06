@@ -7,10 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-GDN-079")
+pytestmark = []
 
 
-@pytest.mark.story("US-STR-008")
 class TestExtractStoryIdsFromDecorators:
     """Test the extended _extract_story_ids_from_decorators function."""
 
@@ -63,7 +62,6 @@ class TestExtractStoryIdsFromDecorators:
         assert ids == set()
 
 
-@pytest.mark.story("US-STR-008")
 class TestScanProductionCodeStoryMarkers:
     """Test the production code scanner."""
 
@@ -130,7 +128,6 @@ class TestScanProductionCodeStoryMarkers:
         assert "test_" in "test_something.py"
 
 
-@pytest.mark.story("US-STR-008")
 class TestStoryCodeTinyDB:
     """Test story_code TinyDB table operations."""
 

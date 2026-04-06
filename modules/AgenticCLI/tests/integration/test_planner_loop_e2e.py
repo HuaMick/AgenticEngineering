@@ -25,7 +25,7 @@ import pytest
 from agenticcli.utils.sdk_runner import SessionResult
 
 pytestmark = [
-    pytest.mark.story("US-PLN-027", "US-PLN-028", "US-PLN-038", "US-PLN-041", "US-PLN-046", "US-PLN-047", "US-PLN-055", "US-PLN-091"),
+    pytest.mark.story("US-PLN-027", "US-PLN-038", "US-PLN-046", "US-PLN-047", "US-PLN-055", "US-PLN-091"),
 ]
 
 

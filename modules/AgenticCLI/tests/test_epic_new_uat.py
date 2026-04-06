@@ -66,7 +66,7 @@ def _populate_tinydb_for_mock(epic_folder_name: str, db_path: Path) -> None:
             "epic_folder_name": epic_folder_name,
             "epic_folder": "",
             "name": "Mock Plan",
-            "status": "active",
+            "status": "planning",
         })
 
     # Add mock phase + ticket so planner_created_tickets check passes
@@ -129,7 +129,7 @@ def mock_claude_subprocess(_isolate_tinydb):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-074", "US-PLN-079", "US-GDN-084", "US-GDN-085", "US-GDN-088")
+@pytest.mark.story("US-PLN-079", "US-GDN-084", "US-GDN-085", "US-GDN-088")
 class TestUSORCH001InitiatePlanning:
     """UAT for US-ORCH-001: Initiate Implementation Planning.
 
@@ -265,7 +265,7 @@ class TestUSORCH001InitiatePlanning:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-074", "US-GDN-085")
+@pytest.mark.story("US-GDN-085")
 class TestUSORCH002PlanCreation:
     """UAT for plan creation workflow.
 
@@ -299,7 +299,7 @@ class TestUSORCH002PlanCreation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-074", "US-GDN-097", "US-GDN-098")
+@pytest.mark.story("US-GDN-097", "US-GDN-098")
 class TestUSORCH005OrchestrationPhases:
     """UAT for US-ORCH-005: Orchestration phase tracking via TinyDB.
 
@@ -394,7 +394,6 @@ class TestUSORCH005OrchestrationPhases:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-074")
 class TestFullWorkflowIntegration:
     """Integration tests validating complete user journey."""
 

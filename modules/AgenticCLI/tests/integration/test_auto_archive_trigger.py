@@ -13,7 +13,7 @@ Covers:
 import pytest
 import yaml
 
-pytestmark = [pytest.mark.integration, pytest.mark.story("US-PLN-064")]
+pytestmark = [pytest.mark.integration]
 
 
 class TestNoAutoArchiveOnCompletion:
@@ -71,7 +71,7 @@ class TestNoAutoArchiveOnCompletion:
         # Populate TinyDB with the same data
         tinydb_populator("260130AA_auto_archive_test", plan_path, {
             "name": "auto-archive-test-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Build Phase",
@@ -125,7 +125,7 @@ class TestNoAutoArchiveOnCompletion:
         # Populate TinyDB
         tinydb_populator("260130AA_single_task_test", plan_path, {
             "name": "single-task-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Build Phase",
@@ -197,7 +197,7 @@ class TestNoAutoArchiveOnCompletion:
         # Populate TinyDB with tickets from both files
         tinydb_populator("260130AA_multi_file_test", plan_path, {
             "name": "multi-file-test-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Build Phase",
@@ -366,7 +366,7 @@ class TestNoAutoArchiveOnCompletion:
         # Populate TinyDB
         tinydb_populator("260130AA_edge_case_test", plan_path, {
             "name": "edge-case-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Build Phase",
@@ -433,7 +433,7 @@ class TestIsPlanFullyCompleted:
         # Register in TinyDB with no tickets
         tinydb_populator("260130AA_completion_check", plan_folder, {
             "name": "empty-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [{"name": "Build Phase", "tickets": []}],
         })
 
@@ -463,7 +463,7 @@ class TestIsPlanFullyCompleted:
 
         tinydb_populator("260130AA_completion_check", plan_folder, {
             "name": "incomplete-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Build Phase",
@@ -501,7 +501,7 @@ class TestIsPlanFullyCompleted:
 
         tinydb_populator("260130AA_completion_check", plan_folder, {
             "name": "incomplete-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Build Phase",
@@ -539,7 +539,7 @@ class TestIsPlanFullyCompleted:
 
         tinydb_populator("260130AA_completion_check", plan_folder, {
             "name": "completed-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Build Phase",
@@ -595,7 +595,7 @@ class TestIsPlanFullyCompleted:
         # TinyDB has both sets of tickets; one is pending
         tinydb_populator("260130AA_completion_check", plan_folder, {
             "name": "multi-file-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Build Phase",
@@ -664,7 +664,7 @@ class TestIsPlanFullyCompleted:
         # TinyDB only has the completed task (from plan_build.yml context)
         tinydb_populator("260130AA_completion_check", plan_folder, {
             "name": "completed-plan",
-            "status": "active",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Build Phase",

@@ -204,6 +204,63 @@ class DependencyService:
                 ready.append(epic_name)
         return ready
 
+    def refresh_blocked_statuses(self) -> dict[str, str]:
+        """Reconcile blocked/in_progress statuses with current dependency state.
+
+        For each ``in_progress`` epic: if deps unsatisfied → transition to ``blocked``.
+        For each ``blocked`` epic: if deps now satisfied + in_progress preconditions
+        met → transition to ``in_progress``.
+
+        Returns:
+            Dict of epic_folder_name → new_status for any epics that changed.
+        """
+        changes: dict[str, str] = {}
+        completed = self._get_completed_epic_names()
+
+        # Check in_progress epics that may have become blocked
+        for epic in self._repo.list_epics(status="in_progress"):
+            deps = self._repo.get_dependencies(epic.epic_folder_name)
+            if deps:
+                unsatisfied = [d for d in deps if d not in completed]
+                if unsatisfied:
+                    try:
+                        self._repo.transition_epic_status(
+                            epic.epic_folder_name, "blocked",
+                        )
+                        changes[epic.epic_folder_name] = "blocked"
+                        logger.info(
+                            "Refreshed %s → blocked (deps: %s)",
+                            epic.epic_folder_name, unsatisfied,
+                        )
+                    except Exception as e:
+                        logger.debug(
+                            "Could not transition %s to blocked: %s",
+                            epic.epic_folder_name, e,
+                        )
+
+        # Check blocked epics that may now be unblocked
+        for epic in self._repo.list_epics(status="blocked"):
+            deps = self._repo.get_dependencies(epic.epic_folder_name)
+            unsatisfied = [d for d in deps if d not in completed] if deps else []
+            if not unsatisfied:
+                # Deps satisfied — try to promote to in_progress
+                try:
+                    self._repo.transition_epic_status(
+                        epic.epic_folder_name, "in_progress",
+                    )
+                    changes[epic.epic_folder_name] = "in_progress"
+                    logger.info(
+                        "Refreshed %s → in_progress (deps satisfied)",
+                        epic.epic_folder_name,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "Could not transition %s to in_progress: %s",
+                        epic.epic_folder_name, e,
+                    )
+
+        return changes
+
     # ------------------------------------------------------------------
     # Topological Sort / Execution Ordering
     # ------------------------------------------------------------------

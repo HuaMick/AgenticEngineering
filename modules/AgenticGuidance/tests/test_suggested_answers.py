@@ -14,7 +14,7 @@ import pytest
 import tempfile
 import time
 
-pytestmark = pytest.mark.story("US-GDN-021")
+pytestmark = []
 from pathlib import Path
 
 from agenticguidance.models.question import (

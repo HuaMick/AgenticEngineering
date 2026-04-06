@@ -1,3 +1,4 @@
+# story: US-SET-005
 """Unified configuration and preferences handler.
 
 This is the single source of truth for both `agentic config` and

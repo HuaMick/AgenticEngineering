@@ -302,7 +302,6 @@ class TestPhaseCRUD:
         assert all(isinstance(p, PhaseData) for p in phases)
 
 
-@pytest.mark.story("US-PLN-084")
 class TestLifecycleOperations:
     """GD-200-LC: archive_epic, unarchive_epic, cancel_epic lifecycle transitions."""
 

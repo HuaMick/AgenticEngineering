@@ -1,3 +1,4 @@
+# story: US-SES-001, US-SET-014
 """SDK Pane Runner: runs exactly one SDK query() per process inside a tmux pane.
 
 This script is the fix for the SDK zombie subprocess bug (SDK #434, #515, #573, #1089).
@@ -37,6 +38,24 @@ logger = logging.getLogger(__name__)
 
 # Import role configs and session state helpers
 from agenticcli.utils.session_state import mark_failed
+
+# --- Event bus (graceful degradation) ---
+# If the event_bus module is unavailable, the pane runner works exactly as
+# before — no events are emitted, no new dependencies required.
+try:
+    from agenticcli.utils.event_bus import (
+        EventWriter,
+        StartedEvent,
+        ToolUseEvent,
+        ToolResultEvent,
+        ErrorEvent,
+        CompletedEvent,
+        make_timestamp,
+    )
+
+    EVENT_BUS_AVAILABLE = True
+except ImportError:
+    EVENT_BUS_AVAILABLE = False
 from agenticcli.utils.sdk_runner import (
     ROLE_TOOL_ALLOWLIST,
     ROLE_TIMEOUT_SECONDS,
@@ -96,8 +115,17 @@ async def _run_sdk_query(
     role: str,
     working_dir: str,
     timeout: int,
+    event_writer: "EventWriter | None" = None,
 ) -> dict:
     """Run a single SDK query() and return structured result data.
+
+    Args:
+        prompt: The compiled prompt text.
+        role: Agent role identifier.
+        working_dir: Working directory for the agent.
+        timeout: Timeout in seconds.
+        event_writer: Optional EventWriter for emitting tool_use/tool_result
+            events during the streaming loop.  ``None`` disables emission.
 
     Returns dict with: status, cost_usd, duration_ms, num_turns, usage,
     sdk_session_id, result_text, error.
@@ -146,7 +174,7 @@ async def _run_sdk_query(
                     elapsed = time.monotonic() - start_time
                     print(f"[{elapsed:.1f}s] {mtype}", flush=True)
 
-                    # Collect assistant text
+                    # Collect assistant text and detect tool_use / tool_result blocks.
                     if hasattr(message, "content") and hasattr(message, "role"):
                         if getattr(message, "role", None) == "assistant":
                             for block in getattr(message, "content", []):
@@ -154,6 +182,45 @@ async def _run_sdk_query(
                                     result_text_parts.append(block.text)
                                     # Print agent text to tmux pane
                                     print(block.text, end="", flush=True)
+
+                                # --- Event bus: tool_use detection ---
+                                # SDK ToolUseBlock has a .name attribute and
+                                # type(block).__name__ == "ToolUseBlock".
+                                if event_writer is not None and hasattr(block, "name") and hasattr(block, "id"):
+                                    try:
+                                        # Truncate input preview to 200 chars
+                                        raw_input = getattr(block, "input", None)
+                                        input_preview = ""
+                                        if raw_input is not None:
+                                            input_str = str(raw_input) if not isinstance(raw_input, str) else raw_input
+                                            input_preview = input_str[:200]
+                                        event_writer.emit(ToolUseEvent(
+                                            timestamp=make_timestamp(),
+                                            session_id=event_writer.session_id,
+                                            tool_name=block.name,
+                                            tool_input_preview=input_preview,
+                                        ))
+                                    except Exception:
+                                        pass  # Never let event emission break the query
+
+                                # --- Event bus: tool_result detection ---
+                                # SDK ToolResultBlock has a .tool_use_id attribute
+                                # and type(block).__name__ == "ToolResultBlock".
+                                if event_writer is not None and hasattr(block, "tool_use_id") and not hasattr(block, "name"):
+                                    try:
+                                        is_error = getattr(block, "is_error", False) or False
+                                        raw_content = getattr(block, "content", "")
+                                        output_str = str(raw_content) if not isinstance(raw_content, str) else raw_content
+                                        output_preview = output_str[:200]
+                                        event_writer.emit(ToolResultEvent(
+                                            timestamp=make_timestamp(),
+                                            session_id=event_writer.session_id,
+                                            tool_name="",  # tool_result blocks don't carry tool_name
+                                            is_error=is_error,
+                                            output_preview=output_preview,
+                                        ))
+                                    except Exception:
+                                        pass  # Never let event emission break the query
 
                     # Capture final ResultMessage
                     if hasattr(message, "subtype") and hasattr(message, "duration_ms"):
@@ -284,45 +351,97 @@ def run_pane(
     print(f"Context: {len(prompt)} chars", flush=True)
     print(f"========================", flush=True)
 
-    # Run the SDK query
-    result = asyncio.run(_run_sdk_query(prompt, role, working_dir, effective_timeout))
+    # --- Event bus: create writer (graceful degradation) ---
+    # @story US-260401AG-003
+    event_writer: "EventWriter | None" = None
+    if EVENT_BUS_AVAILABLE:
+        try:
+            event_writer = EventWriter(session_id)
+            event_writer.emit(StartedEvent(
+                timestamp=make_timestamp(),
+                session_id=session_id,
+                role=role,
+                working_dir=working_dir,
+            ))
+        except Exception as exc:
+            # EventWriter creation or StartedEvent emission failed.
+            # Log and continue without event bus — graceful degradation.
+            print(f"[event-bus] Failed to initialise EventWriter: {exc}", flush=True)
+            event_writer = None
 
-    # Write result to session state
-    state = _load_existing_state(state_file)
-    state.update({
-        "session_id": session_id,
-        "status": result["status"],
-        "ended_at": datetime.now().isoformat(),
-        "exit_code": 0 if result["status"] == "completed" else 1,
-        "cost_usd": result["cost_usd"],
-        "duration_ms": result["duration_ms"],
-        "num_turns": result["num_turns"],
-        "usage": result["usage"],
-        "sdk_session_id": result["sdk_session_id"],
-        "transport": "sdk-tmux",
-    })
-
-    if result["error"]:
-        state["error"] = result["error"]
-        mark_failed(
-            state,
-            error_code="sdk_pane_failure",
-            error_type="sdk_error",
-            detail=result["error"],
-            retryable=True,
+    try:
+        # Run the SDK query (pass event_writer for tool_use/tool_result emission)
+        result = asyncio.run(
+            _run_sdk_query(prompt, role, working_dir, effective_timeout, event_writer=event_writer)
         )
 
-    _write_state_atomic(state_file, state)
+        # --- Event bus: emit completed / error events ---
+        if event_writer is not None:
+            try:
+                if result["error"]:
+                    event_writer.emit(ErrorEvent(
+                        timestamp=make_timestamp(),
+                        session_id=session_id,
+                        error_message=result["error"][:500],
+                        error_type="sdk_error",
+                    ))
+                event_writer.emit(CompletedEvent(
+                    timestamp=make_timestamp(),
+                    session_id=session_id,
+                    status=result["status"],
+                    cost_usd=result["cost_usd"],
+                    duration_ms=result["duration_ms"],
+                    num_turns=result["num_turns"],
+                    usage=result.get("usage", {}),
+                    sdk_session_id=result.get("sdk_session_id", ""),
+                ))
+            except Exception:
+                pass  # Never let event emission break the pane runner
 
-    exit_code = 0 if result["status"] == "completed" else 1
-    print(f"\n=== Pane Runner Complete ===", flush=True)
-    print(f"Status: {result['status']}", flush=True)
-    print(f"Cost: ${result['cost_usd']:.4f}", flush=True)
-    print(f"Duration: {result['duration_ms']}ms", flush=True)
-    print(f"Turns: {result['num_turns']}", flush=True)
-    print(f"Exit code: {exit_code}", flush=True)
+        # Write result to session state (unchanged — backward compat)
+        state = _load_existing_state(state_file)
+        state.update({
+            "session_id": session_id,
+            "status": result["status"],
+            "ended_at": datetime.now().isoformat(),
+            "exit_code": 0 if result["status"] == "completed" else 1,
+            "cost_usd": result["cost_usd"],
+            "duration_ms": result["duration_ms"],
+            "num_turns": result["num_turns"],
+            "usage": result["usage"],
+            "sdk_session_id": result["sdk_session_id"],
+            "transport": "sdk-tmux",
+        })
 
-    return exit_code
+        if result["error"]:
+            state["error"] = result["error"]
+            mark_failed(
+                state,
+                error_code="sdk_pane_failure",
+                error_type="sdk_error",
+                detail=result["error"],
+                retryable=True,
+            )
+
+        _write_state_atomic(state_file, state)
+
+        exit_code = 0 if result["status"] == "completed" else 1
+        print(f"\n=== Pane Runner Complete ===", flush=True)
+        print(f"Status: {result['status']}", flush=True)
+        print(f"Cost: ${result['cost_usd']:.4f}", flush=True)
+        print(f"Duration: {result['duration_ms']}ms", flush=True)
+        print(f"Turns: {result['num_turns']}", flush=True)
+        print(f"Exit code: {exit_code}", flush=True)
+
+        return exit_code
+
+    finally:
+        # Always close the EventWriter to flush and release the file handle.
+        if event_writer is not None:
+            try:
+                event_writer.close()
+            except Exception:
+                pass
 
 
 def main():

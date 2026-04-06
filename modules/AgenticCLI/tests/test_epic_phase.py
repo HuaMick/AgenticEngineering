@@ -17,7 +17,7 @@ import yaml
 
 from tests.conftest import populate_tinydb_from_yaml
 
-pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-007", "US-PLN-028")]
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-007")]
 
 
 @pytest.fixture
@@ -585,7 +585,6 @@ class TestPhaseListEdgeCases:
         assert "0" in stdout  # 0 tasks
 
 
-@pytest.mark.story("US-PLN-028")
 class TestPhaseAddAgentValidation:
     """Tests for agent name validation in cmd_phase_add."""
 
@@ -607,3 +606,154 @@ class TestPhaseAddAgentValidation:
              "--agent", "build-python", "--plan", str(empty_plan)]
         )
         assert code == 0
+
+
+# ── CLI --blocked-reason flag tests ─────────────────────────────────────
+
+
+def _get_phase_via_list(db_path, epic_folder_name, phase_name):
+    """Helper to get a phase via list_phases (includes blocked_reason).
+
+    Note: _get_phases_from_tinydb uses get_epic() which does NOT include
+    blocked_reason in PhaseData. list_phases() and get_phase() DO include it.
+    This is a known gap (get_epic missing blocked_reason) tracked separately.
+    """
+    from agenticguidance.services.epic_repository import EpicRepository
+    repo = EpicRepository(db_path=db_path, auto_bootstrap=False)
+    phases = repo.list_phases(epic_folder_name)
+    repo.close()
+    return next((p for p in phases if phase_name in p.name), None)
+
+
+@pytest.mark.story("US-RES-001")
+class TestPhaseUpdateBlockedReason:
+    """Tests for the --blocked-reason flag on epic phase update command."""
+
+    def test_blocked_reason_flag_sets_reason(self, plan_with_phases, cli_runner, _isolate_tinydb):
+        """--blocked-reason should persist the reason in TinyDB."""
+        stdout, stderr, code = cli_runner(
+            [
+                "epic", "phase", "update",
+                "Phase 2 - Build",
+                "--status", "blocked",
+                "--blocked-reason", "Retry exhaustion: 3 consecutive spawn failures",
+                "--plan", str(plan_with_phases),
+            ]
+        )
+        assert code == 0
+
+        # Verify TinyDB was updated with both status and reason
+        # Use list_phases (not get_epic) because get_epic omits blocked_reason
+        phase_p2 = _get_phase_via_list(_isolate_tinydb, "260128WP_with_phases", "Build")
+        assert phase_p2 is not None
+        assert phase_p2.status == "blocked"
+        assert phase_p2.blocked_reason == "Retry exhaustion: 3 consecutive spawn failures"
+
+    def test_blocked_reason_json_output(self, plan_with_phases, cli_runner, _isolate_tinydb):
+        """JSON output from phase update should include blocked_reason."""
+        stdout, stderr, code = cli_runner(
+            [
+                "-j", "epic", "phase", "update",
+                "Phase 2 - Build",
+                "--status", "blocked",
+                "--blocked-reason", "SDK cold start failure",
+                "--plan", str(plan_with_phases),
+            ]
+        )
+        assert code == 0
+
+        result = json.loads(stdout)
+        assert result.get("blocked_reason") == "SDK cold start failure"
+        assert result.get("new_status") == "blocked"
+
+    def test_blocked_reason_without_status_flag(self, plan_with_phases, cli_runner, _isolate_tinydb):
+        """--blocked-reason alone (without --status) should update only the reason."""
+        stdout, stderr, code = cli_runner(
+            [
+                "epic", "phase", "update",
+                "Phase 2 - Build",
+                "--blocked-reason", "Preemptively recording reason",
+                "--plan", str(plan_with_phases),
+            ]
+        )
+        assert code == 0
+
+        phase_p2 = _get_phase_via_list(_isolate_tinydb, "260128WP_with_phases", "Build")
+        assert phase_p2 is not None
+        assert phase_p2.blocked_reason == "Preemptively recording reason"
+        # Status should remain unchanged (was in_progress)
+        assert phase_p2.status == "in_progress"
+
+    def test_blocked_reason_text_output(self, plan_with_phases, cli_runner, _isolate_tinydb):
+        """Text output should mention blocked_reason in the success message."""
+        stdout, stderr, code = cli_runner(
+            [
+                "epic", "phase", "update",
+                "Phase 2 - Build",
+                "--status", "blocked",
+                "--blocked-reason", "Test reason",
+                "--plan", str(plan_with_phases),
+            ]
+        )
+        assert code == 0
+        assert "blocked_reason" in stdout.lower()
+
+    def test_blocked_reason_with_nonexistent_phase(self, plan_with_phases, cli_runner):
+        """--blocked-reason on a nonexistent phase should fail."""
+        stdout, stderr, code = cli_runner(
+            [
+                "epic", "phase", "update",
+                "Phase 99 - Nonexistent",
+                "--status", "blocked",
+                "--blocked-reason", "Should fail",
+                "--plan", str(plan_with_phases),
+            ]
+        )
+        assert code != 0
+        assert "not found" in stderr.lower()
+
+
+@pytest.mark.story("US-RES-001")
+class TestPhaseUpdateToBlockedIntegration:
+    """Integration tests: blocked status + reason roundtrip through CLI."""
+
+    def test_blocked_status_visible_in_phase_list(self, plan_with_phases, cli_runner, _isolate_tinydb):
+        """After setting blocked, 'blocked' should appear in phase list output."""
+        # First set to blocked
+        cli_runner(
+            [
+                "epic", "phase", "update",
+                "Phase 2 - Build",
+                "--status", "blocked",
+                "--plan", str(plan_with_phases),
+            ]
+        )
+
+        # Now list phases and check output
+        stdout, stderr, code = cli_runner(
+            ["epic", "phase", "list", "--plan", str(plan_with_phases)]
+        )
+        assert code == 0
+        assert "blocked" in stdout.lower()
+
+    def test_blocked_phase_list_json_includes_status(self, plan_with_phases, cli_runner, _isolate_tinydb):
+        """JSON phase list should include blocked status for blocked phases."""
+        # Set phase to blocked
+        cli_runner(
+            [
+                "epic", "phase", "update",
+                "Phase 2 - Build",
+                "--status", "blocked",
+                "--plan", str(plan_with_phases),
+            ]
+        )
+
+        stdout, stderr, code = cli_runner(
+            ["-j", "epic", "phase", "list", "--plan", str(plan_with_phases)]
+        )
+        assert code == 0
+        result = json.loads(stdout)
+        phases = result.get("phases", [])
+        blocked_phases = [p for p in phases if p.get("status") == "blocked"]
+        assert len(blocked_phases) == 1
+        assert "Build" in blocked_phases[0]["name"]

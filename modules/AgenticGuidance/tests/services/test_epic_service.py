@@ -2,8 +2,6 @@
 
 Validates that build-plan epics are correctly classified vs infra/guidance epics.
 Ticket: TS_001 — 260327AG_mandatory_ticket_story_binding_for_build_plans
-
-@story US-PLN-073
 """
 
 import pytest
@@ -11,7 +9,7 @@ import pytest
 from agenticguidance.services.epic import EpicService
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = pytest.mark.story("US-PLN-073")
+pytestmark = []
 
 
 @pytest.fixture

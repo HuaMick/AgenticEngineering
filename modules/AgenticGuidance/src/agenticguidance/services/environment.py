@@ -1,3 +1,4 @@
+# story: US-SET-008
 """Environment Workflow - secure environment injection for subprocesses.
 
 Provides context-aware environment variable injection without creating

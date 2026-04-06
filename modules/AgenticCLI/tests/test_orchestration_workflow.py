@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-053", "US-PLN-028", "US-PLN-041", "US-GDN-097", "US-GDN-098", "US-PLN-068", "US-PLN-069", "US-PLN-077")
+pytestmark = pytest.mark.story("US-PLN-053", "US-GDN-097", "US-GDN-098", "US-PLN-068", "US-PLN-069", "US-PLN-077")
 
 
 # ---------------------------------------------------------------------------

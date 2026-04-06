@@ -4,6 +4,12 @@
 # SCOPE: Structural definitions for .yml files in docs/userstories/ directories.
 # Story files define user stories with acceptance criteria, test status, and relationships.
 #
+# PRINCIPLE: Stories describe SYSTEM MECHANICS — the architectural decisions and
+# plumbing that make this system work differently from a generic one. They do NOT
+# describe asset content (what's in definitions/guidelines/specs) or restate
+# standard engineering practices. Think of the guidance system as a library:
+# assets are interchangeable books; stories describe the library system itself.
+#
 # RELATED:
 #   - modules/AgenticGuidance/src/agenticguidance/services/story.py (StoryService)
 #   - modules/AgenticCLI/src/agenticcli/commands/stories.py (CLI commands)
@@ -160,6 +166,34 @@ story_schema:
         - "agentic setup"
         - "agentic setup --force"
 
+    related_files:
+      type: list
+      items:
+        type: string
+      description: |
+        List of source files that implement this story (relative to repo root).
+        Used for bidirectional traceability: YAML lists files, files list stories
+        via # story: headers. Staleness detection diffs these files against
+        last_pass_commit to determine if re-testing is needed.
+      example:
+        - "modules/AgenticCLI/src/agenticcli/commands/epic.py"
+        - "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
+
+    last_pass_commit:
+      type: string
+      description: |
+        Short git commit hash where tests last passed for this story.
+        Used for staleness detection: if any related_files changed since
+        this commit, the story is marked 'stale'.
+      example: "6ef014f"
+
+    last_uat_commit:
+      type: string
+      description: |
+        Short git commit hash where UAT last passed for this story.
+        If related_files changed since this commit, the story is 'uat_stale'.
+      example: "b412d8e"
+
     # Lifecycle field
     lifecycle:
       type: string
@@ -175,13 +209,45 @@ story_schema:
         Valid transitions: proposal → under-construction → implemented → deprecated → archived.
         Existing stories without this field default to "implemented".
 
+    # Pattern inheritance
+    inherits_patterns:
+      type: list
+      description: |
+        List of pattern references with parameter bindings. Each entry
+        specifies a pattern ID and binds concrete values to the pattern's
+        declared parameters. This enables stories to inherit reusable
+        cross-cutting verification behaviors.
+      item_schema:
+        id:
+          type: string
+          pattern: "^PAT-[A-Z]{2,4}-\\d{3}$"
+          description: "Pattern ID to inherit (e.g., PAT-CLI-001)"
+          required: true
+        bind:
+          type: object
+          description: |
+            Key-value map binding pattern parameters to concrete values.
+            Keys must match parameter names declared in the pattern.
+            All required parameters must be bound.
+          required: true
+      example:
+        - id: PAT-CLI-001
+          bind:
+            command: "agentic epic list"
+            expected_keys: [name, status, created]
+        - id: PAT-DAT-001
+          bind:
+            operation: "update epic status"
+            target_file: "epics.db"
+
     # Code tagging
     code_tagging:
       description: |
-        Production code implementing a story is tagged with @story('US-XXX-NNN') decorator
-        from agenticguidance.markers. One story can map to many functions/classes.
-        The decorator is a no-op at runtime (zero cost) — it stamps a _story_ids tuple
-        on the decorated object for AST scanning by `agentic stories sync`.
+        Production code implementing a story is tagged with a file-level header comment:
+          # story: US-XXX-NNN, US-YYY-NNN
+        Placed at the top of the file (before or after module docstring).
+        Comma-separated for multiple stories. Greppable and maps to git diff output.
+        Bidirectional with related_files: YAML lists files, files list stories.
 
     # Test tracking fields
     test_status:
@@ -224,6 +290,112 @@ id_prefixes:
     US-GUI: "Guidance and agent definitions"
     US-CLI: "CLI commands and UX"
 
+  pattern_prefixes:
+    description: |
+      Pattern ID prefixes map to cross-cutting verification domains.
+      Format: PAT-<DOMAIN>-<NNN>
+    known_prefixes:
+      PAT-CLI: "CLI output, flags, error messages"
+      PAT-DAT: "FileLock atomicity, TinyDB CRUD, persistence"
+      PAT-EXE: "Test-fix loops, bounded retry, feedback routing"
+      PAT-CTX: "CCI bootstrap, input resolution"
+      PAT-TST: "UAT fences, coverage, reward hacking"
+      PAT-AGT: "Agent spawning, lifecycle, routing"
+
+# =============================================================================
+# PATTERN OBJECT SCHEMA
+# =============================================================================
+
+pattern_schema:
+  description: |
+    Patterns are reusable cross-cutting verification behaviors that stories
+    inherit via `inherits_patterns`. They live in docs/userstories/Patterns/
+    organized by domain. Patterns are NOT UAT-verified directly — they are
+    verified through the stories that claim them.
+
+    Industry precedent: RSpec shared_examples, Gherkin Scenario Outline.
+
+  location_pattern: "docs/userstories/Patterns/<domain>/<NN>_<topic>.yml"
+
+  top_level_key:
+    valid_keys:
+      - "patterns"
+
+  required_fields:
+    id:
+      type: string
+      pattern: "^PAT-[A-Z]{2,4}-\\d{3}$"
+      description: "Unique pattern identifier. Format: PAT-<DOMAIN>-<NUMBER>"
+      examples:
+        - "PAT-CLI-001"
+        - "PAT-DAT-002"
+
+    title:
+      type: string
+      description: "Short descriptive title for the pattern."
+
+  optional_fields:
+    description:
+      type: string
+      description: "Detailed description of the cross-cutting behavior."
+
+    tags:
+      type: list
+      items:
+        type: string
+      description: "Tags for discovery and filtering."
+
+    applicable_categories:
+      type: list
+      items:
+        type: string
+        pattern: "^US-[A-Z]{2,4}$"
+      description: "Story category prefixes this pattern applies to."
+
+    parameters:
+      type: object
+      description: |
+        Declared parameters that must be bound by inheriting stories.
+        Each key is a parameter name, value is a descriptor object with:
+        - description (string, required)
+        - required (bool, default true)
+        - type (string, default "string")
+        - default (any, optional)
+      example:
+        command:
+          description: "The CLI command under test"
+          required: true
+        expected_keys:
+          description: "Top-level JSON keys expected"
+          required: true
+          type: list
+
+    verification:
+      type: object
+      description: |
+        Three verification layers, all optional:
+        - behavioral: step-by-step actions with expected outcomes (uses parameter placeholders)
+        - structural: code inspection checks (grep patterns in file globs)
+        - enforcement: sweep strategy for validating all claimant stories
+      schema:
+        behavioral:
+          steps:
+            type: list
+            item_schema:
+              step: { type: integer }
+              action: { type: string, description: "Action with {param} placeholders" }
+              expect: { type: string, description: "Expected outcome with {param} placeholders" }
+        structural:
+          checks:
+            type: list
+            item_schema:
+              description: { type: string }
+              look_for: { type: string, description: "Regex pattern to search for" }
+              in_files: { type: string, description: "Glob pattern for target files" }
+        enforcement:
+          sweep: { type: string, description: "all_claimants or specific scope" }
+          method: { type: string, description: "Procedure for verifying all claimants" }
+
 # =============================================================================
 # VALIDATION CHECKLIST
 # =============================================================================
@@ -244,8 +416,23 @@ validation_checklist:
 
   directory_validation:
     - "Stories are organized under docs/userstories/<Category>/"
+    - "Patterns are organized under docs/userstories/Patterns/<domain>/"
     - "Category directories use PascalCase naming"
     - "Files are numbered with NN_ prefix for ordering"
+
+  pattern_validation:
+    - "Each pattern has a unique 'id' field"
+    - "ID matches pattern PAT-[A-Z]{2,4}-\\d{3}"
+    - "Each pattern has a non-empty 'title' field"
+    - "If 'parameters' is set, each param has a 'description'"
+    - "If 'verification.behavioral' is set, steps have 'action' and 'expect'"
+    - "If 'verification.structural' is set, checks have 'look_for' and 'in_files'"
+
+  inherits_patterns_validation:
+    - "Each entry has a valid 'id' matching PAT-[A-Z]{2,4}-\\d{3}"
+    - "Each entry has a 'bind' object"
+    - "All required pattern parameters are present in 'bind'"
+    - "Pattern ID resolves to an existing pattern file"
 
 # =============================================================================
 # COMPLETE EXAMPLE

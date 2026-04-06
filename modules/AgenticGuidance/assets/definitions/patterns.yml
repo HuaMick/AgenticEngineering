@@ -1,0 +1,140 @@
+patterns: |
+  Patterns are reusable cross-cutting verification behaviors that user stories
+  inherit. They define HOW to verify a behavior — stories define WHAT to verify.
+
+  ## What is a Pattern?
+
+  A pattern captures a recurring behavioral specification that appears across
+  multiple stories. Instead of duplicating verification steps in every story,
+  the pattern declares them once with parameterized placeholders, and stories
+  bind concrete values.
+
+  Industry precedent:
+  - RSpec `shared_examples` — named reusable behavioral specs
+  - Gherkin `Background` / `Scenario Outline` — parameterized scenarios
+  - SAFe `Capabilities` — cross-cutting behaviors spanning multiple features
+
+  ## Pattern ID Format
+
+  `PAT-{DOMAIN}-{NNN}`  (e.g., PAT-CLI-001, PAT-DAT-002)
+
+  Domain codes:
+  - CLI: CLI output, flags, error messages
+  - DAT: FileLock atomicity, TinyDB CRUD, persistence
+  - EXE: Test-fix loops, bounded retry, feedback routing
+  - CTX: CCI bootstrap, input resolution
+  - TST: UAT fences, coverage, reward hacking
+  - AGT: Agent spawning, lifecycle, routing
+
+  ## Location
+
+  `docs/userstories/Patterns/<domain>/<NN>_<topic>.yml`
+
+  Each file contains a `patterns` list. Domain directories are lowercase.
+  `00_metadata.yml` at the Patterns root defines domain mappings.
+
+  ## Schema
+
+  Required fields:
+  - `id` (string): Unique identifier matching `PAT-[A-Z]{2,4}-\d{3}`
+  - `title` (string): Short descriptive title
+
+  Optional fields:
+  - `description` (string): Detailed behavior description
+  - `tags` (list[str]): Discovery and filtering tags
+  - `applicable_categories` (list[str]): Story prefixes this pattern applies to
+  - `parameters` (object): Declared parameters with description, required, type, default
+  - `verification` (object): Three verification layers (see below)
+
+  ## Parameters
+
+  Patterns declare parameters that stories must bind:
+
+  ```yaml
+  parameters:
+    command:
+      description: "The CLI command under test"
+      required: true
+    expected_keys:
+      description: "Top-level JSON keys expected"
+      required: true
+      type: list
+  ```
+
+  Parameter placeholders appear as `{param_name}` in verification steps.
+
+  ## Three Verification Layers
+
+  ### 1. Behavioral (run it)
+  Step-by-step actions with expected outcomes, using `{param}` placeholders:
+  ```yaml
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Run `{command} --json`"
+        expect: "stdout is valid JSON"
+  ```
+
+  ### 2. Structural (inspect code)
+  Regex-based code inspection checks:
+  ```yaml
+  verification:
+    structural:
+      checks:
+      - description: "Handler uses print_json()"
+        look_for: "print_json|json_output"
+        in_files: "modules/AgenticCLI/src/agenticcli/commands/*.py"
+  ```
+
+  ### 3. Enforcement (sweep claimants)
+  Strategy for verifying all stories that inherit this pattern:
+  ```yaml
+  verification:
+    enforcement:
+      sweep: "all_claimants"
+      method: |
+        For each claimant story:
+        1. Extract bound parameters
+        2. Run behavioral steps with bound values
+        3. Report pass/fail per story
+  ```
+
+  ## How Stories Inherit Patterns
+
+  Stories use the `inherits_patterns` field:
+  ```yaml
+  inherits_patterns:
+  - id: PAT-CLI-001
+    bind:
+      command: "agentic epic list"
+      expected_keys: [name, status, created]
+  ```
+
+  The binding lives in the story, NOT the pattern. This keeps patterns
+  fully reusable across any story.
+
+  ## Key Properties
+
+  - Patterns are NOT UAT-verified directly — verified through claiming stories
+  - Patterns don't have lifecycle states — they're active (present) or removed
+  - No story-to-story inheritance. `related_stories` handles cross-refs.
+  - PatternService is separate from StoryService (single responsibility)
+  - Patterns are agent-executed guidance — structured checklists, not programmatic tests
+
+  ## Extracting Patterns from Existing Stories
+
+  When multiple stories share the same verification steps:
+  1. Identify the common behavior (e.g., "supports --json flag")
+  2. Abstract the behavior into parameters (e.g., {command}, {expected_keys})
+  3. Create a pattern file in the appropriate domain directory
+  4. Replace duplicated steps in stories with `inherits_patterns` + bindings
+  5. Keep story-specific steps that aren't covered by the pattern
+
+  ## CLI Commands
+
+  - `agentic stories patterns` — list all patterns, optionally by domain
+  - `agentic stories pattern-cat <PAT-ID>` — display pattern details
+  - `agentic stories pattern-claimants <PAT-ID>` — list inheriting stories
+  - `agentic stories pattern-verify <PAT-ID>` — enforcement sweep
+  - `agentic stories pattern-check <US-ID>` — show story's inherited patterns

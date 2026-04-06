@@ -17,7 +17,7 @@ from agenticguidance.services.context import (
 pytestmark = pytest.mark.story("US-GDN-004")
 
 
-@pytest.mark.story("US-GDN-021", "US-GDN-088")
+@pytest.mark.story("US-GDN-088")
 class TestMainFirstEpicResolver:
     """Tests for MainFirstEpicResolver class."""
 
@@ -253,7 +253,7 @@ class TestMainFirstEpicResolver:
         repo.close()
 
 
-@pytest.mark.story("US-GDN-022", "US-GDN-030", "US-GDN-010", "US-GDN-011", "US-GDN-013", "US-GDN-040", "US-GDN-034", "US-GDN-035", "US-GDN-036", "US-GDN-037", "US-GDN-039")
+@pytest.mark.story("US-GDN-022", "US-GDN-030", "US-GDN-010", "US-GDN-011", "US-GDN-013", "US-GDN-034", "US-GDN-035", "US-GDN-036", "US-GDN-037", "US-GDN-039")
 class TestGetRoleProcess:
     """Tests for get_role_process function."""
 
@@ -316,7 +316,6 @@ class TestGetRoleProcess:
         assert result["manifest"]["agent"]["name"] == "Build Python Agent"
         assert result["invocation_context"] == "python-build"
 
-    @pytest.mark.story("US-GDN-012")
     @patch("agenticguidance.services.context._find_agents_directory")
     def test_returns_data_with_process_only(self, mock_find, tmp_path):
         """Test returns data when only process.yml exists (no manifest)."""
@@ -419,7 +418,7 @@ class TestGetRoleInputsManifest:
         assert len(result["layers"]) == 1
 
 
-@pytest.mark.story("US-GDN-025", "US-GDN-029", "US-GDN-009", "US-GDN-018", "US-GDN-042", "US-GDN-026", "US-GDN-027", "US-GDN-028")
+@pytest.mark.story("US-GDN-025", "US-GDN-029", "US-GDN-018", "US-GDN-042", "US-GDN-026", "US-GDN-027")
 class TestGenerateAgentBootstrap:
     """Tests for generate_agent_bootstrap function."""
 

@@ -203,7 +203,7 @@ class TestPlanBootstrap:
         repo.close()
         assert epic.name == "new feature"
         assert epic.branch == "test-branch"
-        assert epic.status == "active"
+        assert epic.status == "seed"
         # objective is stored via 'context' key in epic_data by cmd_init
 
     def test_epic_bootstrap_existing_folder_returns_error(self, temp_git_repo, capsys):

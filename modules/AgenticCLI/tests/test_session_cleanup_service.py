@@ -225,7 +225,6 @@ class TestCleanDeadSessions:
 class TestRunningSessionProtection:
     """Tests that running sessions with alive PIDs are never cleaned."""
 
-    @pytest.mark.story("US-SES-009")
     def test_running_session_with_alive_pid_not_cleaned(self, service, sessions_dir):
         """Running sessions with alive PIDs are protected from cleanup."""
         sid = "running-alive-001"
@@ -243,7 +242,6 @@ class TestRunningSessionProtection:
         assert (sessions_dir / "logs" / f"{sid}.stdout.log").exists()
         assert (sessions_dir / "context" / f"{sid}.md").exists()
 
-    @pytest.mark.story("US-SES-009")
     def test_mix_running_and_dead_sessions(self, service, sessions_dir):
         """Only dead sessions are cleaned; running ones are untouched."""
         alive_sid = "alive-001"

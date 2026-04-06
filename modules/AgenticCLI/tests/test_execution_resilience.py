@@ -7,9 +7,13 @@ Covers 6 fixes:
 - Fix 5: Phase-scoped agent context and completion gate
 - Fix 6: Pipe-pane output logging
 - Fix 7: Session file written before tmux spawn, duration clamping
+
+Additional:
+- PhaseLoggerAdapter: Structured context logging for ExecutionRunner
 """
 
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -120,6 +124,117 @@ class TestBlockedState:
 
         assert result is False
         assert any("Blocked" in e or "blocked" in e.lower() for e in runner.state["errors"])
+
+    def test_execute_plan_reports_blocked_reason_in_error(self, tmp_path):
+        """_execute_plan should include blocked_reason in state errors."""
+        from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
+        from agenticguidance.services.epic import PhaseData
+
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
+        workflow = MagicMock(spec=OrchestrationWorkflow)
+        workflow.working_dir = str(tmp_path)
+        workflow.epics_dir = epics_dir
+
+        mock_repo = MagicMock()
+        mock_repo.list_phases.return_value = [
+            PhaseData(
+                name="Build Phase",
+                status="blocked",
+                agent="build-python",
+                blocked_reason="Network timeout after 3 retries",
+            ),
+        ]
+        workflow._get_repository.return_value = mock_repo
+
+        runner = ExecutionRunner(workflow=workflow, plan_folder="test_plan")
+        result = runner._execute_plan("test_plan", max_iterations=5)
+
+        assert result is False
+        # The blocked phase name should be in the error message
+        errors = runner.state["errors"]
+        assert any("Build Phase" in e for e in errors)
+
+    def test_execute_plan_halts_with_multiple_blocked_phases(self, tmp_path):
+        """_execute_plan should report all blocked phases when multiple exist."""
+        from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
+        from agenticguidance.services.epic import PhaseData
+
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
+        workflow = MagicMock(spec=OrchestrationWorkflow)
+        workflow.working_dir = str(tmp_path)
+        workflow.epics_dir = epics_dir
+
+        mock_repo = MagicMock()
+        mock_repo.list_phases.return_value = [
+            PhaseData(name="Phase A", status="blocked", agent="build-python",
+                      blocked_reason="Reason A"),
+            PhaseData(name="Phase B", status="blocked", agent="test-builder",
+                      blocked_reason="Reason B"),
+            PhaseData(name="Phase C", status="pending", agent="explore"),
+        ]
+        workflow._get_repository.return_value = mock_repo
+
+        runner = ExecutionRunner(workflow=workflow, plan_folder="test_plan")
+        result = runner._execute_plan("test_plan", max_iterations=5)
+
+        assert result is False
+        errors = runner.state["errors"]
+        # Both blocked phase names should appear in error
+        blocked_error = [e for e in errors if "blocked" in e.lower()][0]
+        assert "Phase A" in blocked_error
+        assert "Phase B" in blocked_error
+
+    def test_execute_plan_does_not_spawn_after_blocked(self, tmp_path):
+        """_execute_plan should not attempt to spawn agents after detecting blocked."""
+        from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
+        from agenticguidance.services.epic import PhaseData
+
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
+        workflow = MagicMock(spec=OrchestrationWorkflow)
+        workflow.working_dir = str(tmp_path)
+        workflow.epics_dir = epics_dir
+
+        mock_repo = MagicMock()
+        mock_repo.list_phases.return_value = [
+            PhaseData(name="P1", status="blocked", agent="build-python"),
+            PhaseData(name="P2", status="pending", agent="test-builder"),
+        ]
+        workflow._get_repository.return_value = mock_repo
+
+        runner = ExecutionRunner(workflow=workflow, plan_folder="test_plan")
+        result = runner._execute_plan("test_plan", max_iterations=5)
+
+        assert result is False
+        # Verify no spawn was attempted (wait_for_session should not be called)
+        workflow.wait_for_session.assert_not_called()
+
+    def test_execute_plan_blocked_with_no_reason_uses_default(self, tmp_path):
+        """_execute_plan should handle blocked phases with no blocked_reason gracefully."""
+        from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
+        from agenticguidance.services.epic import PhaseData
+
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
+        workflow = MagicMock(spec=OrchestrationWorkflow)
+        workflow.working_dir = str(tmp_path)
+        workflow.epics_dir = epics_dir
+
+        mock_repo = MagicMock()
+        mock_repo.list_phases.return_value = [
+            PhaseData(name="P1", status="blocked", agent="build-python"),
+            # blocked_reason is None by default
+        ]
+        workflow._get_repository.return_value = mock_repo
+
+        runner = ExecutionRunner(workflow=workflow, plan_folder="test_plan")
+        result = runner._execute_plan("test_plan", max_iterations=5)
+
+        # Should still halt cleanly even without a reason
+        assert result is False
+        assert len(runner.state["errors"]) > 0
 
 
 # ── Fix 3: Orphan tmux sweep ────────────────────────────────────────────
@@ -389,3 +504,217 @@ class TestPipePaneLogging:
         report = service.cleanup(dry_run=False)
 
         assert report.sessions_cleaned >= 1 or report.log_files_removed >= 1
+
+
+# ── PhaseLoggerAdapter: Structured context logging ────────────────────────
+
+
+@pytest.mark.story("US-RES-005")
+class TestPhaseLoggerAdapterUnit:
+    """PhaseLoggerAdapter should prefix messages with [epic:phase] context."""
+
+    def test_process_prefixes_message_with_epic_and_phase(self):
+        """process() should prepend [epic_name:phase_name] to messages."""
+        from agenticcli.workflows.orchestration import PhaseLoggerAdapter
+
+        base_logger = logging.getLogger("test.phase_adapter")
+        adapter = PhaseLoggerAdapter(
+            base_logger,
+            epic_name="my_epic",
+            phase_name="Build Phase",
+        )
+
+        msg, kwargs = adapter.process("Phase started", {})
+        assert msg == "[my_epic:Build Phase] Phase started"
+        assert kwargs == {}
+
+    def test_extra_contains_epic_and_phase(self):
+        """Adapter extra dict should contain epic_name, phase_name, phase_id."""
+        from agenticcli.workflows.orchestration import PhaseLoggerAdapter
+
+        base_logger = logging.getLogger("test.phase_adapter")
+        adapter = PhaseLoggerAdapter(
+            base_logger,
+            epic_name="my_epic",
+            phase_name="Test Phase",
+        )
+
+        assert adapter.extra["epic_name"] == "my_epic"
+        assert adapter.extra["phase_name"] == "Test Phase"
+        # phase_id defaults to phase_name when not provided
+        assert adapter.extra["phase_id"] == "Test Phase"
+
+    def test_phase_id_defaults_to_phase_name(self):
+        """When phase_id is None, it should default to phase_name."""
+        from agenticcli.workflows.orchestration import PhaseLoggerAdapter
+
+        base_logger = logging.getLogger("test.phase_adapter")
+        adapter = PhaseLoggerAdapter(
+            base_logger,
+            epic_name="my_epic",
+            phase_name="P1",
+            phase_id=None,
+        )
+
+        assert adapter.extra["phase_id"] == "P1"
+
+    def test_explicit_phase_id_used_when_provided(self):
+        """When phase_id is explicitly provided, it should be used."""
+        from agenticcli.workflows.orchestration import PhaseLoggerAdapter
+
+        base_logger = logging.getLogger("test.phase_adapter")
+        adapter = PhaseLoggerAdapter(
+            base_logger,
+            epic_name="my_epic",
+            phase_name="Build Phase",
+            phase_id="P1-BUILD",
+        )
+
+        assert adapter.extra["phase_id"] == "P1-BUILD"
+        # process still uses phase_name for the prefix (not phase_id)
+        msg, _ = adapter.process("Started", {})
+        assert msg == "[my_epic:Build Phase] Started"
+
+    def test_adapter_logs_at_all_levels(self, caplog):
+        """PhaseLoggerAdapter should work with info, warning, error, debug."""
+        from agenticcli.workflows.orchestration import PhaseLoggerAdapter
+
+        base_logger = logging.getLogger("test.phase_adapter.levels")
+        adapter = PhaseLoggerAdapter(
+            base_logger,
+            epic_name="test_epic",
+            phase_name="P1",
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="test.phase_adapter.levels"):
+            adapter.info("info message")
+            adapter.warning("warning message")
+            adapter.error("error message")
+            adapter.debug("debug message")
+
+        # All 4 messages should appear in the log
+        messages = [r.message for r in caplog.records]
+        assert any("[test_epic:P1] info message" in m for m in messages)
+        assert any("[test_epic:P1] warning message" in m for m in messages)
+        assert any("[test_epic:P1] error message" in m for m in messages)
+        assert any("[test_epic:P1] debug message" in m for m in messages)
+
+    def test_adapter_preserves_kwargs(self):
+        """process() should pass kwargs through unmodified."""
+        from agenticcli.workflows.orchestration import PhaseLoggerAdapter
+
+        base_logger = logging.getLogger("test.phase_adapter")
+        adapter = PhaseLoggerAdapter(
+            base_logger,
+            epic_name="my_epic",
+            phase_name="P1",
+        )
+
+        kwargs = {"extra": {"custom_key": "value"}}
+        msg, returned_kwargs = adapter.process("test", kwargs)
+        assert returned_kwargs == {"extra": {"custom_key": "value"}}
+
+    def test_adapter_handles_format_strings(self, caplog):
+        """PhaseLoggerAdapter should handle %-style format strings correctly."""
+        from agenticcli.workflows.orchestration import PhaseLoggerAdapter
+
+        base_logger = logging.getLogger("test.phase_adapter.format")
+        adapter = PhaseLoggerAdapter(
+            base_logger,
+            epic_name="my_epic",
+            phase_name="P1",
+        )
+
+        with caplog.at_level(logging.INFO, logger="test.phase_adapter.format"):
+            adapter.info("Phase %s completed in %d seconds", "P1", 42)
+
+        assert any("P1 completed in 42 seconds" in r.message for r in caplog.records)
+
+    def test_adapter_is_instance_of_logging_logger_adapter(self):
+        """PhaseLoggerAdapter should be a proper subclass of logging.LoggerAdapter."""
+        from agenticcli.workflows.orchestration import PhaseLoggerAdapter
+
+        base_logger = logging.getLogger("test.phase_adapter")
+        adapter = PhaseLoggerAdapter(
+            base_logger,
+            epic_name="my_epic",
+            phase_name="P1",
+        )
+
+        assert isinstance(adapter, logging.LoggerAdapter)
+
+
+@pytest.mark.story("US-RES-005")
+class TestPhaseLoggerAdapterWithExecutionRunner:
+    """PhaseLoggerAdapter integration with ExecutionRunner._make_phase_logger."""
+
+    def _make_runner(self, tmp_path):
+        from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
+
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
+        workflow = MagicMock(spec=OrchestrationWorkflow)
+        workflow.working_dir = str(tmp_path)
+        workflow.epics_dir = epics_dir
+
+        runner = ExecutionRunner(workflow=workflow, plan_folder="test_plan")
+        return runner
+
+    def test_make_phase_logger_returns_adapter(self, tmp_path):
+        """_make_phase_logger should return a PhaseLoggerAdapter instance."""
+        from agenticcli.workflows.orchestration import PhaseLoggerAdapter
+
+        runner = self._make_runner(tmp_path)
+        phase_log = runner._make_phase_logger("test_epic", "Build Phase")
+
+        assert isinstance(phase_log, PhaseLoggerAdapter)
+        assert phase_log.extra["epic_name"] == "test_epic"
+        assert phase_log.extra["phase_name"] == "Build Phase"
+
+    def test_make_phase_logger_with_phase_id(self, tmp_path):
+        """_make_phase_logger should pass phase_id through."""
+        runner = self._make_runner(tmp_path)
+        phase_log = runner._make_phase_logger("test_epic", "Build Phase", phase_id="P1-BUILD")
+
+        assert phase_log.extra["phase_id"] == "P1-BUILD"
+
+    def test_make_phase_logger_default_phase_id(self, tmp_path):
+        """_make_phase_logger without phase_id should default to phase_name."""
+        runner = self._make_runner(tmp_path)
+        phase_log = runner._make_phase_logger("test_epic", "Build Phase")
+
+        assert phase_log.extra["phase_id"] == "Build Phase"
+
+    def test_phase_logger_used_in_blocked_detection(self, tmp_path, caplog):
+        """Blocked phase detection should use phase logger with correct context."""
+        from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
+        from agenticguidance.services.epic import PhaseData
+
+        epics_dir = tmp_path / "docs" / "epics" / "live"
+        epics_dir.mkdir(parents=True)
+        workflow = MagicMock(spec=OrchestrationWorkflow)
+        workflow.working_dir = str(tmp_path)
+        workflow.epics_dir = epics_dir
+
+        mock_repo = MagicMock()
+        mock_repo.list_phases.return_value = [
+            PhaseData(
+                name="Test Phase",
+                status="blocked",
+                agent="build-python",
+                blocked_reason="SDK failure",
+            ),
+        ]
+        workflow._get_repository.return_value = mock_repo
+
+        runner = ExecutionRunner(workflow=workflow, plan_folder="test_plan")
+
+        with caplog.at_level(logging.ERROR):
+            result = runner._execute_plan("test_plan", max_iterations=5)
+
+        assert result is False
+        # Verify the error log includes structured context
+        error_logs = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert len(error_logs) > 0
+        # The log message should contain the blocked reason
+        assert any("SDK failure" in r.message for r in error_logs)
