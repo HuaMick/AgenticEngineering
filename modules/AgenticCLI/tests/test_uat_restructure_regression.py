@@ -6,7 +6,7 @@ and timeout budgets after the 28->20 restructure.
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-091")
+pytestmark = pytest.mark.story("US-PLN-046")
 
 
 class TestToolAllowlists:

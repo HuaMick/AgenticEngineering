@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SES-002")
+pytestmark = pytest.mark.story("US-SES-001")
 
 from agenticcli.utils.session_id import generate_session_id, tmux_session_name
 
@@ -23,7 +23,7 @@ class TestGenerateSessionId:
         assert generate_session_id() != generate_session_id()
 
 
-@pytest.mark.story("US-SES-002")
+@pytest.mark.story("US-SES-001")
 class TestTmuxSessionName:
     """Tests for tmux_session_name function (Bug 2 — collision fix)."""
 

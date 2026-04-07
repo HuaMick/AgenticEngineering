@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-pytestmark = [pytest.mark.story("US-STR-009")]
+pytestmark = [pytest.mark.story("US-STR-001")]
 
 
 def _load_conftest_module():
@@ -96,7 +96,7 @@ class TestLoadValidStoryIds:
 # Tests for pytest_configure (marker registration)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-GDN-067", "US-GDN-069")
+@pytest.mark.story("US-STR-001")
 class TestMarkerRegistration:
     """Test that the story marker is registered correctly."""
 
@@ -116,7 +116,7 @@ class TestMarkerRegistration:
 # Tests for pytest_collection_modifyitems (validation)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-GDN-059")
+@pytest.mark.story("US-STR-001")
 class TestCollectionValidation:
     """Test that the collection plugin validates story markers."""
 
@@ -190,7 +190,7 @@ class TestCollectionValidation:
             mock_item.warn.assert_not_called()
 
     def test_collection_modifyitems_warns_empty_marker_args(self):
-        """Verify warning when @pytest.mark.story() has no story IDs."""
+        """Verify warning when @pytest.mark.story("US-PLN-001") has no story IDs."""
         mod = _load_conftest_module()
 
         mock_item = MagicMock()

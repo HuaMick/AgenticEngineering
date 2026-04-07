@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-PLN-001", "US-PLN-026", "US-PLN-027")
+pytestmark = pytest.mark.story("US-PLN-001")
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def temp_git_repo(tmp_path):
     return repo_path
 
 
-@pytest.mark.story("US-PLN-002", "US-PLN-005")
+@pytest.mark.story("US-PLN-001")
 class TestPlanBootstrap:
     """Tests verifying plan bootstrap has been removed and replaced by epic bootstrap."""
 
@@ -380,7 +380,7 @@ class TestPlanBootstrap:
         assert "IM_001" in ticket_ids, f"Expected IM_001 stub ticket, got: {ticket_ids}"
 
 
-@pytest.mark.story("US-PLN-002")
+@pytest.mark.story("US-PLN-001")
 class TestPlanBootstrapErrors:
     """Tests for error handling in bootstrap command."""
 

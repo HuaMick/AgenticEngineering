@@ -26,7 +26,7 @@ from agenticguidance.services.story import (
 )
 from agenticguidance.services.state import FileLock
 
-pytestmark = pytest.mark.story("US-STR-012")
+pytestmark = pytest.mark.story("US-STR-001")
 
 
 def _write_story_file(path: Path, story_id: str = "US-TEST-001",

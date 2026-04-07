@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-082")
+pytestmark = pytest.mark.story("US-SES-020")
 
 from agenticcli.utils.epic_lock import (
     _held_locks,
@@ -38,7 +38,7 @@ def lock_dir(tmp_path, monkeypatch):
     _held_locks.clear()
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-SES-020")
 class TestAcquireEpicLock:
     def test_acquires_fresh_lock(self, lock_dir):
         """Acquire succeeds and lock file contains valid JSON with pid+timestamp."""
@@ -106,7 +106,7 @@ class TestAcquireEpicLock:
         assert acquire_epic_lock("epic_b") is True
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-SES-020")
 class TestReleaseEpicLock:
     def test_release_allows_reacquisition(self, lock_dir):
         """After release, another process can acquire the lock."""

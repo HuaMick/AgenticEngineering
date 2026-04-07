@@ -15,14 +15,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = [pytest.mark.story("US-STR-009"), pytest.mark.story("US-PLN-081"), pytest.mark.story("US-STR-001", "US-STR-002", "US-STR-003")]
+pytestmark = [pytest.mark.story("US-STR-001")]
 
 
 # ---------------------------------------------------------------------------
 # AST Scanner Tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-STR-009")
+@pytest.mark.story("US-STR-001")
 class TestExtractStoryIdsFromDecorators:
     """Test _extract_story_ids_from_decorators() helper."""
 
@@ -81,7 +81,7 @@ class TestExtractStoryIdsFromDecorators:
         assert _extract_story_ids_from_decorators(node) == {"US-STR-001"}
 
 
-@pytest.mark.story("US-STR-009")
+@pytest.mark.story("US-STR-001")
 class TestScanPytestStoryMarkersDetailed:
     """Test _scan_pytest_story_markers_detailed() full scanner."""
 
@@ -161,7 +161,7 @@ class TestScanPytestStoryMarkersDetailed:
 # CLI Command Tests (cmd_sync, cmd_coverage, cmd_run)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-STR-009", "US-STR-006")
+@pytest.mark.story("US-STR-001")
 class TestCmdSync:
     """Test cmd_sync command."""
 
@@ -192,7 +192,7 @@ class TestCmdSync:
         assert result["orphan_markers"] == []
 
 
-@pytest.mark.story("US-STR-009", "US-STR-004", "US-GDN-080")
+@pytest.mark.story("US-STR-001")
 class TestCmdRun:
     """Test cmd_run command."""
 

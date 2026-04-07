@@ -29,7 +29,7 @@ from agenticguidance.services.state import (
     _lock_registry,
 )
 
-pytestmark = pytest.mark.story("US-SET-017", "US-PLN-063")
+pytestmark = pytest.mark.story("US-SES-020")
 
 
 class TestFlockAcquireRelease:

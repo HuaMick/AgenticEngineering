@@ -7,7 +7,7 @@ values: seed, planning, in_progress, completed, deferred, blocked.
 import pytest
 from pathlib import Path
 
-pytestmark = pytest.mark.story("US-PLN-082")
+pytestmark = pytest.mark.story("US-PLN-001")
 
 from agenticguidance.services.epic import (
     EpicService,

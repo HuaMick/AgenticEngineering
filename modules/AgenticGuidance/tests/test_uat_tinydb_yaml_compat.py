@@ -16,7 +16,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-SET-017", "US-SET-024", "US-SET-019", "US-SET-021", "US-SET-023")
+pytestmark = pytest.mark.story("US-SES-020")
 
 
 # ---------------------------------------------------------------------------
@@ -385,7 +385,7 @@ class TestUS_GD_202_TinyDbRoundTrip:
 # ===========================================================================
 
 
-@pytest.mark.story("US-SET-022")
+@pytest.mark.story("US-SES-020")
 class TestUS_GD_205_DatabaseLocation:
     """US-GD-205 - Criterion 1: EpicRepository uses global ~/.agentic/epics.db."""
 

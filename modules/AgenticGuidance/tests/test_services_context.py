@@ -14,10 +14,10 @@ from agenticguidance.services.context import (
     _find_agents_directory,
 )
 
-pytestmark = pytest.mark.story("US-GDN-004")
+pytestmark = pytest.mark.story("US-GDN-100")
 
 
-@pytest.mark.story("US-GDN-088")
+@pytest.mark.story("US-GDN-100")
 class TestMainFirstEpicResolver:
     """Tests for MainFirstEpicResolver class."""
 
@@ -253,7 +253,7 @@ class TestMainFirstEpicResolver:
         repo.close()
 
 
-@pytest.mark.story("US-GDN-022", "US-GDN-030", "US-GDN-010", "US-GDN-011", "US-GDN-013", "US-GDN-034", "US-GDN-035", "US-GDN-036", "US-GDN-037", "US-GDN-039")
+@pytest.mark.story("US-GDN-100", "US-GDN-005", "US-GDN-035")
 class TestGetRoleProcess:
     """Tests for get_role_process function."""
 
@@ -275,7 +275,7 @@ class TestGetRoleProcess:
 
         assert result is None
 
-    @pytest.mark.story("US-GDN-003", "US-GDN-004", "US-GDN-005", "US-GDN-006", "US-GDN-007", "US-GDN-092")
+    @pytest.mark.story("US-GDN-100", "US-GDN-005")
     @patch("agenticguidance.services.context._find_agents_directory")
     def test_returns_process_data_for_valid_role(self, mock_find, tmp_path):
         """Test returns parsed process and manifest data for a valid role."""
@@ -336,7 +336,7 @@ class TestGetRoleProcess:
         assert result["manifest"] is None
 
 
-@pytest.mark.story("US-GDN-023", "US-GDN-024", "US-GDN-031", "US-GDN-038", "US-GDN-014", "US-GDN-015", "US-GDN-016", "US-GDN-017", "US-GDN-020", "US-GDN-055", "US-GDN-056", "US-GDN-057", "US-GDN-060", "US-GDN-032")
+@pytest.mark.story("US-GDN-100", "US-GDN-005")
 class TestGetRoleInputsManifest:
     """Tests for get_role_inputs_manifest function."""
 
@@ -360,7 +360,7 @@ class TestGetRoleInputsManifest:
 
         assert result == {"role": "planner-build", "inputs": [], "missing": []}
 
-    @pytest.mark.story("US-GDN-016", "US-GDN-019", "US-GDN-020", "US-GDN-099")
+    @pytest.mark.story("US-GDN-100")
     @patch("subprocess.run")
     @patch("agenticguidance.services.context._find_agents_directory")
     def test_returns_manifest_with_path_resolution(self, mock_find, mock_subprocess, tmp_path):
@@ -418,7 +418,7 @@ class TestGetRoleInputsManifest:
         assert len(result["layers"]) == 1
 
 
-@pytest.mark.story("US-GDN-025", "US-GDN-029", "US-GDN-018", "US-GDN-042", "US-GDN-026", "US-GDN-027")
+@pytest.mark.story("US-GDN-100")
 class TestGenerateAgentBootstrap:
     """Tests for generate_agent_bootstrap function."""
 

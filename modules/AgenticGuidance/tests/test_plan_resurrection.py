@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-082", "US-PLN-063")
+pytestmark = pytest.mark.story("US-PLN-001")
 import yaml
 
 

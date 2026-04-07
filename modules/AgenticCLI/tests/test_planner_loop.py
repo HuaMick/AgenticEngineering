@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-053", "US-PLN-042", "US-GDN-061", "US-GDN-063", "US-PLN-039")
+pytestmark = pytest.mark.story("US-PLN-046", "US-GDN-061")
 
 from agenticcli.utils.sdk_runner import SessionResult
 
@@ -101,7 +101,7 @@ def _setup_tinydb_for_workflow(tmp_path, epic_folder_name, *, agent_type=None,
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-046")
 class TestDiscoverPlansNeedingOrchestration:
     """Test discover_plans_needing_orchestration method.
 
@@ -174,7 +174,7 @@ class TestDiscoverPlansNeedingOrchestration:
         assert result == []
 
 
-@pytest.mark.story("US-PLN-053", "US-PLN-037", "US-GDN-101")
+@pytest.mark.story("US-PLN-046")
 class TestRunHealthCheck:
     """Test run_health_check method."""
 
@@ -226,7 +226,7 @@ class TestRunHealthCheck:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-027", "US-PLN-038", "US-PLN-047", "US-PLN-053")
+@pytest.mark.story("US-PLN-046", "US-PLN-047")
 class TestPlannerLoopRunner:
     """Test PlannerLoopRunner orchestration.
 
@@ -456,7 +456,7 @@ class TestPlannerLoopRunner:
         assert result is False
         assert any("unhealthy" in e.get("error", "") for e in runner.state["errors"])
 
-@pytest.mark.story("US-PLN-050", "US-PLN-055")
+@pytest.mark.story("US-PLN-046")
 class TestRunRoleAgent:
     """Test the _run_role_agent SDK integration method."""
 
@@ -517,7 +517,7 @@ class TestRunRoleAgent:
         assert result.status == "completed"
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-046")
 class TestGetPlanStatus:
     """Test get_plan_status reads epic status and ticket counts from TinyDB."""
 
@@ -714,7 +714,7 @@ class TestGetPlanStatus:
         assert workflow.get_plan_status("empty_plan") == "planning"
 
 
-@pytest.mark.story("US-PLN-051", "US-PLN-053")
+@pytest.mark.story("US-PLN-046")
 class TestProcessPlanPlanningTransition:
     """Verify _process_plan sets status=planning at the start."""
 
@@ -764,7 +764,7 @@ class TestProcessPlanPlanningTransition:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-055")
+@pytest.mark.story("US-PLN-046")
 class TestRunViaSdkRetry:
     """Test retry logic in _run_via_sdk (SDK_010)."""
 
@@ -891,7 +891,7 @@ class TestRunViaSdkRetry:
         assert captured_timeouts["last"] == ROLE_TIMEOUT_SECONDS["planner-orchestration"]  # 3600
 
 
-@pytest.mark.story("US-PLN-053", "US-PLN-062")
+@pytest.mark.story("US-PLN-046")
 class TestValidateResult:
     """Test _validate_result observability helper (SDK_011)."""
 
@@ -1030,7 +1030,7 @@ class TestValidateResult:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-050", "US-PLN-055")
+@pytest.mark.story("US-PLN-046")
 class TestBuildSdkOptionsWithRole:
     """Test that _build_sdk_options passes allowed_tools per role (SDK_016)."""
 
@@ -1120,7 +1120,7 @@ class TestBuildSdkOptionsWithRole:
 # ── TT_005: Test wait_for_session tmux-aware completion detection ─────
 
 
-@pytest.mark.story("US-PLN-055")
+@pytest.mark.story("US-PLN-046")
 class TestWaitForSessionTmux:
     """TT_005: Tests for tmux-aware completion detection in wait_for_session."""
 
@@ -1402,7 +1402,7 @@ class TestWaitForSessionTmux:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-040", "US-PLN-048", "US-PLN-053", "US-PLN-056", "US-PLN-062")
+@pytest.mark.story("US-PLN-046")
 class TestValidatePlanningOutput:
     """Tests for _validate_planning_output pre-flight validation."""
 
@@ -1583,7 +1583,7 @@ class TestValidatePlanningOutput:
         assert any("guidance" in w for w in warnings)
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-046")
 class TestParseStoryCategories:
     """Tests for _parse_story_categories — stories are required."""
 
@@ -1642,7 +1642,7 @@ class TestParseStoryCategories:
 
 
 # @story US-PLN-091
-@pytest.mark.story("US-PLN-053", "US-PLN-091")
+@pytest.mark.story("US-PLN-046")
 class TestParseStoryCategoriesRetry:
     """Tests for _parse_story_categories retry-with-backoff logic.
 
@@ -1908,7 +1908,7 @@ class TestParseStoryCategoriesRetry:
         assert any("parsed successfully on attempt 3/4" in r.message for r in caplog.records)
 
 
-@pytest.mark.story("US-PLN-048", "US-PLN-053")
+@pytest.mark.story("US-PLN-046")
 class TestTicketPromotion:
     """Tests for ticket promotion step in _process_plan (Bug 1 fix)."""
 
@@ -2049,7 +2049,7 @@ class TestTicketPromotion:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-055")
+@pytest.mark.story("US-PLN-046")
 class TestTmuxSdkSessionRecords:
     """Tests for _run_via_tmux_sdk session record timing (Bug 3 fix)."""
 
@@ -2143,7 +2143,7 @@ class TestTmuxSdkSessionRecords:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053", "US-PLN-054")
+@pytest.mark.story("US-PLN-046")
 class TestProcessPlanAutoRegister:
     """Test auto-registration of epic folders in _process_plan."""
 
@@ -2228,7 +2228,7 @@ class TestProcessPlanAutoRegister:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-055")
+@pytest.mark.story("US-PLN-046")
 class TestAgentPromptIncludesEpicFlag:
     """Test _build_agent_prompt includes --epic flag."""
 
@@ -2246,7 +2246,7 @@ class TestAgentPromptIncludesEpicFlag:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053", "US-PLN-058")
+@pytest.mark.story("US-PLN-046")
 class TestBudgetEnforcement:
     """Test cost budget halts processing."""
 
@@ -2315,7 +2315,7 @@ class TestBudgetEnforcement:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-053")
+@pytest.mark.story("US-PLN-046")
 class TestConcurrentGuard:
     """Test file-based concurrent run guard."""
 

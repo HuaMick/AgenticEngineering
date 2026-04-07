@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SES-003")
+pytestmark = pytest.mark.story("US-SES-001")
 
 
 @pytest.fixture

@@ -17,7 +17,7 @@ from agenticcli.utils.phase_validation import (
     validate_phase_routing,
 )
 
-pytestmark = pytest.mark.story("US-PLN-093")
+pytestmark = pytest.mark.story("US-PLN-061")
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ def _seed_epic(repo, folder=EPIC_FOLDER):
 # ── validate_phase_routing tests ─────────────────────────────────────────────
 
 
-@pytest.mark.story("US-PLN-093")
+@pytest.mark.story("US-PLN-061")
 class TestValidatePhaseRouting:
     """Tests for the validate_phase_routing() utility."""
 
@@ -257,7 +257,7 @@ class TestValidatePhaseRouting:
 # ── has_any_routed_phase tests ───────────────────────────────────────────────
 
 
-@pytest.mark.story("US-PLN-094")
+@pytest.mark.story("US-PLN-061")
 class TestHasAnyRoutedPhase:
     """Tests for the has_any_routed_phase() helper."""
 
@@ -299,7 +299,7 @@ class TestHasAnyRoutedPhase:
 # ── Stale phase recovery tests ──────────────────────────────────────────────
 
 
-@pytest.mark.story("US-PLN-093")
+@pytest.mark.story("US-PLN-061")
 class TestStalePhaseRecovery:
     """Tests for ExecutionRunner._recover_stale_phases."""
 

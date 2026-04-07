@@ -25,7 +25,7 @@ import pytest
 # ── Fix 7: Session race fix ────────────────────────────────────────────
 
 
-@pytest.mark.story("US-RES-006")
+@pytest.mark.story("US-PLN-061")
 class TestSessionRaceFix:
     """Fix 7: Session file must be written before tmux spawn."""
 
@@ -74,7 +74,7 @@ class TestSessionRaceFix:
 # ── Fix 2: Blocked state on retry exhaustion ────────────────────────────
 
 
-@pytest.mark.story("US-RES-001")
+@pytest.mark.story("US-PLN-061")
 class TestBlockedState:
     """Fix 2: Phase should be marked 'blocked' after retry exhaustion."""
 
@@ -240,7 +240,7 @@ class TestBlockedState:
 # ── Fix 3: Orphan tmux sweep ────────────────────────────────────────────
 
 
-@pytest.mark.story("US-RES-002")
+@pytest.mark.story("US-PLN-061")
 class TestOrphanTmuxSweep:
     """Fix 3: Recovery should kill orphaned agentic-* tmux sessions."""
 
@@ -325,7 +325,7 @@ class TestOrphanTmuxSweep:
 # ── Fix 4: Phase-filtered get_current_ticket ─────────────────────────────
 
 
-@pytest.mark.story("US-RES-003")
+@pytest.mark.story("US-PLN-061")
 class TestPhaseFilteredTicket:
     """Fix 4: get_current_ticket should accept phase_name filter."""
 
@@ -373,7 +373,7 @@ class TestPhaseFilteredTicket:
 # ── Fix 5: Phase-scoped agent context ────────────────────────────────────
 
 
-@pytest.mark.story("US-RES-004")
+@pytest.mark.story("US-PLN-061")
 class TestPhaseScopedContext:
     """Fix 5: Spawn context should include phase constraint."""
 
@@ -454,7 +454,7 @@ class TestPhaseScopedContext:
 # ── Fix 6: Pipe-pane logging ────────────────────────────────────────────
 
 
-@pytest.mark.story("US-RES-005")
+@pytest.mark.story("US-PLN-061")
 class TestPipePaneLogging:
     """Fix 6: tmux pipe-pane should be enabled after spawn."""
 
@@ -509,7 +509,7 @@ class TestPipePaneLogging:
 # ── PhaseLoggerAdapter: Structured context logging ────────────────────────
 
 
-@pytest.mark.story("US-RES-005")
+@pytest.mark.story("US-PLN-061")
 class TestPhaseLoggerAdapterUnit:
     """PhaseLoggerAdapter should prefix messages with [epic:phase] context."""
 
@@ -644,7 +644,7 @@ class TestPhaseLoggerAdapterUnit:
         assert isinstance(adapter, logging.LoggerAdapter)
 
 
-@pytest.mark.story("US-RES-005")
+@pytest.mark.story("US-PLN-061")
 class TestPhaseLoggerAdapterWithExecutionRunner:
     """PhaseLoggerAdapter integration with ExecutionRunner._make_phase_logger."""
 

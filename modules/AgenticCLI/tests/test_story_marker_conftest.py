@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-pytestmark = [pytest.mark.story("US-STR-009")]
+pytestmark = [pytest.mark.story("US-STR-001")]
 
 
 def _load_conftest_module():
@@ -232,7 +232,7 @@ class TestLoadValidStoryIdsCLI:
 # Tests for pytest_configure (marker registration)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-GDN-067", "US-GDN-069")
+@pytest.mark.story("US-STR-001")
 class TestMarkerRegistrationCLI:
     """Test that the story marker is registered in AgenticCLI tests."""
 
@@ -257,7 +257,7 @@ class TestMarkerRegistrationCLI:
 # Tests for pytest_collection_modifyitems (validation plugin)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.story("US-GDN-059")
+@pytest.mark.story("US-STR-001")
 class TestCollectionValidationCLI:
     """Test the collection plugin validates story markers at collection time."""
 

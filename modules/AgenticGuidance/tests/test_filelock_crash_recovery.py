@@ -20,7 +20,7 @@ import pytest
 
 from agenticguidance.services.state import FileLock
 
-pytestmark = pytest.mark.story("US-PLN-067", "US-SES-008")
+pytestmark = pytest.mark.story("US-SES-035")
 
 # Path to AgenticGuidance src directory for subprocess imports
 _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")

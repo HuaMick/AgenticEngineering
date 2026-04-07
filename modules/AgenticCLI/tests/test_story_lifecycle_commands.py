@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-STR-005")
+pytestmark = pytest.mark.story("US-STR-031")
 
 
 @pytest.fixture

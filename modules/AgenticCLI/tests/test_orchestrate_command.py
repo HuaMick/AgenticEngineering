@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-053", "US-PLN-042")
+pytestmark = pytest.mark.story("US-PLN-046")
 
 
 # ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ pytestmark = pytest.mark.story("US-PLN-053", "US-PLN-042")
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.story("US-PLN-052", "US-PLN-053")
+@pytest.mark.story("US-PLN-046")
 class TestOrchestratePlanningAction:
     """Test orchestrate command with planning action."""
 
@@ -173,7 +173,7 @@ class TestOrchestratePlanningAction:
                 max_iterations=10,
                 completion_promise=None,
                 project=None,
-                plan=None,
+                plan="test_plan",
                 directory=str(tmp_path),
                 dangerously_skip_permissions=False,
                 json=False,
@@ -356,7 +356,7 @@ class TestOrchestratePlanningAction:
                 max_iterations=15,
                 completion_promise="All plans completed",
                 project=None,
-                plan=None,
+                plan="test_plan",
                 directory=str(tmp_path),
                 dangerously_skip_permissions=False,
                 json=False,

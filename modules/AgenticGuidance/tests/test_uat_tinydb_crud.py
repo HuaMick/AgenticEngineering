@@ -21,7 +21,7 @@ import pytest
 
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = pytest.mark.story("US-PLN-082", "US-GDN-053", "US-GDN-073", "US-PLN-087", "US-PLN-088", "US-SET-018", "US-SET-020")
+pytestmark = pytest.mark.story("US-PLN-001", "US-SET-020")
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ def _ticket_data(ticket_id: str, **overrides) -> dict:
 # ===========================================================================
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-PLN-001")
 class TestCreateEpic:
     """GD-200-CR: create_epic stores an epic document in TinyDB."""
 
@@ -118,7 +118,7 @@ class TestCreateEpic:
         assert epic.context == "Some context"
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-PLN-001")
 class TestGetEpic:
     """GD-200-RD: get_epic retrieves epic documents from TinyDB."""
 
@@ -156,7 +156,7 @@ class TestGetEpic:
         assert isinstance(epic, EpicData)
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-PLN-001")
 class TestUpdateEpic:
     """GD-200-UP: update_epic modifies existing epic documents."""
 
@@ -190,7 +190,7 @@ class TestUpdateEpic:
         assert epic.objective == "Original"
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-PLN-001")
 class TestDeleteEpic:
     """GD-200-DL: delete_epic removes epic and all associated data."""
 
@@ -233,7 +233,7 @@ class TestDeleteEpic:
         assert repo.get_epic("260104EE_keep") is not None
 
 
-@pytest.mark.story("US-PLN-083")
+@pytest.mark.story("US-PLN-001")
 class TestPhaseCRUD:
     """GD-200-PH: Phase CRUD via add_phase, update_phase, list_phases, get_phase."""
 
@@ -390,7 +390,7 @@ class TestLifecycleOperations:
         assert result.success is False
 
 
-@pytest.mark.story("US-PLN-085")
+@pytest.mark.story("US-PLN-001")
 class TestHelperQueries:
     """GD-200-HQ: Helper queries check_all_tickets_complete, get_ticket_counts, get_epic_branch."""
 
@@ -464,7 +464,7 @@ class TestHelperQueries:
         assert result is None
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-PLN-001")
 class TestListEpics:
     """GD-200-LS: list_epics with optional status filter."""
 
@@ -508,7 +508,7 @@ class TestListEpics:
 # ===========================================================================
 
 
-@pytest.mark.story("US-PLN-086")
+@pytest.mark.story("US-PLN-001")
 class TestAddTicket:
     """GD-201-AT: add_ticket inserts tickets with full field support."""
 
@@ -562,7 +562,7 @@ class TestAddTicket:
         assert repo.get_ticket("260201EE_key_alias", "T_BY_TASK_ID") is not None
 
 
-@pytest.mark.story("US-PLN-086")
+@pytest.mark.story("US-PLN-001")
 class TestGetTicket:
     """GD-201-GT: get_ticket retrieves a single ticket by epic and ticket ID."""
 
@@ -596,7 +596,7 @@ class TestGetTicket:
         assert ticket.phase_name == "Setup Phase"
 
 
-@pytest.mark.story("US-PLN-086", "US-PLN-087")
+@pytest.mark.story("US-PLN-001")
 class TestUpdateTicketStatus:
     """GD-201-US: update_ticket_status transitions ticket status and sets completed_date."""
 
@@ -640,7 +640,7 @@ class TestUpdateTicketStatus:
         assert repo.get_ticket("260203EE_lifecycle", "T1").status == "completed"
 
 
-@pytest.mark.story("US-PLN-086", "US-PLN-088")
+@pytest.mark.story("US-PLN-001")
 class TestGetTickets:
     """GD-201-GTS: get_tickets retrieves tickets with optional status filtering."""
 
@@ -692,7 +692,7 @@ class TestGetTickets:
         assert tickets_a[0].id == "T1"
 
 
-@pytest.mark.story("US-PLN-086", "US-PLN-088")
+@pytest.mark.story("US-PLN-001")
 class TestGetCurrentTicket:
     """GD-201-GCT: get_current_ticket returns first in_progress then first pending."""
 
@@ -735,7 +735,7 @@ class TestGetCurrentTicket:
         assert isinstance(current, TicketData)
 
 
-@pytest.mark.story("US-PLN-085", "US-PLN-089")
+@pytest.mark.story("US-PLN-001")
 class TestTicketCountsAndCompletion:
     """GD-201-TC: get_ticket_counts and check_all_tickets_complete work correctly."""
 
@@ -782,7 +782,7 @@ class TestTicketCountsAndCompletion:
         assert counts["completed"] == 0
 
 
-@pytest.mark.story("US-PLN-086")
+@pytest.mark.story("US-PLN-001")
 class TestTicketDataExpandedFields:
     """GD-201-EF: TicketData has all expanded fields from the acceptance criteria."""
 

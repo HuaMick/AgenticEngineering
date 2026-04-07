@@ -9,7 +9,7 @@ import pytest
 import yaml
 from pathlib import Path
 
-pytestmark = pytest.mark.story("US-PLN-031", "US-PLN-035", "US-PLN-091", "US-PLN-092", "US-GDN-030", "US-GDN-033", "US-GDN-041", "US-GDN-059", "US-GDN-067", "US-GDN-068")
+pytestmark = pytest.mark.story("US-GDN-061")
 
 
 @pytest.fixture
@@ -175,7 +175,7 @@ def test_uat_task_mapping_rules_exist():
         "Missing guidance to copy acceptance criteria verbatim"
 
 
-@pytest.mark.story("US-PLN-092")
+@pytest.mark.story("US-GDN-061")
 def test_uat_phase_planning_section_exists():
     """
     Test that uat_phase_planning section exists with proper references.

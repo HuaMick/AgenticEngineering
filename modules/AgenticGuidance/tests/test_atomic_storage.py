@@ -20,7 +20,7 @@ import pytest
 
 from agenticguidance.services.epic_repository import AtomicJSONStorage, EpicRepository
 
-pytestmark = pytest.mark.story("US-SET-017", "US-SET-022")
+pytestmark = pytest.mark.story("US-SES-020")
 
 _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
 

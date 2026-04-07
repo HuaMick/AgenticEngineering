@@ -9,7 +9,7 @@ import pytest
 from agenticguidance.services.epic import PhaseData
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-053", "US-GDN-050", "US-GDN-053")]
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-061")]
 
 
 @pytest.fixture

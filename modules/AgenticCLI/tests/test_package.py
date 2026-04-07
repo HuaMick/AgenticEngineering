@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SET-002", "US-GDN-092", "US-GDN-093", "US-GDN-094")
+pytestmark = pytest.mark.story("US-SET-020")
 
 
 class TestUpdateCommand:

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SES-001", "US-SES-010", "US-SES-011")
+pytestmark = pytest.mark.story("US-SES-001")
 
 
 @pytest.fixture
@@ -177,7 +177,7 @@ class TestSessionHelperFunctions:
 
         assert result == []
 
-    @pytest.mark.story("US-SES-008")
+    @pytest.mark.story("US-SES-001")
     def test_is_process_running_for_current_process(self):
         """Test is_process_running for the current process."""
         from agenticcli.commands import session
@@ -185,7 +185,7 @@ class TestSessionHelperFunctions:
         # Current process should be running
         assert session.is_process_running(os.getpid()) is True
 
-    @pytest.mark.story("US-SES-008")
+    @pytest.mark.story("US-SES-001")
     def test_is_process_running_for_nonexistent_process(self):
         """Test is_process_running for a nonexistent process."""
         from agenticcli.commands import session
@@ -193,7 +193,7 @@ class TestSessionHelperFunctions:
         # Very high PID unlikely to exist
         assert session.is_process_running(99999999) is False
 
-    @pytest.mark.story("US-SES-008")
+    @pytest.mark.story("US-SES-001")
     def test_update_session_status_marks_completed(self, mock_sessions_dir, sample_session_data):
         """Test that update_session_status marks dead processes as completed."""
         from agenticcli.commands import session
@@ -369,7 +369,7 @@ class TestSessionSpawnCommand:
         assert output["background"] is True
 
 
-@pytest.mark.story("US-SES-002")
+@pytest.mark.story("US-SES-001")
 class TestSessionListCommand:
     """Tests for the session list command."""
 
@@ -586,7 +586,7 @@ class TestSessionListCommand:
         assert sessions_list[0].get("transport") == "sdk-tmux"
 
 
-@pytest.mark.story("US-SES-003")
+@pytest.mark.story("US-SES-001")
 class TestSessionStopCommand:
     """Tests for the session stop command."""
 
@@ -1148,7 +1148,7 @@ class TestSpawnWithRoleAndPlan:
         assert "Hello world" in context_file.read_text()
 
 
-@pytest.mark.story("US-SES-004")
+@pytest.mark.story("US-SES-001")
 class TestCheckSessionHealth:
     """Tests for _check_session_health helper function."""
 
@@ -1203,7 +1203,7 @@ class TestCheckSessionHealth:
         assert health["stale"] is True
         assert health["stale_minutes"] >= 10
 
-    @pytest.mark.story("US-SES-008")
+    @pytest.mark.story("US-SES-001")
     def test_dead_pid(self, mock_sessions_dir, mock_logs_dir, sample_session_data, monkeypatch):
         """Test health check for a session with dead PID."""
         from agenticcli.commands import session
@@ -1262,7 +1262,7 @@ class TestCheckSessionHealth:
         assert health["stale"] is False
 
 
-@pytest.mark.story("US-SES-004")
+@pytest.mark.story("US-SES-001")
 class TestSessionHealthcheckCommand:
     """Tests for cmd_healthcheck command."""
 
@@ -1363,7 +1363,7 @@ class TestSessionHealthcheckCommand:
         assert "No session found" in captured.err
 
 
-@pytest.mark.story("US-SES-004")
+@pytest.mark.story("US-SES-001")
 class TestSessionLogsCommand:
     """Tests for cmd_logs command."""
 
@@ -1474,7 +1474,7 @@ class TestSessionLogsCommand:
         assert "No session found" in captured.err
 
 
-@pytest.mark.story("US-SES-002")
+@pytest.mark.story("US-SES-001")
 class TestStaleWarningInList:
     """Tests for stale warning integration in session list."""
 
@@ -1805,7 +1805,7 @@ class TestLogFileDescriptorManagement:
         assert len(closed_files) == 2
 
 
-@pytest.mark.story("US-SES-001", "US-SES-004")
+@pytest.mark.story("US-SES-001")
 class TestTmuxHealthIntegration:
     """Tests for tmux signal in health check (TSM_007)."""
 
@@ -2410,7 +2410,7 @@ class TestTmuxFallback:
 # ── TT_006: Test session stop kills tmux session ──────────────────────
 
 
-@pytest.mark.story("US-SES-003", "US-GDN-087")
+@pytest.mark.story("US-SES-001")
 class TestSessionStopTmux:
     """TT_006: Tests that session stop properly kills tmux sessions."""
 

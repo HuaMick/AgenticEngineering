@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SES-004")
+pytestmark = pytest.mark.story("US-SES-001")
 
 from agenticcli.utils.session_diagnostics import (
     ErrorType,

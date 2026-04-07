@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SES-005")
+pytestmark = pytest.mark.story("US-SES-006")
 
 from agenticguidance.services.state import (
     FileLock,

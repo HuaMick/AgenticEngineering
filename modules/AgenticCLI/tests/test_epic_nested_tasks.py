@@ -15,7 +15,7 @@ import pytest
 
 from tests.conftest import populate_tinydb_from_yaml
 
-pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-008")]
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-009")]
 
 
 @pytest.fixture
@@ -110,7 +110,7 @@ def _get_ticket_status(db_path, epic_folder_name, ticket_id):
     return None
 
 
-@pytest.mark.story("US-PLN-011")
+@pytest.mark.story("US-PLN-009")
 class TestUpdateTaskStatus:
     """Tests for _update_task_status with nested tasks."""
 
@@ -230,7 +230,6 @@ class TestTaskList:
 
 
 @pytest.mark.story("US-PLN-009")
-@pytest.mark.story("US-PLN-010")
 class TestTaskCurrent:
     """Tests for cmd_task_current with nested tasks."""
 
@@ -281,7 +280,7 @@ class TestTaskCurrent:
         assert "TST-001" in stdout
 
 
-@pytest.mark.story("US-PLN-009", "US-PLN-011")
+@pytest.mark.story("US-PLN-009")
 class TestEdgeCases:
     """Tests for edge cases in nested task handling."""
 

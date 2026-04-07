@@ -31,7 +31,7 @@ from agenticcli.utils.session_cleanup import (
     _LOCK_STALE_SECONDS,
 )
 
-pytestmark = pytest.mark.story("US-SES-007", "US-SES-008")
+pytestmark = pytest.mark.story("US-SES-035")
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ class TestCleanupReport:
 class TestCleanDeadSessions:
     """Tests for cleaning dead/completed session artifacts."""
 
-    @pytest.mark.story("US-SES-003", "US-SES-008")
+    @pytest.mark.story("US-SES-035")
     def test_cleanup_completed_session(self, service, sessions_dir):
         """Completed sessions have all artifacts removed."""
         sid = "completed-sess-001"
@@ -160,7 +160,7 @@ class TestCleanDeadSessions:
         assert not (sessions_dir / "logs" / f"{sid}.stderr.log").exists()
         assert not (sessions_dir / "context" / f"{sid}.md").exists()
 
-    @pytest.mark.story("US-SES-008")
+    @pytest.mark.story("US-SES-035")
     def test_cleanup_dead_running_session(self, service, sessions_dir):
         """Sessions with status='running' but dead PID are cleaned."""
         sid = "dead-running-001"
@@ -360,7 +360,7 @@ class TestAgeBasedFiltering:
 class TestDryRunMode:
     """Tests for dry_run=True mode."""
 
-    @pytest.mark.story("US-SES-007")
+    @pytest.mark.story("US-SES-035")
     def test_dry_run_does_not_delete_files(self, service, sessions_dir):
         """dry_run=True reports what would be cleaned but doesn't delete anything."""
         sid = "dry-run-001"
@@ -385,7 +385,7 @@ class TestDryRunMode:
         assert (sessions_dir / "logs" / f"{sid}.stderr.log").exists()
         assert (sessions_dir / "context" / f"{sid}.md").exists()
 
-    @pytest.mark.story("US-SES-007")
+    @pytest.mark.story("US-SES-035")
     def test_dry_run_report_matches_real_cleanup(self, service, sessions_dir):
         """dry_run report counts should match what a real cleanup would do."""
         for i in range(3):
@@ -579,7 +579,7 @@ class TestLockFileCleanup:
 class TestOrphanedTmuxCleanup:
     """Tests for orphaned agentic-* tmux session detection and cleanup."""
 
-    @pytest.mark.story("US-SES-003")
+    @pytest.mark.story("US-SES-035")
     def test_orphaned_tmux_sessions_killed(self, service, sessions_dir):
         """Tmux sessions with agentic-* prefix and no matching record are killed."""
         mock_result = MagicMock()

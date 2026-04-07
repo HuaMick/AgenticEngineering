@@ -17,7 +17,7 @@ import yaml
 
 from tests.conftest import populate_tinydb_from_yaml
 
-pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-007")]
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-015")]
 
 
 @pytest.fixture
@@ -625,7 +625,7 @@ def _get_phase_via_list(db_path, epic_folder_name, phase_name):
     return next((p for p in phases if phase_name in p.name), None)
 
 
-@pytest.mark.story("US-RES-001")
+@pytest.mark.story("US-PLN-015")
 class TestPhaseUpdateBlockedReason:
     """Tests for the --blocked-reason flag on epic phase update command."""
 
@@ -713,7 +713,7 @@ class TestPhaseUpdateBlockedReason:
         assert "not found" in stderr.lower()
 
 
-@pytest.mark.story("US-RES-001")
+@pytest.mark.story("US-PLN-015")
 class TestPhaseUpdateToBlockedIntegration:
     """Integration tests: blocked status + reason roundtrip through CLI."""
 

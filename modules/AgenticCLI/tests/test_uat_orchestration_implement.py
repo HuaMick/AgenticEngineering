@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-091")
+pytestmark = pytest.mark.story("US-PLN-047")
 
 
 def _make_execution_runner(tmp_path, plan_folder="test_epic"):

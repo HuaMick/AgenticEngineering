@@ -5,10 +5,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SET-004", "US-GDN-062", "US-GDN-090", "US-GDN-101", "US-GDN-091")
+pytestmark = pytest.mark.story("US-STR-020")
 
 
-@pytest.mark.story("US-SET-004")
+@pytest.mark.story("US-STR-020")
 class TestHealthCommand:
     """Tests for agentic health command."""
 
@@ -73,7 +73,7 @@ def _get_story_coverage_check(cli_runner):
     return check, data
 
 
-@pytest.mark.story("US-GDN-090", "US-GDN-091")
+@pytest.mark.story("US-STR-020")
 class TestStoryCoverageHealth:
     """Tests for story_coverage graduated severity thresholds."""
 
@@ -157,7 +157,7 @@ class TestStoryCoverageHealth:
         assert data["status"] == "healthy"
 
 
-@pytest.mark.story("US-GDN-090", "US-GDN-091")
+@pytest.mark.story("US-STR-020")
 class TestStoryCoverageErrorHandling:
     """Tests for story_coverage error handling and JSON value structure."""
 

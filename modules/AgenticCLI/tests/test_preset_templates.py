@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-014", "US-PLN-022", "US-PLN-023", "US-PLN-024", "US-PLN-025", "US-PLN-026")]
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-009")]
 import yaml
 
 

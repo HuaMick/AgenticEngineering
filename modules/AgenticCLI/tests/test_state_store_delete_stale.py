@@ -14,7 +14,7 @@ import pytest
 
 from agenticcli.utils.state_store import StateStore, is_process_running
 
-pytestmark = pytest.mark.story("US-SES-007", "US-SES-008")
+pytestmark = pytest.mark.story("US-SES-006")
 
 
 @pytest.fixture

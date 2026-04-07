@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SES-005")
+pytestmark = pytest.mark.story("US-SES-006")
 
 from agenticcli.utils.session_state import (
     mark_failed,
 )
 
 
-@pytest.mark.story("US-SES-005")
+@pytest.mark.story("US-SES-006")
 class TestMarkFailed:
     def test_basic(self):
         data = {"session_id": "abc", "status": "running"}

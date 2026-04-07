@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SET-005")
+pytestmark = pytest.mark.story("US-SET-008")
 
 from agenticguidance.services.config import (
     DEFAULT_CONFIG,

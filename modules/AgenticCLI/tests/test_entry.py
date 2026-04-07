@@ -72,7 +72,7 @@ class TestEntryPoint:
             assert exc_info.value.code == 0
 
 
-@pytest.mark.story("US-SET-003")
+@pytest.mark.story("US-SET-001")
 class TestAgentNamePositionalRouting:
     """Tests for CCI positional agent name routing in entry point."""
 
@@ -152,7 +152,7 @@ class TestAgentNamePositionalRouting:
             mock_run.assert_called()
 
 
-@pytest.mark.story("US-SET-001", "US-GDN-094")
+@pytest.mark.story("US-SET-001")
 class TestEntryPointImports:
     """Test that entry point handles imports correctly."""
 

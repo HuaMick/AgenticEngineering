@@ -5,7 +5,7 @@ import pytest
 pytestmark = pytest.mark.story("US-SET-001")
 
 
-@pytest.mark.story("US-SET-001", "US-SET-012", "US-SET-013")
+@pytest.mark.story("US-SET-001")
 class TestCLIHelp:
     """Tests for CLI help output.
 
@@ -73,7 +73,7 @@ class TestCommandAliases:
 
 
 
-@pytest.mark.story("US-SET-007")
+@pytest.mark.story("US-SET-001")
 class TestFlagShortcuts:
     """Tests for flag shortcuts."""
 

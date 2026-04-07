@@ -98,14 +98,14 @@ class TestPlanWorkflowSequence:
 
         os.chdir(original_cwd)
 
-    @pytest.mark.story("US-PLN-003")
+    @pytest.mark.story("US-PLN-001")
     def test_plan_status_workflow(self, cli_in_repo, integration_repo):
         """Test: check status with validate flag."""
         # Epic status works even without epic arg (auto-detect)
         stdout, stderr, code = cli_in_repo("epic", "status")
         assert code in [0, 1, 2], f"Unexpected exit: {code}, stderr: {stderr}"
 
-    @pytest.mark.story("US-PLN-003", "US-PLN-005")
+    @pytest.mark.story("US-PLN-001")
     def test_plan_status_validate(self, cli_in_repo, integration_repo):
         """Test: epic status --validate runs validation checks."""
         stdout, stderr, code = cli_in_repo("epic", "status", "--validate")
@@ -442,7 +442,7 @@ class TestStateWorkflowSequence:
 
         os.chdir(original_cwd)
 
-    @pytest.mark.story("US-SES-007", "US-SES-008")
+    @pytest.mark.story("US-SES-001")
     def test_state_list_cleanup_workflow(self, state_cli):
         """Test: list state -> cleanup stale entries."""
         stdout, stderr, code = state_cli("configure", "state", "list")
@@ -463,7 +463,7 @@ class TestEnvWorkflowSequence:
     """Test environment variable management workflows."""
 
     # US-SET-010 (env run) has no dedicated test; closest coverage is here
-    pytestmark = pytest.mark.story("US-PLN-001", "US-SET-010")
+    pytestmark = pytest.mark.story("US-PLN-001")
 
     @pytest.fixture
     def env_repo(self):
@@ -542,7 +542,7 @@ class TestEnvWorkflowSequence:
         stdout, stderr, code = env_cli("configure", "env", "show")
         assert code == 0
 
-    @pytest.mark.story("US-SET-009")
+    @pytest.mark.story("US-SET-008")
     def test_env_export_workflow(self, env_cli):
         """Test exporting environment variables."""
         stdout, stderr, code = env_cli("configure", "env", "export")

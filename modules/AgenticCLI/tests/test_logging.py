@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-SET-004")
+pytestmark = pytest.mark.story("US-SET-001")
 
 from agenticcli.logging import (
     BACKUP_COUNT,

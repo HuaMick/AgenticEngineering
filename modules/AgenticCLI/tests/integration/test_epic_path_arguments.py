@@ -16,7 +16,7 @@ import yaml
 pytestmark = pytest.mark.integration
 
 
-@pytest.mark.story("US-PLN-003")
+@pytest.mark.story("US-PLN-001")
 class TestPlanStatusPathArguments:
     """Integration tests for 'agentic plan status' path arguments."""
 
@@ -164,7 +164,7 @@ class TestPlanStatusPathArguments:
         assert "not found" in result.stderr.lower() or "error" in result.stderr.lower()
 
 
-@pytest.mark.story("US-PLN-005")
+@pytest.mark.story("US-PLN-001")
 class TestPlanValidatePathArguments:
     """Integration tests for 'agentic epic status --validate' path arguments."""
 

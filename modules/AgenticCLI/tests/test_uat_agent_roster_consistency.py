@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-091")
+pytestmark = pytest.mark.story("US-PLN-046")
 
 # The 9 deleted agents from the restructure
 DELETED_AGENTS = frozenset({

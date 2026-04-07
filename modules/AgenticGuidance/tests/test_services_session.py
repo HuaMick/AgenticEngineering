@@ -319,7 +319,7 @@ class TestSessionService:
         assert result.success is False
         assert "attached clients" in result.message
 
-    @pytest.mark.story("US-GDN-087")
+    @pytest.mark.story("US-GDN-005")
     @patch.object(SessionService, "_get_tmux_sessions", return_value=["live"])
     def test_cleanup_dead_removes_stale(self, mock_sessions, tmp_path):
         """Test cleanup removes dead sessions from registry."""
@@ -339,7 +339,7 @@ class TestSessionService:
         assert "dead" not in data["sessions"]
         assert "live" in data["sessions"]
 
-    @pytest.mark.story("US-GDN-084", "US-GDN-087")
+    @pytest.mark.story("US-GDN-005")
     @patch.object(SessionService, "_get_tmux_sessions", return_value=["my-session"])
     def test_link_worktree(self, mock_sessions, tmp_path):
         """Test linking session to worktree."""

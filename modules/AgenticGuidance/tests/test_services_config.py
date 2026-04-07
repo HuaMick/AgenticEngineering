@@ -15,10 +15,10 @@ from agenticguidance.services.config import (
     TieredConfigLoader,
 )
 
-pytestmark = pytest.mark.story("US-SET-005", "US-SET-026", "US-GDN-099")
+pytestmark = pytest.mark.story("US-SET-008")
 
 
-@pytest.mark.story("US-SET-005")
+@pytest.mark.story("US-SET-008")
 class TestConfigSource:
     """Tests for ConfigSource enum."""
 
@@ -31,7 +31,7 @@ class TestConfigSource:
         assert ConfigSource.CLI.value == "cli"
 
 
-@pytest.mark.story("US-SET-005")
+@pytest.mark.story("US-SET-008")
 class TestConfigValue:
     """Tests for ConfigValue dataclass."""
 
@@ -54,7 +54,7 @@ class TestConfigValue:
         assert value.path == "/home/user/.config/config.yml"
 
 
-@pytest.mark.story("US-SET-005")
+@pytest.mark.story("US-SET-008")
 class TestTieredConfigLoader:
     """Tests for TieredConfigLoader class."""
 
@@ -147,7 +147,7 @@ class TestTieredConfigLoader:
         assert result.value == "AE"
 
 
-@pytest.mark.story("US-SET-005", "US-SET-006")
+@pytest.mark.story("US-SET-008")
 class TestConfigWorkflow:
     """Tests for ConfigWorkflow class."""
 

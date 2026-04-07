@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-SET-005", "US-SET-006")
+pytestmark = pytest.mark.story("US-SET-008")
 
 
 class TestConfigShow:

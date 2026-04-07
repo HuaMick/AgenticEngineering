@@ -6,7 +6,7 @@ agent roles from the current 20-agent roster (no deleted agents).
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-091")
+pytestmark = pytest.mark.story("US-PLN-046")
 
 
 class TestPlanningCommand:

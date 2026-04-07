@@ -30,7 +30,7 @@ from agenticguidance.services.state import (
     FILELOCK_RETRY_BACKOFF_BASE,
 )
 
-pytestmark = pytest.mark.story("US-PLN-055")
+pytestmark = pytest.mark.story("US-PLN-001")
 
 _SRC_DIR = str(Path(__file__).resolve().parent.parent.parent / "src")
 
@@ -473,7 +473,7 @@ class TestNoDataLossUnderContention:
 # ── PhaseStatus.BLOCKED and PhaseData model tests ─────────────────────────
 
 
-@pytest.mark.story("US-RES-001")
+@pytest.mark.story("US-PLN-001")
 class TestPhaseStatusBlockedEnum:
     """PhaseStatus enum should include BLOCKED with correct string value."""
 
@@ -500,7 +500,7 @@ class TestPhaseStatusBlockedEnum:
         assert PhaseStatus.BLOCKED.value != PhaseStatus.FAILED.value
 
 
-@pytest.mark.story("US-RES-001")
+@pytest.mark.story("US-PLN-001")
 class TestPhaseDataBlockedReason:
     """PhaseData model should support blocked_reason field."""
 
@@ -540,7 +540,7 @@ class TestPhaseDataBlockedReason:
         assert phase.blocked_reason == "3 consecutive spawn failures"
 
 
-@pytest.mark.story("US-RES-001")
+@pytest.mark.story("US-PLN-001")
 class TestEpicRepositoryBlockedState:
     """EpicRepository should persist and retrieve blocked status and blocked_reason."""
 

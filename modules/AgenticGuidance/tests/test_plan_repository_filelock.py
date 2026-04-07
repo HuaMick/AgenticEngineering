@@ -23,7 +23,7 @@ import pytest
 
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = pytest.mark.story("US-PLN-082", "US-PLN-063")
+pytestmark = pytest.mark.story("US-SES-020")
 
 _SRC_DIR = str(Path(__file__).resolve().parent.parent / "src")
 
@@ -48,7 +48,7 @@ def _make_epic_data(name: str) -> dict:
     }
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-SES-020")
 class TestConcurrentWritesSerialized:
     """FL_002-1: Concurrent create_epic calls are serialized by FileLock.
 
@@ -107,7 +107,7 @@ class TestConcurrentWritesSerialized:
         verify.close()
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-SES-020")
 class TestLockFileCreatedDuringWrite:
     """FL_002-2: .lock file appears while a write operation holds the lock."""
 
@@ -144,7 +144,7 @@ class TestLockFileCreatedDuringWrite:
         lock.release()
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-SES-020")
 class TestStaleLockRecovery:
     """FL_002-3: EpicRepository recovers from stale lock files."""
 
@@ -170,7 +170,7 @@ class TestStaleLockRecovery:
         assert data["pid"] == os.getpid()
 
 
-@pytest.mark.story("US-PLN-082")
+@pytest.mark.story("US-SES-020")
 class TestReadOperationsDontLock:
     """FL_002-4: Read operations (get_epic, list_epics) work without lock."""
 

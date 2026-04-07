@@ -19,7 +19,7 @@ import pytest
 
 from tests.conftest import populate_tinydb_from_yaml
 
-pytestmark = pytest.mark.story("US-PLN-004", "US-PLN-003")
+pytestmark = pytest.mark.story("US-PLN-001")
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +196,7 @@ def _make_cli_runner(cwd: Path):
 class TestEpicListFolderFreeEpic:
     """cmd_list must not crash when an epic has no folder on disk."""
 
-    @pytest.mark.story("US-PLN-004")
+    @pytest.mark.story("US-PLN-001")
     def test_epic_list_with_folder_free_epic_does_not_crash(
         self, folder_free_repo, _isolate_tinydb
     ):
@@ -216,7 +216,7 @@ class TestEpicListFolderFreeEpic:
         except SystemExit:
             pass  # sys.exit() calls are acceptable; crashes are not
 
-    @pytest.mark.story("US-PLN-004")
+    @pytest.mark.story("US-PLN-001")
     def test_epic_list_folder_free_displays_epic_folder_name(
         self, folder_free_repo, _isolate_tinydb, capsys
     ):
@@ -234,7 +234,7 @@ class TestEpicListFolderFreeEpic:
         # The folder name (not a path attribute) should be printed
         assert "260329CF_folder_free_epic" in captured.out
 
-    @pytest.mark.story("US-PLN-004")
+    @pytest.mark.story("US-PLN-001")
     def test_epic_list_folder_free_json_output_contains_name(
         self, folder_free_repo, _isolate_tinydb, capsys
     ):
@@ -264,7 +264,7 @@ class TestEpicListFolderFreeEpic:
 class TestEpicListMixedFolderAndFolderless:
     """cmd_list handles a mix of folder-backed and folder-free epics."""
 
-    @pytest.mark.story("US-PLN-004")
+    @pytest.mark.story("US-PLN-001")
     def test_both_epics_appear_in_output(
         self, mixed_epics_repo, _isolate_tinydb, capsys
     ):
@@ -282,7 +282,7 @@ class TestEpicListMixedFolderAndFolderless:
         assert "260329MX_with_folder" in captured.out
         assert "260329MX_no_folder" in captured.out
 
-    @pytest.mark.story("US-PLN-004")
+    @pytest.mark.story("US-PLN-001")
     def test_mixed_list_does_not_crash(self, mixed_epics_repo, _isolate_tinydb):
         """cmd_list with mixed epics must complete without AttributeError."""
         from agenticcli.commands.epic import cmd_list
@@ -299,7 +299,7 @@ class TestEpicListMixedFolderAndFolderless:
 
         assert raised is None, f"cmd_list raised AttributeError: {raised}"
 
-    @pytest.mark.story("US-PLN-004")
+    @pytest.mark.story("US-PLN-001")
     def test_mixed_list_json_contains_both_epics(
         self, mixed_epics_repo, _isolate_tinydb, capsys
     ):
@@ -329,7 +329,7 @@ class TestEpicListMixedFolderAndFolderless:
 class TestEpicStatusFolderFreeEpic:
     """cmd_status must not crash when the epic has no folder on disk."""
 
-    @pytest.mark.story("US-PLN-003")
+    @pytest.mark.story("US-PLN-001")
     def test_epic_status_folder_free_does_not_crash(
         self, folder_free_with_tickets_repo, _isolate_tinydb
     ):
@@ -358,7 +358,7 @@ class TestEpicStatusFolderFreeEpic:
 
         assert raised is None, f"cmd_status raised AttributeError: {raised}"
 
-    @pytest.mark.story("US-PLN-003")
+    @pytest.mark.story("US-PLN-001")
     def test_epic_status_folder_free_shows_ticket_counts(
         self, folder_free_with_tickets_repo, _isolate_tinydb, capsys
     ):

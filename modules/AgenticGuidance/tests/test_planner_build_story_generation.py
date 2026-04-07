@@ -9,7 +9,7 @@ import pytest
 import yaml
 from pathlib import Path
 
-pytestmark = pytest.mark.story("US-PLN-027", "US-PLN-030", "US-PLN-091", "US-STR-012", "US-GDN-048", "US-GDN-052")
+pytestmark = pytest.mark.story("US-GDN-061")
 
 
 @pytest.fixture

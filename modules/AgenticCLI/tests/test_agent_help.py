@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.story("US-GDN-001")
+pytestmark = pytest.mark.story("US-GDN-005")
 
 from agenticcli.commands.agent_help import (
     AGENT_CATEGORIES,
@@ -26,7 +26,7 @@ from agenticcli.commands.agent_help import (
 )
 
 
-@pytest.mark.story("US-GDN-001", "US-GDN-003", "US-GDN-005")
+@pytest.mark.story("US-GDN-005")
 class TestAgentNameDetection:
     """Tests for agent name detection functions (CCI positional syntax)."""
 
@@ -82,7 +82,7 @@ class TestAgentNameDetection:
             assert category in valid_categories, f"Invalid category {category} for {agent}"
 
 
-@pytest.mark.story("US-GDN-022", "US-GDN-010", "US-GDN-014", "US-GDN-058")
+@pytest.mark.story("US-GDN-005")
 class TestAgentHelpContent:
     """Tests for agent help content generation."""
 
@@ -123,7 +123,7 @@ class TestAgentHelpContent:
         # Role may be None if files not found, but key should exist
         assert "role" in context
 
-    @pytest.mark.story("US-GDN-030")
+    @pytest.mark.story("US-GDN-005")
     def test_help_includes_process_steps(self):
         """Test that context includes process steps when available."""
         context = _load_agent_context("test-builder")
@@ -131,7 +131,7 @@ class TestAgentHelpContent:
         # process_steps should be a list
         assert isinstance(context.get("process_steps", []), list)
 
-    @pytest.mark.story("US-GDN-024", "US-GDN-031")
+    @pytest.mark.story("US-GDN-005")
     def test_help_includes_inputs(self):
         """Test that context includes inputs when available."""
         context = _load_agent_context("planner-build")
@@ -140,7 +140,7 @@ class TestAgentHelpContent:
         assert isinstance(context.get("inputs", []), list)
 
 
-@pytest.mark.story("US-GDN-022")
+@pytest.mark.story("US-GDN-005")
 class TestAgentHelpOutput:
     """Tests for agent help output formatting."""
 
@@ -207,7 +207,7 @@ class TestAgentHelpOutput:
         assert isinstance(data, dict)
 
 
-@pytest.mark.story("US-GDN-001", "US-GDN-058", "US-GDN-092", "US-GDN-095", "US-GDN-086")
+@pytest.mark.story("US-GDN-005")
 class TestAgentDirectoryFinding:
     """Tests for finding agent directories."""
 
@@ -234,7 +234,7 @@ class TestAgentDirectoryFinding:
         assert agent_dir is None
 
 
-@pytest.mark.story("US-GDN-001", "US-GDN-022")
+@pytest.mark.story("US-GDN-005")
 class TestCLIIntegration:
     """Integration tests for CLI invocation with CCI positional syntax."""
 
@@ -270,7 +270,7 @@ class TestCLIIntegration:
         data = json.loads(result.stdout)
         assert data["agent"] == "build-python"
 
-    @pytest.mark.story("US-GDN-029")
+    @pytest.mark.story("US-GDN-005")
     def test_cli_agent_positional_with_bootstrap(self):
         """Test invoking CLI with positional agent name and --bootstrap."""
         result = subprocess.run(
@@ -286,7 +286,7 @@ class TestCLIIntegration:
         # Bootstrap output should have more detail
         assert "BOOTSTRAP CONTEXT" in result.stdout or "test-builder" in result.stdout.lower()
 
-    @pytest.mark.story("US-GDN-029")
+    @pytest.mark.story("US-GDN-005")
     def test_cli_agent_bootstrap_with_json(self):
         """Test invoking CLI with agent name, --bootstrap and -j."""
         result = subprocess.run(
@@ -356,11 +356,11 @@ class TestCLIIntegration:
         assert elapsed < 0.5, f"CLI took {elapsed:.2f}s, expected < 0.5s"
 
 
-@pytest.mark.story("US-GDN-022", "US-GDN-002", "US-GDN-004", "US-GDN-011")
+@pytest.mark.story("US-GDN-005")
 class TestErrorHandling:
     """Tests for error handling."""
 
-    @pytest.mark.story("US-GDN-031")
+    @pytest.mark.story("US-GDN-005")
     def test_missing_manifest_graceful(self):
         """Test graceful handling when manifest doesn't exist."""
         # Mock _find_agent_directory to return a path that exists but has no files
@@ -377,7 +377,7 @@ class TestErrorHandling:
                 # Role should be None since no files exist
                 assert context["role"] is None
 
-    @pytest.mark.story("US-GDN-030")
+    @pytest.mark.story("US-GDN-005")
     def test_missing_process_graceful(self):
         """Test graceful handling when process.yml doesn't exist."""
         with patch("agenticcli.commands.agent_help._find_agent_directory") as mock_find:
@@ -413,7 +413,7 @@ class TestErrorHandling:
                 assert context["agent"] == "build-python"
 
 
-@pytest.mark.story("US-GDN-001", "US-GDN-003", "US-GDN-043", "US-GDN-044", "US-GDN-047", "US-GDN-089", "US-GDN-095", "US-GDN-102", "US-GDN-096")
+@pytest.mark.story("US-GDN-005")
 class TestAgentCategories:
     """Tests for agent category organization."""
 

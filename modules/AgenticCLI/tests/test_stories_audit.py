@@ -22,7 +22,7 @@ import yaml
 
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = pytest.mark.story("US-STR-009")
+pytestmark = pytest.mark.story("US-STR-030")
 
 
 # ---------------------------------------------------------------------------

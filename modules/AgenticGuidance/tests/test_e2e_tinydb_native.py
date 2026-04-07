@@ -16,7 +16,7 @@ from agenticguidance.services.epic import EpicService
 from agenticguidance.services.epic_repository import EpicRepository
 from agenticguidance.services.ticket import TicketService
 
-pytestmark = pytest.mark.story("US-SET-017")
+pytestmark = pytest.mark.story("US-SES-020")
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ def _yaml_files_in(path: Path) -> list:
     return found
 
 
-@pytest.mark.story("US-PLN-082", "US-PLN-086", "US-GDN-073", "US-GDN-076")
+@pytest.mark.story("US-PLN-001")
 class TestFullLifecycleNoYaml:
     """Complete epic lifecycle using only TinyDB storage."""
 

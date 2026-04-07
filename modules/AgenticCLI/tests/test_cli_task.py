@@ -5,7 +5,7 @@ Unit tests for argument parsing of ticket prefill, list, status, and add command
 
 import pytest
 
-pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-008")]
+pytestmark = [pytest.mark.unit, pytest.mark.story("US-PLN-009")]
 
 
 @pytest.mark.story("US-PLN-009")
@@ -45,7 +45,7 @@ class TestTaskListParser:
         assert "--verbose" in result.stdout or "-v" in result.stdout
 
 
-@pytest.mark.story("US-PLN-010")
+@pytest.mark.story("US-PLN-009")
 class TestTaskAddParser:
     """Tests for 'agentic epic ticket add' argument parsing."""
 

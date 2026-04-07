@@ -12,7 +12,7 @@ import tempfile
 import shutil
 import yaml
 
-pytestmark = pytest.mark.story("US-PLN-072", "US-GDN-082", "US-GDN-071", "US-GDN-072", "US-GDN-074", "US-GDN-075", "US-PLN-075", "US-PLN-078")
+pytestmark = pytest.mark.story("US-GDN-061")
 
 
 @pytest.fixture

@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-pytestmark = pytest.mark.story("US-STR-009")
+pytestmark = pytest.mark.story("US-STR-001")
 
 
 # ---------------------------------------------------------------------------

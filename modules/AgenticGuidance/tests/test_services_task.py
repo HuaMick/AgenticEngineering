@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.story("US-PLN-008", "US-SET-028", "US-PLN-087", "US-PLN-088")
+pytestmark = pytest.mark.story("US-PLN-009")
 
 from agenticguidance.services.ticket import Ticket, TicketService, TicketStatus
 
@@ -294,7 +294,7 @@ class TestTicketRetrieval:
 # test_003: Ticket update tests
 
 
-@pytest.mark.story("US-PLN-087")
+@pytest.mark.story("US-PLN-009")
 class TestTicketUpdates:
     """Tests for ticket update methods."""
 

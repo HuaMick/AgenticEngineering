@@ -10,7 +10,7 @@ import pytest
 
 from agenticguidance.services.epic_repository import EpicRepository
 
-pytestmark = pytest.mark.story("US-STR-009")
+pytestmark = pytest.mark.story("US-STR-001")
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def repo(tmp_path):
     r.close()
 
 
-@pytest.mark.story("US-STR-009")
+@pytest.mark.story("US-STR-001")
 class TestSyncStoryTests:
     """Test sync_story_tests() bulk upsert."""
 
@@ -68,7 +68,7 @@ class TestSyncStoryTests:
         assert docs[0]["test_files"] == ["tests/test_a.py", "tests/test_b.py"]
 
 
-@pytest.mark.story("US-STR-009")
+@pytest.mark.story("US-STR-001")
 class TestGetTestsForStory:
     """Test get_tests_for_story() lookup."""
 
@@ -84,7 +84,7 @@ class TestGetTestsForStory:
         assert repo.get_tests_for_story("US-NOPE-999") == []
 
 
-@pytest.mark.story("US-STR-009")
+@pytest.mark.story("US-STR-001")
 class TestGetStoriesForTest:
     """Test get_stories_for_test() reverse lookup."""
 
@@ -107,7 +107,7 @@ class TestGetStoriesForTest:
         assert repo.get_stories_for_test("tests/nonexistent.py::test_x") == []
 
 
-@pytest.mark.story("US-GDN-066")
+@pytest.mark.story("US-STR-001")
 class TestGetUncoveredStories:
     """Test get_uncovered_stories() gap analysis."""
 
@@ -134,7 +134,7 @@ class TestGetUncoveredStories:
         assert repo.get_uncovered_stories(set()) == []
 
 
-@pytest.mark.story("US-STR-009")
+@pytest.mark.story("US-STR-001")
 class TestClearStoryTests:
     """Test clear_story_tests() wipe."""
 
