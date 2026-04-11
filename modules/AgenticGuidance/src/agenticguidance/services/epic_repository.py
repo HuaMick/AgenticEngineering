@@ -232,6 +232,8 @@ class EpicRepository:
             self._migrate_from_plans_table()
             # Normalize legacy status values to canonical 6-status model
             self._migrate_legacy_statuses()
+            # One-shot: rewrite phase status 'pending' -> 'planning'
+            self._migrate_pending_to_planning()
 
         # auto_bootstrap parameter kept for API compat but no longer imports YAML.
         # TinyDB is the sole data store; if the DB is empty, it stays empty until
@@ -375,6 +377,28 @@ class EpicRepository:
 
         if migrated:
             logger.info("Legacy status migration complete: %d record(s) updated.", migrated)
+
+    # @story US-260410AG-002
+    def _migrate_pending_to_planning(self) -> None:
+        """One-shot migration: rewrite phase records with status 'pending' to 'planning'.
+
+        Scans the phases table (NOT tickets) for any records still carrying the
+        legacy 'pending' status and updates them to the canonical 'planning'
+        value.  Idempotent — if no records match, logs 0 and returns.
+
+        NOTE: Caller must hold self._lock (called from __init__ under lock).
+        """
+        Phase = Query()
+        pending_docs = self._phases.search(Phase.status == "pending")
+        if pending_docs:
+            self._phases.update(
+                {"status": "planning"}, Phase.status == "pending",
+            )
+        migrated = len(pending_docs)
+        logger.info(
+            "Phase pending->planning migration: %d record(s) migrated.",
+            migrated,
+        )
 
     # ------------------------------------------------------------------
     # Epic CRUD
@@ -676,7 +700,7 @@ class EpicRepository:
             # Preconditions for completed
             if new_status == "completed":
                 phases = self.list_phases(actual_name)
-                active = [p for p in phases if p.status in ("pending", "in_progress")]
+                active = [p for p in phases if p.status in ("planning", "in_progress")]
                 if active:
                     names = ", ".join(p.name for p in active)
                     raise InvalidStatusTransition(
@@ -703,9 +727,9 @@ class EpicRepository:
             return f"phases missing agent routing: {', '.join(unrouted)}"
 
         # 3. At least one phase is pending/in_progress
-        has_actionable = any(p.status in ("pending", "in_progress") for p in phases)
+        has_actionable = any(p.status in ("planning", "in_progress") for p in phases)
         if not has_actionable:
-            return "no pending or in_progress phases"
+            return "no planning or in_progress phases"
 
         # 4. Cross-epic dependencies satisfied
         try:
@@ -1363,7 +1387,7 @@ class EpicRepository:
                 "phase_id": phase_data.get("phase_id", ""),
                 "execution": phase_data.get("execution", "sequential"),
                 "description": phase_data.get("description", ""),
-                "status": phase_data.get("status", "pending"),
+                "status": phase_data.get("status", "planning"),
                 "agent": phase_data.get("agent"),
                 "loop_type": phase_data.get("loop_type"),
                 "loop_max_iterations": phase_data.get("loop_max_iterations"),
@@ -1466,6 +1490,18 @@ class EpicRepository:
             for d in docs
         ]
 
+    @staticmethod
+    def _normalize_phase_status(status: Optional[str]) -> str:
+        """Normalize legacy phase status values on read.
+
+        Transparently converts 'pending' -> 'planning' so callers never see
+        the deprecated value.  Returns 'planning' for None/empty as a safe default.
+        """
+        status = status or "planning"
+        if status == "pending":
+            status = "planning"
+        return status
+
     def list_phases(self, epic_folder_name: str) -> list[PhaseData]:
         """Return all phases for an epic, sorted by _order.
 
@@ -1484,7 +1520,7 @@ class EpicRepository:
                 name=d.get("phase_name", ""),
                 description=d.get("description"),
                 execution=d.get("execution"),
-                status=d.get("status"),
+                status=self._normalize_phase_status(d.get("status")),
                 agent=d.get("agent"),
                 loop_type=d.get("loop_type"),
                 loop_max_iterations=d.get("loop_max_iterations"),
@@ -1528,7 +1564,7 @@ class EpicRepository:
             name=d.get("phase_name", ""),
             description=d.get("description"),
             execution=d.get("execution"),
-            status=d.get("status"),
+            status=self._normalize_phase_status(d.get("status")),
             agent=d.get("agent"),
             loop_type=d.get("loop_type"),
             loop_max_iterations=d.get("loop_max_iterations"),
@@ -1551,7 +1587,7 @@ class EpicRepository:
         Phase = Query()
         docs = self._phases.search(
             (Phase.epic_folder_name == epic_folder_name)
-            & (Phase.status.test(lambda s: s in ("pending", "in_progress")))
+            & (Phase.status.test(lambda s: s in ("planning", "in_progress")))
         )
         return len(docs) > 0
 
@@ -1747,5 +1783,12 @@ class EpicRepository:
         )
         if len(docs) == 1:
             return docs[0]
+        if len(docs) > 1:
+            names = sorted(d.get("epic_folder_name", "<unknown>") for d in docs)
+            raise ValueError(
+                f"Ambiguous epic prefix '{epic_id_or_name}' matched "
+                f"{len(docs)} epics: {names}. "
+                "Use the full folder name to disambiguate."
+            )
 
         return None

@@ -492,7 +492,7 @@ def orchestrate_session_plan(
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts (default: enabled)")] = True,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Create tmux layout, verify panes, print JSON, then exit")] = False,
-    budget: Annotated[float, typer.Option("--budget", help="Max USD cost before halting")] = 50.0,
+    budget: Annotated[float, typer.Option("--budget", help="Max USD cost before halting (default $50; small epic plan ≈ $1–2, phase exec ≈ $1–3)")] = 50.0,
 ):
     """Run automated orchestration planning for all plans that need it."""
     resolved_epic = epic or plan
@@ -508,6 +508,41 @@ def orchestrate_session_plan(
     ))
 
 
+@orch_session_app.command("uat")
+def orchestrate_session_uat(
+    story: Annotated[Optional[str], typer.Option("--story", help="Single story ID to UAT (e.g. US-PLN-047)")] = None,
+    epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder — run UAT for every story attached to the epic")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", help="[Deprecated: use --epic]")] = None,
+    stale: Annotated[bool, typer.Option("--stale", help="Run UAT for every story whose watched files changed since last_uat_commit")] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Print resolved story set without spawning any sessions")] = False,
+    directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
+    dangerously_skip_permissions: Annotated[bool, typer.Option(
+        "--dangerously-skip-permissions/--no-dangerously-skip-permissions",
+        help="Skip permission prompts for spawned agents (default: enabled)")] = True,
+):
+    """Run UAT sessions against user stories (decoupled from epic completion).
+
+    One `test-uat` agent is spawned per story. The agent records its own pass
+    via `agentic stories update <id> --status pass --kind uat` as its final
+    step; this runner verifies the stamp landed via pre/post read and treats a
+    missing stamp as a failure. Scope is exclusive: one of --story / --epic /
+    --stale.
+    """
+    resolved_epic = epic or plan
+    from agenticcli.commands.orchestrate import cmd_orchestrate
+    cmd_orchestrate(_ns(
+        command="orchestrate",
+        json=_global["json"], debug=_global["debug"],
+        action="uat",
+        story=story,
+        plan=resolved_epic,
+        stale=stale,
+        dry_run=dry_run,
+        directory=directory,
+        dangerously_skip_permissions=dangerously_skip_permissions,
+    ))
+
+
 @orch_session_app.command("implement")
 def orchestrate_session_implement(
     epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder name or short ID (e.g. '260305AG')")] = None,
@@ -518,7 +553,7 @@ def orchestrate_session_implement(
     project: Annotated[Optional[str], typer.Option("--project", "-p", help="Project filter")] = None,
     directory: Annotated[Optional[str], typer.Option("--directory", "-d", help="Working directory")] = None,
     dangerously_skip_permissions: Annotated[bool, typer.Option("--dangerously-skip-permissions/--no-dangerously-skip-permissions", help="Skip permission prompts for spawned agents (default: enabled)")] = True,
-    budget: Annotated[float, typer.Option("--budget", help="Max USD cost before halting")] = 50.0,
+    budget: Annotated[float, typer.Option("--budget", help="Max USD cost before halting (default $50; small epic plan ≈ $1–2, phase exec ≈ $1–3)")] = 50.0,
 ):
     """Run automated orchestration execution for epics with pending phases."""
     resolved_epic = epic or plan
@@ -914,12 +949,12 @@ def epic_new(
     branch: Annotated[Optional[str], typer.Option("--branch", "-b", help="Git branch name (auto-generated from objective if omitted)")] = None,
     description: Annotated[Optional[str], typer.Option("--description", "-d", help="Epic folder description suffix")] = None,
     base: Annotated[str, typer.Option("--base", help="Base branch for the epic")] = "main",
-    execute: Annotated[bool, typer.Option("--execute", "-x", help="Auto-execute after planning completes")] = False,
-    max_turns: Annotated[int, typer.Option("--max-turns", help="Max turns for planner agent")] = 25,
-    dangerously_skip_permissions: Annotated[bool, typer.Option(
-        "--dangerously-skip-permissions", help="Skip permission prompts for spawned sessions")] = False,
 ):
-    """Create epic folder and spawn planner agent."""
+    """Create an epic shell (TinyDB + optional disk folder). Does NOT spawn a planner.
+
+    Planning happens via the orchestration loop:
+      agentic orchestrate session plan --epic <folder>
+    """
     if not objective:
         from agenticcli.console import print_error
         print_error("Objective is required. Usage: agentic epic new \"your objective\"")
@@ -928,8 +963,7 @@ def epic_new(
         command="epic", epic_command="new",
         json=_global["json"], debug=_global["debug"],
         objective=objective, branch=branch, description=description,
-        base=base, execute=execute, max_turns=max_turns,
-        dangerously_skip_permissions=dangerously_skip_permissions,
+        base=base,
     ))
 
 
@@ -1060,6 +1094,23 @@ def stories_status(
     ))
 
 
+@stories_app.command("update")
+def stories_update(
+    id: str = typer.Argument(..., help="Story ID to update (e.g. US-PLN-046)"),
+    status: Annotated[str, typer.Option("--status", help="Test status: pass, fail, untested")] = "untested",
+    notes: Annotated[Optional[str], typer.Option("--notes", help="Test notes or failure summary")] = None,
+    plan: Annotated[Optional[str], typer.Option("--plan", "--epic", help="Epic folder recording the update (tested_by_plan)")] = None,
+    commit: Annotated[Optional[str], typer.Option("--commit", help="Git commit hash to record (defaults to current HEAD when --status=pass)")] = None,
+    kind: Annotated[str, typer.Option("--kind", help="Commit kind: 'test' writes last_pass_commit, 'uat' writes last_uat_commit")] = "test",
+):
+    """Update test status for a story, atomically recording the commit hash on pass."""
+    _stories_handle(_ns(
+        stories_command="update", id=id, status=status, notes=notes,
+        plan=plan, commit=commit, kind=kind,
+        json=_global["json"], debug=_global["debug"],
+    ))
+
+
 @stories_app.command("untested")
 def stories_untested(
     project: Annotated[Optional[str], typer.Option("--project", "-p", help="Filter by project")] = None,
@@ -1137,16 +1188,19 @@ def stories_audit(
     epic: Annotated[Optional[str], typer.Option("--epic", help="Epic folder name to audit")] = None,
     check_files: Annotated[bool, typer.Option("--check-files", help="Validate YAML↔header bidirectional consistency")] = False,
     check_tickets: Annotated[bool, typer.Option("--check-tickets", help="Check tickets have story_ids on live epics")] = False,
+    check_uat_plan: Annotated[bool, typer.Option("--check-uat-plan", help="Check all stories have a uat_plan block")] = False,
+    category: Annotated[Optional[str], typer.Option("--category", help="Filter --check-uat-plan to a category path substring (e.g., Planning)")] = None,
     strict: Annotated[bool, typer.Option("--strict", help="Exit non-zero on any mismatch (for CI)")] = False,
 ):
-    """Audit story-ticket coverage, file↔YAML consistency, or ticket traceability."""
-    if not epic and not check_files and not check_tickets:
+    """Audit story-ticket coverage, file↔YAML consistency, ticket traceability, or uat_plan coverage."""
+    if not epic and not check_files and not check_tickets and not check_uat_plan:
         from agenticcli.console import print_error
-        print_error("Provide --epic, --check-files, or --check-tickets")
+        print_error("Provide --epic, --check-files, --check-tickets, or --check-uat-plan")
         raise typer.Exit(1)
     _stories_handle(_ns(
         stories_command="audit", epic=epic, check_files=check_files,
-        check_tickets=check_tickets, strict=strict,
+        check_tickets=check_tickets, check_uat_plan=check_uat_plan,
+        category=category, strict=strict,
         json=_global["json"], debug=_global["debug"],
     ))
 

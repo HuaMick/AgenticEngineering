@@ -8,6 +8,7 @@ deterministic phase-by-phase execution backed by TinyDB.
 
 import json
 import logging
+import os
 import time
 from typing import Optional
 
@@ -275,7 +276,9 @@ class PlanningRunner:
                 # Propagate child runner errors into our state
                 for err in planner_runner.state.get("errors", []):
                     self.state["errors"].append(err)
-                logger.error("Planning failed for plan: %s", plan)
+                # Downgraded to warning: CLI wrapper re-inspects TinyDB and
+                # may still report partial success (see orchestrate.py).
+                logger.warning("Planner loop for plan did not complete: %s", plan)
                 all_success = False
 
         self.state["iteration"] += 1
@@ -517,10 +520,10 @@ class ExecutionRunner:
                 )
                 return False
 
-            # Find next pending/in_progress phase (order preserved by _order field)
+            # Find next planning/in_progress phase (order preserved by _order field)
             next_phase = None
             for phase in phases:
-                if phase.status in ("pending", "in_progress"):
+                if phase.status in ("planning", "in_progress"):
                     next_phase = phase
                     break
 
@@ -547,8 +550,9 @@ class ExecutionRunner:
                     "Use 'agentic epic phase update %s --agent <agent-name>' to fix.",
                     next_phase.name,
                 )
+                phase_label = next_phase.phase_id or next_phase.name
                 self.state["errors"].append(
-                    f"No agent routing for phase {next_phase.name} in {plan_folder}: "
+                    f"No agent routing for phase {phase_label} in {plan_folder}: "
                     f"agent field must be set in TinyDB"
                 )
                 repo.update_phase(plan_folder, next_phase.name, {"status": "failed"})
@@ -592,6 +596,10 @@ class ExecutionRunner:
                 repo.update_phase(plan_folder, next_phase.name, {"status": "completed"})
                 self.state["phases_completed"].append(f"{plan_folder}:{next_phase.name}")
                 self._phase_log.info("Phase completed")
+
+                self._record_story_pass_for_phase(
+                    repo, plan_folder, next_phase.name,
+                )
             else:
                 # Check feedback triggers from TinyDB PhaseData
                 rerun_phase = self._check_feedback_triggers_tinydb(
@@ -602,7 +610,7 @@ class ExecutionRunner:
                         "Feedback trigger: re-running phase %s", rerun_phase,
                     )
                     repo.update_phase(plan_folder, next_phase.name, {"status": "failed"})
-                    repo.update_phase(plan_folder, rerun_phase, {"status": "pending"})
+                    repo.update_phase(plan_folder, rerun_phase, {"status": "planning"})
                     # Continue to next iteration which will pick up the re-run
                     continue
 
@@ -634,9 +642,9 @@ class ExecutionRunner:
                 continue
             recovery_log = self._make_phase_logger(plan_folder, phase.name)
             recovery_log.warning(
-                "Recovery sweep: stuck in_progress — resetting to pending",
+                "Recovery sweep: stuck in_progress — resetting to planning",
             )
-            repo.update_phase(plan_folder, phase.name, {"status": "pending"})
+            repo.update_phase(plan_folder, phase.name, {"status": "planning"})
 
         # Kill orphaned tmux sessions from prior interrupted runs
         self._kill_orphaned_tmux_sessions()
@@ -837,6 +845,72 @@ class ExecutionRunner:
         )
         return False, session_id, is_quick_exit
 
+    def _record_story_pass_for_phase(
+        self,
+        repo,
+        plan_folder: str,
+        phase_name: str,
+    ) -> None:
+        """Record `last_pass_commit` for every story covered by this phase.
+
+        Runs after a phase is marked completed. Resolves the story set from
+        ticket.story_ids (primary) and falls back to a pytest marker scan
+        when tickets carry none. Writes go through `record_story_pass`
+        which uses `StoryService.update_test_status(..., commit_kind="test")`
+        in-process — no subprocess, no agent involvement.
+
+        Silent failure: a broken pass-hash hook must never block phase
+        completion. Errors are logged and swallowed.
+        """
+        try:
+            story_ids: set[str] = set()
+            try:
+                tickets = repo.list_tickets(plan_folder)
+            except Exception:
+                tickets = []
+            for t in tickets:
+                if getattr(t, "phase_name", None) != phase_name:
+                    continue
+                for sid in getattr(t, "story_ids", None) or []:
+                    if sid:
+                        story_ids.add(sid)
+
+            if not story_ids:
+                from agenticcli.commands.stories import _scan_pytest_story_markers
+                try:
+                    story_ids = _scan_pytest_story_markers()
+                except Exception:
+                    story_ids = set()
+
+            if not story_ids:
+                self._phase_log.debug(
+                    "No story IDs resolved for phase %s — skipping pass-hash record",
+                    phase_name,
+                )
+                return
+
+            from agenticcli.commands.stories import record_story_pass
+            result = record_story_pass(
+                sorted(story_ids),
+                commit_kind="test",
+                tested_by=f"executor:{plan_folder}:{phase_name}",
+            )
+            self._phase_log.info(
+                "Recorded last_pass_commit for %d/%d stories (commit=%s)",
+                len(result.get("updated") or []),
+                len(story_ids),
+                (result.get("commit") or "")[:7],
+            )
+            if result.get("missing"):
+                self._phase_log.debug(
+                    "Pass-hash: could not update %s",
+                    ", ".join(result["missing"]),
+                )
+        except Exception as e:
+            self._phase_log.warning(
+                "Pass-hash hook failed (non-fatal): %s", e,
+            )
+
     def _check_phase_tickets_complete(
         self,
         repo,
@@ -875,6 +949,14 @@ class ExecutionRunner:
             Number of tmux sessions killed.
         """
         import subprocess
+
+        # Test-only escape hatch: tests that exercise ExecutionRunner.run() must
+        # NOT touch the real tmux server, because the prefix match below
+        # ('agentic-') is broad enough to clobber sibling tmux integration test
+        # sessions (e.g. 'agentic-orch-test-*'). Honoured only when explicitly
+        # set; production never sets this var.
+        if os.environ.get("AGENTIC_DISABLE_TMUX_ORPHAN_SWEEP"):
+            return 0
 
         # Collect tmux session names for sessions with alive PIDs
         from agenticcli.utils.state_store import StateStore, is_process_running

@@ -138,21 +138,27 @@ process:
       - Record pass/fail for each step
       - Note differences between local and Docker behavior
     - |
-      MANDATORY: Update story test status via CLI BEFORE reporting results.
-      For each tested user story, run:
+      RECORD YOUR OUTCOME (MANDATORY FINAL STEP).
 
-      ```bash
-      agentic stories update <story_id> --status <pass|fail> --notes "<summary>" --epic <epic_folder>
-      ```
+      You are the sole writer of `last_uat_commit` for this story. No
+      framework wrapper will do this for you — if you forget, the pass
+      will not be recorded and the run will be treated as a failure.
 
-      This writes test_status, last_tested, test_notes, and tested_by_plan to the story
-      YAML file. The executor validation gate reads these fields to verify story coverage.
+      On PASS (every success_signal directly observed in both environments):
+        agentic stories update <story_id> --status pass --kind uat \
+          --notes "<one-line summary of what was verified>"
 
-      Schema reference: modules/AgenticGuidance/assets/definitions/user-stories.yml#test_metadata
-      CLI reference: modules/AgenticCLI/src/agenticcli/commands/stories.py#cmd_update
+      On FAIL (any step failed, documentation gap, excessive context, etc):
+        agentic stories update <story_id> --status fail --kind uat \
+          --notes "<one-line failure reason>"
 
-      FENCE: This step MUST complete before reporting results to the orchestrator.
-      If the CLI command fails, report the failure but do NOT skip the step.
+      Notes:
+      - <story_id> is the ID given to you in the prompt (e.g. US-PLN-046).
+      - `--commit` is optional; omit it and the CLI will stamp current HEAD.
+      - This command is your FINAL action. Run it before emitting your
+        report to the orchestrator.
+      - Do NOT invent a different CLI — run `agentic stories update --help`
+        if any flag is unclear rather than guessing.
 
     - |
       Report test results:

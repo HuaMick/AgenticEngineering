@@ -1,73 +1,482 @@
-area: orchestration_agents
-description: "CLI mechanics for plan creation, phase generation, and execution"
+area: orchestration
+description: "Orchestration cluster \u2014 one story per CLI entry point. Three-story\
+  \ cluster\nas of 2026-04-11:\n- US-PLN-046 (Orchestrate Session Plan) \u2014 claims\
+  \ `agentic orchestrate\n  session plan`: seed-epic discovery, CLI surface, plan-time\
+  \ phase\n  generation with --agent routing\n- US-PLN-047 (Orchestrate Session Implement)\
+  \ \u2014 claims `agentic orchestrate\n  session implement`: TinyDB-ordered phase\
+  \ execution, status transitions,\n  blocked-on-failure, idempotent resume from last\
+  \ completed. Also owns the\n  executor-side auto-record of `last_pass_commit` for\
+  \ every story whose\n  tests went green in the phase.\n- US-PLN-048 (Orchestrate\
+  \ Session UAT) \u2014 claims `agentic orchestrate\n  session uat`: on-demand UAT\
+  \ workflow that spawns `test-uat` once per\n  story, consumes the story's `uat_plan`\
+  \ block. `test-uat` is the sole\n  writer of `last_uat_commit`; UatRunner verifies\
+  \ the stamp landed.\n  Strictly decoupled from epic completion.\nEach story is named\
+  \ after the CLI command it claims (single-command\nownership rule from build-story-writer\
+  \ guidance). UAT is NOT a phase in\nthe main build loop as of 2026-04-11 \u2014\
+  \ epic-creator and\nplanner-orchestration no longer template a UAT phase, and epic\
+  \ completion\ngates only on \"no active phases\" (build+test done).\n"
 stories:
 - id: US-PLN-046
-  title: Orchestration Workflow
+  title: Orchestrate Session Plan
   category: orchestration
   priority: critical
-  description: As a developer orchestrating feature delivery, I want the CLI to coordinate planning, phase generation,
-    and execution through a unified workflow, so that work flows from plan approval through agent-routed execution
-    with clear status tracking at each stage.
+  lifecycle: implemented
+  description: 'As a developer or planner agent, I want to discover seeded epics,
+    see
+
+    the next required action, and add routed phases at plan time, so that
+
+    a plan moves from "epic exists" to "phases are routed to specific
+
+    agents" via a single coherent CLI surface.
+
+
+    This is the plan-time half of the orchestration loop. Runtime
+
+    execution mechanics live in US-PLN-047 (Orchestration Resumption).
+
+    '
   prerequisites: []
   steps:
   - step: 1
-    when: starting the planning workflow
+    when: agentic orchestrate session plan --epic <folder> is invoked on a seed epic
     then:
-    - agentic orchestrate session plan --plan <epic-folder> starts planning; epic is created via agentic epic new or agentic epic seed
+    - The CLI starts the planning workflow against an epic that was already created
+      via `agentic epic new` (or the deprecated `epic seed` alias)
+    - Planner-* agents are spawned per the agent registry; the plan emits phase records
+      that downstream commands consume
   - step: 2
-    when: planning completes
+    when: a plan is being approved
     then:
-    - Pre-flight validation checks each phase plan before approval; human reviews and approves before execution begins
+    - Pre-flight validation runs against each proposed phase before approval; the
+      human reviews and approves before any execution begins
+    - Validation failures block plan approval and surface in the CLI output as named
+      phase + reason
   - step: 3
-    when: phases are approved
+    when: a phase is being added by the planner or by hand
     then:
-    - agentic epic phase add --epic <folder> --name <phase> --agent <agent-name> creates TinyDB phase records with agent routing
+    - agentic epic phase add --epic <folder> --id <id> --name <name> --agent <agent>
+      creates a TinyDB phase record carrying the agent routing
+    - Optional flags --execution <loop_type> and --feedback-triggers <list> attach
+      loop semantics (see US-PLN-061 step 9 for the test-fix loop_type/loop_max_iterations
+      contract)
   - step: 4
-    when: configuring phase behavior
+    when: phase records are queried
     then:
-    - Phase records support --execution flag for loop type (e.g., test-fix) and --feedback-triggers flag for failure handling
+    - Each phase record carries pending|in_progress|completed|blocked status plus
+      the agent routing field for the executor (see US-PLN-097 for the routing contract)
+    - '`agentic epic phase list --epic <folder>` reads via repo.list_phases() (TinyDB
+      query, no filesystem scan)'
   - step: 5
-    when: phase records are created
+    when: the planning loop is invoked but no claude SDK / CLI is available
     then:
-    - Each phase record includes status tracking (pending, in_progress, completed, blocked) and agent routing for orchestration-executor
+    - "The CLI exits non-zero with a \"claude binary not found\" error before any\
+      \ TinyDB writes; the seed epic remains in `seed` status, ready for retry (degradation\
+      \ contract \u2014 depender fails closed when the consumed transport is missing)"
   - step: 6
-    when: starting execution
+    when: --epic is not specified
     then:
-    - agentic orchestrate session implement --plan <epic-folder> discovers phases via repo.list_phases() and executes them in TinyDB-defined order
-  - step: 7
-    when: executing a phase
-    then:
-    - Each phase agent is spawned via CLI context injection (agentic orchestrate session spawn --role <agent>); phase is marked in_progress before spawn, completed after success
-  - step: 8
-    when: phase status transitions
-    then:
-    - Phase follows pending -> in_progress -> completed/blocked; blocked is set if dependencies are not met or agent fails
-  - step: 9
-    when: execution is interrupted
-    then:
-    - Orchestrator resumes from last completed phase; completed phases are not re-executed
-  - step: 10
-    when: the feature is used
-    then:
-    - Epic creation happens on main branch; feature worktrees are created for code implementation; epic status is viewable from any worktree via TinyDB query
+    - "The orchestrate commands attempt to auto-detect the active epic from the current\
+      \ branch; if no unique match is found, exit non-zero with a message of the form:\
+      \ 'cannot infer epic \u2014 pass --epic <folder> (multiple epics match branch\
+      \ <branch>: <folder1>, <folder2>, ...)' \u2014 the flag name and the full list\
+      \ of ambiguous epic folders are both present in the error (mirrors the ticket-command\
+      \ degradation contract)"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'A seed epic exists via `agentic epic new "UAT orchestration discovery"
+
+      --branch plan-uat-orch-disc`. No phases in TinyDB yet.
+
+      '
+    preconditions:
+    - US-PLN-001
+    - US-PLN-015
+    journey:
+    - step: 1
+      action: Run `agentic epic list`
+      observe:
+      - command exits 0
+      - the seed epic is listed with status=seed, and the footer prints the planning
+        hint (e.g. 'N epic(s) need planning')
+    - step: 2
+      action: Run `agentic orchestrate session plan --help`
+      observe:
+      - command exits 0
+      - help text lists --epic
+      - 'help text lists --dry-run (safe validation path: creates tmux layout and
+        prints JSON then exits without spawning agents)'
+    - step: 3
+      action: Run `agentic orchestrate session implement --help`
+      observe:
+      - command exits 0
+      - help text lists --epic
+    - step: 4
+      action: 'Add a routed phase: `agentic epic phase add --epic <folder> --id P1
+        --name Build --agent build-python`'
+      observe:
+      - command exits 0
+      - '`agentic epic phase list --epic <folder>` shows P1 with agent=build-python'
+    - step: 5
+      action: Run `agentic epic status --epic <folder>`
+      observe:
+      - status output reflects the added phase
+      - next-action hint references the implement command
+    - step: 6
+      action: Run an orchestrate command without --epic from a worktree that does
+        not match any epic branch (or from the main branch where multiple epics match)
+      observe:
+      - command exits non-zero
+      - error output contains the literal text `cannot infer epic` and `--epic <folder>`
+      - 'if multiple epics match the current branch, the error also lists the matching
+        epic folders in parentheses (e.g. `(multiple epics match branch ''main'':
+        folder1, folder2, ...)`)'
+    success_signals:
+    - Seed epics are discoverable via `epic list` with a clear next-action hint
+    - CLI surface for plan/implement is self-documenting via --help
+    - Phase routing is persisted to TinyDB via `phase add --agent`
+    - Missing --epic auto-detect failures degrade to a named-flag error
+    cleanup:
+    - '`agentic epic archive <folder>`'
   related_commands:
-  - agentic orchestrate session plan --plan <epic-folder>
-  - agentic orchestrate session implement --plan <epic-folder>
-  - agentic orchestrate session spawn --role <agent-role> --plan <epic-folder>
+  - agentic orchestrate session plan --epic <folder>
+  - agentic orchestrate session implement --epic <folder>
+  - agentic orchestrate session spawn --role <agent> --epic <folder>
   - agentic epic new "<description>"
-  - agentic epic seed "<description>"
   - agentic epic list
-  - agentic epic phase add --epic <folder> --name <phase> --agent build-python
-  - agentic epic phase add --epic <folder> --name <phase> --agent test-builder --execution test-fix --feedback-triggers TEST_FAIL
+  - agentic epic phase add --epic <folder> --id P1 --name Build --agent build-python
+  - agentic epic phase add --epic <folder> --id P2 --name Test --agent test-builder
+    --execution test-fix --feedback-triggers TEST_FAIL
   - agentic epic phase list --epic <folder>
-  - agentic epic ticket current
   related_files:
   - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
-  - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
   - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
   related_agents:
   - orchestration-planning
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
+  last_tested: '2026-04-11T10:37:03.416381+00:00'
+  test_status: pass
+  test_notes: 'All 6 journey steps passed: seed epic discoverable with planning hint,
+    plan/implement --help self-documenting with --epic and --dry-run, phase routing
+    persisted to TinyDB via --agent, missing --epic degrades to named-flag error listing
+    matching epics'
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
+  last_uat_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
+- id: US-PLN-047
+  title: Orchestrate Session Implement
+  category: orchestration
+  priority: critical
+  lifecycle: implemented
+  description: "As an orchestration-executor agent or developer running an active\n\
+    orchestration loop, I want phases to execute in TinyDB-defined order\nwith idempotent\
+    \ resume semantics, so that interrupted runs pick up\nfrom the last completed\
+    \ phase without re-doing work and concurrent\nstate writes never corrupt the epic.\n\
+    \nThis is the runtime half of the orchestration loop, split out of\nUS-PLN-046\
+    \ on 2026-04-07. Plan-time mechanics live in US-PLN-046\n(Orchestration Discovery).\
+    \ Static phase routing is owned by US-GDN-097.\n\nStep 8 was reconciled on 2026-04-08\
+    \ \u2014 the executor marks routing-failed phases as `failed` (not unmutated)\
+    \ to prevent retry-loops; this is defensive behavior, not a contract drift.\n"
+  prerequisites: []
+  steps:
+  - step: 1
+    when: agentic orchestrate session implement --epic <folder> is invoked
+    then:
+    - ExecutionRunner discovers phases via repo.list_phases() (TinyDB query, no filesystem
+      scan) and executes them in TinyDB-defined order via the _order field
+  - step: 2
+    when: a phase is selected for execution
+    then:
+    - The phase is marked in_progress in TinyDB BEFORE the agent is spawned (so a
+      crashed run can later resume from the right phase)
+    - The agent is spawned via `agentic orchestrate session spawn --role <agent> --epic
+      <folder>` using the routing from phase.agent (see US-GDN-097)
+  - step: 3
+    when: a phase agent completes successfully
+    then:
+    - The phase transitions to completed in TinyDB
+    - ExecutionRunner advances to the next phase by _order
+    - "The executor records `last_pass_commit` for every story whose tests went green\
+      \ in this phase (resolved from phase.story_ids, falling back to a pytest marker\
+      \ scan of tests touched in the run). The write goes through `StoryService.update_test_status(sid,\
+      \ \"pass\", commit=<HEAD>, commit_kind=\"test\")`. Build/test agents do NOT\
+      \ call `agentic stories update` themselves \u2014 the framework owns this write\
+      \ so no agent-side drift can leave stories stuck on `never-passed`. NOTE: this\
+      \ framework-owns pattern applies to `last_pass_commit` (build/test phases) only.\
+      \ `last_uat_commit` is agent-owned \u2014 see US-PLN-048 for that contract."
+  - step: 4
+    when: a phase agent fails or its dependencies are not met
+    then:
+    - The phase transitions to blocked with failure details captured in the phase
+      record
+    - The orchestration loop halts on the blocked phase rather than skipping it; downstream
+      phases are not executed until the blocked phase recovers
+  - step: 5
+    when: the orchestration loop is interrupted (Ctrl-C, crash, network drop)
+    then:
+    - On the next `implement` invocation, ExecutionRunner finds the last completed
+      phase via TinyDB and resumes from the NEXT phase
+    - Already-completed phases are not re-executed (idempotent resume contract)
+    - In-progress phases at restart time are re-attempted from the start of the phase
+      (the executor cannot know mid-phase progress)
+  - step: 6
+    when: epic state is queried during a long-running implement
+    then:
+    - '`agentic epic status --epic <folder>` is safe to run from any worktree (TinyDB
+      lives at ~/.agentic/epics.db, see US-SES-020); reads do not block writes thanks
+      to FileLock'
+  - step: 7
+    when: TinyDB FileLock cannot be acquired during a status transition
+    then:
+    - The executor retries with backoff up to a configured timeout; if the lock remains
+      held, the phase transition is aborted and the executor exits non-zero with the
+      holding-PID if discoverable (degradation contract for the FileLock dependency)
+  - step: 8
+    when: a phase has no agent routing (phase.agent is missing)
+    then:
+    - The executor exits non-zero with the routing-missing error from US-GDN-097 step
+      3 BEFORE attempting to spawn anything; no agent process is created; the phase
+      is marked as `failed` in TinyDB so the orchestrator does not retry-loop on it
+      (depender fails closed before any side effect outside TinyDB)
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'A seed epic exists with three phases added via `agentic epic
+      phase add`:
+
+      P1 (agent=build-python, _order=1), P2 (agent=test-builder, _order=2),
+
+      P3 (agent=build-python, _order=3). All begin with status=pending
+
+      (the default produced by `agentic epic phase add`). TinyDB is writable.
+
+      '
+    preconditions:
+    - US-PLN-001
+    - US-PLN-015
+    - US-GDN-097
+    journey:
+    - step: 1
+      action: Run `agentic epic phase list --epic <folder>` and confirm P1/P2/P3 are
+        pending in the order P1, P2, P3
+      observe:
+      - command exits 0
+      - phases listed in 1, 2, 3 order
+    - step: 2
+      action: Manually transition P1 to completed using `agentic epic phase update
+        P1 --epic <folder> --status completed`
+      observe:
+      - command exits 0
+      - P1 shows completed in `agentic epic phase list --epic <folder>`
+    - step: 3
+      action: 'Validate idempotent-resume without live agent spawning: mark ALL
+
+        remaining phases completed via `agentic epic phase update P2 --epic
+
+        <folder> --status completed` and repeat for P3. Then run
+
+        `agentic orchestrate session implement --epic <folder>`.
+
+        NOTE: implement has no --dry-run flag. The safe inspection path is
+
+        pre-completing all phases so implement finds nothing pending and
+
+        exits with "Phases completed: 0" (or equivalent zero-work message)
+
+        without spawning any agents.
+
+        '
+      observe:
+      - command exits 0
+      - output indicates no phases were executed (all already completed)
+      - "P1, P2, P3 remain completed in `agentic epic phase list --epic <folder>`\
+        \ \u2014 none were re-executed"
+    - step: 4
+      action: Reset P2 and P3 back to pending via `agentic epic phase update <id>
+        --epic <folder> --status pending`. Then run implement and interrupt it (Ctrl-C).
+        Mark P2 completed manually.
+      observe:
+      - '`agentic epic phase list --epic <folder>` shows P1 completed, P2 completed,
+        P3 pending'
+    - step: 5
+      action: Re-run `agentic orchestrate session implement --epic <folder>`
+      observe:
+      - implement starts from P3 (skips P1 and P2)
+      - P1 and P2 are not re-executed
+    - step: 6
+      action: Add a fourth phase P4 with no --agent flag and try to run implement
+      observe:
+      - command exits non-zero
+      - error names P4 and the missing agent routing
+      - P4 status is now `failed` in TinyDB (marked as failed to prevent retry-loop,
+        NOT left pending)
+    success_signals:
+    - Phase execution follows TinyDB _order, not file/list position
+    - Completed phases are not re-executed on resume (idempotency)
+    - Missing agent routing marks the phase failed and exits non-zero before any agent
+      spawn (depender fails closed at the routing layer, not at the spawn layer)
+    - FileLock retries with backoff on contention; lock-timeout fails closed with
+      the holding PID
+    cleanup:
+    - '`agentic epic archive <folder>`'
+  related_commands:
+  - agentic orchestrate session implement --epic <folder>
+  - agentic orchestrate session spawn --role <agent> --epic <folder>
+  - agentic epic phase list --epic <folder>
+  - agentic epic phase update <id> --epic <folder> --status <status>
+  - agentic epic status --epic <folder>
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
+  - modules/AgenticCLI/src/agenticcli/utils/phase_validation.py
+  - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+  related_agents:
+  - orchestration-executor
+  last_tested: '2026-04-11T10:37:03.416381+00:00'
+  test_status: pass
+  test_notes: 'All 6 journey steps pass: phase ordering follows _order, completed
+    phases not re-executed on resume, missing agent routing marks phase failed and
+    exits non-zero'
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
+  last_uat_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
+- id: US-PLN-048
+  title: Orchestrate Session UAT
+  category: orchestration
+  priority: critical
+  lifecycle: under-construction
+  description: "As a developer or UAT runner, I want a standalone `agentic orchestrate\n\
+    session uat` command that spawns `test-uat` once per story against the\nstory's\
+    \ own `uat_plan` block, so that UAT validation is decoupled from\nepic completion\
+    \ and can be run on-demand against a single story, an\nepic's stories, or the\
+    \ stale set.\n\nWhy this exists (2026-04-11): the prior model templated a `UAT`\
+    \ phase\ninto every epic's phase list, but nothing in the executor or agent\n\
+    actually wrote `last_uat_commit` back \u2014 the phase was cosmetic because\n\
+    the write was unreachable from agent-spawned paths. The new contract\nmakes `test-uat`\
+    \ the sole writer of `last_uat_commit` (via `agentic stories\nupdate` as its mandatory\
+    \ final step) and UatRunner the verifier (reads\nthe field before and after each\
+    \ spawn; if it did not change, the run is\nmarked failed). This works uniformly\
+    \ across all spawn paths: UatRunner,\norchestration-executor phase routing, and\
+    \ ad-hoc subagent spawns.\n\nThis workflow is strictly on-demand. `session implement`\
+    \ never triggers\nit. Epic completion never implies it has run.\n"
+  prerequisites: []
+  steps:
+  - step: 1
+    when: agentic orchestrate session uat --story <id> is invoked
+    then:
+    - The UatRunner loads the single story, extracts its `uat_plan` block, and spawns
+      `test-uat` once with that block as the entire prompt context (agent-blind-test
+      contract)
+    - "UatRunner reads `last_uat_commit` via `StoryService.get_by_id(sid).last_uat_commit`\
+      \ before spawning (the pre-value). After the agent exits with success, UatRunner\
+      \ reads the field again. If the value did not change, the run is marked failed\
+      \ with the reason 'agent forgot to stamp' \u2014 UatRunner does NOT write the\
+      \ stamp itself."
+    - On a verified pass (pre != post), UatRunner records the outcome in the session
+      summary. The actual `last_uat_commit` write is performed by `test-uat` via `agentic
+      stories update <sid> --status pass --kind uat --notes "<summary>"` as its mandatory
+      final step.
+  - step: 2
+    when: agentic orchestrate session uat --epic <folder> is invoked
+    then:
+    - UatRunner resolves the set of stories attached to that epic via `get_epic_stories_path`
+    - UatRunner spawns `test-uat` once per story, tagging each session with story_id
+      in session metadata
+    - Each story gets its own pass/fail record; `last_uat_commit` is written by `test-uat`
+      on pass, verified by UatRunner via pre/post read
+  - step: 3
+    when: agentic orchestrate session uat --stale is invoked
+    then:
+    - UatRunner resolves the set via `StoryService.get_stale_stories()` (stories whose
+      watched files changed since `last_uat_commit`)
+    - Each stale story gets a dedicated `test-uat` session
+  - step: 4
+    when: a story has no `uat_plan` block
+    then:
+    - UatRunner skips the story with a named error (`<sid>: missing uat_plan`), continues
+        the batch, and the final summary lists skipped stories
+  - step: 5
+    when: the UAT session completes
+    then:
+    - UatRunner emits a final summary: N passed, M failed, K skipped, and the list
+        of stories whose `last_uat_commit` was updated
+    - A "failed" entry in the summary includes stories where the agent exited with
+      success but `last_uat_commit` did not change (agent forgot to stamp)
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'At least one story exists under `docs/userstories/` with a complete
+
+      `uat_plan` block (e.g. US-PLN-047 from this same file). No prior
+
+      `last_uat_commit` is required. TinyDB is writable.
+
+      '
+    preconditions:
+    - US-PLN-046
+    - US-PLN-047
+    journey:
+    - step: 1
+      action: Run `agentic orchestrate session uat --help`
+      observe:
+      - command exits 0
+      - help text lists --story, --epic, --stale, --dry-run
+    - step: 2
+      action: Run `agentic orchestrate session uat --story US-PLN-047 --dry-run`
+      observe:
+      - command exits 0
+      - output prints the resolved target story set
+      - no agent process is spawned and no YAML is mutated
+    - step: 3
+      action: Run `agentic orchestrate session uat --story US-PLN-047` with a mocked
+        transport where the mock simulates `test-uat` writing `last_uat_commit` via
+        `agentic stories update` before exiting (the agent is the writer, not the
+        runner)
+      observe:
+      - command exits 0
+      - the story's YAML now has a non-empty `last_uat_commit` field (written by the
+        mock agent, verified by UatRunner via pre/post read)
+      - the session record carries a `story_id` field equal to US-PLN-047
+    - step: 4
+      action: Run `agentic orchestrate session uat --story US-PLN-047` with a mocked
+        transport that returns success but does NOT write `last_uat_commit`
+      observe:
+      - command exits non-zero (or exits 0 with the story listed as failed in the
+        summary)
+      - summary names the story as failed with reason 'agent forgot to stamp'
+      - YAML is not mutated for that story
+    - step: 5
+      action: Invoke `--story <id>` against a story that has no `uat_plan` block
+      observe:
+      - 'command exits non-zero OR exits 0 with a final summary listing the story
+        as skipped (contract: continue batch, name the skip)'
+      - YAML is not mutated for the skipped story
+    success_signals:
+    - UAT is reachable via a dedicated CLI command (`orchestrate session uat`) with
+      on-demand scoping (--story / --epic / --stale)
+    - UatRunner spawns one `test-uat` session per story, each tagged with story_id
+    - '`last_uat_commit` is written by `test-uat` via `agentic stories update` as
+      its mandatory final step; UatRunner verifies via pre/post read and fails the
+      run if the stamp did not land'
+    - A clean agent exit without a stamp change is treated as a failed UAT run (no
+      silent pass-through)
+    - Missing `uat_plan` fails closed per-story without blocking the batch
+    cleanup:
+    - Revert mutated YAML via `git checkout -- docs/userstories/` if running against
+      real stories
+  related_commands:
+  - agentic orchestrate session uat --story <id>
+  - agentic orchestrate session uat --epic <folder>
+  - agentic orchestrate session uat --stale
+  - agentic orchestrate session uat --dry-run
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/workflows/uat.py
+  - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+  - modules/AgenticCLI/src/agenticcli/cli.py
+  - modules/AgenticGuidance/agents/test/test-uat/process.yml
+  - modules/AgenticGuidance/src/agenticguidance/services/story.py
+  related_agents:
+  - test-uat
+  last_tested: '2026-04-11T10:37:03.416381+00:00'
+  test_status: pass
+  test_notes: 'All 5 journey steps pass: help flags, dry-run resolution, stamp-verified
+    pass, forgot-to-stamp failure, missing uat_plan skip. All success signals observed.'
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
+  last_uat_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3

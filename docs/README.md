@@ -1,96 +1,107 @@
 # AgenticEngineering Documentation
 
-This folder contains project documentation and planning state for the AgenticEngineering system.
+This folder holds project documentation and the user-story surface for the
+AgenticEngineering platform. Epic/ticket/phase state itself lives in **TinyDB**
+(`~/.agentic/epics.db`), not on disk — this folder is docs only.
 
-## System Overview
+For CLI usage and the meta-orchestration contract, see the top-level
+[CLAUDE.md](../CLAUDE.md).
 
-AgenticEngineering is an agentic development platform with the following modules:
+## Modules
 
 | Module | Description |
 |--------|-------------|
-| **AgenticGuidance** | 24 active agents organized in 6 categories: orchestration, planner, build, test, teacher, deploy |
-| **AgenticCLI** | Command-line interface with epic, context, session, loop, worktree, entrypoint commands |
+| **AgenticCLI** | Typer CLI (`agentic` command) — epic, ticket, phase, orchestration, stories, session management |
+| **AgenticGuidance** | Agent definitions + domain services (EpicRepository, StoryService, etc.) |
 | **AgenticBackend** | Backend services |
 
-## Key Concepts
+## Data Model (TinyDB-only)
 
-- **CCI (CLI Context Injection)**: Agents bootstrap context via CLI commands instead of static file loading
-- **Main-First Planning**: Epics created in main worktree for visibility before execution
-- **Plan-MMD**: Mermaid flowcharts with AGENT_ROUTING metadata for dynamic agent routing
-- **Reference Layer Architecture**: Shared inputs.yml layers for context minimization
+Epic state is stored exclusively in TinyDB at `~/.agentic/epics.db`:
 
-## Workflow
+- **Epics** — metadata, status (`seed` → `planning` → `in_progress` → `completed`)
+- **Phases** — per-epic, each carries `agent` routing + `feedback_triggers`
+- **Tickets** — per-epic, tracked by `status` (`proposed` → `pending` → `in_progress` → `completed`)
 
-### 1. Planning Phase
-```
-_plan_build.yml or _plan_teach.yml -> orchestration-planning -> approved plan
-```
+There are no `plan_*.yml`, no `*.mmd` routing files, and (usually) no disk
+epic folder. The `epic_folder` field on an epic is a logical name, not a
+required filesystem path.
 
-### 2. Execution Phase
-```
-_orchestrate.yml -> orchestration-executor -> dynamic agent routing from MMD
-```
-
-## Structure
+## Folder Layout
 
 ```
 docs/
-├── README.md           # This file
-└── epics/              # Epic folders (persistent state)
-    ├── live/           # Active work in progress
-    └── completed/      # Finished epics (reference)
+├── README.md              # This file
+├── epics/                 # Epic-related markdown (epic.md per live epic)
+│   ├── live/              # Active epics (docs only — state is in TinyDB)
+│   └── completed/         # Archived epic docs
+└── userstories/           # User-story specs grouped by surface
+    ├── EpicStories/       # Auto-generated per-epic stories ({folder}.yml)
+    ├── Guidance/          # Stories about the guidance system
+    ├── Planning/          # Stories about planning pipeline
+    ├── Session/           # Stories about session lifecycle
+    ├── Setup/             # Stories about install/config
+    └── Stories/            # Meta-stories about the story system
 ```
 
-## Epics Folder
+## Epic Lifecycle
 
-Epic folders track work across Claude Code sessions using YAML-based state management.
+1. **Create** — `agentic epic new "<description>"` → epic appears in TinyDB as `seed`
+2. **Plan** — `agentic orchestrate session plan --epic <folder>` → phases + tickets generated, status → `planning`
+3. **Implement** — `agentic orchestrate session implement --epic <folder>` → phases executed by routed agents, status → `in_progress`
+4. **Complete** — auto-archive when all tickets hit `completed`
 
-### Live Epics (`epics/live/`)
+See CLAUDE.md for the full command surface.
 
-Contains active work in progress. Each subfolder follows the naming convention `YYMMDDXX_Description` (e.g., `260104AE_agenticguidance`), where `XX` is the Worktree Identifier (e.g., `AE` for AgenticEngineering).
+## Resolving Epics on the CLI
 
-Example folder structure (when active work exists):
+Most commands accept `--epic <folder-or-prefix>`. Resolution rules:
+
+- **Exact match** wins first
+- **Unique prefix match** is accepted (e.g. `260411AG` if only one epic starts with it)
+- **Ambiguous prefix** is rejected with a list of candidates — use the full folder name
+
+Tip: the full folder name is printed by `agentic epic new` and by
+`agentic epic list --json`. Use `--json` when you need the untruncated name
+for scripting.
+
+## Orchestration Runs — Monitoring
+
+Orchestration sessions (`plan` / `implement`) are tracked by `session_id`.
+To observe a running session:
+
+```bash
+# List active and recent sessions with status summary
+agentic orchestrate session list
+
+# Health probe for a single session
+agentic orchestrate health <session-id>
+
+# Tail the session state / logs
+agentic orchestrate debug logs <session-id>
+agentic orchestrate debug state show <session-id>
 ```
-epics/live/
-└── YYMMDDXX_Description/   # e.g., 260104AE_agenticguidance (XX=AE triggers worktree association)
-    ├── plan_*.yml          # Active epic files
-    └── completed/          # Finished tickets within this epic
-```
 
-### Completed Epics (`epics/completed/`)
+Notes:
+- During the first ~10s of a foreground run, log files may be empty while the
+  SDK cold-starts; a temporary `health: FAIL` is expected until output lands.
+- For long runs, prefer `--background` (or `-b`) so the CLI returns immediately
+  and the session survives terminal disconnect.
 
-Archived epics for reference. Epics are moved here when finished.
+## Budget Defaults
 
-## Epic File Format
+`orchestrate session plan` and `orchestrate session implement` both accept
+`--budget <USD>` (default **$50**). Empirical reference points:
 
-Epic files use YAML with this structure:
+- Planning a small epic (single category, ~4 tickets): ~$1–2
+- Implementing a single phase (build-python + test-builder pair): ~$1–3
+- Full multi-phase epic execution: varies with ticket count; budget generously
 
-```yaml
-name: plan-name-kebab-case
-status: pending  # pending | in_progress | completed | removed
-priority: high   # high | medium | low
-created: "YYYY-MM-DD"
-phase_type: build  # build | test | teach | deploy
-
-objective: |
-  What this epic accomplishes and why.
-
-context: |
-  Background information and constraints.
-
-phases:
-  - name: "Phase Name"
-    status: pending
-    description: "Phase description"
-    tasks:
-      - id: "task_001"
-        name: "Ticket name"
-        status: "pending"  # pending | in_progress | completed
-        description: "Ticket description"
-```
+The default of $50 is intentionally conservative-high — override downward only
+when you know your workload. A too-low budget triggers "budget exhausted" mid-run.
 
 ## Navigation
 
-- **Starting a new ticket?** Check `epics/live/` for active work context
-- **Looking for past decisions?** Browse `epics/completed/` for historical reference
-- **Understanding the project?** See the root [README.md](../README.md) for architecture and principles
+- **CLI usage & meta-orchestration role** — [../CLAUDE.md](../CLAUDE.md)
+- **Agent definitions** — `modules/AgenticGuidance/agents/`
+- **User stories** — `docs/userstories/`

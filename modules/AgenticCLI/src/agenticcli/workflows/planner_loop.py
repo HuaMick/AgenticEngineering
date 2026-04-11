@@ -1230,8 +1230,11 @@ class PlannerLoopRunner:
         """
         self.total_cost_usd += getattr(result, "cost_usd", 0.0)
         if self.budget_usd and self.total_cost_usd >= self.budget_usd:
-            logger.error(
-                "Budget exhausted: $%.2f >= $%.2f limit",
+            # Warning, not error: budget exhaustion is an expected cap, not
+            # a fault. The CLI wrapper turns this into partial-success output
+            # when phases/tickets already exist in TinyDB.
+            logger.warning(
+                "Budget cap reached: $%.2f >= $%.2f limit — halting planner loop",
                 self.total_cost_usd, self.budget_usd,
             )
             return True
@@ -1345,11 +1348,13 @@ class PlannerLoopRunner:
                          len(self.state["plans_processed"]),
                          len(self.state["plans_skipped"]))
 
-            # If every discovered plan failed, stop early — retrying won't help
+            # If every discovered plan failed, stop early — retrying won't help.
+            # Downgraded to warning: the CLI wrapper re-inspects TinyDB and may
+            # still report partial success if phases/tickets were produced.
             if failed_this_run and not self.state["plans_processed"]:
-                logger.error(
-                    "All discovered epics failed planning — stopping early. "
-                    "Failed: %s", list(failed_this_run),
+                logger.warning(
+                    "Planner loop halted with no fully-completed plans. "
+                    "Interrupted: %s", list(failed_this_run),
                 )
                 return False
 

@@ -281,9 +281,20 @@ def find_epic_folder(path: str | None = None) -> Path:
                     e for e in all_epics
                     if e.epic_folder_name.startswith(search_name)
                 ]
-                if matches:
-                    matches.sort(key=lambda e: e.epic_folder_name)
+                if len(matches) == 1:
                     return _epic_folder_or_synthetic(matches[0])
+                if len(matches) > 1:
+                    matches.sort(key=lambda e: e.epic_folder_name)
+                    names = "\n  ".join(e.epic_folder_name for e in matches)
+                    print(
+                        f"Error: Epic prefix '{path}' is ambiguous — {len(matches)} matches:\n"
+                        f"  {names}\n"
+                        f"Use the full folder name (or a longer prefix) to disambiguate.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+            except SystemExit:
+                raise
             except Exception:
                 pass
 
@@ -333,13 +344,18 @@ def _slugify_objective(objective: str) -> str:
 
 
 def cmd_new(args, ctx=None):
-    """Create a new plan and optionally spawn a planner agent.
+    """Create a new epic shell (TinyDB record + optional disk folder).
 
-    Automates the full planning loop:
-    1. Creates plan folder via plan init logic
-    2. [Phase 2] Spawns planner agent session (not yet implemented)
-    3. [Phase 3] Generates orchestration MMD (not yet implemented)
-    4. [Phase 4] Spawns builder agents with --execute (not yet implemented)
+    As of the Story-Writer UAT-First Restructure, `epic new` is a pure CRUD
+    command: it creates the epic shell and returns. It does NOT spawn a
+    planner agent. Planning happens via the orchestration loop:
+
+        agentic orchestrate session plan --epic <folder>
+
+    The loop discovers seeded epics (status in {"seed", "planning"}) and
+    invokes the appropriate planner agents. Making `epic new` auto-spawn a
+    planner baked implicit wiring into a CRUD command; it's now symmetric
+    with the old `epic seed` (which remains as a deprecation shim).
 
     Args:
         args: Parsed command arguments with:
@@ -347,13 +363,10 @@ def cmd_new(args, ctx=None):
             - branch: Optional git branch name
             - description: Optional plan description suffix
             - base: Base branch (default: main)
-            - execute: Auto-execute flag
-            - max_turns: Max turns for planner agent
-            - dangerously_skip_permissions: Skip permissions flag
         ctx: Optional CLIContext.
 
     Returns:
-        dict with plan_folder, branch, objective on success.
+        dict with plan_folder, branch, objective, status="seed" on success.
 
     Exit codes:
         0: Success
@@ -367,7 +380,6 @@ def cmd_new(args, ctx=None):
         print_info,
         print_json,
         print_success,
-        print_warning,
     )
 
     objective = getattr(args, "objective", None)
@@ -378,9 +390,6 @@ def cmd_new(args, ctx=None):
     branch = getattr(args, "branch", None)
     description = getattr(args, "description", None)
     base = getattr(args, "base", "main")
-    execute = getattr(args, "execute", False)
-    max_turns = getattr(args, "max_turns", 25)
-    dangerously_skip_permissions = getattr(args, "dangerously_skip_permissions", False)
 
     # Auto-generate branch name from objective if not provided
     if not branch:
@@ -391,11 +400,11 @@ def cmd_new(args, ctx=None):
         description = objective
 
     if not is_json_output():
-        print_info(f"Creating plan for: {objective}")
+        print_info(f"Creating epic for: {objective}")
         print_info(f"Branch: {branch}")
 
-    # Step 1: Create plan folder by delegating to cmd_init
-    # Suppress cmd_init's own output (we produce our own summary)
+    # Create the epic shell by delegating to cmd_init.
+    # Suppress cmd_init's own output; we produce our own summary.
     import io
     from contextlib import redirect_stdout
 
@@ -416,7 +425,6 @@ def cmd_new(args, ctx=None):
     if was_json:
         _set_json(False)
 
-    # Capture cmd_init stdout so it doesn't leak into our output
     init_stdout = io.StringIO()
     with redirect_stdout(init_stdout):
         cmd_init(init_args, ctx)
@@ -424,7 +432,7 @@ def cmd_new(args, ctx=None):
     if was_json:
         _set_json(True)
 
-    # If we get here, init succeeded. Find the created plan record from TinyDB.
+    # If we get here, init succeeded. Look up the created epic record from TinyDB.
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -462,316 +470,15 @@ def cmd_new(args, ctx=None):
         print_error("Plan folder was not created. Check plan init output above.")
         sys.exit(1)
 
-    # Step 2: Spawn planner agent
-    from agenticcli.console import console, get_status
-    from agenticcli.utils.planner_prompt import build_planner_prompt
+    # Epic shell is ready — do NOT spawn a planner. Planning happens via the
+    # orchestration loop (`agentic orchestrate session plan --epic <folder>`),
+    # which discovers seeded epics and invokes the appropriate planner agents.
 
-    if not is_json_output():
-        print_info("[Step 2] Spawning planner agent...")
-
-    # Build planner prompt
-    planner_prompt = build_planner_prompt(objective, plan_folder)
-
-    # Try SDK-first path for plan generation
-    from agenticcli.utils.sdk_runner import SDK_AVAILABLE, run_agent_sync
-
-    planner_stdout = ""
-    planner_stderr = ""
-    planner_exitcode = 0
-
-    if SDK_AVAILABLE:
-        # SDK path: run planner agent via SDK (no subprocess needed)
-        try:
-            from claude_agent_sdk import ClaudeAgentOptions
-            from agenticcli.utils.subprocess_utils import get_clean_env
-            sdk_options = ClaudeAgentOptions(
-                permission_mode="bypassPermissions",
-                cwd=str(repo_root),
-                env=get_clean_env(),
-            )
-        except ImportError:
-            sdk_options = None
-
-        if not is_json_output():
-            status_message = "Running planner agent (SDK)..."
-            with get_status(status_message):
-                sdk_result = run_agent_sync(planner_prompt, sdk_options, timeout_seconds=1800)
-        else:
-            sdk_result = run_agent_sync(planner_prompt, sdk_options, timeout_seconds=1800)
-
-        planner_stdout = sdk_result.result
-        planner_exitcode = 0 if sdk_result.status == "completed" else 1
-        if sdk_result.status != "completed":
-            planner_stderr = sdk_result.result
-    else:
-        # Subprocess fallback: use claude CLI in -p (pipe/print) mode.
-        # NOTE: -p must come last since it consumes the next argument as prompt.
-        claude_cmd = ["claude"]
-        if dangerously_skip_permissions:
-            claude_cmd.append("--dangerously-skip-permissions")
-        if max_turns is not None:
-            claude_cmd.extend(["--max-turns", str(max_turns)])
-        claude_cmd.extend(["-p", planner_prompt])
-
-        try:
-            if not is_json_output():
-                status_message = "Running planner agent..."
-                with get_status(status_message):
-                    result = subprocess.run(
-                        claude_cmd,
-                        cwd=str(repo_root),
-                        capture_output=True,
-                        text=True,
-                    )
-                    planner_stdout = result.stdout
-                    planner_stderr = result.stderr
-                    planner_exitcode = result.returncode
-            else:
-                # In JSON mode, run without status indicator
-                result = subprocess.run(
-                    claude_cmd,
-                    cwd=str(repo_root),
-                    capture_output=True,
-                    text=True,
-                )
-                planner_stdout = result.stdout
-                planner_stderr = result.stderr
-                planner_exitcode = result.returncode
-
-        except FileNotFoundError:
-            print_error("Claude CLI not found. Make sure 'claude' is installed and in PATH.")
-            sys.exit(1)
-        except Exception as e:
-            print_error(f"Failed to spawn planner: {e}")
-            sys.exit(1)
-
-    # Validate that the planner created tickets in TinyDB
-    planner_created_tickets = False
-    try:
-        from agenticguidance.services.epic_repository import EpicRepository
-        _repo = EpicRepository()
-        _tickets = _repo.get_tickets(plan_folder.name)
-        # Check if planner added tickets beyond the initial IM_001 stub
-        planner_created_tickets = len(_tickets) > 1 or (
-            len(_tickets) == 1 and _tickets[0].id != "IM_001"
-        )
-        _repo.close()
-    except Exception:
-        pass
-
-    if not planner_created_tickets:
-        if not is_json_output():
-            print_error("Planner did not create tickets in TinyDB")
-            if planner_stdout:
-                console.print("[yellow]Planner output:[/yellow]")
-                console.print(planner_stdout)
-            if planner_stderr:
-                console.print("[red]Planner errors:[/red]")
-                console.print(planner_stderr)
-        sys.exit(1)
-
-    if not is_json_output():
-        if planner_exitcode == 0:
-            print_success("Planner agent completed")
-        else:
-            print_error(f"Planner agent failed with exit code {planner_exitcode}")
-            if planner_stderr:
-                console.print(f"[red]{planner_stderr}[/red]")
-
-    # If --execute was NOT passed, stop here
-    if not execute:
-        # Skip to result reporting
-        pass
-    else:
-        # Step 4: Spawn builder agents (Phase 4)
-        if not is_json_output():
-            print_info("[Step 4] Spawning builder agents...")
-
-        # Read phases and tasks via PlanRepository (TinyDB-first)
-        plan_folder_name = plan_folder.name
-        phases = None
-        try:
-            repo = _get_repo()
-            plan_data_obj = repo.get_epic(plan_folder_name)
-            if (plan_data_obj and plan_data_obj.phases
-                    and plan_data_obj.epic_folder_name == plan_folder_name):
-                phases = [
-                    {
-                        "name": phase.name,
-                        "execution": phase.execution or "sequential",
-                        "tickets": [
-                            {"id": t.id, "name": t.name, "status": t.status or "pending"}
-                            for t in (phase.tasks or [])
-                        ],
-                    }
-                    for phase in plan_data_obj.phases
-                ]
-        except Exception:
-            pass
-
-        if phases is None:
-            if not is_json_output():
-                print_error("No phase data found in TinyDB for this epic - cannot spawn builders")
-            phases = []
-
-        if phases:
-            try:
-
-                total_tasks = 0
-                spawned_sessions = []
-
-                for phase_idx, phase in enumerate(phases, 1):
-                    phase_name = phase.get("name", f"Phase {phase_idx}")
-                    execution_mode = phase.get("execution", "sequential")
-                    tasks = phase.get("tickets", [])
-
-                    if not tasks:
-                        continue
-
-                    if not is_json_output():
-                        print_info(f"  Phase {phase_idx}: {phase_name} ({len(tasks)} tasks, {execution_mode})")
-
-                    # Spawn sessions for each task in this phase
-                    phase_sessions = []
-                    for task in tasks:
-                        task_id = task.get("id", "")
-                        if not task_id:
-                            continue
-
-                        # Check if task is already completed
-                        task_status = task.get("status", "pending")
-                        if task_status == "completed":
-                            if not is_json_output():
-                                print_info(f"    Task {task_id}: already completed (skipped)")
-                            continue
-
-                        # Legacy path: uses --task instead of --role, not eligible for build_spawn_command.
-                        spawn_cmd = ["agentic", "session", "spawn", "--task", task_id, "--epic", str(plan_folder)]
-                        if dangerously_skip_permissions:
-                            spawn_cmd.append("--dangerously-skip-permissions")
-
-                        # Use SDK for task spawning when available (avoids PID polling)
-                        from agenticcli.utils.sdk_runner import SDK_AVAILABLE as _PLAN_SDK_AVAILABLE
-                        if _PLAN_SDK_AVAILABLE:
-                            try:
-                                from agenticcli.utils.sdk_runner import run_agent_sync as _plan_run_sdk
-                                task_prompt = (
-                                    f"Execute task {task_id} from plan {str(plan_folder).split('/')[-1]}.\n"
-                                    f"Run: agentic -j agent plan task start {task_id} --plan {str(plan_folder).split('/')[-1]}\n"
-                                    "Then complete the task as described in the plan."
-                                )
-                                from agenticcli.utils.subprocess_utils import get_clean_env as _get_clean
-                                from claude_agent_sdk import ClaudeAgentOptions as _TaskOptions
-                                phase_sessions.append({
-                                    "task_id": task_id,
-                                    "sdk_prompt": task_prompt,
-                                    "sdk_options": _TaskOptions(
-                                        permission_mode="bypassPermissions",
-                                        env=_get_clean(),
-                                    ),
-                                    "command": " ".join(spawn_cmd),
-                                    "use_sdk": True,
-                                })
-                                total_tasks += 1
-                                if not is_json_output():
-                                    print_info(f"    Task {task_id}: queued for SDK execution")
-                            except Exception as e:
-                                if not is_json_output():
-                                    print_error(f"    Task {task_id}: failed to queue - {e}")
-                        else:
-                            # Subprocess fallback: spawn via Popen
-                            try:
-                                proc = subprocess.Popen(
-                                    spawn_cmd,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE,
-                                    text=True,
-                                )
-                                phase_sessions.append({
-                                    "task_id": task_id,
-                                    "process": proc,
-                                    "command": " ".join(spawn_cmd),
-                                    "use_sdk": False,
-                                })
-                                total_tasks += 1
-                                if not is_json_output():
-                                    print_info(f"    Task {task_id}: spawned (PID {proc.pid})")
-                            except Exception as e:
-                                if not is_json_output():
-                                    print_error(f"    Task {task_id}: failed to spawn - {e}")
-
-                    spawned_sessions.extend(phase_sessions)
-
-                    # If phase is sequential, wait for all tasks to complete before next phase
-                    if execution_mode == "sequential" and phase_sessions:
-                        if not is_json_output():
-                            print_info(f"  Waiting for phase {phase_idx} to complete...")
-
-                        for session in phase_sessions:
-                            try:
-                                if session.get("use_sdk"):
-                                    from agenticcli.utils.sdk_runner import run_agent_sync as _wait_sdk
-                                    sdk_res = _wait_sdk(
-                                        session["sdk_prompt"],
-                                        session.get("sdk_options"),
-                                        timeout_seconds=1800,
-                                    )
-                                    if not is_json_output():
-                                        if sdk_res.status == "completed":
-                                            print_success(f"    Task {session['task_id']}: completed")
-                                        else:
-                                            print_error(f"    Task {session['task_id']}: failed")
-                                else:
-                                    session["process"].wait()
-                                    if not is_json_output():
-                                        exit_code = session["process"].returncode
-                                        if exit_code == 0:
-                                            print_success(f"    Task {session['task_id']}: completed")
-                                        else:
-                                            print_error(f"    Task {session['task_id']}: failed (exit code {exit_code})")
-                            except Exception as e:
-                                if not is_json_output():
-                                    print_error(f"    Task {session['task_id']}: error waiting - {e}")
-
-                if not is_json_output():
-                    if total_tasks > 0:
-                        print_success(f"Spawned {total_tasks} builder sessions")
-                    else:
-                        print_warning("No tasks to spawn (all completed or no pending tasks)")
-
-                # Step 5: Check plan completion status
-                if not is_json_output():
-                    print_info("[Step 5] Checking plan completion status...")
-
-                if is_epic_fully_completed(plan_folder):
-                    if not is_json_output():
-                        print_success("All tasks completed!")
-                else:
-                    if not is_json_output():
-                        # Count remaining tasks
-                        remaining = []
-                        for phase in phases:
-                            for task in phase.get("tickets", []):
-                                if task.get("status", "pending") != "completed":
-                                    remaining.append(task.get("id", "unknown"))
-
-                        print_info(f"Plan incomplete: {len(remaining)} tasks remaining")
-                        if remaining[:3]:  # Show first 3
-                            print_info("  Remaining tasks: " + ", ".join(remaining[:3]))
-                            if len(remaining) > 3:
-                                print_info(f"    ... and {len(remaining) - 3} more")
-
-            except Exception as e:
-                if not is_json_output():
-                    print_error(f"Failed to spawn builders: {e}")
-
-    # Return result
     result_data = {
         "plan_folder": str(plan_folder),
         "branch": branch,
         "objective": objective,
-        "execute": execute,
-        "max_turns": max_turns,
+        "status": "seed",
     }
 
     if is_json_output():
@@ -781,111 +488,27 @@ def cmd_new(args, ctx=None):
         print(f"  Plan folder: {plan_folder}")
         print(f"  Branch: {branch}")
         print(f"  Objective: {objective}")
-        if not execute:
-            print()
-            print("  Next steps:")
-            print(f"    1. Review plan: agentic epic status {plan_folder}")
-            print(f"    2. Execute: agentic epic new \"{objective}\" --execute")
+        print()
+        print("  Next steps:")
+        print(f"    1. Review epic: agentic epic status --epic {plan_folder.name}")
+        print(f"    2. Plan phases: agentic orchestrate session plan --epic {plan_folder.name}")
 
     return result_data
 
 
+
+
 def cmd_seed(args, ctx=None):
-    """Create an epic shell without spawning a planner agent.
+    """Deprecated alias for `agentic epic new`.
 
-    Runs only the init step of epic creation (TinyDB record + optional disk
-    folder) and returns immediately. Use this when you want to manually
-    add phases and tickets before planning/executing.
-
-    Args:
-        args: Parsed arguments with objective, optional branch, description, base.
-        ctx: Optional CLIContext.
+    As of the Story-Writer UAT-First Restructure, `epic new` no longer spawns
+    a planner — it creates a pure CRUD seed record, identical to what `epic
+    seed` used to do. Keeping `seed` around as a thin shim lets existing
+    agent guidance and scripts keep working during the deprecation window.
     """
-    from types import SimpleNamespace
-
-    from agenticcli.console import (
-        is_json_output,
-        print_error,
-        print_json,
-        print_success,
-    )
-
-    objective = getattr(args, "objective", None)
-    if not objective:
-        print_error("Objective is required. Usage: agentic epic seed \"your objective\"")
-        sys.exit(1)
-
-    branch = getattr(args, "branch", None)
-    description = getattr(args, "description", None)
-    base = getattr(args, "base", "main")
-
-    # Auto-generate branch name from objective if not provided
-    if not branch:
-        branch = _slugify_objective(objective)
-
-    # Use objective as description if not provided
-    if not description:
-        description = objective
-
-    # Delegate to cmd_init (Step 1 only — no planner spawn)
-    import io
-    from contextlib import redirect_stdout
-
-    from agenticcli.console import set_json_output as _set_json
-
-    init_args = SimpleNamespace(
-        command="plan",
-        plan_command="init",
-        json=False,
-        debug=getattr(args, "debug", False),
-        branch=branch,
-        description=description,
-        base=base,
-        objective=objective,
-    )
-
-    was_json = is_json_output()
-    if was_json:
-        _set_json(False)
-
-    init_stdout = io.StringIO()
-    with redirect_stdout(init_stdout):
-        cmd_init(init_args, ctx)
-
-    if was_json:
-        _set_json(True)
-
-    # Look up created epic from TinyDB
-    import subprocess as _sp
-
-    try:
-        result = _sp.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, check=True,
-        )
-        repo_root = Path(result.stdout.strip())
-    except _sp.CalledProcessError:
-        print_error("Not in a git repository")
-        sys.exit(1)
-
-    plan_folder_name = None
-    try:
-        from agenticcli.utils.naming import generate_epic_folder_name
-        plan_folder_name = generate_epic_folder_name(repo_root, description, branch=branch)
-    except Exception:
-        pass
-
-    if is_json_output():
-        print_json({
-            "status": "created",
-            "epic_folder": plan_folder_name or "",
-            "objective": objective,
-            "branch": branch,
-        })
-    else:
-        print_success(f"Epic seeded: {plan_folder_name or branch}")
-        from agenticcli.console import console
-        console.print("[dim]No planner spawned. Add phases/tickets manually.[/dim]")
+    from agenticcli.console import print_warning
+    print_warning("'epic seed' is deprecated — use 'epic new' (behavior is identical)")
+    return cmd_new(args, ctx)
 
 
 def cmd_from_plan(args, ctx=None):
@@ -1105,24 +728,6 @@ def cmd_init(args, ctx=None):
             repo.close()
             print_error(f"Epic already exists: {plan_folder_name}")
             sys.exit(2)
-        # Also create a default ticket for the initial phase
-        if objective:
-            repo.add_phase(
-                plan_folder_name,
-                {
-                    "name": "Initial Research and Planning",
-                },
-            )
-            repo.add_ticket(
-                plan_folder_name,
-                "Initial Research and Planning",
-                {
-                    "task_id": "IM_001",
-                    "name": "Research existing implementation",
-                    "description": "Analyze the codebase to understand how to implement the objective.",
-                    "status": "pending",
-                },
-            )
         repo.close()
     except Exception:
         pass
@@ -1246,6 +851,12 @@ def cmd_status(args):
     }
     next_action, next_command = _status_actions.get(plan_status, ("Check epic state", None))
 
+    # C6: If epic has orchestration and every phase is routed, recommend implement.
+    phases_for_display = list(plan_data_obj.phases or [])
+    if has_orchestration and phases_for_display and all(p.agent for p in phases_for_display):
+        next_action = "Execute routed phases"
+        next_command = f"agentic orchestrate session implement --epic {epic_folder_name}"
+
     # Dependency information
     depends_on = list(plan_data_obj.depends_on or [])
     priority = _to_int_priority(plan_data_obj.priority)
@@ -1301,6 +912,19 @@ def cmd_status(args):
         else:
             console.print("[bold]Orchestration:[/bold] [red]MISSING[/red]")
             console.print("  Run: agentic orchestrate session plan --epic <folder>")
+
+        # C5: Render phase table when phases exist
+        if phases_for_display:
+            from agenticcli.console import format_status as _format_status
+            phase_rows = []
+            for i, phase in enumerate(phases_for_display):
+                phase_rows.append([
+                    f"[bold]{phase.phase_id or f'P{i + 1}'}[/bold]",
+                    phase.name,
+                    _format_status(phase.status or "planning"),
+                    phase.agent or "-",
+                ])
+            print_table("Phases", ["ID", "Name", "Status", "Agent"], phase_rows)
 
         console.print(f"[bold]Status:[/bold] {plan_status}")
 
@@ -1868,7 +1492,7 @@ def cmd_task_add(args, ctx=None):
                     phase_name_used = phases[-1].name
                 else:
                     phase_name_used = "Ad-hoc Tasks"
-                    repo.add_phase(plan_path.name, {"name": phase_name_used, "status": "pending"})
+                    repo.add_phase(plan_path.name, {"name": phase_name_used, "status": "planning"})
 
             # Generate task ID if not provided
             if not new_task_id:
@@ -2061,6 +1685,7 @@ def cmd_list(args):
         print_error(f"Failed to load EpicService: {e}")
         sys.exit(1)
 
+    from agenticcli.utils.formatting import truncate_string
     from agenticcli.utils.phase_validation import validate_phase_routing
 
     try:
@@ -2178,7 +1803,7 @@ def cmd_list(args):
             priority_cell = f"[{p_color}]{p_display}[/{p_color}]"
             rows.append(
                 [
-                    f"[bold]{plan['name']}[/bold]",
+                    f"[bold]{truncate_string(plan['name'], 50)}[/bold]",
                     priority_cell,
                     status_cell,
                     tickets_cell,
@@ -2627,7 +2252,7 @@ def cmd_phase_add(args, ctx=None):
             "name": phase_name,
             "phase_id": phase_id,
             "description": phase_description,
-            "status": "pending",
+            "status": "planning",
         }
         if agent is not None:
             phase_doc["agent"] = agent
@@ -2711,7 +2336,8 @@ def cmd_phase_list(args, ctx=None):
                 phases_data.append({
                     "id": phase.phase_id or f"P{i + 1}",
                     "name": phase.name,
-                    "status": phase.status or "pending",
+                    "status": phase.status or "planning",
+                    "agent": phase.agent or "-",
                     "tasks": len(phase.tasks),
                 })
     except Exception:
@@ -2739,10 +2365,11 @@ def cmd_phase_list(args, ctx=None):
                 f"[bold]{phase['id']}[/bold]",
                 phase["name"],
                 format_status(phase["status"]),
+                phase["agent"],
                 f"[cyan]{phase['tasks']}[/cyan]",
             ])
 
-        print_table("", ["ID", "Name", "Status", "Tasks"], rows)
+        print_table("", ["ID", "Name", "Status", "Agent", "Tasks"], rows)
 
         console.print(f"\n[dim]Total: {len(phases_data)} phases[/dim]")
 
@@ -2816,16 +2443,16 @@ def cmd_phase_update(args, ctx=None):
         if repo is not None:
             phase_obj = repo.get_phase(plan_path.name, phase_id)
             if phase_obj:
-                old_status = phase_obj.status or "pending"
+                old_status = phase_obj.status or "planning"
                 old_name = phase_obj.name
 
                 updates = {}
                 if new_status:
                     valid_transitions = {
-                        "pending": ["in_progress", "blocked"],
-                        "in_progress": ["completed", "blocked", "pending"],
-                        "completed": ["pending", "in_progress"],
-                        "blocked": ["pending", "in_progress"],
+                        "planning": ["in_progress", "blocked"],
+                        "in_progress": ["completed", "blocked", "planning"],
+                        "completed": ["planning", "in_progress"],
+                        "blocked": ["planning", "in_progress"],
                     }
                     if new_status not in valid_transitions.get(old_status, []) and old_status != new_status:
                         if not is_json_output():
