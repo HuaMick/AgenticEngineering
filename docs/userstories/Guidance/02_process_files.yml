@@ -1,5 +1,5 @@
 area: process_files
-description: "process.yml schema, spawn context compilation, and write-ownership conventions"
+description: "process.yml schema, spawn context compilation, and ownership"
 
 # REFINEMENT NOTES (2026-04-11, branch claude/review-next-story-tuTGQ):
 #
@@ -18,12 +18,12 @@ description: "process.yml schema, spawn context compilation, and write-ownership
 # modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml and path.yml,
 # NOT literal YAML keys. The refined stories below reflect the actual schema.
 #
-# US-GDN-012 (ownership) is intentionally framed as a CONVENTION-AND-AUDIT story,
-# not a runtime-enforcement story, because no write-gate exists today — the
-# boundary is documented in teacher-update-guidance/manifest.yml and enforced
-# only by ticket-authoring convention. Aspirational enforcement (lint, pre-commit
-# hook, planner check) is listed separately in the story's `aspirational` block
-# so it is visible but does not poison the acceptance criteria.
+# US-GDN-012 documents teacher-update-guidance as the authoritative editor of
+# process.yml and inputs.yml files. It is a role-documentation story, not a
+# runtime-enforcement story. We deliberately do not specify a write-gate,
+# audit command, or lint check: under the current model (Opus 4.6-class
+# agents) the ownership convention holds in practice and extra enforcement
+# scaffolding has not been needed.
 
 stories:
 
@@ -187,17 +187,15 @@ stories:
   tested_by_plan: null
 
 - id: US-GDN-012
-  title: "Process File Ownership (Convention + Audit, Not Enforcement)"
+  title: "Process File Ownership by teacher-update-guidance"
   category: process_files
-  priority: high
+  priority: medium
   description: >
-    As a system operator or auditor, I want process.yml files across all agent
-    directories to be modified only by teacher-update-guidance, so that
-    execution guidance remains coherent, reviewed, and traceable to friction
-    analysis. Today this boundary is a convention documented in
-    teacher-update-guidance/manifest.yml and enforced by ticket-authoring
-    discipline; this story captures the current state and specifies an
-    auditable check rather than a runtime write-gate.
+    As a planner or human reader browsing the agent roster, I want the
+    teacher-update-guidance agent to be documented as the authoritative
+    editor of process.yml and inputs.yml files, so that guidance
+    improvements have a single known owner and agents routed through
+    planning flow naturally land on the right role for guidance updates.
   prerequisites:
   - US-GDN-010
   steps:
@@ -208,60 +206,22 @@ stories:
     - It applies the specified changes and writes the updated file
     - Its outputs schema records each modified file with path, change_type, and summary
   - step: 2
-    when: a ticket is created for a non-teacher agent (build-python, planner-build, etc.)
+    when: a planner or human picks the role for a guidance-update ticket
     then:
-    - By convention, the ticket's target_files list does not include process.yml paths belonging to agents other than the ticket's own working scope
-    - This convention is expressed in teacher-update-guidance/manifest.yml boundaries and relied on by planner-build
-    - No runtime gate prevents violation; the only enforcement is ticket-review discipline and (if added) the audit check described in step 4
+    - teacher-update-guidance is the documented owner for process.yml and inputs.yml edits across all agents
+    - The ownership is recorded in teacher-update-guidance/manifest.yml responsibilities and boundaries
+    - Other agent roles consult this manifest when scoping their own target_files
   - step: 3
-    when: agentic <teacher-update-guidance> is called
+    when: "agentic <teacher-update-guidance> is called"
     then:
     - The rendered help lists process.yml and inputs.yml improvement as primary responsibilities
     - The boundaries section explicitly states the agent does NOT create epics and does NOT update shared assets
-    - The agent can be spawned via "agentic orchestrate session spawn --role teacher-update-guidance --plan <epic-folder>"
-  - step: 4
-    when: a process-file ownership audit is run (aspirational — see aspirational block below)
-    then:
-    - The audit scans TinyDB tickets for target_files containing "modules/AgenticGuidance/agents/**/process.yml"
-    - For each match, it checks whether the ticket's owning agent role is teacher-update-guidance
-    - Violations are reported as a list of (ticket_id, role, offending_target_file) tuples
-    - A clean audit exits 0; a dirty audit exits non-zero with the violation list
+    - 'The agent can be spawned via "agentic orchestrate session spawn --role teacher-update-guidance --plan <epic-folder>"'
   success_criteria:
-  - teacher-update-guidance/manifest.yml responsibilities include "Improve process.yml files" or equivalent
+  - 'teacher-update-guidance/manifest.yml responsibilities include "Improve process.yml files" or equivalent'
   - teacher-update-guidance/manifest.yml boundaries explicitly exclude epic creation and shared-assets modification
-  - The rendered output of "agentic teacher-update-guidance" surfaces those boundaries verbatim from manifest.yml
+  - 'The rendered output of "agentic teacher-update-guidance" surfaces those boundaries verbatim from manifest.yml'
   - teacher-update-guidance's output schema records modified files with path, change_type, and summary per file
-  - A manual grep across TinyDB tickets shows no non-teacher ticket whose target_files list contains another agent's process.yml (current convention-level success criterion)
-  aspirational:
-    status: not_implemented
-    summary: >
-      No runtime enforcement prevents a non-teacher agent from writing to any
-      process.yml. The boundary is convention-only today. The items below are
-      NOT part of the success criteria — they are the follow-up work that
-      would convert this story from convention to enforcement.
-    proposals:
-    - id: AUDIT_CMD
-      description: >
-        Add "agentic stories audit --process-ownership" (or extend an existing
-        audit) to scan TinyDB tickets for target_files containing another
-        agent's process.yml and report violations. Exit non-zero on violation.
-    - id: PLANNER_GATE
-      description: >
-        Have planner-build refuse to create a ticket whose target_files
-        include a process.yml outside the ticket's owning agent directory,
-        unless the ticket's role is teacher-update-guidance.
-    - id: PRECOMMIT_HOOK
-      description: >
-        Add a pre-commit hook that rejects a commit touching
-        modules/AgenticGuidance/agents/**/process.yml unless the commit
-        message or branch name references teacher-update-guidance or a
-        guidance-update epic.
-    - id: LOADER_PROVENANCE
-      description: >
-        Record the last-editor role in a process.yml header comment
-        (e.g., "# last-edited-by: teacher-update-guidance") and have the
-        loader log a warning when a process.yml is modified without a
-        matching provenance marker.
   related_commands:
   - "agentic teacher-update-guidance"
   - "agentic teacher-update-guidance --bootstrap"
