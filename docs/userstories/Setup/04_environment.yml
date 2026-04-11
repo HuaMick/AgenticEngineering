@@ -1,55 +1,215 @@
-area: environment
-description: "Environment variable management"
+area: cli_configuration
+description: 'Unified configuration story covering both `agentic setup config` (key/value
+
+  store) and `agentic setup config env` (environment variable management).
+
+  Successor to US-SET-005, which was merged into US-SET-008 on 2026-04-07
+
+  during the Story-Writer UAT-First Restructure follow-up. The two were
+
+  facets of the same `agentic setup config` tree and sequential steps in
+
+  the same configuration journey.
+
+  '
 stories:
 - id: US-SET-008
-  title: Environment Variable Management
-  category: environment_management
-  priority: medium
-  description: As a developer, I want to manage environment variables for the CLI so that I can
-    inspect, export, and inject configuration without manual setup.
+  title: CLI Configuration
+  category: cli_configuration
+  priority: high
+  lifecycle: implemented
+  description: "As a developer customising CLI behaviour, I want to inspect, set,\
+    \ clear,\nand project configuration values \u2014 including environment variable\n\
+    overlays and shell export \u2014 through one consistent `agentic setup config`\n\
+    surface, so that I can manage CLI state, output format, and the\nenvironment my\
+    \ agents inherit from a single tool.\n\nThis is a CLI-owned story by the depender-owns\
+    \ rule. The CLI consumes\nservices/config.py and services/environment.py from\
+    \ AgenticGuidance;\nthose service files appear in related_files for staleness\
+    \ detection,\nnot as co-owners.\n"
   prerequisites: []
   inherits_patterns:
   - id: PAT-CLI-001
     bind:
-      command: "agentic setup config env show"
-      expected_keys: [name, value, masked]
+      command: agentic setup config show
+      expected_keys:
+      - output_format
+      - debug
+      - varies_by_user
+  - id: PAT-CLI-001
+    bind:
+      command: agentic setup config env show
+      expected_keys:
+      - name
+      - value
+      - masked
+  - id: PAT-CLI-003
+    bind:
+      command: agentic setup config set
+      error_trigger: key/value validation failure
+      expected_message: rejected with field name
   steps:
   - step: 1
-    when: the feature is used
+    when: a developer inspects current configuration
     then:
-    - agentic setup config env show displays CLI-relevant environment variables
-    - Output includes CC_*, CLAUDE_* variables
+    - agentic setup config show prints all key/value pairs read from the active config
+      file
+    - agentic setup config show-path prints the absolute path to the active config
+      file (default `~/.config/agenticcli/config.toml` unless overridden via set-path)
+    - agentic setup config get <key> prints exactly one value or exits non-zero if
+      the key is unset
   - step: 2
-    when: the feature is used
+    when: a developer mutates configuration
     then:
-    - Sensitive values are masked in output
-    - JSON output supported with --json flag
+    - agentic setup config set <key> <value> persists the value via services/config.py
+      with TOML round-trip
+    - agentic setup config delete <key> removes a single key
+    - agentic setup config clear --force removes the entire config file (the --force
+      flag is mandatory; clear without --force is rejected)
   - step: 3
-    when: the feature is used
+    when: a developer redirects the config store
     then:
-    - agentic setup config env export outputs env vars in shell or JSON format
-    - Output can be eval'd to set environment
+    - agentic setup config set-path <path> moves the active config file to <path>;
+      subsequent reads use the new path
+    - agentic setup config show-path reflects the new location
+    - The redirect persists in a small pointer file so subsequent invocations honour
+      it without re-running set-path
   - step: 4
-    when: the feature is used
+    when: any CLI command produces output
     then:
-    - agentic setup config env run <command> executes command with CLI environment injected
-    - Command arguments are passed through correctly
+    - The -j flag (or --json) forces machine-parseable JSON output with stable schemas;
+      default is human-readable Rich rendering
+    - The -d flag enables debug logging to stderr (timestamps + log levels) without
+      affecting stdout
+    - "These flags are top-level \u2014 they apply to every subcommand consistently\
+      \ (no per-command opt-in)"
   - step: 5
-    when: the feature is used
+    when: a developer inspects environment variables
     then:
-    - Exit code is preserved from the wrapped command
+    - agentic setup config env show lists all CC_*, CLAUDE_*, and AGENTIC_* environment
+      variables relevant to the CLI/SDK
+    - Sensitive values (anything matching *KEY*, *TOKEN*, *SECRET*) are masked in
+      human output by default
+    - --json output includes a `masked: true|false` field per entry so machine consumers
+        can decide whether to redact further
+  - step: 6
+    when: a developer wants to export environment vars to a shell
+    then:
+    - agentic setup config env export --format shell prints `eval`-able `export NAME=value`
+      lines
+    - agentic setup config env export --format json prints a JSON object with the
+      same data
+    - Sensitive values are NOT masked in export mode (the user explicitly asked for
+      the raw values to inject into a shell)
+  - step: 7
+    when: a developer wants to run a command with the CLI environment injected
+    then:
+    - agentic setup config env run <command> [args...] launches the command as a subprocess
+      with CC_*/CLAUDE_*/AGENTIC_* injected
+    - The wrapped command's exit code is preserved (passthrough; not always 0)
+    - Stdout/stderr stream through to the parent terminal in real time (no buffering)
+  - step: 8
+    when: the config file is missing, malformed TOML, or unreadable
+    then:
+    - The CLI exits non-zero with an error naming the file path and the parse error
+      line; no half-loaded config is ever applied to the running command (degradation
+      contract for the config dependency)
+  - step: 9
+    when: an environment variable conflicts with a stored config key
+    then:
+    - ? The environment variable wins (env > config file > built-in default), and
+        `agentic setup config show` displays the effective value with a `(from env)`
+        annotation in human mode and a `source
+      : env|file|default` field in JSON mode
+  - step: 10
+    when: agentic setup config env run is called with a command that does not exist
+      on PATH
+    then:
+    - The wrapper exits 127 (standard "command not found") and prints the failed command
+      name to stderr; the parent CLI does not crash with a Python traceback
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh shell, no AGENTIC_/CC_/CLAUDE_ env vars exported, no
+
+      ~/.config/agenticcli/config.toml on disk. `agentic` is on PATH.
+
+      '
+    preconditions: []
+    journey:
+    - step: 1
+      action: Run `agentic setup config show`
+      observe:
+      - command exits 0
+      - output is empty or shows only built-in defaults (no parse errors)
+    - step: 2
+      action: Run `agentic setup config set output.format json`
+      observe:
+      - command exits 0
+      - '`agentic setup config get output.format` prints `json`'
+      - '`agentic setup config show-path` prints a path under ~/.config/agenticcli/'
+    - step: 3
+      action: Run `agentic setup config env show`
+      observe:
+      - command exits 0
+      - any CC_API_KEY-like value is masked in the human output
+    - step: 4
+      action: Run `agentic setup config env export --format shell`
+      observe:
+      - command exits 0
+      - stdout is shell-eval-able (`export NAME=value` lines, no masking)
+    - step: 5
+      action: Run `agentic setup config env run echo hello`
+      observe:
+      - command exits 0 with stdout `hello`
+    - step: 6
+      action: Run `agentic setup config env run nonexistent-command-xyz`
+      observe:
+      - command exits 127
+      - stderr names the missing command
+      - no Python traceback
+    - step: 7
+      action: Corrupt the config file by writing `not = valid = toml` to it, then
+        run `agentic setup config show`
+      observe:
+      - command exits non-zero
+      - stderr names the config file path and the parse error
+    - step: 8
+      action: Restore the config file by running `agentic setup config clear --force`
+        then `agentic setup config set output.format json`
+      observe:
+      - both commands exit 0
+      - config file is back to a known-good state
+    success_signals:
+    - All `agentic setup config` and `agentic setup config env` subcommands work from
+      a single coherent surface
+    - Sensitive values are masked in show but not in export (user-controlled redaction)
+    - Malformed config file fails closed with a named-file error, never partial-loaded
+    - env run preserves the wrapped command's exit code, including 127 for missing
+      commands
+    cleanup:
+    - '`agentic setup config clear --force`'
+    - Unset any test env vars exported during the journey
   related_commands:
+  - agentic setup config show
+  - agentic setup config show-path
+  - agentic setup config set <key> <value>
+  - agentic setup config get <key>
+  - agentic setup config delete <key>
+  - agentic setup config clear --force
+  - agentic setup config set-path <path>
   - agentic setup config env show
   - agentic setup config env export --format shell
   - agentic setup config env export --format json
-  - eval $(agentic setup config env export --format shell)
-  - agentic setup config env run claude code
-  - agentic setup config env run pytest tests/
+  - agentic setup config env run <command>
+  - agentic -j epic status
+  - agentic -d epic status
   related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/config.py
   - modules/AgenticCLI/src/agenticcli/commands/env.py
+  - modules/AgenticGuidance/src/agenticguidance/services/config.py
   - modules/AgenticGuidance/src/agenticguidance/services/environment.py
   related_agents: []
-  last_tested: null
-  test_status: untested
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

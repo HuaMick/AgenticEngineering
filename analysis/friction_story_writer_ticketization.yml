@@ -1,0 +1,682 @@
+metadata:
+  report_id: friction_story_writer_ticketization
+  analysis_date: "2026-04-11"
+  analyst: trace-explorer
+  epic_folders_analysed:
+    - 260410AG_rename_phasestatus_pending_to_planning_unify_phase
+    - 260411AG_uat_throwaway_budget_test
+    - 260411AG_uat_throwaway_budget_test_two
+    - 260411AG_uat_throwaway_test_epic_for_orchestrate_workflow_v
+  agents_analysed:
+    - build-story-writer
+  guidance_files_inspected:
+    - modules/AgenticGuidance/agents/build/build-story-writer/process.yml
+  workflow_files_inspected:
+    - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# OBSERVED SYMPTOMS
+# Concrete examples with file:line references
+# ────────────────────────────────────────────────────────────────────────────
+
+observed_symptoms:
+
+  - id: SYM-001
+    file: docs/userstories/EpicStories/260410AG_rename_phasestatus_pending_to_planning_unify_phase.yml
+    lines: "26-109"
+    description: |
+      US-260410AG-001 "Phase Planning Rename" contains 14 ordered mechanical
+      implementation steps (enum rename → dict update → default status write →
+      method rename → guard filter → runner reset → CLI default → transition map
+      → legacy alias removal → spec enum → executor spec → context.py defaults).
+      Every step is an internal code-change instruction, not an observable
+      user-facing behaviour.  The story title uses the verb-first anti-pattern
+      ("Phase Planning Rename") instead of subject-anchored form.
+    violations:
+      - "Steps are ASSET CONTENT / GENERIC (process.yml guidelines section),
+         not SYSTEM MECHANICS"
+      - "Title uses <Verb> <Subject> instead of <Subject> <Noun> (title-pattern guideline)"
+      - "Journey principle violated: the 14 steps are a refactor checklist
+         spread across 6+ source files, not a single user journey"
+
+  - id: SYM-002
+    file: docs/userstories/EpicStories/260410AG_rename_phasestatus_pending_to_planning_unify_phase.yml
+    lines: "180-238"
+    description: |
+      US-260410AG-002 "Phase Migration Compat" is a 6-step TinyDB migration
+      checklist (inject record → count → trigger migration → count again →
+      list phases → re-run idempotency).  The "description" accurately calls
+      out it is for an "operator upgrading", but the steps are pure
+      implementation specification (Python snippets, DB table names, exact
+      field values).  No user journey is coherent here — the "operator"
+      cannot complete this without reading the source code.
+    violations:
+      - "Steps are implementation steps, not observable user behaviours"
+      - "UAT journey includes raw Python TinyDB API calls — an operator cannot
+         execute this without codebase knowledge (process.yml: 'doc-blind-executable'
+         UAT plan requirement, line 94-99)"
+
+  - id: SYM-003
+    file: docs/userstories/EpicStories/260411AG_uat_throwaway_budget_test.yml
+    lines: "1-103"
+    description: |
+      Epic 260411AG_uat_throwaway_budget_test is explicitly labelled "UAT
+      throwaway budget test" in its TinyDB record (name field).  The planning
+      pipeline still ran build-story-writer and produced US-260411AG-001
+      through US-260411AG-004, which are single-function utility specs
+      (truncate_string, clamp_value, pluralize_word, format_duration).
+      These are low-level formatting helpers — each story covers exactly one
+      private utility function with no user-facing surface.
+    violations:
+      - "Throwaway/UAT epics have no mechanism to opt out of story generation"
+      - "Single-utility function stories violate the 3-8 story scope guideline
+         and the JOURNEY PRINCIPLE in process.yml lines 152-181"
+      - "Story titles 'Truncate String', 'Clamp Value' etc. have zero user framing —
+         they read as ticket titles not story titles"
+
+  - id: SYM-004
+    file: docs/userstories/EpicStories/260411AG_uat_throwaway_budget_test_two.yml
+    lines: "1-103"
+    description: |
+      US-260411AG-005 "Budget Validation Constant" from epic
+      260411AG_uat_throwaway_budget_test_two describes "a budget validation
+      constant defined in a test utilities module" — an internal constant
+      definition that exists solely to satisfy a throwaway pipeline test.
+      The story has no real stakeholder; the "As a developer" persona is
+      synthetic.  UAT journey step 1 says "attempt to import the budget
+      validation constant from the test utilities module" without specifying
+      the module name — a doc-blind agent cannot execute this.
+    violations:
+      - "No real stakeholder or user value — exists only to satisfy test plumbing"
+      - "UAT journey is not doc-blind-executable (module name unspecified)"
+      - "Title violates command-name-title rule (it is not a CLI command) and
+         subject-cluster pattern (no cluster context)"
+
+  - id: SYM-005
+    description: |
+      Duplicate story ID US-260411AG-001 appears in two separate epic files:
+      docs/userstories/EpicStories/260411AG_uat_throwaway_budget_test.yml (title: "Truncate String")
+      docs/userstories/EpicStories/260411AG_uat_throwaway_test_epic_for_orchestrate_workflow_v.yml
+        (title: "Truncate String Utility")
+      Both epics share the same YYMMDDXX date-prefix "260411AG", so both
+      generated IDs anchored at US-260411AG-001.  The namespacing scheme
+      assumed each date-code would map to at most one epic; it breaks when
+      multiple epics are created on the same day with the same code.
+    violations:
+      - "process.yml line 76-78: 'EPIC_PREFIX is everything before the first
+         underscore' — multiple same-day epics share a prefix, producing
+         non-unique IDs across the EpicStories directory"
+      - "ID collision causes agentic stories health to report duplicate entries
+         without flagging them as errors"
+
+  - id: SYM-006
+    description: |
+      Stories health dashboard shows these entries under the 'Unknown' module
+      category, meaning the stories-health command cannot map them back to a
+      known module namespace (US-GDN-*, US-PLN-*, etc.).  The namespaced
+      US-260411AG-* format was designed to be globally unique but the health
+      dashboard does not have a module-mapping entry for per-epic prefixes,
+      so all EpicStories entries fall through to 'Unknown'.
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# ROOT CAUSE HYPOTHESES
+# Ranked by confidence; each with supporting evidence
+# ────────────────────────────────────────────────────────────────────────────
+
+root_cause_hypotheses:
+
+  - rank: 1
+    title: "No throwaway/UAT epic fence in the planning pipeline"
+    confidence: high
+    description: |
+      planner_loop.py line 1842-1853 calls spawn_story_agent() unconditionally
+      for every epic that enters the planning flow, regardless of whether the
+      epic's name contains "throwaway", "uat", or any ephemeral marker.
+      EpicMetadata (epic.py line 569-604) has no 'tags', 'kind', or 'lifecycle'
+      field.  There is no way to mark an epic as ephemeral at creation time,
+      and the pipeline has no skip-story-generation code path.
+    evidence:
+      - "planner_loop.py:1842 — story_result = self.workflow.spawn_story_agent(epic_folder)"
+      - "planner_loop.py:1843 — _validate_result called immediately after, with no
+         pre-check on epic name or metadata"
+      - "EpicMetadata dataclass (epic.py:568-604) — fields: epic_folder_name, status,
+         priority, depends_on. No kind/tags/ephemeral field"
+      - "All three 260411AG throwaway epics have TinyDB records with status 'planning'
+         or 'in_progress', indistinguishable from production epics to the planner loop"
+
+  - rank: 2
+    title: "build-story-writer guidance lacks refactor-epic detection and story-scope guardrails"
+    confidence: high
+    description: |
+      process.yml's "Draft user stories" step (lines 69-181) defines good-story
+      rules including JOURNEY PRINCIPLE, MECHANICS vs CONTENT distinction, and
+      story count (3-8 per epic).  However it has no explicit rule addressing
+      refactor-only epics or internal rename epics where there is no new
+      user-facing capability — agents default to literalising tickets into
+      step-lists.  The blind rebuild test (process.yml line 401-406) is the
+      only heuristic, and it requires the agent to apply judgment about whether
+      a step is "generic".  For a refactor epic (260410AG: rename an enum),
+      all steps appear non-obvious to the agent, so it retains them.
+    evidence:
+      - "process.yml line 149: 'Aim for 3-8 stories per epic. Avoid micro-stories
+         for implementation details.' — 260411AG epics produced 4 micro-stories
+         for 4 utility functions, violating this guideline"
+      - "US-260410AG-001 has 14 steps that are verbatim implementation steps, not
+         user observations — the MECHANICS vs CONTENT rule was not applied"
+      - "process.yml has no rule: 'if the epic is a pure internal refactor with no
+         new CLI surface, scope to 1-2 stories covering the user-visible behaviour
+         change, not the implementation steps'"
+
+  - rank: 3
+    title: "build-story-writer reads tickets as its story source, and tickets for
+            refactor/utility epics are themselves implementation steps"
+    confidence: high
+    description: |
+      The guidance (process.yml step 'Load existing tickets', lines 57-68) tells
+      the agent to use ticket names and descriptions to "Identify the distinct
+      functional areas being changed."  When epic-creator generates skeleton
+      tickets for a refactor epic, those tickets are named after implementation
+      tasks (e.g., "Rename PhaseStatus.PENDING", "Update EpicRepository").
+      build-story-writer then directly translates ticket names into story steps
+      instead of abstracting to user-value.  The guidance says "use tickets to
+      confirm scope" but agents treat them as the specification.
+    evidence:
+      - "260410AG story steps map 1:1 to expected ticket names for a rename epic"
+      - "process.yml lines 60-67: 'Use the ticket names and descriptions to...
+         identify the distinct functional areas being changed' — this framing
+         invites step-level translation"
+      - "No guidance rule says: 'do NOT translate individual tickets into
+         individual steps; multiple tickets can be a single story'"
+
+  - rank: 4
+    title: "EPIC_PREFIX scheme breaks for multiple same-day epics, producing ID collisions"
+    confidence: high
+    description: |
+      The ID scheme derives EPIC_PREFIX from everything before the first
+      underscore in the epic folder name (process.yml lines 74-79).  When
+      multiple epics are created on the same day with the same YYMMDDXX code
+      (e.g., 260411AG_uat_throwaway_budget_test and
+      260411AG_uat_throwaway_test_epic_for_orchestrate_workflow_v), both
+      generate prefix "260411AG" and both produce US-260411AG-001.
+    evidence:
+      - "Two files both contain 'id: US-260411AG-001' with different titles"
+      - "process.yml line 76: 'Take everything before the first underscore in
+         the epic folder name' — fails to differentiate same-prefix epics"
+      - "The two-letter code (AG) was intended to disambiguate, but cannot
+         when multiple epics share both the date and the code"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# GUIDANCE GAPS
+# Specific changes needed in build-story-writer/process.yml and inputs.yml
+# ────────────────────────────────────────────────────────────────────────────
+
+guidance_gaps:
+
+  - id: GG-001
+    file: modules/AgenticGuidance/agents/build/build-story-writer/process.yml
+    location: "Step 'Read epic objective', after the Extract block (lines 44-56)"
+    gap: |
+      No detection logic for refactor-only or pure-rename epics.  Agent proceeds
+      to generate stories that literalise implementation steps.
+    recommended_addition: |
+      Add a fence step: "Before drafting stories, classify the epic objective:
+      (A) NEW USER CAPABILITY — new CLI commands, new API surface, new user workflows.
+      (B) INTERNAL REFACTOR — renames, moves, status value changes, enum updates.
+      (C) TEST/UAT SCAFFOLDING — ephemeral epics created to exercise pipeline plumbing.
+
+      For type (A): proceed normally. Aim for 3-8 stories covering user journeys.
+      For type (B): scope to 1-2 stories covering ONLY the user-visible change
+        (e.g., what a developer observes after the rename from the CLI or API).
+        Do NOT produce a story per renamed symbol or per file changed.
+        The test: 'What does the user see differently after this refactor?'
+        If the answer is 'nothing externally changes', write ONE story anchored
+        to the behavioural invariant (e.g., 'Phase lifecycle status values remain
+        consistent before and after migration').
+      For type (C): write a single umbrella story scoped to the pipeline behaviour
+        being validated, not the individual utility functions being created."
+
+  - id: GG-002
+    file: modules/AgenticGuidance/agents/build/build-story-writer/process.yml
+    location: "Step 'Draft user stories', guidelines block (lines 125-181)"
+    gap: |
+      The ticket-loading step says "use ticket names and descriptions to identify
+      distinct functional areas" which agents interpret as: 1 ticket = 1 story step.
+    recommended_addition: |
+      Add explicit rule: "Tickets are NOT story steps. One story may span many
+      tickets. When counting how many stories to write, count distinct user
+      OUTCOMES, not distinct tickets. If 6 tickets all contribute to the same
+      user-visible result (e.g., 'phase status values are consistent'), they
+      belong to ONE story with ONE or TWO steps expressing the observable
+      outcome. Do not produce a step per ticket."
+
+  - id: GG-003
+    file: modules/AgenticGuidance/agents/build/build-story-writer/process.yml
+    location: "Guidelines block, after the JOURNEY PRINCIPLE (lines 152-181)"
+    gap: |
+      No explicit rule about refactor/rename epics, where agent reliably produces
+      per-symbol implementation checklists.
+    recommended_addition: |
+      "REFACTOR FENCE: If the epic objective is a rename, reorganisation, or
+      internal migration with no new CLI commands or user-facing API:
+      - Write at most 2 stories.
+      - Story 1: the behavioural invariant ('As a developer, the public API
+        continues to work identically after the rename').
+      - Story 2 (optional): migration compatibility ('As an operator with existing
+        data, the migration is transparent and idempotent').
+      - Do NOT enumerate the changed symbols, files, or implementation steps in
+        the stories. The test suite is the contract for implementation detail."
+
+  - id: GG-004
+    file: modules/AgenticGuidance/agents/build/build-story-writer/process.yml
+    location: "Step 'Draft user stories', ID derivation block (lines 74-79)"
+    gap: |
+      EPIC_PREFIX scheme produces duplicate IDs when multiple same-day epics share
+      the YYMMDDXX prefix.
+    recommended_addition: |
+      "EPIC_PREFIX uniqueness check: after deriving EPIC_PREFIX, run
+      `agentic stories find US-{EPIC_PREFIX}-001` to check whether IDs from
+      this prefix already exist in the story database. If they do, append a
+      sequence suffix to the prefix: EPIC_PREFIX becomes {YYMMDDXX}B, {YYMMDDXX}C
+      etc. to ensure global uniqueness. Log a warning:
+      'ID namespace collision detected for prefix {EPIC_PREFIX} — using
+      {NEW_PREFIX} instead.'"
+
+  - id: GG-005
+    file: modules/AgenticGuidance/agents/build/build-story-writer/inputs.yml
+    gap: |
+      inputs.yml does not exist (file not found at expected path). If it exists,
+      it does not declare a required input for epic_kind or tags that would
+      allow the agent to detect ephemeral/throwaway epics via structured input
+      rather than name heuristics.
+    recommended_addition: |
+      Ensure inputs.yml exists and includes an optional input:
+      ```yaml
+      - name: epic_tags
+        source: tinydb
+        field: tags
+        optional: true
+        description: |
+          Optional list of tags from the epic record (e.g., ['throwaway', 'uat']).
+          When present and contains 'throwaway' or 'uat-scaffold', the agent
+          should write a minimal story file (one story, one step) and include
+          a notice that this epic is ephemeral and not intended for permanent
+          story coverage.
+      ```
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# WORKFLOW GAPS
+# Specific changes needed in planner_loop.py or surrounding workflow code
+# ────────────────────────────────────────────────────────────────────────────
+
+workflow_gaps:
+
+  - id: WG-001
+    file: modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    location: "PlannerLoopRunner._process_plan(), line 1842 (before spawn_story_agent call)"
+    gap: |
+      No pre-flight check to skip or warn about throwaway/UAT epics before
+      invoking build-story-writer.  All epics with status 'seed' or 'planning'
+      enter the full story-generation pipeline unconditionally.
+    recommended_change: |
+      Add a heuristic check before calling spawn_story_agent():
+
+      ```python
+      # Heuristic: skip permanent story generation for throwaway/UAT scaffolding epics
+      THROWAWAY_MARKERS = ("throwaway", "uat_throwaway", "uat_test", "uat_scaffold")
+      folder_lower = epic_folder.lower()
+      is_throwaway = any(marker in folder_lower for marker in THROWAWAY_MARKERS)
+      if is_throwaway:
+          logger.warning(
+              "Epic %s appears to be a throwaway/UAT epic — "
+              "skipping build-story-writer to avoid polluting permanent story store",
+              epic_folder,
+          )
+          # Write a minimal placeholder story file so downstream parse does not fail
+          _write_placeholder_story_file(epic_folder)
+      else:
+          story_result = self.workflow.spawn_story_agent(epic_folder)
+          # ... existing validation ...
+      ```
+
+      The placeholder writer should create a minimal valid YAML with one story
+      (lifecycle: ephemeral, test_status: skip) and one category so the
+      _parse_story_categories() gate does not abort the pipeline.
+
+  - id: WG-002
+    file: modules/AgenticGuidance/src/agenticguidance/services/epic.py
+    location: "EpicMetadata dataclass (line 569)"
+    gap: |
+      EpicMetadata has no 'tags' or 'kind' field.  There is no structured way to
+      mark an epic as throwaway/ephemeral at creation time.  The heuristic in WG-001
+      relies on folder-name pattern matching, which is fragile.
+    recommended_change: |
+      Add optional fields to EpicMetadata and the TinyDB schema:
+      ```python
+      tags: list[str] = field(default_factory=list)
+      kind: Optional[str] = None  # 'production' | 'throwaway' | 'uat-scaffold'
+      ```
+      Update `agentic epic new` to accept `--tags` and `--kind` flags.
+      Update `agentic epic new "... (throwaway)" or "... uat ..."` to auto-set
+      kind='throwaway' when the name matches the heuristic markers.
+
+  - id: WG-003
+    file: modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    location: "_parse_story_categories() (line 1406) and story validation (lines 1870-1886)"
+    gap: |
+      The pipeline validates that a story file exists and has at least one category,
+      but does not validate STORY QUALITY — it accepts 14-step implementation
+      checklists as valid stories.  There is no post-generation fence that checks
+      whether stories meet the "3-8 story count" or "not implementation steps"
+      rules from process.yml.
+    recommended_change: |
+      Add a lightweight structural validation after _parse_story_categories():
+      ```python
+      def _validate_story_quality(self, epic_folder: str, categories: list[dict]) -> list[str]:
+          '''Structural quality checks on generated stories. Returns list of warnings.'''
+          warnings = []
+          stories_path = get_epic_stories_path(epic_folder)
+          data = yaml.safe_load(stories_path.read_text())
+          stories = data.get('stories', [])
+          # Check 1: story count
+          if len(stories) > 8:
+              warnings.append(f"Story count {len(stories)} exceeds guideline max of 8 — possible ticketization")
+          # Check 2: step count per story
+          for s in stories:
+              n_steps = len(s.get('steps', []))
+              if n_steps > 10:
+                  warnings.append(f"Story {s['id']} has {n_steps} steps — possible implementation checklist")
+          return warnings
+      ```
+      Log warnings at WARNING level and record in the epic state — do not abort
+      the pipeline, but surface for teacher agent review.
+
+  - id: WG-004
+    file: modules/AgenticCLI/src/agenticcli/commands/stories.py
+    location: "agentic stories health command output"
+    gap: |
+      The health dashboard groups stories into modules by prefix (US-GDN-*,
+      US-PLN-*, etc.) but has no module mapping for epic-scoped prefixes
+      (US-260411AG-*, US-260410AG-*).  All EpicStories entries fall through to
+      'Unknown' module, making it impossible to distinguish throwaway stories
+      from legitimate epic-scoped stories in the dashboard.
+    recommended_change: |
+      Add a module mapping rule: any story with a numeric-date prefix (YYMMDDXX)
+      maps to module 'EpicStories' rather than 'Unknown'.  Optionally, add a
+      sub-group by epic folder so health output shows:
+        EpicStories/260410AG: 2 stories (2 proposal)
+        EpicStories/260411AG: 9 stories (5 proposal, 4 implemented)
+      This makes it immediately visible when a throwaway epic has contributed
+      permanent stories.
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# STORY QUALITY ASSESSMENT
+# Comparison against feedback memories
+# ────────────────────────────────────────────────────────────────────────────
+
+story_quality_assessment:
+
+  - story_id: US-260410AG-001
+    title: "Phase Planning Rename"
+    feedback_memory_violations:
+      - memory: feedback_story_title_pattern.md
+        violation: |
+          Title is verb-first ('Phase Planning Rename') not subject-anchored.
+          Correct form per feedback: 'Phase Planning' or 'Phase Status' (subject = Phase).
+          The memory states: 'please stick to Epic Populate i prefer that pattern' —
+          the principle extends to all subject clusters.
+      - memory: feedback_story_detail_dial.md
+        violation: |
+          The detail dial is set too far — 14 mechanical steps are not "detail that
+          prevents agents from changing system behaviour", they ARE the implementation.
+          The feedback memory says: "Stories CAN and SHOULD include implementation
+          detail when that detail prevents agents from changing system behavior."
+          The operative test is: "spawn a blind dev agent, give them just the story,
+          ask what they'd implement hypothetically."  A blind agent given 14 rename
+          steps would implement the rename — but those steps also prevent no
+          unintended divergence since they ARE the implementation, not a behavioural
+          invariant.  The dial is in the wrong direction: it should capture the
+          INVARIANT (phases behave identically after rename) not the PROCEDURE.
+
+  - story_id: US-260411AG-001
+    title: "Truncate String"
+    feedback_memory_violations:
+      - memory: feedback_story_title_pattern.md
+        violation: |
+          'Truncate String' has no subject cluster and no user framing.
+          Compare: 'Formatting Utilities' (subject = Formatting) would correctly
+          cluster all four utility stories under one subject-anchored title.
+      - memory: feedback_story_detail_dial.md
+        assessment: |
+          Ironically this story has appropriate detail — 6 steps covering
+          edge cases (empty string, negative max_length, suffix shorter than
+          limit) are genuine behavioral invariants a blind agent might miss.
+          The problem is not detail level but scope: one utility function per
+          story is too narrow. All four utilities (truncate, clamp, pluralize,
+          format_duration) belong in ONE story "Formatting Utilities" with
+          combined steps.
+
+  - story_id: US-260411AG-005
+    title: "Budget Validation Constant"
+    feedback_memory_violations:
+      - memory: feedback_story_detail_dial.md
+        violation: |
+          Story describes a constant that exists solely to satisfy throwaway
+          test plumbing. No amount of detail adjustment rescues a story whose
+          subject has no real stakeholder value. The memory's blind-agent test
+          fails immediately: a blind agent would not know what "budget validation
+          constant" means without the throwaway epic context.
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# SESSION TRACE FINDINGS
+# What was observable in session files
+# ────────────────────────────────────────────────────────────────────────────
+
+session_trace_findings:
+
+  - session_id: 07bbf9f8-86d8-45d9-8254-e5f83e77a151
+    file: "~/.agentic/sessions/07bbf9f8-86d8-45d9-8254-e5f83e77a151.json"
+    role: test-builder
+    epic_folder: 260410AG_rename_phasestatus_pending_to_planning_unify_phase
+    observation: |
+      This session is a test-builder agent, not build-story-writer.  The story
+      file for 260410AG was already written before this session ran (status:
+      completed, ended_at: 2026-04-11T00:07:17).  The session that ran
+      build-story-writer for 260410AG is not among the named sessions — it
+      likely ran earlier and is referenced by a different session file not
+      identified in the investigation prompt.
+    conclusion: |
+      The test-builder session confirms the epic completed the full planning
+      pipeline.  The bad stories were produced by build-story-writer in an
+      earlier, untraced session.  The pipeline completed without any quality
+      gate rejecting the 14-step implementation checklist stories.
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# THROWAWAY EPIC FENCE ASSESSMENT
+# Does a skip mechanism exist? Should it?
+# ────────────────────────────────────────────────────────────────────────────
+
+throwaway_epic_fence:
+
+  current_state: |
+    No mechanism exists.  EpicMetadata has no 'tags', 'kind', or 'ephemeral' field
+    (epic.py:568-604).  planner_loop.py calls spawn_story_agent() unconditionally
+    for all epics with status 'seed' or 'planning'.  build-story-writer/process.yml
+    has no detection logic for throwaway/UAT epics and no skip-story path.
+    The planning pipeline treats `260411AG_uat_throwaway_*` identically to
+    `260402AG_consolidate_story_storage_*`.
+
+  should_exist: true
+
+  rationale: |
+    Throwaway/UAT scaffold epics exist specifically to exercise pipeline plumbing.
+    They are not intended to deliver user value or produce permanent stories.
+    Running build-story-writer on them:
+    (a) pollutes the canonical story store with low-quality ephemeral stories
+    (b) wastes API budget on agent calls with no durable value
+    (c) creates duplicate IDs when multiple throwaway epics share the same date-prefix
+    (d) bloats the stories health dashboard with 'Unknown' module entries
+
+  design_recommendation: |
+    Two complementary mechanisms:
+    1. STRUCTURAL: Add 'kind' field to EpicMetadata ('production' | 'throwaway').
+       `agentic epic new` auto-detects 'throwaway' from name heuristics and sets
+       kind accordingly.  EpicRepository exposes this field.  planner_loop.py
+       checks kind before spawning story agent.
+    2. GUIDANCE: Add 'throwaway epic detection' step to build-story-writer/process.yml
+       as a fallback for cases where kind is not set.  If the epic name contains
+       'throwaway', 'uat_throwaway', or 'uat_test', write a minimal placeholder
+       story with lifecycle: ephemeral and test_status: skip.
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# RECOMMENDED FIXES
+# Ordered by impact/effort; each points to specific files and changes
+# ────────────────────────────────────────────────────────────────────────────
+
+recommended_fixes:
+
+  - priority: 1
+    impact: high
+    effort: low
+    title: "Add throwaway heuristic guard to planner_loop.py before spawn_story_agent"
+    files:
+      - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    change: |
+      Before line 1842 (spawn_story_agent call), add a name-pattern check:
+      THROWAWAY_MARKERS = ('throwaway', 'uat_throwaway', 'uat_test_', 'uat_scaffold').
+      If matched, write a placeholder story file and skip the build-story-writer spawn.
+      The placeholder must be valid YAML with >= 1 story and >= 1 category so
+      _parse_story_categories() does not abort.
+    prevents:
+      - "SYM-003, SYM-004: throwaway epics generating permanent stories"
+      - "Part of SYM-005: reduces future ID collision frequency"
+
+  - priority: 2
+    impact: high
+    effort: medium
+    title: "Add refactor-epic classification and story-scope fence to build-story-writer/process.yml"
+    files:
+      - modules/AgenticGuidance/agents/build/build-story-writer/process.yml
+    change: |
+      Add the three-type classification (new capability / refactor / UAT scaffold)
+      and corresponding story-count caps (GG-001, GG-002, GG-003).
+      Add explicit rule: 'Tickets are NOT story steps — multiple tickets → one story'.
+    prevents:
+      - "SYM-001, SYM-002: refactor epics producing 14-step implementation checklists"
+      - "SYM-003: utility-per-story fragmentation"
+
+  - priority: 3
+    impact: medium
+    effort: medium
+    title: "Add 'kind' field to EpicMetadata and 'agentic epic new --kind' flag"
+    files:
+      - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+      - modules/AgenticCLI/src/agenticcli/commands/epic.py
+    change: |
+      Add optional 'kind: Optional[str] = None' to EpicMetadata.
+      Auto-set to 'throwaway' on name heuristic match during `agentic epic new`.
+      Expose `--kind` flag for explicit override.
+      Update planner_loop.py guard (fix 1) to prefer EpicMetadata.kind over
+      name-pattern heuristic.
+    prevents:
+      - "All throwaway-related symptoms; provides structured rather than heuristic gate"
+
+  - priority: 4
+    impact: medium
+    effort: low
+    title: "Add story quality warning in planner_loop.py after story generation"
+    files:
+      - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+    change: |
+      Add _validate_story_quality() call after _parse_story_categories() (WG-003).
+      Log warnings for story count > 8 or any story with > 10 steps.
+      Record warnings in epic state for teacher agent review.  Do not abort.
+    prevents:
+      - "Future recurrence: surfaces quality issues even when fence is not triggered"
+
+  - priority: 5
+    impact: low
+    effort: medium
+    title: "Fix EPIC_PREFIX uniqueness in build-story-writer/process.yml"
+    files:
+      - modules/AgenticGuidance/agents/build/build-story-writer/process.yml
+    change: |
+      Add ID collision check (GG-004): after deriving EPIC_PREFIX, run
+      `agentic stories find US-{EPIC_PREFIX}-001` and use a suffix variant
+      (B, C...) if the namespace is already claimed.
+    prevents:
+      - "SYM-005: duplicate story IDs across same-day epics"
+
+  - priority: 6
+    impact: low
+    effort: low
+    title: "Update stories health module mapping for EpicStories prefix pattern"
+    files:
+      - modules/AgenticCLI/src/agenticcli/commands/stories.py
+    change: |
+      Add module mapping rule: numeric-date prefixes (YYMMDDXX) → 'EpicStories'
+      module group, with sub-groups by epic folder (WG-004).
+    prevents:
+      - "SYM-006: all EpicStories falling into 'Unknown' on health dashboard"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# STORY COMPLIANCE
+# ────────────────────────────────────────────────────────────────────────────
+
+story_compliance:
+  - note: |
+      No affected_stories were declared in a ticket scoping this trace-explorer
+      run.  The investigation was conducted directly from user request rather
+      than via a ticket, so formal story compliance checks are not applicable.
+      The following are informational mappings between friction and existing stories.
+
+  - story_id: US-GDN-081
+    status: partial
+    evidence: |
+      build-story-writer process.yml contains the JOURNEY PRINCIPLE and MECHANICS
+      vs CONTENT rules.  However the guidance does not prevent the observed failure
+      modes (refactor ticketization, throwaway story generation), indicating
+      US-GDN-081 acceptance criteria are partially met but not sufficient.
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# SUMMARY
+# ────────────────────────────────────────────────────────────────────────────
+
+summary:
+  total_friction_points: 6
+  by_severity:
+    high: 4
+    medium: 2
+    low: 0
+  by_type:
+    guidance_gap: 5
+    workflow_gap: 4
+    story_drift: 3
+    tool_misuse: 0
+    backtracking: 0
+    excessive_iteration: 0
+    input_resolution_failure: 0
+    context_overflow: 0
+  top_recommendations:
+    - "Add throwaway heuristic guard in planner_loop.py before spawn_story_agent (high impact, low effort)"
+    - "Add refactor-epic classification and story-scope fence to build-story-writer/process.yml"
+    - "Add 'kind' field to EpicMetadata for structured epic-lifecycle awareness"
+    - "Add post-generation story quality warning in planner_loop.py"
+    - "Fix EPIC_PREFIX uniqueness check in build-story-writer/process.yml"
+  root_cause_summary: |
+    The primary failure is a missing fence at two levels: (1) the planner_loop
+    has no throwaway-epic detection before invoking build-story-writer, causing
+    ephemeral UAT scaffold epics to generate permanent stories; (2) build-story-writer
+    guidance lacks explicit rules for refactor-only epics, causing agents to
+    literalise implementation tickets into 14-step checklists.  A secondary
+    structural defect is the EPIC_PREFIX uniqueness scheme breaking when multiple
+    same-day epics share the YYMMDDXX code, producing duplicate story IDs.

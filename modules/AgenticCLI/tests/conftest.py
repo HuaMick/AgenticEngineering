@@ -245,6 +245,27 @@ def _block_real_ntfy():
 
 
 @pytest.fixture(autouse=True)
+def _disable_tmux_orphan_sweep(request, monkeypatch):
+    """Safety net: prevent ExecutionRunner._kill_orphaned_tmux_sessions from
+    touching the real tmux server.
+
+    The production sweep matches every session whose name starts with
+    'agentic-', which would clobber sibling tmux integration test sessions
+    (e.g. 'agentic-orch-test-3pane-<pid>') running on the same xdist worker.
+    Tests that exercise ExecutionRunner.run / _execute_plan trigger the sweep
+    via _recover_stale_phases.
+
+    The unit tests in TestOrphanTmuxSweep mock subprocess.run themselves and
+    need the real implementation, so we skip them by node-id.
+    """
+    if "TestOrphanTmuxSweep" in request.node.nodeid:
+        yield
+        return
+    monkeypatch.setenv("AGENTIC_DISABLE_TMUX_ORPHAN_SWEEP", "1")
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _isolate_tinydb(tmp_path):
     """Safety net: redirect all TinyDB writes to a per-test temp directory.
 
@@ -307,7 +328,7 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
             "name": phase_name,
             "phase_id": phase.get("phase_id", phase.get("id", "")),
             "description": phase.get("description", ""),
-            "status": phase.get("status", "pending"),
+            "status": phase.get("status", "planning"),
             "execution": phase.get("execution", "sequential"),
         }
         # Pass through optional phase fields used by ExecutionRunner
@@ -410,7 +431,7 @@ def temp_repo(temp_dir):
                 },
                 {
                     "name": "Phase 2",
-                    "status": "pending",
+                    "status": "planning",
                     "tickets": [
                         {"id": "T2", "name": "Task 2", "status": "proposed"},
                     ],
@@ -458,7 +479,7 @@ def temp_repo_no_folder(temp_dir):
                 },
                 {
                     "name": "Phase 2",
-                    "status": "pending",
+                    "status": "planning",
                     "tickets": [
                         {"id": "T2", "name": "Task 2", "status": "proposed"},
                     ],

@@ -57,20 +57,20 @@ class TestSortOrderConstants:
     """STORY_STATUS_SORT_ORDER must match the canonical triage priority."""
 
     def test_all_seven_values_present(self):
-        expected = {"unhealthy", "stale", "never-passed", "no-test", "passing", "uat-verified", "archived"}
+        expected = {"broken", "stale", "never-passed", "untested", "passing", "uat-verified", "archived"}
         assert set(STORY_STATUS_SORT_ORDER.keys()) == expected
 
     def test_unhealthy_is_highest_priority(self):
-        assert STORY_STATUS_SORT_ORDER["unhealthy"] < STORY_STATUS_SORT_ORDER["stale"]
+        assert STORY_STATUS_SORT_ORDER["broken"] < STORY_STATUS_SORT_ORDER["stale"]
 
     def test_stale_before_never_passed(self):
         assert STORY_STATUS_SORT_ORDER["stale"] < STORY_STATUS_SORT_ORDER["never-passed"]
 
     def test_never_passed_before_no_test(self):
-        assert STORY_STATUS_SORT_ORDER["never-passed"] < STORY_STATUS_SORT_ORDER["no-test"]
+        assert STORY_STATUS_SORT_ORDER["never-passed"] < STORY_STATUS_SORT_ORDER["untested"]
 
     def test_no_test_before_passing(self):
-        assert STORY_STATUS_SORT_ORDER["no-test"] < STORY_STATUS_SORT_ORDER["passing"]
+        assert STORY_STATUS_SORT_ORDER["untested"] < STORY_STATUS_SORT_ORDER["passing"]
 
     def test_passing_before_uat_verified(self):
         assert STORY_STATUS_SORT_ORDER["passing"] < STORY_STATUS_SORT_ORDER["uat-verified"]
@@ -116,25 +116,25 @@ class TestStatusUnhealthy:
 
     def test_fail_returns_unhealthy(self):
         story = Story(id="US-TEST-001", title="T", test_status="fail")
-        assert _svc().compute_story_status(story) == "unhealthy"
+        assert _svc().compute_story_status(story) == "broken"
 
     def test_regression_returns_unhealthy(self):
         story = Story(id="US-TEST-001", title="T", test_status="regression")
-        assert _svc().compute_story_status(story) == "unhealthy"
+        assert _svc().compute_story_status(story) == "broken"
 
     def test_fail_case_insensitive(self):
         story = Story(id="US-TEST-001", title="T", test_status="FAIL")
-        assert _svc().compute_story_status(story) == "unhealthy"
+        assert _svc().compute_story_status(story) == "broken"
 
     def test_regression_case_insensitive(self):
         story = Story(id="US-TEST-001", title="T", test_status="Regression")
-        assert _svc().compute_story_status(story) == "unhealthy"
+        assert _svc().compute_story_status(story) == "broken"
 
     def test_passing_does_not_return_unhealthy(self):
         story = _passing_story()
         with patch(_GIT_CHANGED, return_value=set()):
             status = _svc().compute_story_status(story, repo_root=Path("/fake"))
-        assert status != "unhealthy"
+        assert status != "broken"
 
 
 # ---------------------------------------------------------------------------
@@ -160,13 +160,13 @@ class TestStatusNeverPassed:
         """Without story_markers, untested story returns no-test, not never-passed."""
         story = Story(id="US-TEST-001", title="T", test_status="untested")
         status = _svc().compute_story_status(story, story_markers={"US-DIFFERENT-001"})
-        assert status == "no-test"
+        assert status == "untested"
 
     def test_never_passed_not_triggered_when_id_absent_from_markers(self):
         """story id not in markers → no-test, even when markers param is provided."""
         story = Story(id="US-TEST-001", title="T", test_status="untested")
         status = _svc().compute_story_status(story, story_markers={"US-OTHER-999"})
-        assert status == "no-test"
+        assert status == "untested"
 
 
 # ---------------------------------------------------------------------------
@@ -178,17 +178,17 @@ class TestStatusNoTest:
 
     def test_untested_no_markers_returns_no_test(self):
         story = Story(id="US-TEST-001", title="T", test_status="untested")
-        assert _svc().compute_story_status(story) == "no-test"
+        assert _svc().compute_story_status(story) == "untested"
 
     def test_empty_test_status_no_markers_returns_no_test(self):
         story = Story(id="US-TEST-001", title="T", test_status="")
-        assert _svc().compute_story_status(story) == "no-test"
+        assert _svc().compute_story_status(story) == "untested"
 
     def test_no_test_not_returned_when_test_status_pass(self):
         story = _passing_story()
         with patch(_GIT_CHANGED, return_value=set()):
             status = _svc().compute_story_status(story, repo_root=Path("/fake"))
-        assert status != "no-test"
+        assert status != "untested"
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +215,7 @@ class TestStatusStale:
         story = _passing_story({"test_status": "fail"})
         with patch(_GIT_CHANGED, return_value={"modules/foo/bar.py"}):
             status = _svc().compute_story_status(story, repo_root=tmp_path)
-        assert status == "unhealthy"
+        assert status == "broken"
 
     def test_stale_not_returned_when_archived(self, tmp_path):
         """Archived lifecycle overrides stale."""
@@ -310,6 +310,25 @@ class TestStatusPassing:
         # Should be passing or uat-verified (not stale/unhealthy)
         assert status in ("passing", "uat-verified")
 
+    def test_unearned_pass_without_commit_is_untested(self):
+        """test_status=pass with no last_pass_commit is hand-authored metadata
+        that never flowed through record_story_pass — must downgrade."""
+        story = Story(
+            id="US-TEST-001", title="T",
+            test_status="passing", last_pass_commit="",
+        )
+        assert _svc().compute_story_status(story) == "untested"
+
+    def test_unearned_pass_with_marker_is_never_passed(self):
+        """Same guard, but when a @pytest.mark.story marker exists the
+        downgrade lands on never-passed instead of untested."""
+        story = Story(
+            id="US-TEST-001", title="T",
+            test_status="pass", last_pass_commit="",
+        )
+        status = _svc().compute_story_status(story, story_markers={"US-TEST-001"})
+        assert status == "never-passed"
+
 
 # ---------------------------------------------------------------------------
 # Flaky flags — orthogonal to status
@@ -358,7 +377,7 @@ class TestFlakyFlags:
         story = Story(id="US-TEST-001", title="T", test_status="fail", flaky=True)
         status = _svc().compute_story_status(story)
         flags = _svc().compute_story_flags(story)
-        assert status == "unhealthy"
+        assert status == "broken"
         assert flags["flaky"] is True
 
     def test_flaky_flag_not_affected_by_id_not_in_flaky_ids(self, tmp_path):

@@ -1,0 +1,268 @@
+metadata:
+  epic_folder: null
+  analysis_date: "2026-04-11"
+  analyst: trace-explorer
+  subject: "Module = Unknown for EpicStories in agentic stories health dashboard"
+  agents_analysed: []
+
+# ============================================================
+# Observed Symptoms
+# ============================================================
+observed_symptoms:
+  dashboard_output:
+    description: >
+      Running `agentic stories health` shows Module = Unknown for all stories
+      loaded from docs/userstories/EpicStories/*.yml. The affected stories have
+      date-prefixed IDs (US-260410AG-NNN, US-260411AG-NNN) rather than the
+      three-letter-code prefix pattern used by other modules (US-GDN, US-PLN, etc.).
+    affected_story_ids:
+      - US-260410AG-001
+      - US-260410AG-002
+      - US-260411AG-001  # appears TWICE — duplicate across two files
+      - US-260411AG-002  # also appears twice
+      - US-260411AG-003
+      - US-260411AG-004
+      - US-260411AG-005
+    affected_files:
+      - path: docs/userstories/EpicStories/260410AG_rename_phasestatus_pending_to_planning_unify_phase.yml
+        ids: [US-260410AG-001, US-260410AG-002]
+      - path: docs/userstories/EpicStories/260411AG_uat_throwaway_budget_test.yml
+        ids: [US-260411AG-001, US-260411AG-002, US-260411AG-003, US-260411AG-004]
+      - path: docs/userstories/EpicStories/260411AG_uat_throwaway_budget_test_two.yml
+        ids: [US-260411AG-005]
+      - path: docs/userstories/EpicStories/260411AG_uat_throwaway_test_epic_for_orchestrate_workflow_v.yml
+        ids: [US-260411AG-001, US-260411AG-002]  # collision with first file above
+
+# ============================================================
+# Root Cause
+# ============================================================
+root_cause:
+  title: "_story_module() uses a hardcoded prefix lookup that does not cover date-prefixed IDs"
+  primary_location:
+    file: modules/AgenticCLI/src/agenticcli/commands/stories.py
+    lines: 220-234
+  mechanism: |
+    _PREFIX_TO_MODULE is a static dict mapping three-letter prefixes to module names:
+
+        _PREFIX_TO_MODULE = {
+            "US-SET": "AgenticCLI",
+            "US-SES": "AgenticCLI",
+            "US-PLN": "AgenticCLI",
+            "US-STR": "AgenticCLI",
+            "US-GDN": "AgenticGuidance",
+        }
+
+    _story_module(story_id) extracts r"(US-[A-Z]+)" — alphabetic-only — from the ID
+    and looks it up in that dict. For US-260411AG-001 the regex matches nothing (the
+    segment after "US-" starts with a digit), so the function returns "Unknown"
+    immediately without even reaching the dict lookup.
+
+    EpicStories IDs follow the pattern US-YYMMDDXX-NNN (date + 2-letter code). The
+    regex r"(US-[A-Z]+)" requires the segment to be all capital letters; digits in
+    the prefix break the match entirely.
+
+  why_other_modules_work: |
+    Guidance stories use US-GDN-NNN, Planning stories use US-PLN-NNN, etc. These
+    have purely alphabetic prefixes. The regex r"(US-[A-Z]+)" successfully captures
+    "US-GDN" from "US-GDN-005", which maps to "AgenticGuidance" in the dict.
+    EpicStories are the only directory whose stories use date-prefixed IDs.
+
+# ============================================================
+# Metadata Contract Gap
+# ============================================================
+metadata_contract_gap:
+  title: "00_metadata.yml is completely ignored by the module resolver"
+  evidence:
+    file: modules/AgenticGuidance/src/agenticguidance/services/story.py
+    line: 227
+    code: |
+      if yml_file.name == "00_metadata.yml":
+          continue
+  description: |
+    StoryService.load_all() explicitly skips 00_metadata.yml — it is not read,
+    parsed, or stored. The module/prefix fields declared in those files are never
+    surfaced to the health dashboard or any other consumer.
+
+    Each directory has a 00_metadata.yml (Guidance, Planning, EpicStories, etc.)
+    declaring module and prefix, but the only place module attribution happens is
+    _story_module() in stories.py, which uses the hardcoded _PREFIX_TO_MODULE dict.
+
+  honoured_anywhere: false
+  should_it_be: |
+    Yes. The metadata files represent the intended contract for how directories map
+    to modules. Honouring them would allow new story directories (including
+    EpicStories) to declare their module without requiring a code change to
+    _PREFIX_TO_MODULE. The EpicStories 00_metadata.yml itself notes that stories
+    within it may use bare date-prefixed IDs, making prefix-based resolution
+    fundamentally unsuitable for that directory.
+
+# ============================================================
+# Duplicate ID Problem
+# ============================================================
+id_collision_problem:
+  title: "US-260411AG-001 and US-260411AG-002 exist in two separate epic files"
+  colliding_files:
+    - docs/userstories/EpicStories/260411AG_uat_throwaway_budget_test.yml
+    - docs/userstories/EpicStories/260411AG_uat_throwaway_test_epic_for_orchestrate_workflow_v.yml
+  colliding_ids: [US-260411AG-001, US-260411AG-002]
+  detection: |
+    No duplicate detection exists anywhere in the pipeline:
+    - StoryService.load_all() appends every parsed story from every file without
+      deduplication (story.py lines 225-232).
+    - StoryService.get_by_id() returns the FIRST match — silently hiding the second.
+    - all_ids() uses frozenset, so callers cannot observe that an ID appeared twice.
+    - _story_module() and cmd_health() have no guard against repeated IDs in the
+      display_results list.
+  dashboard_effect: |
+    Both occurrences of US-260411AG-001 appear as separate rows in the health table
+    (potentially with different statuses if their containing files set different
+    test_status values), which is confusing and misleading.
+  root_cause_of_collision: |
+    build-story-writer (the planning agent) allocates IDs per-epic using the epic
+    date code as a namespace (e.g., 260411AG). Two different epics created on the
+    same day with the same date code will produce colliding IDs. There is no global
+    ID registry or uniqueness check at story generation time.
+
+# ============================================================
+# Tooling Gaps
+# ============================================================
+tooling_gaps:
+  - id: TG-001
+    title: "_story_module() regex does not match date-prefixed IDs"
+    file: modules/AgenticCLI/src/agenticcli/commands/stories.py
+    lines: 229-234
+    description: >
+      The regex r"(US-[A-Z]+)" rejects any ID whose prefix contains digits.
+      All EpicStories IDs are invisible to the module resolver.
+
+  - id: TG-002
+    title: "00_metadata.yml is skipped, not parsed"
+    file: modules/AgenticGuidance/src/agenticguidance/services/story.py
+    line: 227
+    description: >
+      The skip-on-00_metadata guard discards directory-level module declarations.
+      No path exists for that data to reach the resolver.
+
+  - id: TG-003
+    title: "No duplicate ID detection in load_all() or cmd_health()"
+    files:
+      - modules/AgenticGuidance/src/agenticguidance/services/story.py
+      - modules/AgenticCLI/src/agenticcli/commands/stories.py
+    description: >
+      load_all() silently appends duplicate IDs. cmd_health() renders all rows
+      including duplicates. No warning is emitted to the user.
+
+  - id: TG-004
+    title: "build-story-writer has no global ID uniqueness check"
+    description: >
+      Epic-generated stories derive IDs from the epic date code. Two epics created
+      on the same date (same YYMMDDXX code) will produce overlapping ID sequences.
+      No registry or collision check exists at generation time.
+
+# ============================================================
+# Recommended Fixes (ordered by impact / effort)
+# ============================================================
+recommended_fixes:
+  - rank: 1
+    id: FIX-001
+    impact: high
+    effort: low
+    title: "Extend _story_module() to cover EpicStories date-prefixed IDs"
+    file: modules/AgenticCLI/src/agenticcli/commands/stories.py
+    lines: 229-234
+    description: |
+      Change the regex from r"(US-[A-Z]+)" to r"(US-[A-Z0-9]+)" so that
+      date-prefixed segments like "US-260411AG" are captured. Then add an entry to
+      _PREFIX_TO_MODULE (or a separate regex branch) that maps any ID matching
+      r"US-\d{6}[A-Z]{2}" to "EpicStories". Example:
+
+          import re
+
+          _EPIC_ID_PATTERN = re.compile(r"US-\d{6}[A-Z]{2}-\d+")
+
+          def _story_module(story_id: str) -> str:
+              if _EPIC_ID_PATTERN.match(story_id):
+                  return "EpicStories"
+              match = re.match(r"(US-[A-Z]+)", story_id)
+              if match:
+                  return _PREFIX_TO_MODULE.get(match.group(1), "Unknown")
+              return "Unknown"
+
+      This is a two-line additive change with no downstream breakage.
+
+  - rank: 2
+    id: FIX-002
+    impact: medium
+    effort: medium
+    title: "Add duplicate ID warning to load_all() and cmd_health()"
+    files:
+      - modules/AgenticGuidance/src/agenticguidance/services/story.py  # load_all()
+      - modules/AgenticCLI/src/agenticcli/commands/stories.py           # cmd_health()
+    description: |
+      In StoryService.load_all(), track seen IDs with a dict mapping id → source_file.
+      On collision emit a logger.warning with both file paths. In cmd_health(), emit
+      a Rich warning panel if any duplicate IDs are detected, listing the colliding
+      IDs and their source files so the user can fix them.
+
+  - rank: 3
+    id: FIX-003
+    impact: medium
+    effort: medium
+    title: "Parse and cache 00_metadata.yml in StoryService"
+    file: modules/AgenticGuidance/src/agenticguidance/services/story.py
+    description: |
+      Instead of skipping 00_metadata.yml, load it and cache module/prefix metadata
+      keyed by directory path. Expose a get_directory_module(dir_path) helper.
+      _story_module() in stories.py can then look up the story's source_file
+      directory against this cache as a fallback when prefix-based resolution
+      returns Unknown. This makes the metadata files the authoritative fallback
+      and removes the need for hardcoding every future directory into
+      _PREFIX_TO_MODULE.
+
+  - rank: 4
+    id: FIX-004
+    impact: low
+    effort: low
+    title: "Add 'EpicStories' to _module_style dict in cmd_health()"
+    file: modules/AgenticCLI/src/agenticcli/commands/stories.py
+    lines: 1204-1210
+    description: |
+      Once FIX-001 or FIX-003 makes "EpicStories" appear as a module value, the
+      _module_style dict needs an entry for it so the Rich console renders it with
+      a distinct colour rather than "dim" (the default fallback). A low-effort
+      cosmetic fix that completes the display experience.
+
+  - rank: 5
+    id: FIX-005
+    impact: low
+    effort: medium
+    title: "Add global ID uniqueness validation to build-story-writer"
+    file: modules/AgenticGuidance/agents/build/build-story-writer/process.yml
+    description: |
+      Instruct build-story-writer to call `agentic stories find <id>` (or scan
+      the EpicStories directory) before finalising generated story IDs, and to
+      increment the counter if a collision is detected. This prevents the underlying
+      data problem rather than just surfacing it at display time.
+
+# ============================================================
+# Summary
+# ============================================================
+summary:
+  total_friction_points: 4
+  by_severity:
+    high: 1    # _story_module regex bug — direct cause of Unknown
+    medium: 2  # 00_metadata.yml ignored; no duplicate detection
+    low: 1     # build-story-writer no uniqueness check
+  by_type:
+    guidance_gap: 0
+    tool_misuse: 0
+    input_resolution_failure: 1   # TG-002: metadata file present but never read
+    story_drift: 0
+    backtracking: 0
+    excessive_iteration: 0
+    context_overflow: 0
+    code_logic_error: 3           # TG-001 regex, TG-003 no dedup, TG-004 no ID check
+  top_recommendations:
+    - FIX-001: two-line regex change in _story_module() resolves all Unknown modules immediately
+    - FIX-002: load_all() duplicate warning surfaces the ID collision before it silently corrupts get_by_id()
+    - FIX-003: honoring 00_metadata.yml makes module resolution extensible without code changes

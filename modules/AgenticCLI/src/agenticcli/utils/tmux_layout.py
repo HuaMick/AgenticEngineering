@@ -391,9 +391,21 @@ def create_orchestration_layout(
     if is_in_tmux():
         return _create_inplace_layout(dashboard_refresh, question_refresh, skip_commands=skip_commands)
     else:
-        # Clean up orphaned sessions before creating a new one
-        cleanup_orchestration_sessions()
         session_name = f"agentic-orch-{os.getpid()}"
+        # Only kill an existing session with our exact target name. We must NOT
+        # nuke every agentic-orch-* session here: that would race against
+        # concurrent orchestration runs in other shells/CI workers and against
+        # parallel test sessions. Bulk orphan cleanup is an explicit CLI op,
+        # not a side-effect of every layout creation.
+        existing = subprocess.run(
+            ["tmux", "has-session", "-t", session_name],
+            capture_output=True,
+        )
+        if existing.returncode == 0:
+            subprocess.run(
+                ["tmux", "kill-session", "-t", session_name],
+                capture_output=True,
+            )
         return _create_new_session_layout(session_name, claude_cmd_str, dashboard_refresh, question_refresh, skip_commands=skip_commands)
 
 

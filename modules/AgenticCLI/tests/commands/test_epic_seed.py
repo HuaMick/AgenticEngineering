@@ -83,7 +83,7 @@ def test_epic_seed_returns_folder_path(tmp_path):
         # Temporarily set is_json_output to False during cmd_init (it toggles)
         cmd_seed(args)
 
-    assert captured_json.get("status") == "created"
+    assert captured_json.get("status") == "seed"
     assert captured_json.get("objective") == "my test epic"
     assert captured_json.get("branch") == "test-branch"
 

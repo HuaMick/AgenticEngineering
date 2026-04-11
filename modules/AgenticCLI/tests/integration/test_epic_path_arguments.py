@@ -128,7 +128,7 @@ class TestPlanStatusPathArguments:
         other_content = {
             "plan": {
                 "name": "Other Plan",
-                "status": "pending",
+                "status": "planning",
                 "phases": []
             }
         }
@@ -138,7 +138,7 @@ class TestPlanStatusPathArguments:
         # Also register other plan in TinyDB
         tinydb_populator("260202CL_other_plan", other_plan, {
             "name": "Other Plan",
-            "status": "pending",
+            "status": "planning",
             "phases": [],
         })
 

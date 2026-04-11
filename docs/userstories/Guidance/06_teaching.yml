@@ -1,50 +1,128 @@
 area: teaching
-description: "Asset types, organization, maintenance"
+description: Asset organization, indexing, and the single-custodian rule
 stories:
 - id: US-GDN-035
   title: Asset Organization and Discovery
   category: teaching
   priority: high
-  description: As an agent or developer understanding the system, I want to know how guidance
-    assets are organized, indexed, and consumed by agents, so that I understand the asset
-    routing architecture.
+  lifecycle: implemented
+  description: "As an agent or developer working with guidance assets, I want assets\
+    \ to\nlive in a fixed four-directory structure with manifest-based indexing\n\
+    (NOT filesystem scanning), maintained by a single custodian agent, so\nthat asset\
+    \ content remains interchangeable while the indexing/consumption\nplumbing stays\
+    \ stable.\n\nThis is the library/books distinction: assets are interchangeable\
+    \ books;\nthe directory structure, manifest indexing, and inputs.yml consumption\n\
+    are the library system. Pure-Guidance story by depender ownership \u2014\nthe\
+    \ indexing contract is enforced inside the asset registry resolver,\nnot by any\
+    \ CLI command.\n"
   prerequisites: []
   steps:
   - step: 1
-    when: the feature is used
+    when: a developer or agent looks up a guidance asset
     then:
-    - 'Four asset subdirectories in modules/AgenticGuidance/assets/: definitions/, guidelines/,
-      examples/, specifications/'
+    - 'Assets live in exactly four subdirectories under modules/AgenticGuidance/assets/:
+      definitions/, guidelines/, examples/, specifications/'
+    - "The four-way split is fixed; new asset types do NOT get new top-level directories\
+      \ \u2014 they fold into the closest existing kind"
   - step: 2
-    when: the feature is used
+    when: the asset registry indexes a directory
     then:
-    - Guidelines and examples are indexed via manifest.yml files for discovery (not filesystem scanning)
+    - guidelines/ and examples/ are indexed via a manifest.yml in each subdirectory
+      listing the asset names; discovery is manifest-driven, not filesystem-scanning
+    - "This is a non-obvious design choice \u2014 filesystem scanning would couple\
+      \ the registry to file naming and break when assets move"
   - step: 3
-    when: the feature is used
+    when: examples are organised
     then:
-    - 'Examples are organized by agent category subdirectory: builder/, cleaner/, orchestration/,
+    - 'examples/ groups by agent category subdirectory: builder/, cleaner/, orchestration/,
       planner/, teacher/, test/'
+    - The agent category in the example path determines which agent role can reference
+      it via inputs.yml without further resolution
   - step: 4
-    when: the feature is used
+    when: an agent's inputs.yml references an asset via a layer
     then:
-    - Agents consume assets via inputs.yml layer references — _compile_spawn_context() resolves
-      paths and injects content into agent sessions
+    - _compile_spawn_context() in services/context.py reads the manifest, resolves
+      the asset path, and injects the asset content into the spawned agent's compiled
+      context (see US-GDN-100)
   - step: 5
-    when: the feature is used
+    when: an asset is added, removed, or renamed
     then:
-    - teacher-update-assets agent is the sole custodian — it must update manifest.yml when
-      adding or removing assets
+    - "The teacher-update-assets agent is the SOLE custodian \u2014 only that agent\
+      \ should mutate manifest.yml in step with the asset change"
+    - Drift between manifest.yml and on-disk files is treated as a registry corruption
+      event, not a normal load (see degradation step below)
   - step: 6
-    when: the feature is used
+    when: an asset is referenced by a layer but the manifest does not list it (or
+      vice versa)
     then:
-    - Asset content is interchangeable (books can be added, removed, rewritten without changing
-      the system) — the directory structure, indexing, and consumption pattern are the system mechanics
+    - Context compilation fails closed with a "manifest drift" error naming the missing/extra
+      asset; the spawn is aborted before any agent launches (degradation contract
+      for the asset registry dependency)
+  - step: 7
+    when: the same kind of content is interchangeable
+    then:
+    - 'Asset content is replaceable: books can be rewritten without changing the system.
+      Stories never quote what an asset says (book content); they describe how the
+      asset is loaded and consumed (mechanic). See the MECHANICS vs CONTENT vs GENERIC
+      rule in build-story-writer guidance.'
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh repo clone on main. The four asset subdirectories exist
+
+      under modules/AgenticGuidance/assets/. Each indexed subdirectory
+
+      has a current manifest.yml.
+
+      '
+    preconditions: []
+    journey:
+    - step: 1
+      action: Run `ls modules/AgenticGuidance/assets/` and confirm exactly four subdirectories
+      observe:
+      - 'directories listed: definitions, examples, guidelines, specifications'
+    - step: 2
+      action: Run `ls modules/AgenticGuidance/assets/examples/` and confirm the per-category
+        subdirectories
+      observe:
+      - directories listed include builder, planner, teacher, test (and others)
+    - step: 3
+      action: Cat one of the guideline manifests, e.g., `cat modules/AgenticGuidance/assets/guidelines/manifest.yml`,
+        and pick one entry
+      observe:
+      - manifest exists
+      - the named entry resolves to a real file in the same directory
+    - step: 4
+      action: Run `agentic agent context bootstrap --role test-audit` and confirm
+        the reward-hacking-prevention guideline (or similar) is present in the compiled
+        context
+      observe:
+      - the asset content was injected via the manifest path, not by file system scan
+    - step: 5
+      action: Temporarily add a fake entry to a guideline manifest pointing at a non-existent
+        file, then re-run step 4
+      observe:
+      - context compilation exits non-zero
+      - stderr names the missing asset and the manifest path that referenced it
+    success_signals:
+    - "Assets live in exactly four subdirectories \u2014 no fifth directory has crept\
+      \ in"
+    - Indexing is manifest-driven; manifest drift fails closed at compile time
+    - "Inputs.yml resolves assets via layers, not direct paths \u2014 keeps the registry\
+      \ indirection layer working"
+    cleanup:
+    - Restore any temporarily mutated manifest files
+  related_commands:
+  - agentic agent context bootstrap --role <agent>
   related_agents:
   - teacher-update-assets
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/context.py
-  - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
-  last_tested: null
-  test_status: untested
+  - modules/AgenticGuidance/assets/definitions/
+  - modules/AgenticGuidance/assets/guidelines/
+  - modules/AgenticGuidance/assets/examples/
+  - modules/AgenticGuidance/assets/specifications/
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

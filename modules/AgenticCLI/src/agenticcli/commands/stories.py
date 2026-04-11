@@ -543,7 +543,17 @@ def cmd_status(args):
 
 
 def cmd_update(args):
-    """Update test status for a specific story."""
+    """Update test status for a specific story.
+
+    When ``--status pass`` is recorded, the current git HEAD commit is
+    captured and written atomically alongside the status (to
+    ``last_pass_commit`` by default, or ``last_uat_commit`` when
+    ``--kind uat`` is passed). This closes the two-write-path gap where
+    a story could be marked passing with no commit hash attached. Pass
+    ``--commit <hash>`` to override the auto-detected HEAD.
+    """
+    import subprocess
+
     from agenticcli.console import is_json_output, print_error, print_json, print_success
 
     story_id = args.id
@@ -561,6 +571,21 @@ def cmd_update(args):
     now = datetime.now(timezone.utc).isoformat()
     tested_by = (args.plan if hasattr(args, "plan") and args.plan else "")
     notes = args.notes if args.notes else ""
+    kind = getattr(args, "kind", "test") or "test"
+
+    # Capture the git HEAD at record time so passing stories always carry
+    # a commit hash. Explicit --commit overrides the auto-detected value.
+    commit = getattr(args, "commit", "") or ""
+    if not commit and args.status in ("pass", "passing"):
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                commit = result.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            commit = ""
 
     updated = svc.update_test_status(
         story_id,
@@ -568,6 +593,8 @@ def cmd_update(args):
         tested_by=tested_by,
         test_notes=notes,
         last_tested=now,
+        commit=commit,
+        commit_kind=kind,
     )
 
     if not updated:
@@ -578,10 +605,66 @@ def cmd_update(args):
         print_json({
             "updated": story_id,
             "test_status": args.status,
+            "commit": commit or None,
+            "commit_kind": kind if commit else None,
             "file": story_obj.source_file,
         })
     else:
-        print_success(f"Updated {story_id}: test_status={args.status}")
+        commit_suffix = f" @ {commit[:7]}" if commit else ""
+        print_success(f"Updated {story_id}: test_status={args.status}{commit_suffix}")
+
+
+def record_story_pass(
+    story_ids,
+    commit: str | None = None,
+    commit_kind: str = "test",
+    tested_by: str = "",
+) -> dict:
+    """Record test pass for one or more stories.
+
+    Single write path shared by `cmd_update` and framework hooks
+    (ExecutionRunner phase-completion, UatRunner session-completion).
+    Resolves HEAD when `commit` is not provided and calls
+    `StoryService.update_test_status` in-process for each story.
+
+    Returns a dict: {"updated": [ids], "missing": [ids]}.
+    """
+    svc = StoryService(_find_userstories_dir())
+
+    if not commit:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                commit = result.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            commit = ""
+
+    now = datetime.now(timezone.utc).isoformat()
+    updated: list[str] = []
+    missing: list[str] = []
+
+    for sid in story_ids:
+        if svc.get_by_id(sid) is None:
+            missing.append(sid)
+            continue
+        ok = svc.update_test_status(
+            sid,
+            "pass",
+            tested_by=tested_by,
+            test_notes="",
+            last_tested=now,
+            commit=commit or "",
+            commit_kind=commit_kind,
+        )
+        if ok:
+            updated.append(sid)
+        else:
+            missing.append(sid)
+
+    return {"updated": updated, "missing": missing, "commit": commit or None}
 
 
 def _scan_pytest_story_markers() -> set[str]:
@@ -1009,10 +1092,10 @@ def cmd_health(args):
 
     # --- Tally counts across ALL stories (not just shown) ---
     status_counts: dict[str, int] = {
-        "unhealthy": 0,
+        "broken": 0,
         "stale": 0,
         "never-passed": 0,
-        "no-test": 0,
+        "untested": 0,
         "passing": 0,
         "uat-verified": 0,
         "archived": 0,
@@ -1104,10 +1187,10 @@ def cmd_health(args):
     # Table output
     # ==========================================================================
     _status_style = {
-        "unhealthy": "red",
+        "broken": "red",
         "stale": "yellow",
         "never-passed": "cyan",
-        "no-test": "dim",
+        "untested": "dim",
         "passing": "green",
         "uat-verified": "bright_green",
         "archived": "grey50",
@@ -1172,15 +1255,15 @@ def cmd_health(args):
 
     # --- Summary footer ---
     status_label_style = {
-        "unhealthy": "red",
+        "broken": "red",
         "stale": "yellow",
         "never-passed": "cyan",
-        "no-test": "dim",
+        "untested": "dim",
         "passing": "green",
         "uat-verified": "bright_green",
     }
     count_parts = [f"[bold]{total_shown} shown[/bold]"]
-    for key in ("unhealthy", "stale", "never-passed", "no-test", "passing", "uat-verified"):
+    for key in ("broken", "stale", "never-passed", "untested", "passing", "uat-verified"):
         n = status_counts.get(key, 0)
         if n:
             sty = status_label_style.get(key, "default")
@@ -1874,17 +1957,54 @@ def cmd_code(args):
         console.print(f"  {fn}")
 
 
+def _story_has_uat_plan(story: dict) -> bool:
+    """Return True if the story has a minimally-populated uat_plan block.
+
+    A uat_plan is considered present when all of the following are set:
+    - persona (non-empty string)
+    - starting_state (non-empty string)
+    - journey (list with at least one entry having both action and observe)
+    - success_signals (non-empty list)
+
+    Preconditions and cleanup are optional. This is the same bar
+    `agentic stories audit` enforces and matches the Phase 1 forcing
+    function for story writers.
+    """
+    plan = story.get("uat_plan")
+    if not isinstance(plan, dict) or not plan:
+        return False
+    if not (plan.get("persona") and plan.get("starting_state")):
+        return False
+    journey = plan.get("journey") or []
+    if not isinstance(journey, list) or not journey:
+        return False
+    has_step = any(
+        isinstance(j, dict) and j.get("action") and j.get("observe")
+        for j in journey
+    )
+    if not has_step:
+        return False
+    signals = plan.get("success_signals") or []
+    if not isinstance(signals, list) or not signals:
+        return False
+    return True
+
+
 # @story US-004
 def cmd_audit(args):
     """Story audit: epic coverage, file↔YAML consistency, or ticket traceability."""
     check_files = getattr(args, "check_files", False)
     check_tickets = getattr(args, "check_tickets", False)
+    check_uat_plan = getattr(args, "check_uat_plan", False)
 
     if check_files:
         _cmd_audit_check_files(args)
         return
     if check_tickets:
         _cmd_audit_check_tickets(args)
+        return
+    if check_uat_plan:
+        _cmd_audit_check_uat_plan(args)
         return
 
     # Original epic-based audit
@@ -1956,11 +2076,22 @@ def cmd_audit(args):
                 "title": s.get("title", ""),
             })
 
+    # Compute stories missing a uat_plan (Phase 1 of Story-Writer UAT-First Restructure).
+    # Deprecated/archived stories are excused because the journey is owned by a successor.
+    missing_uat_plan = [
+        s.get("id", "")
+        for s in stories_list
+        if s.get("id")
+        and s.get("lifecycle") not in ("deprecated", "archived")
+        and not _story_has_uat_plan(s)
+    ]
+
     summary = {
         "total_tickets": len(tickets),
         "unlinked_ticket_count": len(unlinked_tickets),
         "total_stories": len(stories_list),
         "orphan_story_count": len(orphan_stories),
+        "missing_uat_plan_count": len(missing_uat_plan),
         "stories_yml_missing": stories_missing,
         "fully_covered": len(unlinked_tickets) == 0 and len(orphan_stories) == 0,
     }
@@ -1970,6 +2101,7 @@ def cmd_audit(args):
             "epic": epic_folder.name,
             "unlinked_tickets": unlinked_tickets,
             "orphan_stories": orphan_stories,
+            "missing_uat_plan": missing_uat_plan,
             "summary": summary,
         })
         return
@@ -1998,8 +2130,15 @@ def cmd_audit(args):
             console.print(f"    [dim]•[/dim] {os_entry['story_id']}: {os_entry['title']}")
         console.print()
 
+    if missing_uat_plan:
+        console.print(f"  [yellow]Stories missing uat_plan ({len(missing_uat_plan)}):[/yellow]")
+        for sid in missing_uat_plan:
+            console.print(f"    [dim]•[/dim] {sid}")
+        console.print()
+
     console.print(f"  [bold]Summary:[/bold] {summary['unlinked_ticket_count']} unlinked ticket(s), "
-                  f"{summary['orphan_story_count']} orphan story/stories")
+                  f"{summary['orphan_story_count']} orphan story/stories, "
+                  f"{summary['missing_uat_plan_count']} missing uat_plan")
 
 
 def _cmd_audit_check_files(args):
@@ -2161,6 +2300,85 @@ def _cmd_audit_check_tickets(args):
             console.print(f"    [dim]... and {len(tickets) - 10} more[/dim]")
 
     console.print(f"\n  {total_unlinked}/{total_tickets} tickets missing story_ids")
+    if strict:
+        sys.exit(1)
+
+
+def _cmd_audit_check_uat_plan(args):
+    """Scan ALL stories for a present-and-minimally-populated uat_plan block.
+
+    Global (non-epic-scoped) audit. Walks every story loaded by StoryService
+    and reports which stories are missing the uat_plan required by the
+    Phase 1 guidance. Non-fatal by default; use --strict to exit non-zero
+    when any stories are missing uat_plan (for CI gating of new categories).
+    """
+    from agenticcli.console import console, is_json_output, print_header, print_json
+
+    strict = getattr(args, "strict", False)
+    category_filter = getattr(args, "category", None)
+
+    userstories_dir = _find_userstories_dir()
+    if userstories_dir is None or not userstories_dir.exists():
+        print("Error: userstories directory not found.", file=sys.stderr)
+        sys.exit(1)
+    missing_by_file: dict[str, list[str]] = {}
+    missing_ids: list[str] = []
+    total = 0
+
+    for yml_path in sorted(userstories_dir.rglob("*.yml")):
+        if yml_path.name == "00_metadata.yml":
+            continue
+        if category_filter and category_filter not in str(yml_path.relative_to(userstories_dir)):
+            continue
+        try:
+            raw = yaml.safe_load(yml_path.read_text()) or {}
+        except Exception:
+            continue
+        stories = raw.get("stories") or raw.get("user_stories") or []
+        if not isinstance(stories, list):
+            continue
+        rel = str(yml_path.relative_to(userstories_dir))
+        for s in stories:
+            if not isinstance(s, dict):
+                continue
+            sid = s.get("id")
+            if not sid:
+                continue
+            # Skip deprecated/archived stories — they're excused from uat_plan
+            # coverage because the journey is owned by a successor story.
+            if s.get("lifecycle") in ("deprecated", "archived"):
+                continue
+            total += 1
+            if not _story_has_uat_plan(s):
+                missing_ids.append(sid)
+                missing_by_file.setdefault(rel, []).append(sid)
+
+    if is_json_output():
+        print_json({
+            "check": "uat_plan",
+            "total_stories": total,
+            "missing_uat_plan": missing_ids,
+            "missing_by_file": missing_by_file,
+            "missing_count": len(missing_ids),
+            "all_have_uat_plan": len(missing_ids) == 0,
+        })
+        if strict and missing_ids:
+            sys.exit(1)
+        return
+
+    print_header("Story Audit: uat_plan Coverage")
+    if not missing_ids:
+        console.print(f"  [green]All {total} stories have a uat_plan[/green]")
+        return
+
+    for rel, ids in sorted(missing_by_file.items()):
+        console.print(f"  [yellow]{rel}[/yellow] — {len(ids)} missing:")
+        for sid in ids[:20]:
+            console.print(f"    [dim]-[/dim] {sid}")
+        if len(ids) > 20:
+            console.print(f"    [dim]... and {len(ids) - 20} more[/dim]")
+
+    console.print(f"\n  {len(missing_ids)}/{total} stories missing uat_plan")
     if strict:
         sys.exit(1)
 

@@ -48,7 +48,7 @@ class TestIsBuildPlan:
         repo.add_phase(epic_name, {
             "name": "Build Phase",
             "agent": "build-python",
-            "status": "pending",
+            "status": "planning",
         })
 
         assert service.is_build_plan(epic_name) is True
@@ -60,7 +60,7 @@ class TestIsBuildPlan:
         repo.add_phase(epic_name, {
             "name": "Guidance Phase",
             "agent": "teacher-update-guidance",
-            "status": "pending",
+            "status": "planning",
         })
 
         assert service.is_build_plan(epic_name) is False
@@ -72,12 +72,12 @@ class TestIsBuildPlan:
         repo.add_phase(epic_name, {
             "name": "Build Phase",
             "agent": "build-python",
-            "status": "pending",
+            "status": "planning",
         })
         repo.add_phase(epic_name, {
             "name": "Deploy Phase",
             "agent": "deploy-cicd",
-            "status": "pending",
+            "status": "planning",
         })
 
         assert service.is_build_plan(epic_name) is True
@@ -95,7 +95,7 @@ class TestIsBuildPlan:
         _seed_epic(repo, epic_name)
         repo.add_phase(epic_name, {
             "name": "Phase Without Agent",
-            "status": "pending",
+            "status": "planning",
         })
 
         assert service.is_build_plan(epic_name) is False
@@ -107,7 +107,7 @@ class TestIsBuildPlan:
         repo.add_phase(epic_name, {
             "name": "Build Phase",
             "agent": "build-flutter",
-            "status": "pending",
+            "status": "planning",
         })
 
         assert service.is_build_plan(epic_name) is True
@@ -128,7 +128,7 @@ class TestIsBuildPlan:
         repo.add_phase(epic_name, {
             "name": "Phase With None Agent",
             "agent": None,
-            "status": "pending",
+            "status": "planning",
         })
 
         assert service.is_build_plan(epic_name) is False
@@ -140,7 +140,7 @@ class TestIsBuildPlan:
         repo.add_phase(epic_name, {
             "name": "Phase With Empty Agent",
             "agent": "",
-            "status": "pending",
+            "status": "planning",
         })
 
         assert service.is_build_plan(epic_name) is False
@@ -152,12 +152,12 @@ class TestIsBuildPlan:
         repo.add_phase(epic_name, {
             "name": "Test Phase",
             "agent": "test-runner",
-            "status": "pending",
+            "status": "planning",
         })
         repo.add_phase(epic_name, {
             "name": "Guidance Phase",
             "agent": "teacher-update-guidance",
-            "status": "pending",
+            "status": "planning",
         })
 
         assert service.is_build_plan(epic_name) is False

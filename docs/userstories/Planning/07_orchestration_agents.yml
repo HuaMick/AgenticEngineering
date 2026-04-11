@@ -63,7 +63,7 @@ stories:
   - step: 4
     when: phase records are queried
     then:
-    - Each phase record carries pending|in_progress|completed|blocked status plus
+    - Each phase record carries planning|in_progress|completed|blocked status plus
       the agent routing field for the executor (see US-PLN-097 for the routing contract)
     - '`agentic epic phase list --epic <folder>` reads via repo.list_phases() (TinyDB
       query, no filesystem scan)'
@@ -153,15 +153,14 @@ stories:
   - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
   related_agents:
   - orchestration-planning
-  last_tested: '2026-04-11T10:37:03.416381+00:00'
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
   test_status: pass
-  test_notes: 'All 6 journey steps passed: seed epic discoverable with planning hint,
-    plan/implement --help self-documenting with --epic and --dry-run, phase routing
-    persisted to TinyDB via --agent, missing --epic degrades to named-flag error listing
-    matching epics'
+  test_notes: 'All 6 journey steps pass: epic list shows seed+hint, plan/implement
+    --help self-documenting, phase add persists agent routing to TinyDB, missing --epic
+    errors with ''cannot infer epic'' and folder list'
   tested_by_plan: executor:260411UA_exec_order:Mu Phase
-  last_pass_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
-  last_uat_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+  last_uat_commit: b153af3604e1dd18e0c9c9e911085974046898f4
 - id: US-PLN-047
   title: Orchestrate Session Implement
   category: orchestration
@@ -244,7 +243,7 @@ stories:
 
       P1 (agent=build-python, _order=1), P2 (agent=test-builder, _order=2),
 
-      P3 (agent=build-python, _order=3). All begin with status=pending
+      P3 (agent=build-python, _order=3). All begin with status=planning
 
       (the default produced by `agentic epic phase add`). TinyDB is writable.
 
@@ -256,7 +255,7 @@ stories:
     journey:
     - step: 1
       action: Run `agentic epic phase list --epic <folder>` and confirm P1/P2/P3 are
-        pending in the order P1, P2, P3
+        planning in the order P1, P2, P3
       observe:
       - command exits 0
       - phases listed in 1, 2, 3 order
@@ -290,12 +289,12 @@ stories:
       - "P1, P2, P3 remain completed in `agentic epic phase list --epic <folder>`\
         \ \u2014 none were re-executed"
     - step: 4
-      action: Reset P2 and P3 back to pending via `agentic epic phase update <id>
-        --epic <folder> --status pending`. Then run implement and interrupt it (Ctrl-C).
+      action: Reset P2 and P3 back to planning via `agentic epic phase update <id>
+        --epic <folder> --status planning`. Then run implement and interrupt it (Ctrl-C).
         Mark P2 completed manually.
       observe:
       - '`agentic epic phase list --epic <folder>` shows P1 completed, P2 completed,
-        P3 pending'
+        P3 planning'
     - step: 5
       action: Re-run `agentic orchestrate session implement --epic <folder>`
       observe:
@@ -307,7 +306,7 @@ stories:
       - command exits non-zero
       - error names P4 and the missing agent routing
       - P4 status is now `failed` in TinyDB (marked as failed to prevent retry-loop,
-        NOT left pending)
+        NOT left planning)
     success_signals:
     - Phase execution follows TinyDB _order, not file/list position
     - Completed phases are not re-executed on resume (idempotency)
@@ -329,14 +328,13 @@ stories:
   - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
   related_agents:
   - orchestration-executor
-  last_tested: '2026-04-11T10:37:03.416381+00:00'
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
   test_status: pass
-  test_notes: 'All 6 journey steps pass: phase ordering follows _order, completed
-    phases not re-executed on resume, missing agent routing marks phase failed and
-    exits non-zero'
+  test_notes: Implement follows _order, skips completed phases on resume, marks agentless
+    P4 failed at routing layer (exit 1)
   tested_by_plan: executor:260411UA_exec_order:Mu Phase
-  last_pass_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
-  last_uat_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+  last_uat_commit: b153af3604e1dd18e0c9c9e911085974046898f4
 - id: US-PLN-048
   title: Orchestrate Session UAT
   category: orchestration
@@ -473,10 +471,12 @@ stories:
   - modules/AgenticGuidance/src/agenticguidance/services/story.py
   related_agents:
   - test-uat
-  last_tested: '2026-04-11T10:37:03.416381+00:00'
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
   test_status: pass
-  test_notes: 'All 5 journey steps pass: help flags, dry-run resolution, stamp-verified
-    pass, forgot-to-stamp failure, missing uat_plan skip. All success signals observed.'
+  test_notes: 'All 5 journey steps pass; all 5 success signals verified: CLI command
+    reachable with --story/--epic/--stale scoping, UatRunner spawns test-uat per story
+    with story_id, pre/post stamp verification works, clean exit without stamp treated
+    as failure, missing uat_plan skipped without blocking batch'
   tested_by_plan: executor:260411UA_exec_order:Mu Phase
-  last_pass_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
-  last_uat_commit: 492a92ef1252d1d1d4ad7cbc47750eb96ef79bc3
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+  last_uat_commit: b153af3604e1dd18e0c9c9e911085974046898f4

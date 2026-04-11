@@ -1,0 +1,139 @@
+area: worktree_isolation
+description: "Per-feature worktree isolation pattern that keeps epic metadata visible\n\
+  on main while code execution happens in feature branches. Relocated from\nUS-GDN-084\
+  \ (\"Main-First Worktree Pattern\") on 2026-04-07 \u2014 the trigger is\n`git worktree\
+  \ add/remove` (a shell/CLI operation), so the story belongs in\nthe Session cluster,\
+  \ not in Guidance.\n"
+stories:
+- id: US-SES-020
+  title: Session Worktree Isolation
+  category: worktree
+  priority: critical
+  lifecycle: implemented
+  description: 'As a developer or orchestration agent, I want each feature to execute
+
+    in its own git worktree while epic planning metadata stays on main, so
+
+    that concurrent agent work cannot pollute shared state and plans
+
+    remain visible to all developers before any code is written.
+
+
+    Main-first workflow + worktree-per-feature is the central isolation
+
+    contract for multi-agent execution. This is a CLI/operational story
+
+    by depender ownership; the worktree commands are git operations
+
+    invoked by humans and by the orchestration spawn path.
+
+    '
+  prerequisites: []
+  steps:
+  - step: 1
+    when: an epic is created
+    then:
+    - The epic folder + TinyDB record are created in the MAIN worktree before any
+      feature worktree is added
+    - This main-first ordering makes plan and epic metadata visible to all developers
+      (and to `agentic epic list` from any worktree) before implementation begins
+  - step: 2
+    when: an agent is spawned to work on a phase
+    then:
+    - The agent runs in a feature worktree dedicated to that branch (one worktree
+      per feature, no shared state)
+    - Worktrees are created on demand and deleted after the work is merged; concurrent
+      agents on different features cannot interfere
+  - step: 3
+    when: epic state is queried from any worktree
+    then:
+    - "`agentic epic list` and `agentic epic status` read from the global TinyDB at\
+      \ `~/.agentic/epics.db`, so epic metadata is visible from main, from any feature\
+      \ worktree, and from a fresh checkout \u2014 TinyDB lives outside the worktree\
+      \ boundary by design"
+  - step: 4
+    when: a worktree is removed
+    then:
+    - The CLI / operator verifies the branch is merged to main and that no uncommitted
+      changes exist before allowing removal
+    - "Removing a worktree with unmerged work is rejected with a named-file warning\
+      \ (degradation contract \u2014 depender refuses to drop user work silently)"
+  - step: 5
+    when: a worktree directory is missing on disk but the branch still exists in git
+    then:
+    - '`git worktree remove` cannot reach it; recovery requires `git worktree prune`
+      followed by `git worktree add` against the same branch'
+    - The CLI surfaces this state as "worktree-orphaned" in any command that tries
+      to cd into the missing path, and exits non-zero rather than crashing with a
+      CWD error
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh repo clone on main with no feature worktrees. `git` and
+      `agentic`
+
+      are on PATH. ~/.agentic/epics.db is empty or contains no test epic.
+
+      '
+    preconditions:
+    - US-PLN-001
+    journey:
+    - step: 1
+      action: On main, run `agentic epic new "worktree iso test" --branch plan-uat-worktree-iso`
+      observe:
+      - command exits 0
+      - '`agentic epic list` shows the new epic'
+      - no feature worktree has been created yet (verify with `git worktree list`)
+    - step: 2
+      action: 'Create a feature worktree manually: `git worktree add ../repo-uat-worktree
+        -b plan-uat-worktree-iso`'
+      observe:
+      - command exits 0
+      - '`git worktree list` now shows two worktrees (main + the new feature)'
+    - step: 3
+      action: From the feature worktree, run `agentic epic list`
+      observe:
+      - command exits 0
+      - the same epic created in step 1 is visible (TinyDB is shared)
+    - step: 4
+      action: From the feature worktree, run `agentic epic status --epic <folder>`
+      observe:
+      - command exits 0
+      - status output matches what main shows
+    - step: 5
+      action: 'Try to remove the feature worktree with uncommitted changes: `cd ../repo-uat-worktree
+        && touch dirty.txt && git worktree remove ../repo-uat-worktree`'
+      observe:
+      - removal is rejected (unmerged/dirty work)
+      - no data is lost
+    - step: 6
+      action: 'Clean up: `rm dirty.txt && cd .. && git worktree remove ../repo-uat-worktree`'
+      observe:
+      - removal succeeds
+      - main worktree is unaffected
+    success_signals:
+    - Epic metadata is created on main BEFORE the feature worktree exists
+    - TinyDB is reachable from any worktree because it lives at ~/.agentic/epics.db
+      (outside the worktree boundary)
+    - Worktree removal refuses to drop dirty/unmerged work
+    cleanup:
+    - '`agentic epic archive <folder>`'
+    - '`git worktree remove ../repo-uat-worktree` if still present'
+  related_commands:
+  - git worktree add <path> -b <branch>
+  - git worktree list
+  - git worktree remove <path>
+  - git worktree prune
+  - agentic epic list
+  - agentic epic status --epic <folder>
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/context.py
+  - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+  - modules/AgenticCLI/src/agenticcli/commands/epic.py
+  related_agents:
+  - orchestration-executor
+  - orchestration-planning
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
+  test_notes: ''
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

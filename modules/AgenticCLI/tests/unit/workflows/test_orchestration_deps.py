@@ -43,7 +43,7 @@ def _create_epic(repo, name, status="in_progress", priority="medium", depends_on
     })
 
 
-def _add_phase(repo, epic_name, phase_name, agent="build-python", status="pending"):
+def _add_phase(repo, epic_name, phase_name, agent="build-python", status="planning"):
     """Helper to add a routed phase to an epic."""
     repo.add_phase(epic_name, {
         "name": phase_name,

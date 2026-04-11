@@ -56,7 +56,7 @@ executor_scope:
         - "epic_folder: Epic folder name whose phases are stored in TinyDB"
       behavior: |
         Executor calls EpicRepository.list_phases(epic_folder), finds the first
-        pending/in_progress phase, resolves its agent field, spawns the agent,
+        planning/in_progress phase, resolves its agent field, spawns the agent,
         and loops until all phases are completed or escalation is required.
 
     fallback_to_planning:
@@ -82,7 +82,7 @@ agent_routing:
       phase_name: "str — unique phase identifier within the epic"
       phase_id: "str — stable ID for cross-referencing"
       agent: "str — agent role name (e.g. build-python, test-builder) — REQUIRED for execution"
-      status: "str — pending | in_progress | completed | failed | blocked"
+      status: "str — planning | in_progress | completed | failed | blocked"
       execution: "str — sequential | parallel (defaults to sequential)"
       loop_type: "str — optional loop strategy for this phase"
       loop_max_iterations: "int — max retries for this phase"
@@ -97,7 +97,7 @@ agent_routing:
         "phase_name": "Domain_Build",
         "phase_id": "phase_domain_build",
         "agent": "build-python",
-        "status": "pending",
+        "status": "planning",
         "execution": "sequential",
         "loop_max_iterations": 5,
         "max_turns": 50,
@@ -205,13 +205,13 @@ feedback_triggers:
     and trigger corrective actions (re-run a prior phase, retry, or escalation).
     Triggers are stored as the `feedback_triggers` dict on each PhaseData record in TinyDB.
     The executor reads this field after a phase fails and uses it to determine
-    which phase to re-set to pending for re-execution.
+    which phase to re-set to planning for re-execution.
 
   tinydb_storage:
     field: "feedback_triggers (dict on PhaseData record)"
     format: |
       Keys are PHASE_NAME_FAILURE strings (uppercase).
-      Values are the phase_name to reset to pending.
+      Values are the phase_name to reset to planning.
     example: |
       {
         "INTEGRATION_TEST_FAILURE": "Domain_Build",
@@ -226,7 +226,7 @@ feedback_triggers:
       3. Constructs failure_key: "{PHASE_NAME_UPPER}_FAILURE"
       4. Looks up failure_key in feedback_triggers dict
       5. If target phase name found: verify target exists in TinyDB via repo.get_phase()
-      6. If target exists: reset target phase to pending, continue to next iteration
+      6. If target exists: reset target phase to planning, continue to next iteration
       7. If no trigger matches or target not found: mark phase failed, halt
 
   trigger_types:
@@ -615,7 +615,7 @@ feedback_triggers:
         - "4. Present to user for decision"
 
       user_options:
-        continue: "User provides additional context; reset iteration count; update TinyDB phase to pending"
+        continue: "User provides additional context; reset iteration count; update TinyDB phase to planning"
         skip: "User accepts current state; mark phase as 'completed_with_issues' in TinyDB"
         abort: "User terminates execution; preserve state in TinyDB and execution_state.yml for later resume"
 
@@ -630,7 +630,7 @@ state_model:
     No MMD files or YAML ticket files are used to track execution state.
 
   phase_status_values:
-    pending:
+    planning:
       description: "Phase has not started"
       transitions_to: ["in_progress", "blocked"]
       initial_state: true
@@ -654,11 +654,11 @@ state_model:
       transitions_to: ["in_progress"]  # Can retry after re-planning or trigger reset
       requirements:
         - "Failure reason documented in execution_state.yml"
-        - "Feedback trigger (if any) has reset target phase to pending"
+        - "Feedback trigger (if any) has reset target phase to planning"
 
     blocked:
       description: "Phase cannot proceed without user input"
-      transitions_to: ["in_progress", "pending"]  # User can unblock
+      transitions_to: ["in_progress", "planning"]  # User can unblock
       triggers:
         - "Max iterations reached"
         - "Missing agent field in TinyDB"
@@ -674,7 +674,7 @@ state_model:
 
   state_transitions:
     valid_transitions:
-      pending_to_in_progress:
+      planning_to_in_progress:
         trigger: "Executor begins phase execution"
         action: "EpicRepository.update_phase(epic, phase, {status: in_progress})"
 
@@ -692,11 +692,11 @@ state_model:
 
       blocked_to_in_progress:
         trigger: "User provides resolution and resets phase"
-        action: "EpicRepository.update_phase(epic, phase, {status: pending})"
+        action: "EpicRepository.update_phase(epic, phase, {status: planning})"
 
       failed_to_in_progress:
-        trigger: "Feedback trigger resets a prior phase to pending"
-        action: "EpicRepository.update_phase(epic, prior_phase, {status: pending})"
+        trigger: "Feedback trigger resets a prior phase to planning"
+        action: "EpicRepository.update_phase(epic, prior_phase, {status: planning})"
 
   persistence:
     single_source_of_truth: |
@@ -709,7 +709,7 @@ state_model:
     tinydb_phase_record:
       location: "TinyDB phases table, queried by epic_folder_name"
       fields_updated_during_execution:
-        - "status: pending | in_progress | completed | failed | blocked"
+        - "status: planning | in_progress | completed | failed | blocked"
       query_method: "EpicRepository.list_phases(epic_folder_name)"
       update_method: "EpicRepository.update_phase(epic_folder_name, phase_name, updates_dict)"
 
@@ -742,8 +742,8 @@ state_model:
         - "1. Call EpicRepository.list_phases(epic_folder) to get all phases from TinyDB"
         - "2. Identify resume point:"
         - "   - If any phase is 'in_progress': resume from that phase"
-        - "   - If all completed phases are contiguous: start next 'pending' phase"
-        - "   - If gap in completed phases: log warning and start from first pending"
+        - "   - If all completed phases are contiguous: start next 'planning' phase"
+        - "   - If gap in completed phases: log warning and start from first planning"
         - "3. Load execution_state.yml if present (iteration count, prior outcomes)"
         - "4. Resume execution with preserved context"
 
@@ -751,7 +751,7 @@ state_model:
       priority_order:
         - "in_progress phase (highest priority - was interrupted)"
         - "blocked phase (awaiting user input)"
-        - "first pending phase after last completed"
+        - "first planning phase after last completed"
 
     context_preservation:
       preserved_on_resume:
@@ -767,7 +767,7 @@ state_model:
       scenario: "Executor or agent crashes mid-phase"
       behavior: |
         1. On restart, executor calls list_phases() and detects phase with status='in_progress'
-        2. Executor resets phase to pending and restarts it
+        2. Executor resets phase to planning and restarts it
         3. Iteration count is loaded from execution_state.yml if available
         4. Crash counts as one failed attempt toward max_iterations
 
@@ -875,7 +875,7 @@ fallback_behaviors:
       prevention:
         - "Each phase sets loop_max_iterations in TinyDB (via phase add/update)"
         - "Executor tracks iteration count and halts when limit is reached"
-        - "User must manually reset phase to pending after providing fix context"
+        - "User must manually reset phase to planning after providing fix context"
 
 # =============================================================================
 # SECTION 6: EXECUTION PROTOCOL
@@ -908,9 +908,9 @@ execution_protocol:
 
       - step: "4. Determine resume point"
         actions:
-          - "Scan TinyDB phases for in_progress or pending status"
+          - "Scan TinyDB phases for in_progress or planning status"
           - "Load execution_state.yml if present (iteration count, last failure)"
-          - "Identify starting phase (in_progress takes priority, else first pending)"
+          - "Identify starting phase (in_progress takes priority, else first planning)"
 
       - step: "5. Initialize execution state"
         actions:
@@ -951,7 +951,7 @@ execution_protocol:
           - "On failure: read feedback_triggers from PhaseData in TinyDB"
           - "Construct failure_key: '{PHASE_NAME_UPPER}_FAILURE'"
           - "Look up failure_key in feedback_triggers dict"
-          - "If trigger found and target phase exists: reset target to pending, continue"
+          - "If trigger found and target phase exists: reset target to planning, continue"
           - "If no trigger: transition failed phase to 'failed' in TinyDB, halt"
 
       - step: "6. Complete or iterate"
@@ -1118,16 +1118,16 @@ examples:
     description: "Phase records returned by EpicRepository.list_phases() at executor startup"
     content: |
       [
-        PhaseData(name="Environment_Setup", agent="build-python", status="pending",
+        PhaseData(name="Environment_Setup", agent="build-python", status="planning",
                   loop_max_iterations=3, max_turns=30, _order=1,
                   feedback_triggers={}),
-        PhaseData(name="Domain_Build", agent="build-python", status="pending",
+        PhaseData(name="Domain_Build", agent="build-python", status="planning",
                   loop_max_iterations=5, max_turns=50, _order=2,
                   feedback_triggers={"DOMAIN_BUILD_FAILURE": "Domain_Build"}),
-        PhaseData(name="Integration_Test", agent="test-builder", status="pending",
+        PhaseData(name="Integration_Test", agent="test-builder", status="planning",
                   loop_max_iterations=3, max_turns=40, _order=3,
                   feedback_triggers={"INTEGRATION_TEST_FAILURE": "Domain_Build"}),
-        PhaseData(name="CI_CD_Validation", agent="deploy-cicd", status="pending",
+        PhaseData(name="CI_CD_Validation", agent="deploy-cicd", status="planning",
                   loop_max_iterations=2, max_turns=20, _order=4,
                   feedback_triggers={})
       ]
@@ -1138,17 +1138,17 @@ examples:
     before:
       tinydb: |
         Environment_Setup: status=in_progress
-        Domain_Build: status=pending
-        Integration_Test: status=pending
+        Domain_Build: status=planning
+        Integration_Test: status=planning
     after:
       tinydb: |
         Environment_Setup: status=completed
         Domain_Build: status=in_progress
-        Integration_Test: status=pending
+        Integration_Test: status=planning
 
   feedback_trigger_resolution:
     description: "Feedback trigger resets a prior phase on failure"
-    scenario: "Integration_Test fails; trigger resets Domain_Build to pending"
+    scenario: "Integration_Test fails; trigger resets Domain_Build to planning"
     trigger_record: |
       PhaseData(
         name="Integration_Test",
@@ -1161,8 +1161,8 @@ examples:
       4. Looks up target: "Domain_Build"
       5. Calls repo.get_phase(epic, "Domain_Build") — exists, confirmed
       6. Calls repo.update_phase(epic, "Integration_Test", {status: failed})
-      7. Calls repo.update_phase(epic, "Domain_Build", {status: pending})
-      8. Next iteration: list_phases() picks up Domain_Build as next pending
+      7. Calls repo.update_phase(epic, "Domain_Build", {status: planning})
+      8. Next iteration: list_phases() picks up Domain_Build as next planning
       9. Domain_Build re-executes with fix context from Integration_Test failure
 
 # =============================================================================

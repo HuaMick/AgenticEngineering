@@ -115,8 +115,8 @@ class TestExecutePlanMaxTurnsWiring:
         # third returns completed after _run_phase marks it done.
         mock_repo = MagicMock()
         mock_repo.list_phases.side_effect = [
-            [PhaseData(name="Build", status="pending", agent="build-python", max_turns=75)],  # recovery sweep
-            [PhaseData(name="Build", status="pending", agent="build-python", max_turns=75)],  # first loop iteration
+            [PhaseData(name="Build", status="planning", agent="build-python", max_turns=75)],  # recovery sweep
+            [PhaseData(name="Build", status="planning", agent="build-python", max_turns=75)],  # first loop iteration
             [PhaseData(name="Build", status="completed", agent="build-python", max_turns=75)],  # after _run_phase
         ]
         mock_repo.list_tickets.return_value = []
@@ -146,8 +146,8 @@ class TestExecutePlanMaxTurnsWiring:
 
         mock_repo = MagicMock()
         mock_repo.list_phases.side_effect = [
-            [PhaseData(name="Test", status="pending", agent="test-builder")],  # recovery sweep
-            [PhaseData(name="Test", status="pending", agent="test-builder")],  # first loop iteration
+            [PhaseData(name="Test", status="planning", agent="test-builder")],  # recovery sweep
+            [PhaseData(name="Test", status="planning", agent="test-builder")],  # first loop iteration
             [PhaseData(name="Test", status="completed", agent="test-builder")],  # after _run_phase
         ]
         mock_repo.list_tickets.return_value = []

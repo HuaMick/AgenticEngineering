@@ -1,121 +1,105 @@
 area: deployment
-description: "Worktree, CI/CD, build/packaging, environment"
+description: |
+  Deployment-adjacent stories. Most of the original deployment stories were
+  relocated or merged on 2026-04-07 as part of the post-restructure triage:
+  - US-GDN-084 (Main-First Worktree) relocated to Session as US-SES-020
+  - US-GDN-089 (CI/CD Pre-Flight Gates) merged into US-PLN-061 step 15
+  Only US-GDN-097 (Phase-to-Agent Routing) remains as a pure-Guidance story.
 stories:
-- id: US-GDN-084
-  title: Main-First Worktree Pattern
-  category: deployment
-  priority: critical
-  description: As a CLI user, I want to follow the main-first workflow where epic metadata
-    lives in main and code development happens in feature worktrees, so that plans are visible
-    to all developers before implementation begins.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - 'Main-first workflow: epic folder created in main worktree BEFORE feature worktree
-      is created for code development'
-  - step: 2
-    when: the feature is used
-    then:
-    - Plan and epic metadata are visible from main worktree for all developers — feature
-      branches execute work against main-based state
-  - step: 3
-    when: the feature is used
-    then:
-    - Worktree-per-feature isolation — each feature gets its own worktree, preventing state
-      pollution between concurrent agent work
-  - step: 4
-    when: the feature is used
-    then:
-    - Before worktree removal, system verifies branch merged to main and checks for uncommitted
-      changes — prevents data loss in multi-agent environments
-  related_commands:
-  - git worktree add <path> -b <branch>
-  - git worktree remove <path>
-  related_agents: []
-  related_files:
-  - modules/AgenticGuidance/src/agenticguidance/services/context.py
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-089
-  title: CI/CD Pre-Flight Validation Gates
-  category: deployment
-  priority: medium
-  description: As a planner-audit or orchestration agent, I want to validate CI/CD infrastructure
-    exists before planning CI/CD tasks, so that plans don't reference missing infrastructure.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - 'Pre-flight validation: system checks that cloudbuild.yaml and Dockerfile.test exist
-      BEFORE planning CI/CD tasks — proactive blocking, not fail-at-runtime'
-  - step: 2
-    when: the feature is used
-    then:
-    - Readiness check reads AgenticGuidance README Implementation Status — README metadata
-      gates orchestration decisions
-  - step: 3
-    when: the feature is used
-    then:
-    - Plans requiring CI/CD are blocked if infrastructure is not ready — prevents planning
-      agents from creating invalid task sequences
-  related_agents:
-  - deploy-cicd
-  - planner-audit
-  related_files:
-  - modules/AgenticCLI/src/agenticcli/commands/health.py
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
 - id: US-GDN-097
   title: Phase-to-Agent Routing via TinyDB
   category: deployment
   priority: high
-  description: As an orchestration-executor agent, I want to route phases to the correct agent
-    using the TinyDB phase.agent field, so that routing is determined at plan time and executed
-    without runtime detection — including deploy phases, tool offloading, and conditional routing.
+  lifecycle: implemented
+  description: |
+    As an orchestration-executor agent, I want to route phases to the correct
+    agent using the TinyDB phase.agent field, so that routing is determined
+    at plan time and executed without runtime detection — including deploy
+    phases, tool offloading, and conditional routing.
+
+    This is one of the few genuinely cross-module Guidance stories: the
+    phase.agent schema field is defined by EpicRepository (Guidance) but
+    consumed by ExecutionRunner (CLI). Both modules co-own the contract;
+    related_files spans both intentionally.
   prerequisites: []
   steps:
   - step: 1
-    when: the feature is used
+    when: a planner agent drafts a phase
     then:
-    - 'Routing is static, not dynamic: phase.agent field in TinyDB is set at plan time by
-      planner agents, NOT detected at runtime by executor'
+    - The phase.agent field in TinyDB is set at PLAN time by planner agents — never detected at run time by the executor
+    - This is a static-routing design choice; runtime auto-detection is explicitly forbidden because it would make plans non-reviewable
   - step: 2
-    when: the feature is used
+    when: ExecutionRunner reads a phase from TinyDB at run time
     then:
-    - ExecutionRunner reads phase.agent from TinyDB and spawns the specified agent directly —
-      no if/else detection logic
+    - It reads phase.agent and spawns the named agent directly via the spawn pipeline; no if/else detection logic exists in the executor
+    - Agent role lookup uses the same agent registry that Guidance manifests define; an unknown agent fails immediately
   - step: 3
-    when: the feature is used
+    when: a phase record is missing the agent field entirely
     then:
-    - 'Missing agent field causes immediate hard failure — no silent defaults or fallback
-      agent selection'
+    - ExecutionRunner exits non-zero with the message "phase '<name>' has no agent routing — set phase.agent at plan time"; no silent default, no fallback agent selection (degradation contract — depender fails closed when the consumed routing field is absent)
   - step: 4
-    when: the feature is used
+    when: phases must execute in a specific order
     then:
-    - Phase execution order determined by TinyDB _order field, enabling dynamic reordering
-      without code changes — deploy phases execute alongside build phases with no fixed ordering
+    - Phase ordering is driven by the TinyDB _order field, not by file naming or list position
+    - Reordering happens by updating _order, with no code change required; deploy phases can interleave with build phases without a fixed ordering convention
   - step: 5
-    when: the feature is used
+    when: a phase completes
     then:
-    - Build artifacts validated before proceeding to next phase — phase gates prevent cascading
-      failures
+    - Build artifacts (e.g., wheel files, Docker images) are validated as a phase-completion gate before the next phase starts
+    - Failed validation transitions the phase to blocked rather than allowing cascading failures into downstream phases
   - step: 6
-    when: the feature is used
+    when: a task is structurally suited to a CLI command rather than agent reasoning
     then:
-    - 'Tool offloading: worktree and epic creation tasks are routed to CLI commands (agentic
-      epic new) rather than agent reasoning — deterministic naming/structure, no agent variance'
+    - "Tool offloading: tasks like worktree creation, epic scaffolding, and ticket transitions are routed to CLI commands (`agentic epic new`, `agentic epic ticket start`) rather than spawned agents — deterministic naming/structure, no agent variance"
   - step: 7
-    when: the feature is used
+    when: a deploy phase is being routed
     then:
-    - 'Conditional routing: deploy-cicd agent is only routed to if CI/CD infrastructure is
-      marked as implemented in README status'
+    - "Conditional routing: the deploy-cicd agent is only routed to if CI/CD infrastructure is marked implemented in the AgenticGuidance README implementation-status section (gates against unfinished deploy infrastructure)"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: |
+      A seed epic exists. TinyDB is writable. Two phases will be added: P1
+      with a valid agent routing, P2 with no agent field (to exercise
+      degradation).
+    preconditions:
+    - US-PLN-001
+    - US-PLN-015
+    journey:
+    - step: 1
+      action: "Run `agentic epic phase add --epic <folder> --id P1 --name Build --agent build-python`"
+      observe:
+      - "command exits 0"
+      - "`agentic epic phase list --epic <folder>` shows P1 with agent=build-python"
+    - step: 2
+      action: "Run `agentic epic phase add --epic <folder> --id P2 --name Orphan` (no --agent flag)"
+      observe:
+      - "command exits 0 OR exits non-zero with a clear 'agent required' message — either is acceptable; verify which one and document in the test report"
+    - step: 3
+      action: "If step 2 created P2 without an agent, run `agentic orchestrate session implement --epic <folder>` and observe the executor's reaction"
+      observe:
+      - "command exits non-zero"
+      - "stderr contains the literal phrase 'phase' and 'agent' (i.e., the routing-missing error)"
+      - "no agent process was actually spawned (verify by checking `agentic orchestrate session list`)"
+    - step: 4
+      action: "Run `agentic epic phase add --epic <folder> --id P3 --name DeployTest --agent deploy-cicd` and then `agentic epic phase list --epic <folder>`"
+      observe:
+      - "P3 row shows agent=deploy-cicd"
+      - "the routing field is persisted exactly as provided (no normalisation)"
+    - step: 5
+      action: "Run `agentic epic phase update P1 --epic <folder> --status completed` and then `agentic orchestrate session implement --epic <folder>` (observing that P1 is skipped on the next pass)"
+      observe:
+      - "completed phases are not re-executed (idempotent resume contract)"
+    success_signals:
+    - "phase.agent is the only routing source — no auto-detection at run time"
+    - "Missing agent field fails the implement loop closed with a named-phase error"
+    - "Phase ordering is driven by _order, not file position"
+    - "Completed phases are skipped on resume (idempotent execution contract)"
+    cleanup:
+    - "`agentic epic archive <folder>`"
+  related_commands:
+  - agentic epic phase add --epic <folder> --id <id> --name <name> --agent <agent>
+  - agentic epic phase list --epic <folder>
+  - agentic orchestrate session implement --epic <folder>
   related_agents:
   - orchestration-executor
   - build-python
@@ -128,4 +112,49 @@ stories:
   last_tested: null
   test_status: untested
   test_notes: ''
+  tested_by_plan: null
+
+# ---------------------------------------------------------------------------
+# Deprecated stubs — preserved so source-file `# story:` headers and test
+# markers referencing these IDs still resolve.
+# ---------------------------------------------------------------------------
+- id: US-GDN-084
+  title: Main-First Worktree Pattern (relocated → US-SES-020)
+  category: deployment
+  priority: low
+  lifecycle: deprecated
+  description: |
+    DEPRECATED on 2026-04-07 and RELOCATED. The trigger is `git worktree add/remove`,
+    a shell/CLI operation, so the story belongs in the Session cluster. See
+    US-SES-020 (Session Worktree Isolation) for the canonical coverage.
+  prerequisites: []
+  steps: []
+  related_stories:
+  - US-SES-020
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/context.py
+  last_tested: null
+  test_status: skip
+  test_notes: Deprecated — coverage moved to US-SES-020.
+  tested_by_plan: null
+
+- id: US-GDN-089
+  title: CI/CD Pre-Flight Validation Gates (deprecated → US-PLN-061)
+  category: deployment
+  priority: low
+  lifecycle: deprecated
+  description: |
+    DEPRECATED on 2026-04-07. The pre-flight gate that checks cloudbuild.yaml
+    and Dockerfile.test before planning a CI/CD phase is a planner-audit /
+    orchestration mechanic — depender owns the story. It is now step 15 of
+    US-PLN-061 (Phase Execution and Validation).
+  prerequisites: []
+  steps: []
+  related_stories:
+  - US-PLN-061
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/health.py
+  last_tested: null
+  test_status: skip
+  test_notes: Deprecated — coverage moved to US-PLN-061 step 15.
   tested_by_plan: null

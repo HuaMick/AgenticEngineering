@@ -190,7 +190,6 @@ def format_status(status: str) -> str:
     }
     # Legacy aliases — map to canonical status before lookup
     _legacy = {
-        "pending": "planning",
         "active": "planning",
         "approved": "in_progress",
     }

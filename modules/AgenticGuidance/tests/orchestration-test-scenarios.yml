@@ -42,7 +42,7 @@ test_scenarios:
             %% EPIC_FOLDER: docs/epics/live/250110Repo_feature-x
             %% PHASES: Environment_Setup, Domain_Build, Integration_Test
             %% AGENT_ROUTING: Environment_Setup -> builder, Domain_Build -> builder, Integration_Test -> tester
-            %% STATUS: Environment_Setup=pending, Domain_Build=pending, Integration_Test=pending
+            %% STATUS: Environment_Setup=planning, Domain_Build=planning, Integration_Test=planning
             %% FEEDBACK_TRIGGERS: TEST_FAILURE -> retry(3), CICD_FAILURE -> re_plan
 
             graph TD
@@ -66,9 +66,9 @@ test_scenarios:
               Domain_Build: "builder"
               Integration_Test: "tester"
             status:
-              Environment_Setup: "pending"
-              Domain_Build: "pending"
-              Integration_Test: "pending"
+              Environment_Setup: "planning"
+              Domain_Build: "planning"
+              Integration_Test: "planning"
             feedback_triggers:
               TEST_FAILURE: "retry(3)"
               CICD_FAILURE: "re_plan"
@@ -91,7 +91,7 @@ test_scenarios:
             %% PROFILE: Build
             %% EPIC_FOLDER: docs/epics/live/250110Repo_feature-x
             %% PHASES: Setup, Build, Test
-            %% STATUS: Setup=pending, Build=pending, Test=pending
+            %% STATUS: Setup=planning, Build=planning, Test=planning
 
             graph TD
                 Start((Start)) --> Phase1[Setup]
@@ -135,7 +135,7 @@ test_scenarios:
             %% EPIC_FOLDER: docs/epics/live/250110Repo_feature-x
             %% PHASES: Setup, Build, Deploy
             %% AGENT_ROUTING: Setup -> builder, Build -> coder, Deploy -> shipper
-            %% STATUS: Setup=pending, Build=pending, Deploy=pending
+            %% STATUS: Setup=planning, Build=planning, Deploy=planning
 
             graph TD
                 Start((Start)) --> Phase1[Setup]
@@ -183,7 +183,7 @@ test_scenarios:
             %% EPIC_FOLDER: docs/epics/live/250110Repo_feature-x
             %% PHASES: Setup, Build, Test
             %% AGENT_ROUTING: Setup -> builder, Build -> builder, Test -> tester
-            %% STATUS: Setup=pending, Build=pending, Test=pending
+            %% STATUS: Setup=planning, Build=planning, Test=planning
             %% FEEDBACK_TRIGGERS: TEST_FAILURE retry, CICD_FAILURE => escalate, GUIDANCE_GAP
 
             graph TD
@@ -660,11 +660,11 @@ test_scenarios:
               - "Test_Execution"
               - "CICD_Validation"
             initial_status:
-              Environment_Setup: "pending"
-              Domain_Build: "pending"
-              Integration_Build: "pending"
-              Test_Execution: "pending"
-              CICD_Validation: "pending"
+              Environment_Setup: "planning"
+              Domain_Build: "planning"
+              Integration_Build: "planning"
+              Test_Execution: "planning"
+              CICD_Validation: "planning"
           execution_sequence:
             - phase: "Environment_Setup"
               outcome: "completed"
@@ -676,7 +676,7 @@ test_scenarios:
               outcome: "completed"
               duration: "20m"
         expected_outputs:
-          mmd_status_header: "Environment_Setup=completed, Domain_Build=completed, Integration_Build=completed, Test_Execution=pending, CICD_Validation=pending"
+          mmd_status_header: "Environment_Setup=completed, Domain_Build=completed, Integration_Build=completed, Test_Execution=planning, CICD_Validation=planning"
           yaml_state:
             phases:
               - name: "Environment_Setup"
@@ -695,15 +695,15 @@ test_scenarios:
                 completed_at: "timestamp"
                 agent_used: "build-python"
               - name: "Test_Execution"
-                status: "pending"
+                status: "planning"
               - name: "CICD_Validation"
-                status: "pending"
+                status: "planning"
           state_consistency:
             mmd_yaml_sync: true
             phase_order_preserved: true
         validation_criteria:
           - "STATUS header shows phases 1-3 completed"
-          - "STATUS header shows phases 4-5 pending"
+          - "STATUS header shows phases 4-5 planning"
           - "YAML has timestamps for completed phases"
           - "YAML records agent_used for each phase"
           - "MMD and YAML are synchronized"
@@ -719,11 +719,11 @@ test_scenarios:
               - "Phase2"
               - "Phase3"
             in_progress_phase: null
-            pending_phases:
+            planning_phases:
               - "Phase4"
               - "Phase5"
         expected_outputs:
-          status_header_format: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=pending, Phase5=pending"
+          status_header_format: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=planning, Phase5=planning"
           format_validation:
             uses_equals_sign: true
             comma_separated: true
@@ -734,7 +734,7 @@ test_scenarios:
           - "Phases are comma-separated"
           - "Phase order matches PHASES header order"
           - "All phases have status entry"
-          - "Status values are valid (pending, in_progress, completed, etc.)"
+          - "Status values are valid (planning, in_progress, completed, etc.)"
 
       simulate_interruption_resume:
         id: "STATE_003"
@@ -742,7 +742,7 @@ test_scenarios:
         description: "Executor resumes correctly after crash/interruption"
         inputs:
           pre_interruption_state:
-            mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=in_progress, Phase5=pending"
+            mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=in_progress, Phase5=planning"
             yaml_state:
               phases:
                 - name: "Phase4"
@@ -764,7 +764,7 @@ test_scenarios:
             increment_iteration: true
             new_iteration: 2
           post_resume_state:
-            mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=in_progress, Phase5=pending"
+            mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=in_progress, Phase5=planning"
             phase4_iteration: 2
         validation_criteria:
           - "Executor detects in_progress phase from YAML"
@@ -779,7 +779,7 @@ test_scenarios:
         description: "Verify final state after full plan completion"
         inputs:
           resume_state:
-            mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=in_progress, Phase5=pending"
+            mmd_status: "Phase1=completed, Phase2=completed, Phase3=completed, Phase4=in_progress, Phase5=planning"
           remaining_execution:
             - phase: "Phase4"
               outcome: "completed"
@@ -819,7 +819,7 @@ test_scenarios:
         description: "Verify YAML is trusted when states conflict"
         inputs:
           conflicting_state:
-            mmd_status: "Phase1=completed, Phase2=completed, Phase3=pending"
+            mmd_status: "Phase1=completed, Phase2=completed, Phase3=planning"
             yaml_state:
               phases:
                 - name: "Phase1"
@@ -827,7 +827,7 @@ test_scenarios:
                 - name: "Phase2"
                   status: "in_progress"
                 - name: "Phase3"
-                  status: "pending"
+                  status: "planning"
         expected_outputs:
           conflict_detected: true
           conflict_details:
@@ -837,7 +837,7 @@ test_scenarios:
           resolution:
             source_of_truth: "yaml"
             action: "regenerate_mmd_status"
-            resolved_mmd_status: "Phase1=completed, Phase2=in_progress, Phase3=pending"
+            resolved_mmd_status: "Phase1=completed, Phase2=in_progress, Phase3=planning"
           warning_logged: true
           warning_message: "MMD STATUS conflicted with YAML for Phase2. YAML trusted. MMD regenerated."
         validation_criteria:

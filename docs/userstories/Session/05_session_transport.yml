@@ -1,0 +1,120 @@
+area: session_transport
+description: "Spawn transport selection and the one-query-per-process constraint"
+stories:
+- id: US-SES-030
+  title: Session Spawn Transport
+  category: session_management
+  priority: critical
+  lifecycle: implemented
+  description: |
+    As an orchestration runner spawning agent sessions, I want a layered
+    transport selection (sdk-tmux → tmux → subprocess) with per-role
+    timeouts and a one-query-per-process constraint, so that agent
+    spawning is reliable across local-dev, CI, and headless environments
+    and the SDK's zombie-subprocess bug cannot leak between agents.
+
+    Added on 2026-04-07. The transport selection logic was implemented in
+    the 260309TM SDK-in-tmux unification work but no story has claimed
+    the contract until now.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: agentic orchestrate session spawn is invoked
+    then:
+    - The CLI tries the configured transports in order — sdk-tmux is the default first choice; tmux is the fallback when SDK is unavailable; subprocess is the last-resort transport for headless environments
+    - The active transport is named in the session metadata so debug logs can attribute behaviour back to the right path
+  - step: 2
+    when: the sdk-tmux transport is selected
+    then:
+    - Each agent runs in its own tmux pane via `sdk_pane_runner.py`
+    - "ONE SDK query() per process is the hard constraint — calling query() more than once per process triggers the SDK zombie-subprocess bug; the pane runner is designed around this limit and never reuses panes for new agents"
+  - step: 3
+    when: a role is spawned
+    then:
+    - The per-role timeout from `ROLE_TIMEOUT_SECONDS` (in `transport.py` or equivalent) governs how long the spawn waits for the SDK cold-start; build agents get longer timeouts than read-only inspection agents
+    - This map is the single source of truth for spawn timeouts; CLI flags do not override per-role values silently
+  - step: 4
+    when: a transport is unavailable (no claude SDK installed, no tmux on PATH)
+    then:
+    - The runner skips that transport and tries the next; if all transports are unavailable, exit non-zero with a clear "no spawn transport available" error naming each transport that was tried (degradation contract — CLI fails closed when no transport can be reached)
+  - step: 5
+    when: subprocess fallback is selected
+    then:
+    - The agent runs as a direct subprocess (no tmux); session metadata still records the PID and transport name
+    - This path exists primarily for CI / headless environments; it is the least observable but the most universally available
+  - step: 6
+    when: a foreground spawn is invoked
+    then:
+    - The transport is chosen identically to the background path; the only difference is the runner blocks waiting for the agent to complete instead of returning immediately
+    - Background sessions are explicitly excluded from `_active_tmux_sessions` tracking so atexit cleanup does not kill them on CLI exit (regression fence for the 2026-03-09 atexit bug)
+  - step: 7
+    when: a role is not present in `ROLE_TIMEOUT_SECONDS`
+    then:
+    - A safe default timeout applies and the missing role is logged as a warning so the operator can add it to the map (degradation — never zero timeout, never infinite)
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: |
+      Fresh shell with `agentic` on PATH. tmux is available. claude SDK is
+      installed (or alternatively, claude CLI binary is on PATH). No
+      existing test sessions are running.
+    preconditions:
+    - US-SES-001
+    journey:
+    - step: 1
+      action: "Run `agentic orchestrate session spawn --prompt 'echo transport-test' --max-turns 1 --background`"
+      observe:
+      - "command exits 0"
+      - "session metadata records transport (sdk-tmux on a normal local-dev box)"
+    - step: 2
+      action: "Run `agentic orchestrate session list -j` and inspect the spawned session's transport field"
+      observe:
+      - "transport is one of sdk-tmux, tmux, subprocess"
+    - step: 3
+      action: "Spawn a second session immediately afterwards"
+      observe:
+      - "the second session uses a fresh tmux pane (sdk-tmux path) — the first pane is not reused"
+      - "no SDK zombie subprocess error is reported"
+    - step: 4
+      action: "(Optional) Temporarily uninstall the claude SDK Python package and re-spawn"
+      observe:
+      - "the runner falls back to tmux (or subprocess if tmux is also unavailable)"
+      - "the active transport is named in the session record"
+    - step: 5
+      action: "(Optional) Temporarily make tmux unavailable AND have no SDK installed, then spawn"
+      observe:
+      - "command exits non-zero"
+      - "stderr lists each transport that was tried"
+    - step: 6
+      action: "Stop both spawned sessions with `agentic orchestrate session stop <id>`"
+      observe:
+      - "both stop cleanly"
+    - step: 7
+      action: "Verify atexit-cleanup fix: spawn a background session, then exit the spawning shell. Open a new shell and run `agentic orchestrate session list`."
+      observe:
+      - "the background session is still listed and was not killed by atexit (regression fence)"
+    success_signals:
+    - "Each spawn uses a fresh tmux pane (one-query-per-process constraint observed)"
+    - "Transport selection falls through cleanly when a layer is unavailable"
+    - "All transports unavailable fails closed with each named tried"
+    - "Background sessions survive parent shell exit (no atexit kill)"
+    cleanup:
+    - "Stop any test sessions left running"
+    - "Reinstall any temporarily-removed dependencies"
+  related_commands:
+  - agentic orchestrate session spawn --prompt <text>
+  - agentic orchestrate session spawn --background
+  - agentic orchestrate session list -j
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/utils/sdk_pane_runner.py
+  - modules/AgenticCLI/src/agenticcli/utils/transport.py
+  - modules/AgenticCLI/src/agenticcli/utils/spawn_command.py
+  - modules/AgenticCLI/src/agenticcli/utils/session_state.py
+  - modules/AgenticCLI/src/agenticcli/utils/session_id.py
+  related_agents:
+  - orchestration-executor
+  related_stories:
+  - US-SES-001
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

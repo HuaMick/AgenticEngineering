@@ -54,7 +54,7 @@ def audit_epic(tmp_path, _isolate_tinydb, monkeypatch):
     repo.add_phase("260327XX_audit_test", {
         "name": "Build Phase",
         "agent": "build-python",
-        "status": "pending",
+        "status": "planning",
     })
 
     # Ticket with story_ids
@@ -118,7 +118,7 @@ def full_coverage_epic(tmp_path, _isolate_tinydb, monkeypatch):
     repo.add_phase("260327XX_full_cov", {
         "name": "Build Phase",
         "agent": "build-python",
-        "status": "pending",
+        "status": "planning",
     })
 
     repo.add_ticket("260327XX_full_cov", "Build Phase", {
@@ -174,7 +174,7 @@ def no_stories_epic(tmp_path, _isolate_tinydb, monkeypatch):
     })
     repo.add_phase("260327XX_no_stories", {
         "name": "Build Phase",
-        "status": "pending",
+        "status": "planning",
     })
     repo.add_ticket("260327XX_no_stories", "Build Phase", {
         "id": "T1", "name": "Task 1", "status": "proposed",

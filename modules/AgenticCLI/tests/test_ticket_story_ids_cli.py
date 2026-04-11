@@ -46,7 +46,7 @@ def epic_repo(tmp_path, _isolate_tinydb):
     })
     repo.add_phase("260308PD_test", {
         "name": "Build Phase",
-        "status": "pending",
+        "status": "planning",
     })
 
     yield {
@@ -366,7 +366,7 @@ def build_epic_repo(tmp_path, _isolate_tinydb):
     repo.add_phase("260327XX_build_epic", {
         "name": "Build Phase",
         "agent": "build-python",
-        "status": "pending",
+        "status": "planning",
     })
 
     yield {
@@ -399,7 +399,7 @@ def infra_epic_repo(tmp_path, _isolate_tinydb):
     repo.add_phase("260327XX_infra_epic", {
         "name": "Guidance Phase",
         "agent": "teacher-update-guidance",
-        "status": "pending",
+        "status": "planning",
     })
 
     yield {

@@ -344,65 +344,41 @@ process:
       Provide the test plan back to the main orchestration agent for execution.
 
   uat_phase_planning:
-    mandatory: true
-    note: "UAT is PRIMARY SUCCESS CRITERIA - always include for user-facing changes"
-    escape_hatch_rules:
-      reference: "modules/AgenticGuidance/assets/guidelines/planning-standard.yml#escape_hatch_rules"
-      note: |
-        Test plans are blocked_plan_types — the escape hatch CANNOT be used to skip
-        UAT or stories for test plans. Only infrastructure, guidance, and internal_tooling
-        plans may use the escape hatch with a valid no_stories_rationale.
+    mandatory: false
+    note: |
+      UAT is NO LONGER a phase in the build loop (2026-04-11). Do not
+      create a "UAT" phase or "uat_*" tickets in any build plan. Instead,
+      ensure every user story attached to this plan has a complete
+      `uat_plan` block — the standalone `agentic orchestrate session uat`
+      workflow will spawn test-uat per story and read the uat_plan block
+      directly from the story YAML.
+    planner_requirement: |
+      For every affected story, VERIFY the story has a complete uat_plan
+      block with these fields (see story-schema.yml#uat_plan for the
+      canonical definition):
+        - persona (should be agent-blind-test for most flows)
+        - starting_state
+        - journey (steps with action/observe pairs)
+        - success_signals
+        - cleanup (optional but recommended)
+      If a story is missing its uat_plan, raise it as a plan blocker so
+      story-writer or planner-explore can populate it BEFORE execution.
+      The plan is free to proceed without a UAT phase — UAT is run
+      on-demand after the main build loop completes.
 
   uat_task_generation:
     description: |
-      For each affected story, create a UAT task that validates the story's
-      acceptance criteria. Each UAT task must be traceable to a specific story.
-
-    task_template: |
-      - id: "uat_<story_id>"
-        name: "Validate <story_name>"
-        description: |
-          User Story: <story_id>
-
-          Journey:
-          <paste story journey steps>
-
-          Acceptance Criteria:
-          <paste story success_criteria>
-
-          Verification Steps:
-          1. <specific check from story testing section>
-          2. <what to look for>
-          3. <expected outcomes>
-
-          Evidence Required:
-          - Command output showing <X>
-          - Log excerpt confirming <Y>
-          - Screenshot/recording of <Z>
-
-          Story Marker Requirement:
-          Tests created for this UAT task MUST include:
-            @pytest.mark.story("<story_id>")
-          This enables persistent test-to-story traceability via pytest markers.
-        status: "pending"
-        story_id: "<story_id>"  # MANDATORY: Links UAT task to user story (CLI: --story-ids flag)
-        acceptance_criteria:
-          - "<criteria 1 from story>"
-          - "<criteria 2 from story>"
-        verification_method: "test-uat"  # or guidance-blind-test, manual, etc.
-        target_files: []  # UAT tasks don't modify files, they validate behavior
-        story_marker_required: true  # GUIDANCE DIRECTIVE (not persisted in TinyDB)
-        # This flag tells test-builder to include @pytest.mark.story("<story_id>") markers.
-        # Use --story-ids flag when creating tickets: agentic epic ticket add ... --story-ids "US-CLI-110"
-        # Enforcement: orchestration-executor evaluates STORY_COVERAGE_INCOMPLETE trigger
-        # after test phase completion. Missing markers trigger re-spawn of test-builder.
+      Do not generate UAT tasks inside build-plan phases anymore. The
+      `agentic orchestrate session uat --epic <folder>` workflow iterates
+      the epic's stories at UAT time and spawns `test-uat` for each.
+      Build/test phases remain responsible for writing `@pytest.mark.story`
+      markers so `last_pass_commit` can be auto-recorded by the executor
+      hook.
 
     mapping_rules:
-      - "One UAT task per user story"
-      - "Task description must include full story journey"
-      - "Acceptance criteria copied verbatim from story"
-      - "Verification method selected based on story category"
-      - "Evidence requirements must be specific and measurable"
+      - "Each story attached to the plan must carry a complete uat_plan block"
+      - "Build plans do NOT include a UAT phase"
+      - "Test tickets carry story_ids via --story-ids so the executor hook can record last_pass_commit"
 
   # ========================================
   # FENCE: REAL CLI SMOKE TEST REQUIREMENT

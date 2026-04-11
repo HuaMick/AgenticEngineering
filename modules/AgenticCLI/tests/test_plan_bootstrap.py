@@ -337,11 +337,11 @@ class TestPlanBootstrap:
         assert "#" not in folder_name
         assert "!" not in folder_name
 
-    def test_epic_bootstrap_creates_tasks_in_phases(self, temp_git_repo, _isolate_tinydb):
-        """Test epic bootstrap creates initial tasks in TinyDB phases.
+    def test_epic_bootstrap_creates_no_phantom_phases(self, temp_git_repo, _isolate_tinydb):
+        """Test epic bootstrap does NOT auto-create phantom phases or tickets.
 
-        With TinyDB as the sole data store, the initial IM_001 stub ticket
-        is created in TinyDB rather than written to plan_build.yml.
+        As of 2026-04-08, cmd_new produces a pure seed epic with zero phases
+        and zero tickets — planning generates them via the orchestration loop.
         """
         from agenticcli.commands import epic as epic_module
         from agenticguidance.services.epic_repository import EpicRepository
@@ -362,8 +362,6 @@ class TestPlanBootstrap:
         finally:
             os.chdir(original_cwd)
 
-        # Folder creation is no longer performed by cmd_init (TinyDB is the sole data store).
-        # Find the epic via TinyDB instead of scanning the filesystem.
         repo = EpicRepository(db_path=_isolate_tinydb, auto_bootstrap=False)
         epics = repo.list_epics()
         matching = [e for e in epics if "test_tasks" in e.epic_folder_name]
@@ -372,12 +370,12 @@ class TestPlanBootstrap:
         )
         epic_folder_name = matching[0].epic_folder_name
 
-        # Verify initial stub ticket was created in TinyDB
+        # Seed epic has no phases and no tickets — C2 fix.
         tickets = repo.get_tickets(epic_folder_name)
+        phases = repo.list_phases(epic_folder_name)
         repo.close()
-        assert len(tickets) > 0, "Expected at least one stub ticket in TinyDB"
-        ticket_ids = [t.id for t in tickets]
-        assert "IM_001" in ticket_ids, f"Expected IM_001 stub ticket, got: {ticket_ids}"
+        assert tickets == [], f"Expected zero tickets in seed epic, got: {[t.id for t in tickets]}"
+        assert phases == [], f"Expected zero phases in seed epic, got: {[p.name for p in phases]}"
 
 
 @pytest.mark.story("US-PLN-001")

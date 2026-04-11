@@ -1,52 +1,142 @@
-area: story_coverage
-description: "Story coverage via ticket-to-story traceability"
+area: story_ticket_binding
+description: Plan-time ticket-to-story traceability via the --story-ids flag
 stories:
 - id: US-STR-011
-  title: Ticket --story-ids CLI Flag
+  title: Story Ticket Binding
   category: story_management
   priority: medium
-  description: As a planner agent creating or updating tickets via CLI, I want to specify story IDs when adding or updating
-    tickets via the --story-ids flag, so that ticket-to-story traceability is established at planning time through the CLI.
+  lifecycle: implemented
+  description: 'As a planner agent creating or updating tickets via CLI, I want to
+    bind
+
+    each ticket to one or more story IDs at plan time, so that ticket-to-story
+
+    traceability is established up front and downstream coverage tools can
+
+    cross-reference work against the story corpus without grepping commit
+
+    messages or PR descriptions.
+
+
+    This is a CLI story by depender ownership. The Ticket dataclass and
+
+    persistence live in services/ticket.py (Guidance), but the binding is
+
+    only ever set via `agentic epic ticket add/update --story-ids`.
+
+    '
   prerequisites: []
   inherits_patterns:
   - id: PAT-DAT-002
     bind:
-      entity: "Ticket"
-      repository: "TinyDB"
-      operations: ["create", "update"]
+      entity: Ticket
+      repository: TinyDB
+      operations:
+      - create
+      - update
   steps:
   - step: 1
-    when: the feature is used
+    when: a planner agent calls agentic epic ticket add with --story-ids
     then:
-    - agentic epic ticket add supports --story-ids flag (comma-separated list)
+    - The CLI accepts a comma-separated list of story IDs (e.g., `--story-ids US-PLN-001,US-PLN-009`)
+    - Each ID is validated against the regex `^US-[A-Z0-9]+-\d{3}$` before any TinyDB
+      write
   - step: 2
-    when: the feature is used
+    when: agentic epic ticket update is called with --story-ids
     then:
-    - agentic epic ticket update supports --story-ids flag
+    - "The flag REPLACES the existing story_ids list (not append) \u2014 this is the\
+      \ deliberate semantic so corrections at plan time are simple; appending is achieved\
+      \ by passing the existing IDs alongside the new ones"
   - step: 3
-    when: the feature is used
+    when: an ID fails the format regex
     then:
-    - Story IDs are validated against US-XXX-NNN format
+    - "The CLI rejects the entire add/update call with a \"malformed story id\" error\
+      \ naming the offending value; no TinyDB write occurs (degradation contract \u2014\
+      \ depender refuses to persist invalid references)"
   - step: 4
-    when: the feature is used
+    when: an ID is well-formed but does not match any story in docs/userstories/
     then:
-    - Story IDs are persisted to the Ticket.story_ids field in TinyDB
+    - The CLI prints a warning but PROCEEDS with the write (orphan-id tolerance) so
+      that planners can pre-create tickets for proposed stories that will be added
+      later
+    - The orphan binding is later flagged by `agentic stories audit` (see US-STR-001
+      step 4) so it does not get lost
   - step: 5
-    when: the feature is used
+    when: tickets are queried via JSON
     then:
-    - JSON output includes story_ids in ticket data
+    - '`agentic epic ticket list -j` includes the story_ids list verbatim per ticket
+      (no normalisation, no de-dup beyond what was written)'
   - step: 6
-    when: the feature is used
+    when: multiple story IDs are bound to one ticket
     then:
-    - Multiple story IDs can be specified for a single ticket
+    - All IDs are persisted; downstream coverage tools can use any of them as a back-reference
+  - step: 7
+    when: TinyDB FileLock cannot be acquired during the write
+    then:
+    - The CLI exits non-zero with the lock-timeout error from US-PLN-061 step 7; no
+      partial write to ticket.story_ids ever lands
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'A seed epic exists with one phase P1 (any agent) and no tickets
+      yet.
+
+      docs/userstories/ contains real stories including US-PLN-001.
+
+      '
+    preconditions:
+    - US-PLN-001
+    - US-PLN-009
+    - US-PLN-015
+    journey:
+    - step: 1
+      action: Run `agentic epic ticket add --epic <folder> --phase P1 --title "T1"
+        --description "first" --story-ids US-PLN-001`
+      observe:
+      - command exits 0
+      - '`agentic -j epic ticket list --epic <folder>` shows the new ticket with story_ids:
+        ["US-PLN-001"]'
+    - step: 2
+      action: Run `agentic epic ticket add --epic <folder> --phase P1 --title "T2"
+        --description "second" --story-ids US-PLN-001,US-PLN-009`
+      observe:
+      - command exits 0
+      - T2 has both story IDs in JSON output
+    - step: 3
+      action: Run `agentic epic ticket update T2 --epic <folder> --story-ids US-PLN-015`
+      observe:
+      - command exits 0
+      - T2's story_ids is now exactly ["US-PLN-015"] (REPLACE semantic, not append)
+    - step: 4
+      action: Run `agentic epic ticket add --epic <folder> --phase P1 --title "T3"
+        --description "bad" --story-ids notavalidid`
+      observe:
+      - command exits non-zero
+      - stderr names the malformed value
+      - no T3 ticket appears in `ticket list`
+    - step: 5
+      action: Run `agentic epic ticket add --epic <folder> --phase P1 --title "T4"
+        --description "orphan" --story-ids US-FAKE-999`
+      observe:
+      - command exits 0 with a warning about the unknown story id
+      - 'T4 is created with story_ids: ["US-FAKE-999"] (orphan tolerance)'
+    success_signals:
+    - Format-invalid IDs are rejected before any write; well-formed-but-orphan IDs
+      are tolerated with a warning
+    - --story-ids on update is REPLACE, not append
+    - JSON output preserves the list verbatim
+    cleanup:
+    - '`agentic epic archive <folder>`'
   related_commands:
   - agentic epic ticket add --story-ids US-STR-001,US-STR-002
   - agentic epic ticket update T1 --story-ids US-GDN-080
+  - agentic epic ticket list -j
   related_files:
   - modules/AgenticCLI/src/agenticcli/commands/epic.py
   - modules/AgenticGuidance/src/agenticguidance/services/ticket.py
-  related_stories: []
-  last_tested: null
-  test_status: untested
+  related_stories:
+  - US-STR-001
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
   test_notes: ''
-  tested_by_plan: 260308PD_planner_design_agent_story_alignment
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

@@ -1,26 +1,35 @@
 area: session_lifecycle
-description: "Session spawn, list, stop, health, and debug logs"
+description: Session spawn, list, stop, health, and debug logs
 stories:
 - id: US-SES-001
   title: Session Lifecycle
   category: session_management
   priority: critical
-  description: As a developer or orchestration agent, I want to spawn, monitor, stop, and debug Claude Code sessions,
-    so that I can manage the full lifecycle of delegated work programmatically.
+  description: As a developer or orchestration agent, I want to spawn, monitor, stop,
+    and debug Claude Code sessions, so that I can manage the full lifecycle of delegated
+    work programmatically.
   prerequisites: []
   inherits_patterns:
   - id: PAT-AGT-001
     bind:
-      agent_role: "any (user-specified via --role or implicit)"
-      spawn_method: "sdk-tmux with subprocess fallback"
+      agent_role: any (user-specified via --role or implicit)
+      spawn_method: sdk-tmux with subprocess fallback
   - id: PAT-CLI-001
     bind:
-      command: "agentic orchestrate session list"
-      expected_keys: [session_id, status, pid, start_time, prompt]
+      command: agentic orchestrate session list
+      expected_keys:
+      - session_id
+      - status
+      - pid
+      - start_time
+      - prompt
   - id: PAT-CLI-001
     bind:
-      command: "agentic orchestrate health / agentic orchestrate debug logs"
-      expected_keys: [health_verdict, signals, log_lines]
+      command: agentic orchestrate health / agentic orchestrate debug logs
+      expected_keys:
+      - health_verdict
+      - signals
+      - log_lines
   steps:
   - step: 1
     when: a session is spawned
@@ -41,14 +50,16 @@ stories:
   - step: 4
     when: sessions are listed
     then:
-    - agentic orchestrate session list shows all tracked sessions with status, PID, start time
-    - By default only active sessions are shown; the --all flag includes completed sessions
+    - agentic orchestrate session list shows all tracked sessions with status, PID,
+      start time
+    - By default only active sessions are shown; the --all flag includes completed
+      sessions
     - The --type flag filters by type (session, loop, orchestration)
     - Prompt summary is truncated for readability
   - step: 5
     when: session status is inspected
     then:
-    - "Session status includes: running, completed, failed, stopped"
+    - 'Session status includes: running, completed, failed, stopped'
   - step: 6
     when: a session is stopped
     then:
@@ -76,6 +87,82 @@ stories:
     when: JSON output is requested
     then:
     - JSON output includes all fields for programmatic access
+  - step: 11
+    when: tmux is not available on PATH at spawn time
+    then:
+    - "The CLI falls back through the transport chain (sdk-tmux \u2192 tmux \u2192\
+      \ subprocess) automatically; if all transports are unavailable, exit non-zero\
+      \ with a clear \"no spawn transport available\" error naming each transport\
+      \ that was tried (degradation contract for the spawn transport dependency)"
+  - step: 12
+    when: ~/.agentic/sessions/ cannot be written (permission denied, disk full)
+    then:
+    - "The CLI exits non-zero before launching the agent and names the session-store\
+      \ directory in the error; no orphaned process is left running (fail-closed degradation\
+      \ \u2014 no spawn without state persistence)"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh shell with `agentic` on PATH and either claude SDK or claude
+
+      CLI available. ~/.agentic/sessions/ either does not exist or is
+
+      empty. tmux is available (the standard local-dev case).
+
+      '
+    preconditions: []
+    journey:
+    - step: 1
+      action: Run `agentic orchestrate session spawn --prompt 'echo hello' --max-turns
+        1 --background`
+      observe:
+      - command exits 0
+      - stdout names the new session ID
+    - step: 2
+      action: Run `agentic orchestrate session list`
+      observe:
+      - command exits 0
+      - the new session is listed with status running or completed
+    - step: 3
+      action: Run `agentic orchestrate session list -j` and inspect the JSON keys
+      observe:
+      - JSON includes session_id, status, pid, start_time, prompt
+    - step: 4
+      action: Run `agentic orchestrate health <session-id>` (read-only health check)
+      observe:
+      - command exits 0
+      - no diagnostic spawn occurs (health is read-only without --diagnose)
+    - step: 5
+      action: Run `agentic orchestrate debug logs <session-id>`
+      observe:
+      - command exits 0
+      - log output is reachable; -n 10 trims to last 10 lines
+    - step: 6
+      action: Run `agentic orchestrate session stop <session-id>`
+      observe:
+      - command exits 0
+      - session is now in stopped/completed status in `session list`
+    - step: 7
+      action: Run `agentic orchestrate session stop <session-id>` again (idempotent
+        stop)
+      observe:
+      - command exits 0 (no error on re-stop)
+    - step: 8
+      action: Temporarily make ~/.agentic/sessions/ unwritable (chmod 555) and try
+        a fresh spawn
+      observe:
+      - command exits non-zero
+      - stderr names the session-store path
+      - no orphaned process appears in `ps`
+    success_signals:
+    - "Spawn \u2192 list \u2192 health \u2192 logs \u2192 stop \u2192 idempotent re-stop\
+      \ forms one coherent doc-blind journey"
+    - Read-only health check does not spawn diagnostics; --diagnose is required for
+      that
+    - Missing transport or unwritable session store fails closed with named-resource
+      errors
+    cleanup:
+    - chmod 755 ~/.agentic/sessions/ if step 8 modified it
+    - Stop any test sessions left running
   related_commands:
   - agentic orchestrate session spawn --prompt 'Fix the tests' --background
   - agentic orchestrate session spawn -p 'Build feature' --max-turns 10
@@ -94,12 +181,15 @@ stories:
   related_agents:
   - orchestration-executor
   - orchestration-planning
-  last_tested: '2026-02-27'
-  test_status: passing
-  test_notes: >
-    Merged from US-SES-001 through US-SES-004. SES-001 validated by 260226SD SDK migration plan
-    (background sessions use run_agent_sync() via SDK, all 109 session command tests pass).
-    SES-002 validated by same plan (session list, status, monitoring work after SDK migration).
-    SES-004 validated via 260224SC_session_cli_cleanup plan (health renamed to healthcheck,
-    --diagnose flag gates auto-spawn, 1553 tests passing).
-  tested_by_plan: 260226SD_migrate_sessions_to_sdk
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
+  test_notes: 'Merged from US-SES-001 through US-SES-004. SES-001 validated by 260226SD
+    SDK migration plan (background sessions use run_agent_sync() via SDK, all 109
+    session command tests pass). SES-002 validated by same plan (session list, status,
+    monitoring work after SDK migration). SES-004 validated via 260224SC_session_cli_cleanup
+    plan (health renamed to healthcheck, --diagnose flag gates auto-spawn, 1553 tests
+    passing).
+
+    '
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

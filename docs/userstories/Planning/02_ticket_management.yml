@@ -1,56 +1,130 @@
 area: ticket_management
-description: "Ticket list/current/start/complete/add/update"
+description: Ticket list/current/start/complete/add/update
 stories:
 - id: US-PLN-009
-  title: Ticket Management
+  title: Epic Tickets
   category: ticket_management
   priority: critical
-  description: As a developer or agent working on an epic, I want to list, add, and manage tickets through their lifecycle,
-    so that epic progress is tracked accurately and I always know what to work on next.
+  description: As a developer or agent working on an epic, I want to list, add, and
+    manage tickets through their lifecycle, so that epic progress is tracked accurately
+    and I always know what to work on next.
   prerequisites: []
   inherits_patterns:
   - id: PAT-CLI-001
     bind:
-      command: "agentic epic ticket list"
-      expected_keys: [id, name, status, phase]
+      command: agentic epic ticket list
+      expected_keys:
+      - id
+      - name
+      - status
+      - phase
   - id: PAT-DAT-001
     bind:
-      operation: "ticket status transition"
-      target_file: "epics.db"
-      service_method: "repo.update_ticket_status"
+      operation: ticket status transition
+      target_file: epics.db
+      service_method: repo.update_ticket_status
   steps:
   - step: 1
     when: listing tickets
     then:
-    - agentic epic ticket list shows all tickets with ID, name, status, and phase; --status filters, --verbose shows full details
+    - agentic epic ticket list shows all tickets with ID, name, status, and phase;
+      --status filters, --verbose shows full details
   - step: 2
     when: getting the next ticket
     then:
-    - agentic epic ticket current returns the first in_progress ticket, or the first pending ticket if none are in progress
+    - agentic epic ticket current returns the first in_progress ticket, or the first
+      pending ticket if none are in progress
   - step: 3
     when: progressing a ticket
     then:
-    - agentic epic ticket start <id> sets status to in_progress; agentic epic ticket complete <id> sets status to completed with timestamp
+    - agentic epic ticket start <id> sets status to in_progress; agentic epic ticket
+      complete <id> sets status to completed with timestamp
   - step: 4
     when: adding new work
     then:
-    - agentic epic ticket add <description> creates a new pending ticket; --phase, --id, --priority flags supported
+    - agentic epic ticket add <description> creates a new pending ticket; --phase,
+      --id, --priority flags supported
   - step: 5
     when: the feature is used
     then:
-    - Status transitions are validated (pending -> in_progress -> completed); supports statuses pending, in_progress, completed, blocked
+    - Status transitions are validated (pending -> in_progress -> completed); supports
+      statuses pending, in_progress, completed, blocked
   - step: 6
     when: the feature is used
     then:
-    - All ticket data is sourced from TinyDB via atomic FileLock operations; multiple agents cannot corrupt state
+    - All ticket data is sourced from TinyDB via atomic FileLock operations; multiple
+      agents cannot corrupt state
   - step: 7
-    when: the feature is used
+    when: --epic is not specified
     then:
-    - Auto-detects epic folder if --epic is not specified; JSON output (-j) supported on all subcommands
+    - Auto-detects epic folder from the current branch via TinyDB lookup; JSON output
+      (-j) supported on all subcommands
+  - step: 7b
+    when: the auto-detect heuristic finds no matching epic
+    then:
+    - "Command exits non-zero with the message \"cannot infer epic \u2014 pass --epic\
+      \ <folder>\"; no TinyDB writes occur (degradation contract \u2014 depender exits\
+      \ cleanly when the consumed epic record is missing)"
   - step: 8
     when: no phases exist in TinyDB
     then:
     - an "Ad-hoc Tickets" phase is created automatically when adding tickets
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'A seed epic exists in TinyDB created via `agentic epic new "UAT
+      ticket mgmt"
+
+      --branch plan-uat-ticket-mgmt`. No tickets have been added yet. No worktrees
+
+      are needed for this journey.
+
+      '
+    preconditions:
+    - US-PLN-001
+    - US-PLN-015
+    journey:
+    - step: 1
+      action: Run `agentic epic phase add --epic <folder> --id P1 --name Build --agent
+        build-python`
+      observe:
+      - command exits 0
+      - '`agentic epic phase list --epic <folder>` shows P1 with 0 tickets'
+    - step: 2
+      action: Run `agentic epic ticket add --epic <folder> --phase P1 --title "First
+        ticket" --description "Do the thing"`
+      observe:
+      - command exits 0
+      - '`agentic epic ticket list --epic <folder>` shows one ticket in phase P1 with
+        status=pending'
+    - step: 3
+      action: Run `agentic epic ticket current --epic <folder>`
+      observe:
+      - command exits 0
+      - output references the ticket added in step 2
+    - step: 4
+      action: Take the ID from step 3 and run `agentic epic ticket start <id> --epic
+        <folder>`
+      observe:
+      - command exits 0
+      - '`agentic epic ticket list --epic <folder>` now shows the ticket with status=in_progress'
+    - step: 5
+      action: Run `agentic epic ticket complete <id> --epic <folder>`
+      observe:
+      - command exits 0
+      - '`agentic epic ticket list --epic <folder>` now shows the ticket with status=completed'
+    - step: 6
+      action: Run `agentic epic ticket list --epic <folder> --status pending`
+      observe:
+      - command exits 0
+      - output shows 0 pending tickets
+    success_signals:
+    - Tickets can be added, listed, started, and completed via CLI without manual
+      YAML editing
+    - "Status transitions (pending \u2192 in_progress \u2192 completed) are reflected\
+      \ in every subsequent `ticket list` call"
+    - '`ticket current` returns the active ticket when one is in progress'
+    cleanup:
+    - '`agentic epic archive <folder>`'
   related_commands:
   - agentic epic ticket list
   - agentic epic ticket list --status pending --verbose
@@ -66,7 +140,9 @@ stories:
   related_agents:
   - orchestration-executor
   - build-python
-  last_tested: '2026-02-24'
-  test_status: passing
-  test_notes: 'Validated by plan 260222RA: ticket start/complete work correctly, no auto-archive side effects'
-  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
+  test_notes: 'Validated by plan 260222RA: ticket start/complete work correctly, no
+    auto-archive side effects'
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

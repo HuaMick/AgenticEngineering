@@ -71,7 +71,7 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
     # ── Execution phase: full access ──
     "build-python": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
     "build-flutter": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
-    "build-story-writer": ["Read", "Glob", "Grep", "Bash", "Write"],
+    "build-story-writer": ["Read", "Glob", "Grep", "Bash", "Write", "Edit"],
     "build-docs-writer": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
     "test-builder": ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
     "test-audit": ["Read", "Glob", "Grep", "Bash", "Edit", "Write"],
@@ -94,7 +94,7 @@ ROLE_TIMEOUT_SECONDS: dict[str, int] = {
     # ── Implementation roles: 60 min ──
     "build-python": 3600,
     "build-flutter": 3600,
-    "build-story-writer": 600,     # 10 min — story generation (lightweight)
+    "build-story-writer": 1200,    # 20 min — verification-first (discover existing stories, decide action, edit) is more work than pure generation
     "build-docs-writer": 3600,
     "test-builder": 3600,
     "test-audit": 3600,

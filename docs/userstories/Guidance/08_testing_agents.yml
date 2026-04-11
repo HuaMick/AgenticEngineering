@@ -1,217 +1,238 @@
 area: testing_agents
-description: "Test-runner, test-audit, test-builder, simulators"
+description: "Test execution and audit role separation. Most of the original testing\n\
+  stories were merged or relocated on 2026-04-07 as part of the post-restructure\n\
+  triage:\n- US-GDN-064 (Test Audit Loop) merged into US-GDN-061\n- US-GDN-070 (Walkthrough-Based\
+  \ Validation) deprecated \u2014 failed mechanics test\n- US-GDN-074 (User Story\
+  \ UAT) relocated to Stories category\n- US-GDN-081 (Test Phase Planning Architecture)\
+  \ merged into US-PLN-061\n"
 stories:
 - id: US-GDN-061
-  title: Test Execution Isolation
+  title: Test Execution and Audit Loop
   category: testing
   priority: critical
-  description: As a test-builder agent, I want to execute tests in isolated worktree context with
-    structured output routing, so that results feed into orchestration loops.
+  lifecycle: implemented
+  description: 'As a test-builder or test-audit agent, I want test execution and audit
+
+    to run as a coordinated loop with strict role separation, so that test
+
+    quality is enforced without self-validation bias.
+
+
+    This is a Guidance-internal story by the depender-owns rule (the role
+
+    separation contract is enforced by Guidance agent definitions, not by
+
+    a CLI command). The orchestration routing aspects (test-fix loop,
+
+    iteration cap, blocked transitions on failure) live in US-PLN-061
+
+    where the executor enforces them.
+
+    '
   prerequisites: []
   steps:
   - step: 1
-    when: the feature is used
+    when: orchestration-executor spawns a test-builder agent
     then:
-    - Tests run from correct worktree directory within orchestration system (not arbitrary repo root)
+    - The agent's working directory is the worktree associated with the active epic,
+      never an arbitrary repo root; cwd is set at spawn time by the executor (not
+      by the agent itself)
   - step: 2
-    when: the feature is used
+    when: test-builder produces test results
     then:
-    - 'Role constraint: test-builder executes tests but MUST NOT fix code or modify tests —
-      separation prevents self-validation bias'
+    - "The agent MUST NOT modify production code or rewrite the tests it just ran\
+      \ \u2014 role separation prevents self-validation bias"
+    - Results are written as structured YAML/JSON to task outputs, enabling orchestration-executor
+      to parse them programmatically without scraping log text
   - step: 3
-    when: the feature is used
+    when: orchestration-executor spawns a test-audit agent
     then:
-    - Report saved as structured YAML/JSON to task outputs, enabling orchestration-executor
-      to parse results programmatically
+    - "test-audit is a DISTINCT agent from test-builder \u2014 the auditor cannot\
+      \ be the same agent that wrote the tests (the role-separation fence is hard,\
+      \ not advisory)"
   - step: 4
-    when: the feature is used
+    when: test-audit runs against an existing test file
     then:
-    - Failed test results feed back into test-fix-loop — orchestration-executor routes failures
-      to build agents for remediation
+    - The audit checklist is loaded from injectable guideline assets (e.g., reward-hacking-prevention.yml);
+      the check list is interchangeable content, the audit mechanism itself is the
+      system mechanic
+  - step: 5
+    when: structured test output cannot be parsed by orchestration-executor
+    then:
+    - "The executor treats the phase as failed and routes the ticket to status=blocked\
+      \ with the parse error captured in test_notes (degradation contract \u2014 depender\
+      \ exits cleanly on malformed dependency output)"
+  - step: 6
+    when: an audit guideline asset (e.g., reward-hacking-prevention.yml) is missing
+      or malformed
+    then:
+    - test-audit aborts the audit pass with a named-asset error and the phase is marked
+      blocked; the auditor does not silently skip checks (fail-closed degradation)
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'A seed epic exists with one test phase P1 (agent=test-builder)
+      and a
+
+      follow-on audit phase P2 (agent=test-audit). Both phases reference
+
+      the same test file. The reward-hacking-prevention.yml guideline asset
+
+      exists and is well-formed.
+
+      '
+    preconditions:
+    - US-PLN-001
+    - US-PLN-015
+    journey:
+    - step: 1
+      action: Run `agentic epic phase list --epic <folder>`
+      observe:
+      - command exits 0
+      - P1 row shows agent=test-builder, P2 row shows agent=test-audit (the two roles
+        are distinct in TinyDB)
+    - step: 2
+      action: Confirm role separation by running `agentic agent context bootstrap
+        --role test-builder` and grepping the compiled output for the phrase 'MUST
+        NOT modify production code'
+      observe:
+      - command exits 0
+      - the role-separation fence is present in the compiled context
+    - step: 3
+      action: Confirm test-audit consumes the guideline asset by running `agentic
+        agent context bootstrap --role test-audit` and grepping for `reward-hacking-prevention`
+      observe:
+      - command exits 0
+      - the reward-hacking-prevention guideline appears as a referenced input
+    - step: 4
+      action: Temporarily rename `modules/AgenticGuidance/assets/guidelines/reward-hacking-prevention.yml`
+        and re-run step 3
+      observe:
+      - command exits non-zero
+      - stderr names the missing guideline file by absolute path (fail-closed degradation)
+    success_signals:
+    - Role separation between test-builder and test-audit is enforced at the agent-definition
+      layer, visible in the compiled context
+    - "Audit guidelines are loaded as input assets, not embedded in process.yml \u2014\
+      \ they remain interchangeable content"
+    - Missing audit guidelines fail the audit closed, never silently skipped
+    cleanup:
+    - Restore any temporarily renamed asset files
+    - '`agentic epic archive <folder>`'
+  related_commands:
+  - agentic agent context bootstrap --role test-builder
+  - agentic agent context bootstrap --role test-audit
   related_agents:
   - test-builder
-  - orchestration-executor
-  related_files:
-  - modules/AgenticGuidance/src/agenticguidance/services/context.py
-  - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
-  last_tested: null
-  test_status: untested
-  test_notes: ''
-  tested_by_plan: null
-- id: US-GDN-064
-  title: Test Audit Loop Integration
-  category: testing
-  priority: critical
-  description: As a test-audit agent, I want to review test quality and feed findings into the
-    audit-test-fix loop, so that test coverage metrics are meaningful and remediation is automated.
-  prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - 'Role separation: test-audit is a distinct agent from test-builder — auditor cannot
-      be the same agent that wrote the tests (prevents self-validation bias)'
-  - step: 2
-    when: the feature is used
-    then:
-    - Audit checks are defined in injectable guideline assets (reward-hacking-prevention.yml) —
-      the check list is interchangeable content, the audit mechanism is the system mechanic
-  - step: 3
-    when: the feature is used
-    then:
-    - Audit report feeds into audit-test-fix-loop — orchestration-executor routes findings
-      to test-builder for remediation, then re-audits
-  - step: 4
-    when: the feature is used
-    then:
-    - Loop bounded by max iterations to prevent infinite audit-fix cycles
-  related_agents:
   - test-audit
   - orchestration-executor
   related_files:
-  - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+  - modules/AgenticGuidance/agents/test/test-builder/process.yml
+  - modules/AgenticGuidance/agents/test/test-audit/process.yml
+  - modules/AgenticGuidance/assets/guidelines/reward-hacking-prevention.yml
   - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
-  last_tested: null
-  test_status: untested
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
   test_notes: ''
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+- id: US-GDN-064
+  title: "Test Audit Loop Integration (deprecated \u2192 US-GDN-061)"
+  category: testing
+  priority: low
+  lifecycle: deprecated
+  description: 'DEPRECATED on 2026-04-07. Merged into US-GDN-061 (Test Execution and
+
+    Audit Loop). Test execution and audit are sequential steps in the
+
+    same test-quality enforcement journey; the journey principle required
+
+    they live together. The orchestration routing of test-fix-loop and
+
+    audit-test-fix-loop iteration caps lives in US-PLN-061 (Phase
+
+    Execution and Validation).
+
+    '
+  prerequisites: []
+  steps: []
+  related_stories:
+  - US-GDN-061
+  - US-PLN-061
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
+  - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
+  last_tested: null
+  test_status: skip
+  test_notes: "Deprecated \u2014 coverage moved to US-GDN-061 (role separation) and\
+    \ US-PLN-061 (loop routing)."
   tested_by_plan: null
 - id: US-GDN-070
-  title: Walkthrough-Based Guidance Validation
+  title: Walkthrough-Based Guidance Validation (deprecated)
   category: testing
-  priority: high
-  description: As a trace-explorer agent, I want to validate guidance completeness by following process.yml, so that
-    guidance is sufficient for task execution.
+  priority: low
+  lifecycle: deprecated
+  description: "DEPRECATED on 2026-04-07. The original story's nine steps all failed\n\
+    the mechanics test \u2014 they described generic QA practice (execute,\nidentify\
+    \ gaps, report pass/fail) that any competent testing approach\nwould independently\
+    \ produce, not non-obvious system mechanics. The\none genuinely non-obvious claim\
+    \ (blind-test constraint: agent receives\nonly process.yml + inputs.yml) is now\
+    \ part of US-GDN-061's role\nseparation steps and US-STR-NNN's user story UAT\
+    \ relocation target.\nStub kept in place to preserve any source-file `# story:\
+    \ US-GDN-070`\nheaders; verified no test markers reference this ID at deprecation\
+    \ time.\n"
   prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - Execute guidance walkthrough using only process.yml and inputs.yml
-  - step: 2
-    when: an error condition occurs
-    then:
-    - Identify missing steps or unclear instructions
-  - step: 3
-    when: an error condition occurs
-    then:
-    - Identify missing context or reference files
-  - step: 4
-    when: the feature is used
-    then:
-    - Identify ambiguous decision points
-  - step: 5
-    when: the feature is used
-    then:
-    - Generate validation report with specific gaps
-  - step: 6
-    when: the feature is used
-    then:
-    - 'Blind test constraint: agent receives only process.yml, inputs.yml, and referenced assets'
-  - step: 7
-    when: the feature is used
-    then:
-    - Identify points where agent gets stuck, confused, or makes assumptions
-  - step: 8
-    when: the feature is used
-    then:
-    - Input file references validated during walkthrough
-  - step: 9
-    when: the feature is used
-    then:
-    - Report includes step-by-step pass/fail on guidance completeness
-  related_agents:
-  - trace-explorer
-  - teacher-update-guidance
+  steps: []
+  related_stories:
+  - US-GDN-061
   related_files:
   - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
   last_tested: null
-  test_status: untested
-  test_notes: ''
+  test_status: skip
+  test_notes: "Deprecated \u2014 story failed mechanics test (steps were generic QA\
+    \ practice)."
   tested_by_plan: null
 - id: US-GDN-074
-  title: User Story UAT
+  title: "User Story UAT (deprecated \u2192 relocated to Stories category)"
   category: testing
-  priority: medium
-  description: As a quality assurance process, I want to validate user stories through blind testing — both
-    documentation-based walkthroughs and scenario execution — so that user experience matches documented workflows.
+  priority: low
+  lifecycle: deprecated
+  description: "DEPRECATED on 2026-04-07 and RELOCATED to the Stories category. The\n\
+    test-uat blind-testing mechanic is exercised exclusively via\n`agentic orchestrate\
+    \ session spawn --role test-uat` \u2014 depender owns\nthe story, so it belongs\
+    \ in Stories alongside US-STR-001 and the new\nUS-STR-030 (Story UAT Plan Audit).\
+    \ See US-STR-030 for the canonical\ncoverage of doc-blind testing of user stories.\n"
   prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - test-uat agent receives only user-facing documentation (README, guides) — no internal guidance
-  - step: 2
-    when: the feature is used
-    then:
-    - Agent attempts to complete user story steps using only available docs and CLI help
-  - step: 3
-    when: the feature is used
-    then:
-    - Blind test scenarios can be generated from story definitions via orchestration spawn
-  - step: 4
-    when: the feature is used
-    then:
-    - 'Trigger via: agentic orchestrate session spawn --role test-uat --plan <epic-folder>'
-  - step: 5
-    when: the feature is used
-    then:
-    - Identify points where documentation is insufficient or behavior differs from docs
-  - step: 6
-    when: the feature is used
-    then:
-    - Identify workflows that require internal knowledge to complete
-  - step: 7
-    when: the feature is used
-    then:
-    - Results report pass/fail with evidence and failure descriptions
+  steps: []
+  related_stories:
+  - US-STR-030
   related_commands:
-  - agentic orchestrate session spawn --role test-uat --plan <epic-folder>
-  related_agents:
-  - test-uat
+  - agentic orchestrate session spawn --role test-uat --epic <folder>
   related_files:
+  - modules/AgenticGuidance/agents/test/test-uat/process.yml
+  - modules/AgenticGuidance/agents/test/test-uat/inputs.yml
   - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
   last_tested: null
-  test_status: untested
-  test_notes: ''
+  test_status: skip
+  test_notes: "Deprecated \u2014 relocated to Stories category as US-STR-030."
   tested_by_plan: null
 - id: US-GDN-081
-  title: Test Phase Planning Architecture
+  title: "Test Phase Planning Architecture (deprecated \u2192 US-PLN-061)"
   category: testing
-  priority: high
-  description: As a planner-test agent, I want to create test phase plans that enforce mandatory
-    loops, story traceability, and UAT, so that test coverage is systematic and verifiable.
+  priority: low
+  lifecycle: deprecated
+  description: "DEPRECATED on 2026-04-07. The test-phase planning constraints\n(mandatory\
+    \ test-fix / audit-test-fix / story-coverage loops; mandatory\nUAT sub-phase with\
+    \ no escape hatch; @pytest.mark.story enforcement;\nno-mocked-CLI-tests fence)\
+    \ are planning-side contracts that the\norchestration executor enforces \u2014\
+    \ depender owns the story. They are\nnow steps 12-14 of US-PLN-061 (Phase Execution\
+    \ and Validation).\n"
   prerequisites: []
-  steps:
-  - step: 1
-    when: the feature is used
-    then:
-    - 'Planner-builder delegation: planner-test creates the plan, test-builder implements
-      test files — planning and execution are separate roles'
-  - step: 2
-    when: the feature is used
-    then:
-    - 'Mandatory loop inclusion: every test plan MUST include test-fix-loop, audit-test-fix-loop,
-      and story-coverage-loop — these are not optional'
-  - step: 3
-    when: the feature is used
-    then:
-    - 'Story marker enforcement: all test files MUST use @pytest.mark.story("US-XXX-NNN")
-      for test-to-story traceability — STORY_COVERAGE_INCOMPLETE triggers remediation'
-  - step: 4
-    when: the feature is used
-    then:
-    - 'Mandatory UAT phase: every test plan MUST include a UAT phase — no escape hatch exists'
-  - step: 5
-    when: the feature is used
-    then:
-    - 'Real CLI testing required: mocked CLI tests are forbidden for UAT — historical failures
-      showed mocked tests masked broken CLIs'
-  related_agents:
-  - planner-test
-  - test-builder
+  steps: []
+  related_stories:
+  - US-PLN-061
   related_files:
   - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
   last_tested: null
-  test_status: untested
-  test_notes: ''
+  test_status: skip
+  test_notes: "Deprecated \u2014 coverage moved to US-PLN-061 steps 12-14."
   tested_by_plan: null

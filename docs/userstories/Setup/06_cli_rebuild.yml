@@ -1,0 +1,93 @@
+area: cli_rebuild_update
+description: "agentic setup update / rebuild — refreshing the installed CLI from source"
+stories:
+- id: US-SET-020
+  title: CLI Rebuild and Update
+  category: setup
+  priority: medium
+  lifecycle: implemented
+  description: |
+    As an operator who has just pulled new commits or modified the CLI
+    source, I want `agentic setup update` and `agentic setup rebuild`
+    to refresh the installed `agentic` binary from the working tree
+    without me having to remember the underlying pip / build commands,
+    so the meta-loop (CLI editing itself) stays ergonomic.
+
+    Added on 2026-04-07. The mechanic exists in cmd_setup_update /
+    cmd_setup_rebuild but no story has claimed it.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: agentic setup update is invoked
+    then:
+    - The CLI runs the install/upgrade flow against the local source tree (editable install or equivalent) so that subsequent `agentic` invocations pick up the new code
+    - It prints what it ran so an operator can reproduce manually if needed
+  - step: 2
+    when: agentic setup rebuild is invoked
+    then:
+    - The full rebuild path runs (clean any cached artifacts, reinstall dependencies as needed) — this is the heavier hammer for when update alone is not enough
+  - step: 3
+    when: the source tree is not a valid CLI checkout (no pyproject, no src layout)
+    then:
+    - Both commands exit non-zero with a "not a valid agentic source tree" error naming the working directory (degradation contract — fail closed)
+  - step: 4
+    when: the underlying pip/build command fails
+    then:
+    - The exit code propagates and stderr is preserved verbatim — the wrapper does not swallow build errors
+  - step: 5
+    when: update succeeds
+    then:
+    - "`agentic --version` (or equivalent) reflects the newly installed code on the next invocation"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: |
+      A clean checkout of AgenticEngineering with `agentic` already
+      installed (via `agentic setup init`). A trivial reversible edit
+      to a CLI command file is available.
+    preconditions:
+    - US-SET-001
+    journey:
+    - step: 1
+      action: "Make a trivial reversible edit to a CLI command (e.g., add a print to `agentic health`)"
+      observe:
+      - "the source file is modified"
+    - step: 2
+      action: "Run `agentic setup update`"
+      observe:
+      - "command exits 0"
+      - "stdout shows the install command that ran"
+    - step: 3
+      action: "Run `agentic health` (or whichever command was edited) and confirm the print appears"
+      observe:
+      - "the new code is live in the installed CLI"
+    - step: 4
+      action: "Revert the edit and run `agentic setup update` again"
+      observe:
+      - "command exits 0; the print is gone on next invocation"
+    - step: 5
+      action: "Run `agentic setup rebuild`"
+      observe:
+      - "command exits 0"
+      - "the CLI still works after rebuild"
+    - step: 6
+      action: "Cd to /tmp and run `agentic setup update`"
+      observe:
+      - "command exits non-zero"
+      - "stderr names 'not a valid agentic source tree'"
+    success_signals:
+    - "update reflects local edits without manual pip incantations"
+    - "rebuild is the heavier path and also leaves the CLI working"
+    - "Invalid working dir fails closed with a named error"
+    cleanup:
+    - "Revert any test edits to CLI source"
+  related_commands:
+  - agentic setup update
+  - agentic setup rebuild
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/setup.py
+  related_stories:
+  - US-SET-001
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

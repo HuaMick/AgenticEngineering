@@ -175,6 +175,167 @@ class TestUpdateCommitStatus:
 
 
 # ---------------------------------------------------------------------------
+# Atomic write path: update_test_status + commit hash
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateTestStatusAtomicCommit:
+    """Regression coverage for the two-write-path gap.
+
+    Prior to the fix, ``update_test_status`` and ``update_commit_status``
+    were separate writes. Every CLI entry point called only the former,
+    so stories could be recorded as ``pass`` with no commit hash. These
+    tests pin the contract that a passing write atomically records the
+    commit in the same YAML update.
+    """
+
+    def test_pass_with_commit_writes_last_pass_commit(self, story_dir):
+        from agenticguidance.services.story import StoryService
+        svc = StoryService(story_dir)
+        ok = svc.update_test_status(
+            "US-TST-002", "pass",
+            tested_by="uat-run", last_tested="2026-04-11T00:00:00Z",
+            commit="abcdef1234567890",
+        )
+        assert ok is True
+        svc2 = StoryService(story_dir)
+        s = svc2.get_by_id("US-TST-002")
+        assert s.test_status == "pass"
+        assert s.last_pass_commit == "abcdef1234567890"
+        # UAT field untouched when kind defaults to test
+        assert s.last_uat_commit == ""
+
+    def test_pass_with_commit_kind_uat_writes_last_uat_commit(self, story_dir):
+        from agenticguidance.services.story import StoryService
+        svc = StoryService(story_dir)
+        ok = svc.update_test_status(
+            "US-TST-002", "pass",
+            commit="uatcommit99", commit_kind="uat",
+        )
+        assert ok is True
+        svc2 = StoryService(story_dir)
+        s = svc2.get_by_id("US-TST-002")
+        assert s.test_status == "pass"
+        assert s.last_uat_commit == "uatcommit99"
+        # Test-pass field is NOT written when kind=uat
+        assert s.last_pass_commit == ""
+
+    def test_fail_with_commit_does_not_write_commit(self, story_dir):
+        """A failing status must not stamp a commit as 'passing at HEAD'."""
+        from agenticguidance.services.story import StoryService
+        svc = StoryService(story_dir)
+        ok = svc.update_test_status(
+            "US-TST-002", "fail",
+            commit="shouldnotwrite",
+        )
+        assert ok is True
+        svc2 = StoryService(story_dir)
+        s = svc2.get_by_id("US-TST-002")
+        assert s.test_status == "fail"
+        assert s.last_pass_commit == ""
+
+    def test_pass_without_commit_still_updates_status(self, story_dir):
+        """Back-compat: calls that pass no commit still work (no hash written)."""
+        from agenticguidance.services.story import StoryService
+        svc = StoryService(story_dir)
+        ok = svc.update_test_status("US-TST-002", "pass")
+        assert ok is True
+        svc2 = StoryService(story_dir)
+        s = svc2.get_by_id("US-TST-002")
+        assert s.test_status == "pass"
+        assert s.last_pass_commit == ""
+
+    def test_record_story_pass_helper_writes_commit(self, story_dir, monkeypatch):
+        """record_story_pass is the shared write path for CLI + framework hooks.
+
+        Framework hooks (executor pass-hash, UatRunner) and cmd_update must
+        all flow through this helper so the write path stays single-source.
+        """
+        from agenticcli.commands import stories as stories_mod
+
+        monkeypatch.setattr(stories_mod, "_find_userstories_dir", lambda: story_dir)
+
+        class _FakeResult:
+            returncode = 0
+            stdout = "cafebabe1111222\n"
+
+        monkeypatch.setattr("subprocess.run", lambda *a, **k: _FakeResult())
+
+        result = stories_mod.record_story_pass(
+            ["US-TST-002"],
+            commit_kind="test",
+            tested_by="executor:fake:Build",
+        )
+        assert result["updated"] == ["US-TST-002"]
+        assert result["commit"] == "cafebabe1111222"
+
+        from agenticguidance.services.story import StoryService
+        svc = StoryService(story_dir)
+        s = svc.get_by_id("US-TST-002")
+        assert s.test_status == "pass"
+        assert s.last_pass_commit == "cafebabe1111222"
+        assert s.tested_by_plan == "executor:fake:Build"
+
+    def test_record_story_pass_helper_uat_kind(self, story_dir, monkeypatch):
+        """commit_kind='uat' writes last_uat_commit, not last_pass_commit."""
+        from agenticcli.commands import stories as stories_mod
+
+        monkeypatch.setattr(stories_mod, "_find_userstories_dir", lambda: story_dir)
+
+        result = stories_mod.record_story_pass(
+            ["US-TST-002"],
+            commit="uat9999",
+            commit_kind="uat",
+        )
+        assert result["updated"] == ["US-TST-002"]
+
+        from agenticguidance.services.story import StoryService
+        svc = StoryService(story_dir)
+        s = svc.get_by_id("US-TST-002")
+        assert s.last_uat_commit == "uat9999"
+
+    def test_record_story_pass_helper_missing_story(self, story_dir, monkeypatch):
+        """Unknown story IDs are reported in the 'missing' list, not raised."""
+        from agenticcli.commands import stories as stories_mod
+
+        monkeypatch.setattr(stories_mod, "_find_userstories_dir", lambda: story_dir)
+
+        result = stories_mod.record_story_pass(
+            ["US-DOES-NOT-EXIST"], commit="x", commit_kind="test",
+        )
+        assert result["updated"] == []
+        assert "US-DOES-NOT-EXIST" in result["missing"]
+
+    def test_cmd_update_captures_head_commit(self, story_dir, monkeypatch, capsys):
+        """cmd_update must capture git HEAD and pass it to update_test_status."""
+        from agenticcli.commands import stories as stories_mod
+
+        monkeypatch.setattr(stories_mod, "_find_userstories_dir", lambda: story_dir)
+
+        class _FakeResult:
+            returncode = 0
+            stdout = "deadbeef1234567890\n"
+
+        def _fake_run(*args, **kwargs):
+            return _FakeResult()
+
+        monkeypatch.setattr("subprocess.run", _fake_run)
+
+        args = SimpleNamespace(
+            id="US-TST-002", status="pass", notes="uat pass",
+            plan="260410AG_example", commit=None, kind="test",
+        )
+        stories_mod.cmd_update(args)
+
+        from agenticguidance.services.story import StoryService
+        svc = StoryService(story_dir)
+        s = svc.get_by_id("US-TST-002")
+        assert s.test_status == "pass"
+        assert s.last_pass_commit == "deadbeef1234567890"
+        assert s.tested_by_plan == "260410AG_example"
+
+
+# ---------------------------------------------------------------------------
 # get_stale_stories tests
 # ---------------------------------------------------------------------------
 
@@ -298,7 +459,7 @@ class TestCmdHealth:
         assert s1["test"]["last_pass_commit"] == "abc1234"
         assert s1["uat"]["last_uat_commit"] == "def5678"
         assert s1["status"] in {
-            "unhealthy", "stale", "never-passed", "no-test",
+            "broken", "stale", "never-passed", "untested",
             "passing", "uat-verified", "archived",
         }
         assert "flaky" in s1["flags"]
@@ -325,7 +486,7 @@ class TestCmdHealth:
 
         counts = data["summary"]["counts"]
         # All 7 status keys present in the counts dict
-        for key in ("unhealthy", "stale", "never-passed", "no-test",
+        for key in ("broken", "stale", "never-passed", "untested",
                     "passing", "uat-verified", "archived"):
             assert key in counts
         assert "flaky_count" in data["summary"]
@@ -530,7 +691,7 @@ class TestCmdAuditCheckTickets:
             "name": "test_epic",
             "status": "active",
         })
-        repo.add_phase("260101AB_test", {"name": "P1", "status": "pending"})
+        repo.add_phase("260101AB_test", {"name": "P1", "status": "planning"})
         repo.add_ticket("260101AB_test", "P1", {
             "id": "T1", "name": "Task one", "status": "pending",
             "story_ids": ["US-TST-001"],
@@ -561,7 +722,7 @@ class TestCmdAuditCheckTickets:
             "name": "test_epic",
             "status": "active",
         })
-        repo.add_phase("260101AB_test", {"name": "P1", "status": "pending"})
+        repo.add_phase("260101AB_test", {"name": "P1", "status": "planning"})
         repo.add_ticket("260101AB_test", "P1", {
             "id": "T1", "name": "Task one", "status": "pending",
         })  # no story_ids

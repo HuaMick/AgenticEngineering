@@ -1,25 +1,28 @@
 area: execution_workflows
-description: "TinyDB phase execution, agent routing, resume"
+description: TinyDB phase execution, agent routing, resume
 stories:
 - id: US-PLN-061
   title: Phase Execution and Validation
   category: execution_workflow
   priority: critical
-  description: As a specialist agent spawned by the executor, I want to execute tickets, enforce validation gates,
-    and rely on routing validation utilities, so that phase execution is correct, resumable, and protected by
-    quality checks at every transition.
+  description: As a specialist agent spawned by the executor, I want to execute tickets,
+    enforce validation gates, and rely on routing validation utilities, so that phase
+    execution is correct, resumable, and protected by quality checks at every transition.
+    Includes test-fix loop semantics for test-phase tickets.
   prerequisites: []
   inherits_patterns:
   - id: PAT-EXE-001
     bind:
-      phase_type: "test"
+      phase_type: test
       max_iterations: 3
-      exit_condition: "tests pass"
+      exit_condition: tests pass or max iterations
   steps:
   - step: 1
     when: an agent starts work
     then:
-    - Agent gets current ticket via agentic epic ticket current, starts it with agentic epic ticket start, performs the work, and marks it complete with agentic epic ticket complete
+    - Agent gets current ticket via agentic epic ticket current, starts it with agentic
+      epic ticket start, performs the work, and marks it complete with agentic epic
+      ticket complete
   - step: 2
     when: all tickets in a phase complete
     then:
@@ -27,31 +30,172 @@ stories:
   - step: 3
     when: a validation gate is present
     then:
-    - Phase status cannot transition to 'completed' until validation passes; validation results are recorded in TinyDB phase records
+    - Phase status cannot transition to 'completed' until validation passes; validation
+      results are recorded in TinyDB phase records
   - step: 4
     when: validation fails
     then:
-    - Failed validation sets phase status to 'blocked' with failure details; agentic epic ticket list --status blocked shows affected tickets
+    - Failed validation sets phase status to 'blocked' with failure details; agentic
+      epic ticket list --status blocked shows affected tickets
   - step: 5
-    when: validate_phase_routing() is called
+    when: agentic orchestrate session implement is invoked on an epic with no routed
+      phases
     then:
-    - Returns (True, None) for a fully routed epic with active tickets; returns (False, reason) for epics with missing routing or all-proposed tickets
+    - Command exits non-zero with a routing-missing error naming the first unrouted
+      phase; no agents are spawned (depender's degradation contract for the phase
+      routing dependency)
   - step: 6
-    when: has_any_routed_phase() is called
+    when: an epic has at least one phase with agent routing among others without
     then:
-    - Returns True if at least one phase has agent routing, False otherwise (empty list returns False)
+    - The orchestrator proceeds with the routed phase(s) and reports the unrouted
+      phases as skipped in the run summary; partial routing is not a hard failure
   - step: 7
     when: concurrent agents write state
     then:
-    - FileLock ensures atomic TinyDB operations; concurrent agents cannot corrupt ticket or phase state
+    - FileLock ensures atomic TinyDB operations; concurrent agents cannot corrupt
+      ticket or phase state
   - step: 8
     when: execution is interrupted and resumed
     then:
-    - Orchestrator resumes from last completed phase; completed tickets are not re-executed; in-progress tickets are re-attempted
+    - Orchestrator resumes from last completed phase; completed tickets are not re-executed;
+      in-progress tickets are re-attempted
+  - step: 9
+    when: a test phase is configured for test-fix looping
+    then:
+    - The phase record in TinyDB carries loop_type (e.g., "test-fix") and loop_max_iterations
+      (integer cap); these are set at plan time by planner-test and read by the executor
+    - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py persists
+      these fields via repo.add_phase / repo.update_phase
+  - step: 10
+    when: a test ticket fails inside a test-fix loop
+    then:
+    - The executor transitions the ticket to status=blocked with the failure captured
+      in test_notes/failure details
+    - The loop iteration counter on the owning phase record is incremented in TinyDB
+    - "The executor re-runs the fix \u2192 test cycle until the ticket passes or the\
+      \ iteration counter reaches loop_max_iterations"
+  - step: 11
+    when: loop_max_iterations is reached without passing
+    then:
+    - The phase transitions to status=blocked (no infinite loop)
+    - The blocked ticket(s) remain visible via agentic epic ticket list --status blocked
+      so a human can intervene
+    - This is the sole exit condition for test-fix loops besides success; "tests pass
+      or max iterations" is the complete semantic (PAT-EXE-001)
+  - step: 12
+    when: a planner-test agent drafts a test phase
+    then:
+    - "The phase MUST include test-fix-loop, audit-test-fix-loop, and story-coverage-loop\
+      \ \u2014 these are not optional escape hatches"
+    - The phase MUST include a UAT sub-phase before the test-phase can be marked completable;
+      no escape hatch exists at execution time
+  - step: 13
+    when: test files are produced for a test phase
+    then:
+    - Every test file MUST carry one or more @pytest.mark.story("US-XXX-NNN") markers;
+      the CLI conftest enforces the format and a missing/malformed marker emits STORY_COVERAGE_INCOMPLETE
+      which routes the ticket back to test-builder for remediation
+  - step: 14
+    when: a UAT phase contains tests that mock subprocess.run for CLI commands
+    then:
+    - The audit gate rejects the phase as a planning fence violation; mocked CLI tests
+      are forbidden for UAT because historical failures showed mocked tests masking
+      broken CLIs (260214PF/TG/US incidents)
+  - step: 15
+    when: planner-audit or orchestration drafts a phase routed to deploy-cicd
+    then:
+    - "A pre-flight gate runs before the phase enters planning \u2014 `agentic health`\
+      \ checks that cloudbuild.yaml and Dockerfile.test exist on disk"
+    - If either is missing, the phase is rejected at plan time, not at run time; this
+      is proactive blocking, not fail-at-runtime
+    - Plans requiring CI/CD infrastructure that is not present are blocked entirely;
+      planner agents cannot create invalid task sequences
+    - "Degradation \u2014 if the AgenticGuidance README implementation-status section\
+      \ is missing, the gate fails closed (treat as not-ready) rather than fail-open"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'A seed epic exists with one phase P1 (agent=build-python) and
+      three tickets
+
+      (T1, T2, T3) in status=pending. TinyDB is writable. No other agents are
+
+      currently writing to the epic.
+
+      '
+    preconditions:
+    - US-PLN-001
+    - US-PLN-009
+    - US-PLN-015
+    journey:
+    - step: 1
+      action: Run `agentic epic ticket current --epic <folder>` and record the ticket
+        ID returned
+      observe:
+      - command exits 0
+      - returned ticket is T1 (the first pending ticket in phase order)
+    - step: 2
+      action: Run `agentic epic ticket start T1 --epic <folder>`
+      observe:
+      - command exits 0
+      - '`agentic epic ticket list --epic <folder>` shows T1 with status=in_progress'
+    - step: 3
+      action: Run `agentic epic ticket current --epic <folder>` again
+      observe:
+      - command exits 0
+      - the returned ticket is still T1 (current prefers in_progress over pending)
+    - step: 4
+      action: Run `agentic epic ticket complete T1 --epic <folder>`
+      observe:
+      - command exits 0
+      - '`agentic epic ticket list --epic <folder>` shows T1 with status=completed'
+    - step: 5
+      action: Run `agentic epic ticket current --epic <folder>`
+      observe:
+      - returned ticket is T2 (the next pending ticket)
+    - step: 6
+      action: Open two shells and run `agentic epic ticket start T2 --epic <folder>`
+        in both simultaneously
+      observe:
+      - at least one invocation exits 0
+      - '`agentic epic ticket list --epic <folder>` shows T2 with status=in_progress
+        exactly once (no corruption)'
+    - step: 7
+      action: 'Simulate a test failure: `agentic epic ticket update T3 --epic <folder>
+        --status blocked --notes "test failure simulated"`'
+      observe:
+      - command exits 0
+      - '`agentic epic ticket list --epic <folder> --status blocked` shows T3'
+    - step: 8
+      action: 'Simulate a retry: `agentic epic ticket update T3 --epic <folder> --status
+        in_progress`'
+      observe:
+      - command exits 0
+      - T3 is back to in_progress in `ticket list`
+      - no other ticket's status was mutated by the update
+    - step: 9
+      action: 'Simulate a successful retry: `agentic epic ticket complete T3 --epic
+        <folder>`'
+      observe:
+      - command exits 0
+      - T3 is marked completed
+      - '`ticket list --status blocked` no longer shows T3'
+    success_signals:
+    - '`ticket current` returns the active ticket when one is in progress, and the
+      next pending one otherwise'
+    - Status transitions are atomic under concurrent start attempts (FileLock)
+    - '`ticket list --status` filters return consistent snapshots after each transition'
+    - "Tickets can cycle in_progress \u2194 blocked and out to completed via CLI without\
+      \ corrupting TinyDB \u2014 this is the CLI surface of the test-fix loop"
+    - '`ticket list --status blocked` surfaces blocked tickets for human follow-up
+      at max-iterations'
+    cleanup:
+    - '`agentic epic ticket complete T2 --epic <folder>` if still in progress'
+    - '`agentic epic archive <folder>`'
   related_commands:
   - agentic epic ticket current --epic <folder>
   - agentic epic ticket start <id> --epic <folder>
   - agentic epic ticket complete <id> --epic <folder>
+  - agentic epic ticket update <id> --status blocked --notes "..."
   - agentic epic ticket list --status in_progress
   - agentic epic ticket list --status blocked
   - agentic orchestrate session implement
@@ -59,14 +203,18 @@ stories:
   - orchestration-executor
   - build-python
   - test-builder
+  - planner-test
   related_files:
   - modules/AgenticCLI/src/agenticcli/workflows/orchestration.py
+  - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
   - modules/AgenticCLI/src/agenticcli/utils/phase_validation.py
   - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
-  last_tested: '2026-02-27'
-  test_status: passing
-  test_notes: Validated by 260226SD SDK migration plan. TinyDB-backed EpicRepository with FileLock confirmed working for concurrent
-    ticket state writes. SDK migration plan itself demonstrates resumable execution - tickets started/completed via agentic
-    epic ticket start/complete CLI throughout all 6 build phases and 5 test/UAT phases. All 1622 AgenticCLI tests pass including
-    TinyDB migration tests.
-  tested_by_plan: 260226SD_migrate_sessions_to_sdk
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
+  test_notes: Validated by 260226SD SDK migration plan. TinyDB-backed EpicRepository
+    with FileLock confirmed working for concurrent ticket state writes. SDK migration
+    plan itself demonstrates resumable execution - tickets started/completed via agentic
+    epic ticket start/complete CLI throughout all 6 build phases and 5 test/UAT phases.
+    All 1622 AgenticCLI tests pass including TinyDB migration tests.
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

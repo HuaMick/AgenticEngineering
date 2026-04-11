@@ -1,59 +1,138 @@
 area: epic_management
-description: "Epic new/seed/status/list/archive"
+description: Epic new/seed/status/list/archive
 stories:
 - id: US-PLN-001
   title: Epic Lifecycle
   category: epic_management
   priority: critical
-  description: As a developer, I want to create, monitor, and archive epics through the CLI,
-    so that I can manage the full epic lifecycle from inception to completion with clear visibility at every stage.
+  description: As a developer, I want to create, monitor, and archive epics through
+    the CLI, so that I can manage the full epic lifecycle from inception to completion
+    with clear visibility at every stage.
   prerequisites: []
   inherits_patterns:
   - id: PAT-CLI-001
     bind:
-      command: "agentic epic status"
-      expected_keys: [name, status, phase_count, ticket_counts]
+      command: agentic epic status
+      expected_keys:
+      - name
+      - status
+      - phase_count
+      - ticket_counts
   steps:
   - step: 1
-    when: creating an epic with planning
+    when: creating an epic
     then:
-    - agentic epic new "<description>" creates an epic folder in docs/epics/live/ and spawns a planner agent
+    - agentic epic new "<description>" creates a TinyDB record (and optional disk
+      folder) with status=seed; it does NOT spawn a planner. The orchestration loop
+      picks up seeded epics and invokes planners when `agentic orchestrate session
+      plan` runs.
   - step: 2
-    when: creating an epic without planning
+    when: using the deprecated seed alias
     then:
-    - agentic epic seed "<description>" creates an epic folder and TinyDB record without spawning a planner
+    - agentic epic seed "<description>" prints a deprecation warning and delegates
+      to `epic new` (behaviour is identical; alias exists only to bridge legacy agent
+      scripts)
+    notes: "Degradation \u2014 if the `seed` alias is later deregistered from cli.py,\
+      \ callers receive a Typer \"no such command\" error from the CLI surface; the\
+      \ underlying epic-creation service is unaffected."
   - step: 3
     when: an epic is created
     then:
-    - A TinyDB record is created with YYMMDDXX_description naming and required fields (name, status, epic_folder_name); duplicate names are rejected
+    - A TinyDB record is created with YYMMDDXX_description naming and required fields
+      (name, status, epic_folder_name); duplicate names are rejected
   - step: 4
     when: viewing a single epic
     then:
-    - agentic epic status shows epic name, phase count, ticket counts by status; without arguments, auto-detects the active epic from the current branch
+    - agentic epic status shows epic name, phase count, ticket counts by status; without
+      arguments, auto-detects the active epic from the current branch
   - step: 5
     when: viewing all epics
     then:
-    - agentic epic list shows all epics across live/, completed/, and deferred/ with name, status, creation date, action_required, and ticket counts from TinyDB
+    - agentic epic list shows all epics across live/, completed/, and deferred/ with
+      name, status, creation date, action_required, and ticket counts from TinyDB
+    - Long epic folder names are truncated with a '...' suffix in the Epic column
+      (via agenticcli.utils.formatting.truncate_string, max_length=50) to keep the
+      table within terminal width; JSON output (-j / --json) always preserves the
+      full untruncated name for programmatic consumers
+    notes: Truncation is display-only. Any caller reaching into TinyDB for the epic
+      name must receive the full value.
   - step: 6
     when: reviewing epic health
     then:
-    - Each epic includes an action_required field (blocked, needs_planning, execute, archive) indicating what attention is needed
+    - Each epic includes an action_required field (blocked, needs_planning, execute,
+      archive) indicating what attention is needed
   - step: 7
     when: filtering or scripting
     then:
-    - Both commands support JSON output (-j) and filtering by status, priority, or branch
+    - Both commands support JSON output (-j) and filtering by status, priority, or
+      branch
   - step: 8
     when: archiving a completed epic
     then:
-    - agentic epic archive copies the epic folder to docs/epics/completed/ and updates TinyDB (status and folder path)
+    - agentic epic archive copies the epic folder to docs/epics/completed/ and updates
+      TinyDB (status and folder path)
   - step: 9
     when: all tickets are completed
     then:
-    - No auto-archive occurs; epic stays in live/ with action_required "archive" until explicitly archived
+    - No auto-archive occurs; epic stays in live/ with action_required "archive" until
+      explicitly archived
   - step: 10
     when: an epic is archived
     then:
     - Archived epics retain all files and history in docs/epics/completed/
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh repo clone on main. ~/.agentic/epics.db either does not
+      exist or contains
+
+      no epic matching the branch slug used in this journey. No live worktree exists
+
+      for `plan-uat-lifecycle`.
+
+      '
+    preconditions: []
+    journey:
+    - step: 1
+      action: Run `agentic epic new "UAT lifecycle test" --branch plan-uat-lifecycle`
+      observe:
+      - command exits 0
+      - stdout contains `Epic created`
+      - stdout contains `Next steps` and references `orchestrate session plan`
+      - '`agentic -j epic new` invoked with the same args would return JSON with status=seed
+        (recorded in the stdout of this command)'
+    - step: 2
+      action: Run `agentic epic list`
+      observe:
+      - command exits 0
+      - output includes an epic whose name ends in `_uat_lifecycle_test`
+      - that epic row shows status `seed` and `0/0` tickets
+    - step: 3
+      action: Run `agentic epic status --epic <folder>` substituting the folder name
+        from step 2
+      observe:
+      - command exits 0
+      - 'output contains `Status: seed`'
+      - output contains `Next Action:` pointing to `agentic orchestrate session plan`
+    - step: 4
+      action: Run `agentic epic seed "UAT deprecation test" --branch plan-uat-seed-dep`
+      observe:
+      - command exits 0
+      - stdout or stderr contains the word `deprecated`
+      - '`agentic epic list` now contains a second epic whose name ends in `_uat_deprecation_test`'
+    - step: 5
+      action: Run `agentic epic archive <folder>` for the first epic
+      observe:
+      - command exits 0
+      - '`agentic epic list` no longer shows the archived epic in the default live
+        view'
+    success_signals:
+    - '`agentic epic list` can discover both epics between creation and archive'
+    - '`epic new` exits without spawning any claude/SDK subprocess'
+    - '`epic seed` emits a deprecation warning and otherwise matches `epic new` behaviour'
+    - archive removes the epic from the default `epic list` output
+    cleanup:
+    - '`agentic epic archive <folder>` for the second (deprecation-test) epic'
+    - Delete the two git worktrees created via `git worktree remove`
   related_commands:
   - agentic epic new "<description>"
   - agentic epic seed "<description>"
@@ -64,9 +143,14 @@ stories:
   - agentic epic archive
   related_files:
   - modules/AgenticCLI/src/agenticcli/commands/epic.py
+  - modules/AgenticCLI/src/agenticcli/utils/formatting.py
+  - modules/AgenticCLI/tests/utils/test_formatting.py
+  - modules/AgenticCLI/tests/test_epic_list_truncation.py
   - modules/AgenticGuidance/src/agenticguidance/services/epic.py
   - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
-  last_tested: '2026-02-24'
-  test_status: passing
-  test_notes: 'Validated by plan 260222RA: auto-archive removed, explicit archive works correctly'
-  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
+  test_notes: 'Validated by plan 260222RA: auto-archive removed, explicit archive
+    works correctly'
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

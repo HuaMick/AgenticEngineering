@@ -274,7 +274,7 @@ def populate_tinydb_from_yaml(db_path, epic_folder_name, epic_folder, yaml_data)
             "name": phase_name,
             "phase_id": phase.get("phase_id", phase.get("id", "")),
             "description": phase.get("description", ""),
-            "status": phase.get("status", "pending"),
+            "status": phase.get("status", "planning"),
             "execution": phase.get("execution", "sequential"),
         })
         tickets = phase.get("tickets", phase.get("tasks", []))

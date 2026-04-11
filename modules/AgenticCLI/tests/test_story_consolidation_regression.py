@@ -278,7 +278,7 @@ class TestNoOldPathReads:
             "status": "planning",
         })
         repo.add_phase("260401XX_test", {
-            "name": "Build", "agent": "build-python", "status": "pending",
+            "name": "Build", "agent": "build-python", "status": "planning",
         })
         repo.add_ticket("260401XX_test", "Build", {
             "id": "T1", "name": "Task 1", "status": "proposed", "story_ids": ["US-001"],

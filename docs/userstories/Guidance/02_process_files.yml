@@ -1,43 +1,176 @@
-area: process_files
-description: "process.yml structure, paths/fences/signposts"
+area: agent_context_compilation
+description: 'How agent context (process.yml + inputs.yml + layers) is assembled and
+
+  injected into a spawned agent session. Successor to US-GDN-010 (Process
+
+  Context Model) and US-GDN-014 (Agent Inputs Structure), which were merged
+
+  into a single story on 2026-04-07 as part of the Story-Writer UAT-First
+
+  Restructure follow-up. Both predecessors are stub-deprecated; see
+
+  US-GDN-010 and US-GDN-014 for traceability.
+
+  '
 stories:
-- id: US-GDN-010
-  title: Process Context Model
-  category: process_files
+- id: US-GDN-100
+  title: Agent Context Compilation
+  category: agent_context
   priority: critical
-  description: As an agent or developer understanding the system, I want to know how process.yml
-    guidance is structured and compiled into agent context, so that I understand the execution
-    guidance architecture.
+  lifecycle: implemented
+  description: 'As a developer or agent operator, I want a single mechanic that compiles
+
+    process.yml, inputs.yml, transitive layers, and ticket context into one
+
+    markdown document injected into a spawned agent session, so that every
+
+    agent receives a deterministic, fully-resolved context regardless of
+
+    which entrypoint triggered the spawn.
+
+
+    This is a CLI-owned story by the depender-owns rule: the only trigger
+
+    is `agentic orchestrate session spawn` (or its programmatic equivalent
+
+    in workflows/orchestration.py). The context-compilation service lives
+
+    in modules/AgenticGuidance/ but it is consumed exclusively by CLI spawn
+
+    paths.
+
+    '
   prerequisites: []
   steps:
   - step: 1
-    when: the feature is used
+    when: agentic orchestrate session spawn --role <agent> is invoked
     then:
-    - Each agent has a process.yml defining its execution guidance
+    - The CLI calls _compile_spawn_context() in services/context.py with the agent
+      role and current ticket id
+    - The service reads modules/AgenticGuidance/agents/<category>/<role>/process.yml
+      and inputs.yml as the two declarative inputs
   - step: 2
-    when: the feature is used
+    when: process.yml is parsed
     then:
-    - 'Process guidance uses a tripartite model: paths (sequential workflow steps), fences
-      (constraints on what NOT to do), and signposts (conditional decision hints)'
+    - "The tripartite model is materialised into the compiled context \u2014 paths\
+      \ (sequential workflow steps), fences (constraints on what NOT to do), and signposts\
+      \ (conditional decision hints) \u2014 as three labelled markdown sections"
+    - This is a non-obvious system choice; generic agent frameworks flatten steps
+      and constraints into one structure
   - step: 3
-    when: the feature is used
+    when: inputs.yml declares files or layers
     then:
-    - This three-part model is specific to this system — generic agent frameworks typically
-      flatten steps and constraints into one structure
+    - Paths NOT starting with `docs/` are resolved against the AgenticGuidance module
+      root
+    - Paths starting with `docs/` are resolved against the target repository root
+    - Path resolution is handled programmatically by _compile_spawn_context(); inputs.yml
+      does not name absolute paths
   - step: 4
-    when: the feature is used
+    when: inputs.yml references a layer under assets/inputs/
     then:
-    - _compile_spawn_context() in session.py programmatically reads process.yml and assembles
-      it with inputs and ticket context into a single markdown document injected into the agent session
+    - "The compiler loads the layer transitively \u2014 layers can reference other\
+      \ layers \u2014 with explicit circular-dependency detection that fails the spawn\
+      \ before launching the agent"
   - step: 5
-    when: the feature is used
+    when: all inputs and layers are resolved
     then:
-    - Process files are maintained by teacher-update-guidance agent, not by the agents that consume them
+    - The compiler assembles process sections + resolved input file contents + the
+      current ticket context into a single markdown document
+    - The document is injected as the agent's first user message; agents do NOT read
+      process.yml or inputs.yml at run time
+  - step: 6
+    when: process.yml or any referenced inputs.yml file is missing
+    then:
+    - "_compile_spawn_context() raises a clear \"context resolution failed\" error\
+      \ naming the missing file; the spawn is aborted before tmux/SDK launch (degradation\
+      \ contract \u2014 depender exits cleanly when the consumed asset is missing)"
+  - step: 7
+    when: a transitive layer reference resolves to a non-existent file
+    then:
+    - The same context-resolution error fires; the partial document is discarded and
+      no agent is spawned (no half-loaded context ever reaches an agent)
+  - step: 8
+    when: process files and inputs files require maintenance
+    then:
+    - process.yml is maintained by the teacher-update-guidance agent
+    - inputs.yml and assets/inputs/ layers are maintained by the teacher-update-assets
+      agent
+    - Agents that consume these files do NOT modify them (single-custodian rule prevents
+      drift)
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh repo clone on main. ~/.agentic/sessions/ either empty or
+
+      contains no session for the test role. Claude SDK or claude CLI is
+
+      available on PATH.
+
+      '
+    preconditions: []
+    journey:
+    - step: 1
+      action: Run `agentic -j agent context bootstrap --role build-python` (CCI bootstrap
+        is the read-only inspection path of the same compiler)
+      observe:
+      - command exits 0
+      - stdout JSON includes the compiled markdown sections (paths, fences, signposts)
+        from build-python's process.yml
+      - stdout JSON includes resolved file references from inputs.yml with absolute
+        paths
+    - step: 2
+      action: Run `agentic -j agent context bootstrap --role nonexistent-role`
+      observe:
+      - command exits non-zero
+      - stderr names the missing process.yml file by absolute path
+      - no partial JSON is written to stdout (no half-loaded context)
+    - step: 3
+      action: Temporarily rename `modules/AgenticGuidance/assets/inputs/core-system.yml`
+        (a layer referenced transitively by most agents) and re-run step 1
+      observe:
+      - command exits non-zero
+      - stderr names `core-system.yml` as the missing layer
+      - the error fires before any agent is launched
+    success_signals:
+    - "CCI bootstrap is the read-only mirror of the spawn-time compiler \u2014 both\
+      \ call _compile_spawn_context()"
+    - Missing process/input/layer files fail the spawn cleanly with a named-file error,
+      not a partial context
+    - The compiled document is the only thing an agent ever sees; no agent reads YAML
+      at run time
+    cleanup:
+    - Restore any temporarily renamed asset files
+  related_commands:
+  - agentic orchestrate session spawn --role <agent>
+  - agentic -j agent context bootstrap --role <agent>
   related_agents:
   - teacher-update-guidance
+  - teacher-update-assets
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/orchestrate.py
+  - modules/AgenticGuidance/src/agenticguidance/services/context.py
+  - modules/AgenticGuidance/assets/inputs/
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
+  test_notes: ''
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+- id: US-GDN-010
+  title: "Process Context Model (deprecated \u2192 US-GDN-100)"
+  category: process_files
+  priority: low
+  lifecycle: deprecated
+  description: "DEPRECATED on 2026-04-07. Merged into US-GDN-100 (Agent Context\n\
+    Compilation). The tripartite process.yml model and the\n_compile_spawn_context()\
+    \ mechanic are now described together with the\ninputs.yml layer-resolution mechanic\
+    \ in a single coherent story \u2014\nthey are facets of the same context-compilation\
+    \ journey, and the\njourney principle requires they live together.\n"
+  prerequisites: []
+  steps: []
+  related_stories:
+  - US-GDN-100
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/context.py
   last_tested: null
-  test_status: untested
-  test_notes: ''
+  test_status: skip
+  test_notes: "Deprecated \u2014 coverage moved to US-GDN-100."
   tested_by_plan: null

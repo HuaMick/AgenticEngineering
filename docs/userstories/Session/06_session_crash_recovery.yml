@@ -1,0 +1,141 @@
+area: session_crash_recovery
+description: Session metadata and tmux pane recovery when an agent crashes mid-turn
+stories:
+- id: US-SES-035
+  title: Session Crash Recovery
+  category: session_management
+  priority: high
+  lifecycle: implemented
+  description: 'As an orchestration runner that has lost track of an agent session
+
+    (process killed, host rebooted, parent CLI exited unexpectedly), I
+
+    want session metadata and tmux panes to be reconcilable on the next
+
+    `agentic orchestrate session list` so that crashed sessions are
+
+    visible as such (not silently lost) and stale records can be swept
+
+    without manual file editing.
+
+
+    Added on 2026-04-07 to claim the atexit-cleanup fix and the
+
+    orphan-sweep mechanic. Neither US-SES-001 nor the state registry
+
+    story covered crash semantics until now.
+
+    '
+  prerequisites: []
+  steps:
+  - step: 1
+    when: a session record exists in state but its tmux pane is gone (crashed, killed,
+      or never started)
+    then:
+    - "`agentic orchestrate session list` shows the session with status `blocked`\
+      \ (or equivalent dead-but-recorded state) \u2014 it does NOT silently disappear"
+    - The transport name and PID are still surfaced so an operator can correlate against
+      system logs
+  - step: 2
+    when: the parent CLI process exits while a background session is still running
+    then:
+    - "The background session SURVIVES \u2014 it is explicitly excluded from `_active_tmux_sessions`\
+      \ so the atexit handler does not kill it (regression fence for the 2026-03-09\
+      \ atexit bug)"
+    - A foreground session, by contrast, IS cleaned up on parent exit because the
+      operator was attached to it
+  - step: 3
+    when: '`agentic orchestrate session list` runs and finds a session whose recorded
+      PID no longer exists'
+    then:
+    - The orphan sweep marks the session as crashed, updates its end timestamp, and
+      leaves the record visible for one more list cycle so the operator can see what
+      died
+    - "The sweep is idempotent \u2014 running list twice in a row does not double-mark\
+      \ or delete records"
+  - step: 4
+    when: '`agentic orchestrate session stop <id>` is called against an already-crashed
+      session'
+    then:
+    - "The command exits 0 with a \"session already stopped (crashed)\" notice; it\
+      \ does NOT error just because the underlying process is gone (degradation contract\
+      \ \u2014 stop is convergent)"
+  - step: 5
+    when: a session's metadata file is unreadable (permission, corruption)
+    then:
+    - "The list output flags the record as `unreadable` and names the path; other\
+      \ sessions still render (one bad record does not block the list \u2014 partial-degradation\
+      \ contract)"
+  - step: 6
+    when: an operator wants to clear all stopped/crashed records
+    then:
+    - '`agentic orchestrate debug state clear` is the documented sweep command; it
+      does NOT touch active sessions'
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh shell, `agentic` on PATH, tmux available. No existing test
+
+      sessions are running.
+
+      '
+    preconditions:
+    - US-SES-001
+    - US-SES-030
+    journey:
+    - step: 1
+      action: 'Spawn a background session: `agentic orchestrate session spawn --prompt
+        ''sleep 5; echo done'' --max-turns 1 --background`'
+      observe:
+      - command exits 0 and returns the session id
+    - step: 2
+      action: Immediately kill the underlying tmux pane (e.g., `tmux kill-session
+        -t <name>` for the spawned session) so the process dies but state metadata
+        remains
+      observe:
+      - the tmux pane is gone
+    - step: 3
+      action: Run `agentic orchestrate session list -j`
+      observe:
+      - the killed session is still listed with status indicating crashed/blocked
+        (NOT silently absent)
+      - transport name is still recorded
+    - step: 4
+      action: Run `agentic orchestrate session stop <id>` against the crashed session
+      observe:
+      - command exits 0 with a 'already stopped' notice
+    - step: 5
+      action: Spawn another background session, then exit the spawning shell entirely.
+        Open a new shell and run `agentic orchestrate session list`
+      observe:
+      - the background session is still listed and running (atexit cleanup did NOT
+        kill it)
+    - step: 6
+      action: Run `agentic orchestrate debug state clear` then `agentic orchestrate
+        session list`
+      observe:
+      - stopped/crashed records are cleared; any still-running session is untouched
+    success_signals:
+    - Crashed sessions are visible (not silently lost) and stop is convergent against
+      them
+    - Background sessions survive parent CLI exit (atexit regression fence)
+    - Orphan sweep is idempotent and never touches active sessions
+    cleanup:
+    - Stop any test sessions left running
+  related_commands:
+  - agentic orchestrate session list -j
+  - agentic orchestrate session stop <id>
+  - agentic orchestrate debug state clear
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/session.py
+  - modules/AgenticCLI/src/agenticcli/utils/session_state.py
+  related_agents:
+  - orchestration-executor
+  related_stories:
+  - US-SES-001
+  - US-SES-006
+  - US-SES-030
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
+  test_notes: ''
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

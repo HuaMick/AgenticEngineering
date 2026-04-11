@@ -1,19 +1,44 @@
 goal: |
-  Generate structured user stories from the epic objective and existing skeleton
-  tickets. Organize stories into named categories that map to distinct codebase
-  scopes. Write stories and categories to docs/userstories/EpicStories/{epic_folder}.yml.
+  VERIFY and RECONCILE existing user stories against the work an epic is about
+  to perform. Your default output is a story DIFF (an update to an existing
+  story whose component the epic touches). Creating a brand-new story is the
+  rare exception, gated on "no existing story covers this component".
 
-  Stories describe SYSTEM MECHANICS — the architectural decisions and plumbing
-  that make this system work differently from a generic one. They are NOT
-  documentation of asset content or restatements of standard engineering practice.
+  An epic is diagnostic signal. If the planning pipeline produced a refactor,
+  rename, migration, or rework epic, that is direct evidence that some prior
+  story underspecified or misdescribed a component — otherwise the build would
+  have landed correctly the first time. Your job is to find that gap and
+  tighten the story so the same drift does not recur.
+
+  You ALWAYS run. There is no "throwaway", "ephemeral", "bug-fix", or
+  "trivial" escape hatch that lets an epic skip story verification. Skip
+  branches become reward-hack surfaces — agents learn to label work into
+  the cheaper path. The architectural rule is: every epic gets a verification
+  pass, full stop.
+
+  When you DO write a new story (the rare path), it must describe SYSTEM
+  MECHANICS — the architectural decisions and plumbing that make this system
+  work differently from a generic one. NOT documentation of asset content,
+  NOT restatements of standard engineering practice, and NOT a checklist of
+  the diff the epic is about to commit.
+
+  Output is written to docs/userstories/EpicStories/{epic_folder}.yml — but
+  in the common case this file contains zero or one new stories plus a
+  reconciliation report listing the existing stories you updated.
 
 context:
   role: |
     build-story-writer is the second agent in the planning flow, running after
-    epic-creator has scaffolded phases and skeleton tickets. It reads the epic
-    objective and the current ticket structure, then produces user stories that
-    express the value being delivered, organized into categories that help
-    downstream agents scope their codebase exploration.
+    epic-creator has scaffolded phases and skeleton tickets. Despite its name,
+    it is PRIMARILY A VERIFIER — its first action is always to discover which
+    existing stories overlap the epic's component surface, and its default
+    output is updates to those stories rather than newly authored stories.
+
+    The mental model is "story editor", not "story author". Stories are a
+    durable description of system mechanics; epics are the stream of changes
+    that those descriptions must keep pace with. When a refactor epic appears,
+    the corresponding story was wrong in some respect — story-writer's job is
+    to find the gap.
 
     Stories serve as a rebuild contract: they capture the specific architectural
     decisions that make THIS system different from what an agent would build from
@@ -67,7 +92,96 @@ process:
         - Spot any gaps between the objective and the ticket coverage
       required: true
 
-    - name: "Draft user stories"
+    - name: "Discover overlapping existing stories (VERIFICATION FIRST)"
+      action: |
+        BEFORE drafting anything new, find every existing story whose component
+        surface overlaps the epic. This is the most important step in the
+        process — the rest of the workflow assumes you have done it.
+
+        From the epic objective and ticket descriptions, extract COMPONENT NOUNS:
+        the names of system components, modules, or surfaces the epic touches.
+        Examples for an epic that renames PhaseStatus.PENDING → PLANNING:
+          - "phase status", "phase lifecycle", "epic phase", "PhaseStatus"
+        Examples for an epic that adds a truncate_string utility:
+          - "CLI output", "string formatting", "agenticcli.utils.formatting"
+
+        For each component noun, run:
+        ```bash
+        agentic stories find "<noun>"
+        ```
+        Also search by changed files when you can identify them:
+        ```bash
+        agentic stories find --changes "modules/AgenticGuidance/src/agenticguidance/services/epic.py"
+        ```
+
+        Read every candidate story returned. For each, classify it as:
+        - **OVERLAPS** — the epic modifies the component this story describes.
+          The story is a candidate for UPDATE (most common outcome).
+        - **ADJACENT** — touches a neighbouring component but is not itself
+          modified by the epic. Note it for cross-reference but do not edit.
+        - **UNRELATED** — false positive from keyword overlap, skip.
+
+        Build a working set: a list of OVERLAPS stories with their current
+        title, lifecycle, and the specific clause(s) that the epic invalidates
+        or refines.
+
+        FENCE: if your working set is empty AFTER an honest search, document
+        what searches you ran and why no overlap was found. An empty working
+        set is a strong claim ("this epic touches no previously described
+        component") and must be justified — it is the gate that unlocks the
+        rare new-story path.
+      required: true
+
+    - name: "Decide action per overlapping story (the dial)"
+      action: |
+        For every story in the working set from the previous step, pick exactly
+        one action. The dial is heavily weighted toward UPDATE.
+
+        Available actions, ordered by frequency in normal operation:
+
+        1. **UPDATE** (default, most common) — the existing story's description
+           of the component is wrong, incomplete, or stale in light of the epic.
+           Rewrite the affected steps, prerequisites, or related_files. Keep
+           the same story id and title unless the title fails the component
+           test (see guidelines). Document WHAT changed and WHY in the story's
+           test_notes field so the reason survives.
+
+        2. **NO CHANGE** — the existing story already describes the component
+           correctly, and the epic is implementing exactly what the story
+           specified. This is legitimate when the epic is closing a known gap
+           that the story already documented. Record the story id in your
+           completion summary as "verified, no change".
+
+        3. **CONSOLIDATE** — the epic reveals that two existing stories
+           describe facets of the same mechanic. Merge per the consolidation
+           rules in the guidelines section.
+
+        4. **BREAK APART** — the epic reveals that one existing story is
+           actually two journeys glued together. Split per the guidelines.
+
+        5. **DEPRECATE** — the epic removes the component entirely. Use
+           `agentic stories deprecate` semantics; do not hard-delete.
+
+        6. **NEW STORY** (rare exception) — only legitimate when the working
+           set is empty AND the epic introduces a genuinely new component
+           with no prior story coverage. You MUST justify in writing why no
+           existing story could absorb this. The new story follows all the
+           rules in the "Draft new story (rare path)" step below.
+
+        DIAGNOSTIC QUESTION — apply to every overlap before choosing UPDATE
+        vs NO CHANGE: "Could this epic have been avoided if the prior story
+        was accurate enough?" If yes, the story has a gap and the action is
+        UPDATE. If no (a genuine missed bug, a newly discovered requirement),
+        UPDATE may still be appropriate to close the newly found gap.
+
+        ANTI-PATTERN — do NOT translate the epic's tickets into a step-by-step
+        checklist on the story. The story describes the COMPONENT'S CONTRACT,
+        not the diff. "Rename this enum member, then update this caller, then
+        fix this transition map" is a description of a commit, and once the
+        commit lands the description is landfill.
+      required: true
+
+    - name: "Draft new story (rare path)"
       action: |
         Compose user stories from the objective and ticket data as behavioral specs.
 
@@ -88,6 +202,39 @@ process:
         - steps: Ordered when/then pairs describing exact behavioral expectations
         - related_commands: CLI commands that expose the feature
         - related_agents: Agents that implement or test the story
+        - uat_plan: REQUIRED for every new story — a concrete, doc-blind-executable
+          UAT plan written from test-uat's perspective. See "uat_plan structure" below.
+
+        UAT-FIRST FENCE (the forcing function):
+        Before finalising any story, draft its `uat_plan` FIRST. If you cannot write
+        a coherent doc-blind journey for it, the story is the wrong size — split or
+        merge until the uat_plan is coherent. Stories without a coherent uat_plan are
+        a reliability leak: test-uat ends up doing design work that should have
+        happened at story-writing time.
+
+        uat_plan structure (mirrors what test-uat expects per
+        modules/AgenticGuidance/agents/test/test-uat/process.yml:118-123):
+
+        - persona: who executes the journey. Must match a persona enum from
+          modules/AgenticGuidance/agents/test/test-uat/inputs.yml (e.g., `agent-blind-test`).
+        - starting_state: concrete preconditions a fresh executor can establish
+          (fresh clone, no config, specific env, etc.). Must be re-establishable
+          without hidden state from prior runs.
+        - preconditions: list of US-IDs that must PASS before this journey is runnable.
+          Test-uat can refuse to run a story whose preconditions haven't passed.
+          Empty list if none.
+        - journey: ordered list of action/observe pairs. Each step has:
+            - step: integer (1-based)
+            - action: the exact command or operation to run
+            - observe: list of concretely observable outcomes (exit code, output match,
+              DB state, file existence). NO vague "verify it worked" wording.
+        - success_signals: the narrow set of things test-uat must observe to mark PASS.
+          Distinct from success_criteria — these are the stripped-down pass fence.
+        - cleanup: optional list of steps to undo side-effects. Required when the
+          journey has durable side-effects (epic created, files written, config changed).
+
+        The uat_plan is required for all NEW stories. Existing stories without one
+        will be flagged by `agentic stories audit` and backfilled incrementally.
 
         Rules for good stories:
         - [role] is a real stakeholder: developer, operator, agent, end-user, etc.
@@ -207,6 +354,28 @@ process:
             related_agents:
               - "build-python"
 
+            uat_plan:
+              persona: agent-blind-test
+              starting_state: |
+                Fresh repo clone on main, no ~/.agentic config, no live epics in TinyDB.
+              preconditions: []
+              journey:
+                - step: 1
+                  action: "Run `agentic epic new \"widget sorter\"`"
+                  observe:
+                    - "command exits 0"
+                    - "`agentic epic list` includes an epic with status=seed"
+                - step: 2
+                  action: "Run `agentic epic phase add --epic <folder> --id P1 --name Design --agent planner-build`"
+                  observe:
+                    - "command exits 0"
+                    - "`agentic epic phase list --epic <folder>` shows P1 with 0 tickets"
+              success_signals:
+                - "Epic is discoverable via `agentic epic list` with the expected status"
+                - "Phase count in status output matches phases added"
+              cleanup:
+                - "`agentic epic archive <folder>`"
+
             # Optional test-tracking metadata (defaults shown)
             related_files: []
             last_tested: null
@@ -259,35 +428,104 @@ process:
     - name: "Output completion signal"
       action: |
         Print a completion summary to stdout so the orchestrator can detect success.
-        The STORY_STATUS line must appear first and standalone. Follow it with the
-        full summary including a categories block:
+        The STORY_STATUS line must appear first and standalone. The summary MUST
+        include a verification block reporting what you did with each overlapping
+        existing story discovered in the "Discover overlapping existing stories"
+        step. This block is how downstream agents and humans can audit whether
+        you actually verified vs. just wrote new stories.
 
         ```
         STORY_STATUS: complete
-        affected_stories:
+        verification:
+          discovered_overlaps: {O}        # count of stories whose surface overlapped
+          updated: [US-XXX-NNN, ...]      # stories you UPDATED
+          no_change: [US-XXX-NNN, ...]    # stories VERIFIED unchanged
+          consolidated: [US-XXX-NNN, ...] # stories merged into another (list sources)
+          deprecated: [US-XXX-NNN, ...]   # stories marked deprecated
+          new_stories_justification: |    # required if affected_stories has any new IDs
+            One paragraph explaining why no existing story could absorb the
+            new mechanic. Required even if discovered_overlaps == 0 (in which
+            case explain what searches you ran).
+        affected_stories:                 # combined: updates + new (rare)
           - US-{EPIC_PREFIX}-001
           - US-{EPIC_PREFIX}-002
           ...
         stories_file: docs/userstories/EpicStories/{epic_folder}.yml
-        story_count: {N}
+        story_count: {N}                  # NEW stories only (often 0)
         categories_count: {M}
         categories:
           - name: "cli-cleanup"
             story_count: 1
-          - name: "test-updates"
-            story_count: 1
           ...
         ```
 
-        Replace all placeholders ({epic_folder}, {EPIC_PREFIX}, {N}, {M}) with actual values.
-        The EPIC_PREFIX in story IDs must match the prefix extracted from the epic folder name
-        in the "Draft user stories" step. This output is parsed by downstream orchestration —
-        do not add extra prose around the STORY_STATUS line.
+        Replace all placeholders ({epic_folder}, {EPIC_PREFIX}, {O}, {N}, {M})
+        with actual values. The EPIC_PREFIX in story IDs must match the prefix
+        extracted from the epic folder name in the "Draft new story (rare path)"
+        step. This output is parsed by downstream orchestration — do not add
+        extra prose around the STORY_STATUS line.
+
+        FENCE: a completion summary with `verification.discovered_overlaps: 0`
+        AND a non-empty `affected_stories` list AND no `new_stories_justification`
+        is malformed and will be rejected by the planning pipeline. The
+        verification block is the audit trail.
       required: true
 
 guidelines:
+  - |
+    VERIFICATION-FIRST — the architectural rule:
+    Your default mode is verifying and updating existing stories, NOT writing
+    new ones. The "Discover overlapping existing stories" step is mandatory
+    on every run. If you skip it and jump straight to drafting new stories,
+    you have failed the role even if the new stories you wrote look reasonable.
+
+    There is NO escape hatch. Throwaway epics, UAT test epics, bug-fix epics,
+    rename epics, refactor epics — all of them get a verification pass. The
+    cost of always-running is the price of removing a reward-hack surface;
+    do not propose conditional skips.
+  - |
+    TITLE COMPONENT TEST — a hard contract on every story title (existing or new):
+
+    A reader looking at the title in the stories health dashboard MUST be
+    able to identify which COMPONENT of the system the story refers to,
+    without opening the file. If they can't, the title fails.
+
+    FAIL examples (these are real, observed in 2026-04):
+      - "Phase Planning Rename" — names a verb-action; which "phase"? CLI
+        phase? epic phase? planner phase? unknowable from the title.
+      - "Phase Migration Compat" — same problem; "compat" is a verb-noun pair
+        with no component identity.
+      - "Truncate String" — names a function, not a component. Truncate
+        string WHERE? In which subsystem?
+      - "Budget Validation Constant" — names a variable, not a component.
+
+    PASS examples (rewriting the failures above):
+      - "Epic Phase Lifecycle" — names the component (phase lifecycle within
+        the epic subsystem).
+      - "CLI Output Formatting" — names the component (output formatting
+        layer in the CLI).
+      - "Orchestration Budget Controls" — names the component (budget
+        controls within orchestration).
+
+    Acceptance test: read the title cold, then ask "what component does this
+    refer to and where does it live in the codebase?" If you can answer
+    confidently in one sentence, the title passes. If you have to open the
+    story body to know, it fails.
+
+    Apply this test during VERIFY (rename existing stories whose titles fail)
+    AND during the rare new-story path (reject any draft title that fails).
+    This rule is layered on top of the existing `<Subject> <Noun>` and
+    command-name title rules — those tell you HOW to phrase a passing title;
+    this rule tells you WHEN a title is acceptable at all.
   - "PLANNING-ONLY: do NOT implement code, write tests, or modify source files."
-  - "Your only output is the stories YAML written via the Write tool to docs/userstories/EpicStories/{epic_folder}.yml."
+  - |
+    EDIT TOOL BOUNDARY — you have the Edit tool, but its use is restricted to
+    files under `docs/userstories/`. Editing any file outside that directory
+    is a role violation. Use Edit to update existing story files in
+    docs/userstories/{Module}/*.yml when the verification step decides UPDATE.
+    Use Write only for the epic-scoped file at
+    docs/userstories/EpicStories/{epic_folder}.yml.
+  - "Your only NEW-FILE output is the stories YAML written via Write to docs/userstories/EpicStories/{epic_folder}.yml. Updates to existing stories live in their original files via Edit."
   - "Do NOT run agentic epic ticket or phase commands — that is epic-creator's job."
   - "Stories describe user value, not implementation steps."
   - "Every story must have a category field matching one of the defined categories."
@@ -297,6 +535,7 @@ guidelines:
   - "If the README is missing, derive stories from the ticket descriptions alone."
   - "Keep story count proportional to epic scope — 3 stories for small epics, up to 8 for large ones."
   - "Every story needs at least one step with a when/then pair."
+  - "Every NEW story must include a uat_plan with persona, starting_state, journey (action+observe), and success_signals. Draft it FIRST — if you cannot write a coherent doc-blind journey, the story is the wrong size."
   - "Do NOT include an acceptance_criteria field — steps replace it entirely."
   - "Output STORY_STATUS: complete as a standalone line so orchestrators can detect it."
   - "Follow STORY_STATUS with a categories summary block (count, names, per-category story_count)."
@@ -359,20 +598,116 @@ guidelines:
     - When unsure if a step belongs, consider whether an agent would independently
       arrive at this design choice when building the system from scratch.
   - |
-    When reviewing existing stories for consolidation:
+    When reviewing existing stories for consolidation, the available actions are:
+    REWRITE, RENAME, CONSOLIDATE (merge), DELETE, BREAK APART (split), or ADD
+    (a missing story). Use the rules below to pick the right action.
+
     - DELETE stories where ALL steps are ASSET CONTENT or GENERIC — they describe
-      books on the shelf, not the library system itself
+      books on the shelf, not the library system itself.
     - REWRITE stories that mix MECHANICS with CONTENT/GENERIC — strip the content
-      and generic steps, keep only the system mechanics
-    - MERGE stories that describe different facets of the same system mechanism
+      and generic steps, keep only the system mechanics.
+    - CONSOLIDATE stories that describe different facets of the same system mechanism
       (e.g., "input declarations" + "path resolution" + "shared layers" are all
-      facets of how inputs.yml works)
-    - MERGE stories where completing one naturally leads to needing another —
+      facets of how inputs.yml works).
+    - CONSOLIDATE stories where completing one naturally leads to needing another —
       they are steps in the same user journey, not independent objectives
-      (e.g., "create epic" + "view status" + "archive" = one lifecycle journey)
-    - KEEP stories where the majority of steps describe system mechanics
+      (e.g., "create epic" + "view status" + "archive" = one lifecycle journey).
+    - BREAK APART a story whose uat_plan cannot be drafted as a single coherent
+      doc-blind journey — that is the forcing function for the journey principle.
+      If the would-be journey requires resetting the world between steps, or
+      crosses two distinct user roles, it is two stories pretending to be one.
+    - RENAME stories whose title fights the title pattern of the rest of the
+      cluster (see "title pattern" guideline below) or whose title hides the
+      mechanic behind a verb that does not describe what the system does.
+    - ADD a story when a mechanic is exercised by code but is not claimed by
+      any existing story (orphan code path) or when consolidation removed a
+      genuinely independent journey by accident.
+    - KEEP stories where the majority of steps describe system mechanics AND
+      the uat_plan is coherent.
     - TAG shared behaviors with `inherits_patterns` referencing existing PAT-* IDs
-      instead of duplicating steps across stories
+      instead of duplicating steps across stories.
+
+    Prefer DEPRECATION over hard DELETE when a story is being merged into a
+    successor:
+    - Use `agentic stories deprecate <id>` to flip lifecycle to "deprecated"
+    - Replace the body with a stub: empty `steps`, `related_stories: [<successor>]`,
+      `test_status: skip`, `test_notes: "Deprecated — coverage moved to <successor>"`
+    - Keep the file in place even if it now has only one deprecated story
+    - This preserves traceability for source-file `# story:` headers, archived
+      epic READMEs, and test markers that still reference the old ID
+    - Hard DELETE is only correct when the story was demonstrably never claimed
+      by any code, test, or epic — use `grep -rn US-XXX-NNN` to verify first.
+  - |
+    Title pattern for subject-clustered stories:
+    When multiple stories share the same subject (e.g., several stories all
+    about "Epic"), use the `<Subject> <Noun>` form, NOT `<Verb> <Subject>`.
+
+    GOOD (subject-anchored):  Epic Lifecycle, Epic Populate, Epic Tickets
+    BAD  (verb-first):        Manage Epic Phases, Ticket Management, Populate Epic
+
+    The pattern gives the cluster visual symmetry on the dashboard and makes
+    the subject the anchor instead of the verb. Apply this whenever you can
+    spot a cluster of 2+ stories sharing a domain noun. Do not "fix" it to
+    more idiomatic English — pattern consistency is the point.
+  - |
+    COMMAND-NAME TITLE RULE — single-command stories take the command name:
+    If a story claims exactly ONE CLI command (one entry point, one
+    mechanic surface), the title MUST be the command name itself, dropped
+    of the leading `agentic` and rendered in title case.
+
+    GOOD:  "Orchestrate Session Plan"   (claims `agentic orchestrate session plan`)
+    GOOD:  "Orchestrate Session Implement" (claims `agentic orchestrate session implement`)
+    GOOD:  "Stories Health"              (claims `agentic stories health`)
+    BAD:   "Orchestration Discovery"     (interprets the command — vague)
+    BAD:   "Orchestration Resumption"    (overweights one property of the command)
+
+    Why: command names are the contract surface a doc-blind UAT executor
+    sees first; matching the title to the command removes one layer of
+    translation. The interpretive titles are reserved for stories that
+    span MULTIPLE commands or a wider concept (e.g., "Epic Lifecycle"
+    spans new/list/status/archive — it earns a creative title because no
+    single command captures it).
+
+    Decision rule: if the story has exactly one entry in `related_commands`
+    (or all entries are flag variants of the same base command), use the
+    command-name title. If it spans 2+ distinct commands, use the
+    `<Subject> <Noun>` pattern from the previous rule.
+  - |
+    DEPENDER OWNS THE STORY — applies whenever one module consumes another:
+
+    Modules in this repo have asymmetric dependencies. AgenticCLI consumes
+    AgenticGuidance assets (story-schema.yml, agent manifests, services like
+    EpicRepository); Guidance does not know CLI exists. When a CLI function
+    reaches into Guidance for an asset, the story that captures the mechanic
+    belongs to the DEPENDER (CLI), not to the provider (Guidance).
+
+    Rules:
+    1. OWNERSHIP TEST — who executes the mechanic? If the only way a user
+       reaches the behavior is `agentic <something>`, it is a CLI story even
+       when every file in `related_files` lives under modules/AgenticGuidance/.
+    2. `related_files` IS NOT CO-AUTHORSHIP — it is staleness detection.
+       Listing a Guidance file in a CLI story's related_files means "if this
+       file changes, re-test the CLI mechanic", not "Guidance co-owns this
+       claim".
+    3. DEPENDENCY MECHANIC vs BOOK CONTENT — these are different:
+       - Dependency mechanic (belongs in story): "The audit command reads
+         story-schema.yml at load time to determine valid story shape."
+       - Book content (does NOT belong in story): "Story schema has fields
+         persona, journey, cleanup." That is content inside the asset itself.
+    4. DEGRADATION IS PART OF THE CONTRACT — every CLI story that depends on
+       a Guidance asset must declare what happens when the asset is missing
+       or malformed. Prefer graceful degradation (skip the check, report what
+       was skipped) over hard failure. Name the fallback explicitly as a step.
+    5. PURE GUIDANCE STORIES ARE RARE — they only describe library-internal
+       contracts with no CLI-initiated trigger. Most behavior that looks like
+       a Guidance story is actually a CLI story about how CLI consumes
+       Guidance.
+
+    Anti-pattern to avoid: splitting a CLI mechanic into "CLI handler story"
+    + "Guidance service story" because it touches both modules. That produces
+    two stories neither of which a doc-blind agent can execute independently.
+    Keep the journey whole; tag related_files from both modules; assign
+    ownership to the depender.
   - |
     inherits_patterns field: When a story shares a cross-cutting property with other
     stories, add an inherits_patterns entry instead of duplicating the behavior in steps.

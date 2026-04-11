@@ -29,7 +29,7 @@ def empty_plan(tmp_path, _isolate_tinydb):
     # Register in TinyDB with no phases
     populate_tinydb_from_yaml(_isolate_tinydb, "260128EP_empty_plan", plan_dir, {
         "name": "test-empty-plan",
-        "status": "pending",
+        "status": "planning",
         "phases": [],
     })
     yield plan_dir
@@ -75,12 +75,12 @@ def plan_with_nested_structure(tmp_path, _isolate_tinydb):
 
     populate_tinydb_from_yaml(_isolate_tinydb, "260128NS_nested", plan_dir, {
         "name": "test-nested-structure",
-        "status": "pending",
+        "status": "planning",
         "phases": [
             {
                 "name": "Nested Phase 1",
                 "phase_id": "NP1",
-                "status": "pending",
+                "status": "planning",
                 "tickets": [],
             },
         ],
@@ -319,8 +319,8 @@ class TestPhaseUpdateStatus:
         assert phase_p2 is not None
         assert phase_p2.status == "blocked"
 
-    def test_phase_update_to_pending(self, plan_with_phases, cli_runner, _isolate_tinydb):
-        """Test updating phase status back to pending (rollback)."""
+    def test_phase_update_to_planning(self, plan_with_phases, cli_runner, _isolate_tinydb):
+        """Test updating phase status back to planning (rollback)."""
         stdout, stderr, code = cli_runner(
             [
                 "epic",
@@ -328,7 +328,7 @@ class TestPhaseUpdateStatus:
                 "update",
                 "Phase 1 - Setup",
                 "--status",
-                "pending",
+                "planning",
                 "--plan",
                 str(plan_with_phases),
             ]
@@ -338,7 +338,7 @@ class TestPhaseUpdateStatus:
         phases = _get_phases_from_tinydb(_isolate_tinydb, "260128WP_with_phases")
         phase_p1 = next((p for p in phases if "Setup" in p.name), None)
         assert phase_p1 is not None
-        assert phase_p1.status == "pending"
+        assert phase_p1.status == "planning"
 
 
 @pytest.mark.story("US-PLN-015")
@@ -565,12 +565,12 @@ class TestPhaseListEdgeCases:
 
         populate_tinydb_from_yaml(_isolate_tinydb, "260128NT_no_tasks", plan_dir, {
             "name": "test-no-tasks-key",
-            "status": "pending",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase without tasks key",
                     "phase_id": "P1",
-                    "status": "pending",
+                    "status": "planning",
                     "tickets": [],
                 },
             ],

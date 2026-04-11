@@ -485,10 +485,10 @@ class TestPhaseStatusBlockedEnum:
         assert PhaseStatus.BLOCKED.value == "blocked"
 
     def test_all_expected_statuses_present(self):
-        """PhaseStatus should contain PENDING, IN_PROGRESS, COMPLETED, FAILED, BLOCKED."""
+        """PhaseStatus should contain PLANNING, IN_PROGRESS, COMPLETED, FAILED, BLOCKED."""
         from agenticguidance.services.epic import PhaseStatus
 
-        expected = {"pending", "in_progress", "completed", "failed", "blocked"}
+        expected = {"planning", "in_progress", "completed", "failed", "blocked"}
         actual = {s.value for s in PhaseStatus}
         assert expected == actual
 

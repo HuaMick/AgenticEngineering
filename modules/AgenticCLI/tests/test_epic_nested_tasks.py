@@ -26,12 +26,12 @@ def nested_task_plan(tmp_path, _isolate_tinydb):
 
     yaml_data = {
         "name": "test-nested-tasks",
-        "status": "pending",
+        "status": "planning",
         "phases": [
             {
                 "phase_id": "P1",
                 "name": "Phase 1 - Build",
-                "status": "pending",
+                "status": "planning",
                 "tickets": [
                     {
                         "id": "TST-001",
@@ -51,7 +51,7 @@ def nested_task_plan(tmp_path, _isolate_tinydb):
             {
                 "phase_id": "P2",
                 "name": "Phase 2 - Test",
-                "status": "pending",
+                "status": "planning",
                 "tickets": [
                     {
                         "id": "TST-003",
@@ -76,12 +76,12 @@ def nested_task_plan_with_task_id(tmp_path, _isolate_tinydb):
 
     yaml_data = {
         "name": "test-task-id-field",
-        "status": "pending",
+        "status": "planning",
         "phases": [
             {
                 "phase_id": "P1",
                 "name": "Phase 1",
-                "status": "pending",
+                "status": "planning",
                 "tickets": [
                     {
                         "task_id": "TID-001",
@@ -291,7 +291,7 @@ class TestEdgeCases:
 
         populate_tinydb_from_yaml(_isolate_tinydb, "260127EP_empty", plan_dir, {
             "name": "empty-phases",
-            "status": "pending",
+            "status": "planning",
             "phases": [],
         })
 
@@ -309,12 +309,12 @@ class TestEdgeCases:
 
         populate_tinydb_from_yaml(_isolate_tinydb, "260127NT_notasks", plan_dir, {
             "name": "no-tasks-key",
-            "status": "pending",
+            "status": "planning",
             "phases": [
                 {
                     "name": "Phase without tasks",
                     "phase_id": "P1",
-                    "status": "pending",
+                    "status": "planning",
                     "tickets": [],
                 },
             ],
@@ -333,12 +333,12 @@ class TestEdgeCases:
         plan_dir.mkdir()
         yaml_data = {
             "name": "special-chars",
-            "status": "pending",
+            "status": "planning",
             "phases": [
                 {
                     "phase_id": "P1",
                     "name": "Phase 1",
-                    "status": "pending",
+                    "status": "planning",
                     "tickets": [
                         {
                             "id": "TEST-TASK_001-v2",
@@ -371,12 +371,12 @@ def plan_with_story_ids(tmp_path, _isolate_tinydb):
 
     yaml_data = {
         "name": "test-story-ids",
-        "status": "pending",
+        "status": "planning",
         "phases": [
             {
                 "phase_id": "P1",
                 "name": "Build Phase",
-                "status": "pending",
+                "status": "planning",
                 "tickets": [
                     {
                         "id": "SI-001",

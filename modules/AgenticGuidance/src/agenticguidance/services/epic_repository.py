@@ -378,7 +378,8 @@ class EpicRepository:
         if migrated:
             logger.info("Legacy status migration complete: %d record(s) updated.", migrated)
 
-    # @story US-260410AG-002
+    # Transient: one-shot migration shim for the PhaseStatus.PENDING→PLANNING rename.
+    # No permanent story home — delete once no legacy 'pending' records exist in any deployed DB.
     def _migrate_pending_to_planning(self) -> None:
         """One-shot migration: rewrite phase records with status 'pending' to 'planning'.
 

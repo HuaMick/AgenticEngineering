@@ -1,26 +1,39 @@
 area: story_health_dashboard
-description: "Two-axis story health dashboard with status enum, flags, and git-anchor safety"
+description: Two-axis story health dashboard with status enum, flags, and git-anchor
+  safety
 stories:
 - id: US-STR-020
-  title: Story Health Dashboard with Two-Axis Status
+  title: Story Health Dashboard
   category: story_management
   priority: high
-  description: As a developer or agent operating on the codebase, I want `agentic stories health` to show a single rich
-    status per story plus orthogonal flags (flaky, stale reason) with preserved commit anchors, so that I can triage
-    recovery actions without parsing boolean columns or markdown tables.
+  lifecycle: implemented
+  description: As a developer or agent operating on the codebase, I want `agentic
+    stories health` to show a single rich status per story plus orthogonal flags (flaky,
+    stale reason) with preserved commit anchors, so that I can triage recovery actions
+    without parsing boolean columns or markdown tables.
   prerequisites: []
   inherits_patterns:
   - id: PAT-CLI-001
     bind:
-      command: "agentic stories health"
-      expected_keys: [id, title, status, flags, test, uat, staleness, lifecycle]
+      command: agentic stories health
+      expected_keys:
+      - id
+      - title
+      - status
+      - flags
+      - test
+      - uat
+      - staleness
+      - lifecycle
   steps:
   - step: 1
     when: agentic stories health runs
     then:
-    - Each row shows exactly one status token from the 7-value enum (unhealthy, stale, never-passed, no-test, passing, uat-verified, archived)
-    - The table has 6 columns ID | Title | Status | Flags | testpass_commithash | uatpass_commithash
-    - Commit hashes render as short 7-char SHAs with — for null
+    - Each row shows exactly one status token from the 7-value enum (unhealthy, stale,
+      never-passed, no-test, passing, uat-verified, archived)
+    - The table has 6 columns ID | Title | Status | Flags | testpass_commithash |
+      uatpass_commithash
+    - "Commit hashes render as short 7-char SHAs with \u2014 for null"
   - step: 2
     when: a story has lifecycle=archived or lifecycle=deprecated
     then:
@@ -30,8 +43,9 @@ stories:
   - step: 3
     when: staleness is computed
     then:
-    - Staleness diff is taken across related_files ∪ global_watch
-    - global_watch is loaded from docs/userstories/.config.yml (with sensible default if missing)
+    - "Staleness diff is taken across related_files \u222A global_watch"
+    - global_watch is loaded from docs/userstories/.config.yml (with sensible default
+      if missing)
     - A stale row carries a stale_reason of related_file, global_config, or anchor_unreachable
     - Touching a file in global_watch flips affected stories to stale with stale_reason=global_config
   - step: 4
@@ -39,44 +53,125 @@ stories:
     then:
     - The row shows a !flaky badge in the Flags column
     - agentic stories health --json emits flags.flaky=true for that story
-    - Flaky is orthogonal to status — a flaky story can still be passing, stale, or unhealthy
+    - "Flaky is orthogonal to status \u2014 a flaky story can still be passing, stale,\
+      \ or unhealthy"
   - step: 5
     when: last_pass_commit is unreachable in git history
     then:
-    - Status computation falls back to last_pass_tree_hash comparison over the watched files
+    - Status computation falls back to last_pass_tree_hash comparison over the watched
+      files
     - If the tree_hash path also fails, status is stale with stale_reason=anchor_unreachable
-    - The agent-facing JSON makes the anchor failure explicit — no silent pass-through
+    - "The agent-facing JSON makes the anchor failure explicit \u2014 no silent pass-through"
   - step: 6
     when: agentic stories health --json runs
     then:
     - Output is a struct with stories[] and summary{} keys
-    - Each story contains nested test{last_pass_commit, last_pass_tree_hash, last_tested, status}, uat{last_uat_commit}, staleness{is_stale, reason, related_files_changed, global_config_changed}, flags{flaky, blocked}
-    - Full-length SHAs are preserved in JSON (short SHAs are a human-table concern only)
+    - Each story contains nested test{last_pass_commit, last_pass_tree_hash, last_tested,
+      status}, uat{last_uat_commit}, staleness{is_stale, reason, related_files_changed,
+      global_config_changed}, flags{flaky, blocked}
+    - Full-length SHAs are preserved in JSON (short SHAs are a human-table concern
+      only)
     - Status values in JSON are a subset of the 7 canonical enum values
   - step: 7
     when: rows are sorted for triage
     then:
-    - Default sort order is unhealthy > stale > never-passed > no-test > passing > uat-verified
+    - Default sort order is unhealthy > stale > never-passed > no-test > passing >
+      uat-verified
     - Archived rows appear last when surfaced via --all
   - step: 8
     when: a story has no pytest.mark.story marker
     then:
     - Status is no-test (routes to test-builder)
-    - When a marker exists but no pass has been recorded, status is never-passed (routes to build-python)
+    - When a marker exists but no pass has been recorded, status is never-passed (routes
+      to build-python)
     - The no-test vs never-passed distinction is computed without requiring --coverage
   - step: 9
     when: the summary footer renders
     then:
-    - Footer shows counts per status (unhealthy, stale, never-passed, no-test, passing, uat-verified) plus a flaky count
+    - Footer shows counts per status (unhealthy, stale, never-passed, no-test, passing,
+      uat-verified) plus a flaky count
     - Footer notes how many archived rows are hidden and how to reveal them
-  success_criteria:
-  - All 7 canonical status values are emitted by compute_story_status() and round-trip through --json
-  - Touching a file in global_watch flips affected stories to stale with stale_reason=global_config
-  - A story with @pytest.mark.flaky on any linked test reports flags.flaky=true in JSON and !flaky in the table
-  - Archived lifecycle overrides test state and is hidden unless --all
-  - Unreachable last_pass_commit falls back to last_pass_tree_hash, or surfaces stale_reason=anchor_unreachable
-  - Sort order matches unhealthy > stale > never-passed > no-test > passing > uat-verified
-  - Flags column is empty when no modifiers are active; supports multiple space-separated badges
+  - step: 10
+    when: docs/userstories/.config.yml is missing
+    then:
+    - "global_watch defaults to an empty list \u2014 no global staleness propagation;\
+      \ stale rows are computed from related_files only (the explicit \"sensible default\"\
+      \ referenced by step 3 is empty, not a built-in path list)"
+  - step: 11
+    when: docs/userstories/.config.yml is malformed YAML
+    then:
+    - "The CLI exits non-zero with a \"story config unreadable\" error naming the\
+      \ file path; the dashboard does not render half-loaded config (degradation contract\
+      \ \u2014 fail closed on malformed config, not on missing config)"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'A clean checkout with docs/userstories/ populated. A throwaway
+      test
+
+      file with a known marker referencing a known story id is available
+
+      to add temporarily.
+
+      '
+    preconditions:
+    - US-STR-001
+    journey:
+    - step: 1
+      action: Run `agentic stories health`
+      observe:
+      - command exits 0
+      - table has columns ID | Title | Status | Flags | testpass_commithash | uatpass_commithash
+      - every status value is one of the 7 canonical tokens
+      - footer shows counts per status
+    - step: 2
+      action: Run `agentic stories health -j`
+      observe:
+      - JSON has top-level stories[] and summary{} keys
+      - each story carries nested test{}, uat{}, staleness{}, flags{}
+    - step: 3
+      action: Touch a file listed in any story's related_files (e.g., `touch modules/AgenticCLI/src/agenticcli/commands/epic.py`)
+        and re-run `agentic stories health`
+      observe:
+      - the affected stories now show status=stale with stale_reason=related_file
+    - step: 4
+      action: Run `agentic stories health --all`
+      observe:
+      - archived/deprecated rows now appear (with grey styling in a real terminal)
+    - step: 5
+      action: Run `agentic stories health` and verify sort order is unhealthy > stale
+        > never-passed > no-test > passing > uat-verified
+      observe:
+      - rows appear in that order
+    - step: 6
+      action: Temporarily move docs/userstories/.config.yml aside and re-run `agentic
+        stories health`
+      observe:
+      - command still exits 0
+      - global_watch effectively empty; no rows are flipped to global_config
+    - step: 7
+      action: Restore the config file but write `not = valid` into it, then re-run
+        `agentic stories health`
+      observe:
+      - command exits non-zero
+      - stderr names the .config.yml path
+    - step: 8
+      action: Restore the config file to valid YAML
+      observe:
+      - the dashboard renders cleanly again
+    success_signals:
+    - All 7 canonical status values are emitted and round-trip through --json
+    - Touching a related_file flips affected stories to stale with stale_reason=related_file
+    - Touching a global_watch file flips affected stories to stale with stale_reason=global_config
+    - A story with @pytest.mark.flaky on any linked test reports flags.flaky=true
+      in JSON and !flaky in the table
+    - Archived lifecycle hides rows from default view; --all surfaces them
+    - Unreachable last_pass_commit falls back to last_pass_tree_hash, or surfaces
+      stale_reason=anchor_unreachable
+    - Default sort matches unhealthy > stale > never-passed > no-test > passing >
+      uat-verified
+    - 'Missing config: empty default. Malformed config: fail closed (asymmetric degradation)'
+    cleanup:
+    - Restore docs/userstories/.config.yml if modified during the journey
   related_commands:
   - agentic stories health
   - agentic stories health --json
@@ -88,6 +183,8 @@ stories:
   - docs/userstories/.config.yml
   related_stories:
   - US-STR-001
-  last_tested: null
-  test_status: untested
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
   test_notes: ''
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

@@ -1,0 +1,131 @@
+area: epic_priority_deferred
+description: "Epic priority and the deferred state \u2014 moving epics out of the\
+  \ active queue without archiving"
+stories:
+- id: US-PLN-080
+  title: Epic Priority and Deferred State
+  category: epic_management
+  priority: medium
+  lifecycle: implemented
+  description: 'As an operator with more epics in `live/` than the orchestration loop
+
+    can sensibly work in parallel, I want to mark an epic as deferred
+
+    (move it out of the active queue without archiving it) and to set a
+
+    priority that the loop respects when discovering work, so the
+
+    "what should I work on next" decision is explicit and persistent
+
+    instead of implicit alphabetical ordering.
+
+
+    Added on 2026-04-07 to claim the `agentic epic move` mechanic and
+
+    the deferred-folder convention.
+
+    '
+  prerequisites: []
+  steps:
+  - step: 1
+    when: an epic is created or seeded
+    then:
+    - It lands in `docs/epics/live/` with default priority (medium) and is eligible
+      for orchestration discovery
+  - step: 2
+    when: agentic epic move <folder> --to deferred is invoked
+    then:
+    - The epic folder is relocated to `docs/epics/deferred/` and its TinyDB record
+      is updated to reflect the new state
+    - "`agentic orchestrate session plan` and `session implement` SKIP deferred epics\
+      \ by default \u2014 they are not in the active queue"
+  - step: 3
+    when: agentic epic move <folder> --to live is invoked against a deferred epic
+    then:
+    - The epic returns to live and re-enters the active queue
+  - step: 4
+    when: agentic epic list runs
+    then:
+    - Default view shows live epics; deferred epics appear under a separate section
+      (or with a deferred badge) so they remain discoverable
+    - '`--all` includes archived too'
+  - step: 5
+    when: a planner agent picks the next epic to work on
+    then:
+    - Higher priority epics in `live/` are surfaced first; deferred epics are not
+      considered until promoted back
+  - step: 6
+    when: a target folder already exists at the destination
+    then:
+    - "The move exits non-zero with a \"destination already exists\" error and does\
+      \ NOT overwrite (degradation contract \u2014 depender refuses to clobber)"
+  - step: 7
+    when: TinyDB FileLock cannot be acquired during the move
+    then:
+    - The CLI exits non-zero with the lock-timeout error and the filesystem move is
+      rolled back so on-disk state and TinyDB stay consistent
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'A clean checkout. A throwaway epic is available for moving:
+
+      create one via `agentic epic new "priority-test"`.
+
+      '
+    preconditions:
+    - US-PLN-001
+    journey:
+    - step: 1
+      action: 'Create a test epic: `agentic epic new "priority-test"` and capture
+        the folder name'
+      observe:
+      - command exits 0
+      - '`agentic epic list` shows the epic in live'
+    - step: 2
+      action: Run `agentic epic move <folder> --to deferred`
+      observe:
+      - command exits 0
+      - the folder now exists under docs/epics/deferred/
+      - '`agentic epic list` no longer shows it in the default view'
+    - step: 3
+      action: Run `agentic epic list --all` (or equivalent)
+      observe:
+      - the deferred epic is visible with a deferred badge / section
+    - step: 4
+      action: Run `agentic orchestrate session plan` and confirm the deferred epic
+        is NOT picked up
+      observe:
+      - no planner spawn against the deferred epic
+    - step: 5
+      action: Run `agentic epic move <folder> --to live`
+      observe:
+      - command exits 0
+      - the epic is back in docs/epics/live/ and visible in default list
+    - step: 6
+      action: Pre-create a directory at the deferred destination, then try `agentic
+        epic move <folder> --to deferred` again
+      observe:
+      - command exits non-zero
+      - stderr names 'destination already exists'
+      - the source folder is unchanged
+    success_signals:
+    - Move is reversible and respected by the orchestration loop
+    - Deferred epics are still discoverable but excluded from active discovery
+    - Destination collision and lock timeout both fail closed without partial state
+    cleanup:
+    - '`agentic epic archive <folder>` for the test epic'
+  related_commands:
+  - agentic epic move <folder> --to deferred
+  - agentic epic move <folder> --to live
+  - agentic epic list
+  - agentic epic list --all
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/epic.py
+  - modules/AgenticGuidance/src/agenticguidance/services/epic.py
+  related_stories:
+  - US-PLN-001
+  - US-PLN-046
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
+  test_notes: ''
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

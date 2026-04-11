@@ -1,0 +1,112 @@
+area: session_spawn_feedback
+description: |
+  Pre-spawn context estimation and in-flight progress feedback for orchestration
+  sessions. Relocated from US-SET-014 ("Session Execution Feedback") on
+  2026-04-07 — the trigger is an active orchestration run, not a setup
+  concern, so it belongs in the Session cluster alongside Session Lifecycle
+  and Session State Registry.
+stories:
+- id: US-SES-014
+  title: Session Spawn Feedback
+  category: session_spawn_feedback
+  priority: high
+  lifecycle: implemented
+  description: |
+    As a CLI user running orchestration sessions, I want context-usage
+    estimation BEFORE spawn and progress feedback DURING execution, so
+    that I can decide whether to proceed (or trim the prompt) and can
+    track system activity in real time.
+
+    This is the pre-/in-flight UX surface that wraps the spawn mechanics
+    in US-SES-001. It is a CLI story by depender ownership; the token
+    estimation utility lives in agenticcli.utils.tokens, and the
+    Rich-based progress rendering lives in agenticcli.console.
+  prerequisites: []
+  inherits_patterns:
+  - id: PAT-CLI-001
+    bind:
+      command: "agentic orchestrate session spawn"
+      expected_keys: [estimated_tokens, context_pct, severity]
+  steps:
+  - step: 1
+    when: agentic orchestrate session spawn or implement is invoked
+    then:
+    - Before launching the agent, the CLI estimates the token count of the assembled prompt via agenticcli.utils.tokens.estimate_tokens()
+    - Context-usage percentage is computed against the model's context window and displayed in the spawn pre-flight summary
+  - step: 2
+    when: context estimation completes
+    then:
+    - "The percentage is colour-coded by severity: cyan (under 75%), yellow (75-89%), red (90%+)"
+    - At 90%+ a warning is printed suggesting context reduction (trim prompt, drop optional inputs); the spawn still proceeds unless the user explicitly aborts
+  - step: 3
+    when: a session is actively running in the foreground
+    then:
+    - A Rich spinner/status indicator displays the active phase name and current ticket id, refreshed as the agent progresses
+    - Stdout from the spawned agent is streamed through the spinner to the parent terminal in real time (no buffering)
+  - step: 4
+    when: a foreground session completes or errors
+    then:
+    - The progress indicator clears and a final status line is printed (success/failure + total token usage if available)
+  - step: 5
+    when: token estimation fails (utility throws, prompt unavailable)
+    then:
+    - The CLI prints a "context estimate unavailable" warning to stderr and proceeds with the spawn anyway — degradation contract: feedback is best-effort, never blocking
+  - step: 6
+    when: the spawned pane exits before any progress feedback can render
+    then:
+    - The CLI catches the early-exit and prints the captured stderr/exit code without leaving a stuck spinner; no Python traceback escapes to the user
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: |
+      Fresh shell with `agentic` on PATH, claude SDK or CLI available, no
+      active orchestration sessions. A small prompt and a deliberately
+      large prompt are both available for testing.
+    preconditions:
+    - US-SES-001
+    journey:
+    - step: 1
+      action: "Run `agentic orchestrate session spawn --prompt 'echo hello' --max-turns 1` (small prompt)"
+      observe:
+      - "command exits 0"
+      - "stdout includes a context-usage line under 75% (cyan-coloured in a real terminal; ANSI codes present)"
+      - "no warning about context reduction"
+    - step: 2
+      action: "Construct a prompt of ~150,000 tokens (e.g., concatenate a large file) and run `agentic orchestrate session spawn --prompt @bigfile.txt --max-turns 1`"
+      observe:
+      - "the context-usage line shows a high percentage with red colouring"
+      - "a warning about context reduction is printed to stderr"
+      - "the spawn proceeds (warning is non-blocking)"
+    - step: 3
+      action: "Temporarily break tokens.estimate_tokens by injecting a fault (e.g., monkeypatch in a test harness) and re-run step 1"
+      observe:
+      - "command still exits 0"
+      - "stderr contains 'context estimate unavailable'"
+      - "the spawn still proceeds (degradation: feedback is best-effort)"
+    - step: 4
+      action: "Run `agentic orchestrate session implement --epic <folder>` against an epic with a single short phase"
+      observe:
+      - "a spinner appears showing the active phase name"
+      - "the spinner clears on completion and a final status line is printed"
+      - "no leftover spinner artifacts in the terminal"
+    success_signals:
+    - "Pre-spawn context estimation runs and is colour-coded by severity"
+    - "90%+ usage triggers a non-blocking warning (degradation: warning, not abort)"
+    - "Token estimation failure degrades to a best-effort warning, never blocks the spawn"
+    - "Foreground spinner clears cleanly on completion or early exit"
+    cleanup:
+    - "Stop any sessions left running with `agentic orchestrate session stop <id>`"
+    - "Remove any test prompt files created"
+  related_commands:
+  - agentic orchestrate session spawn --prompt <text>
+  - agentic orchestrate session implement --epic <folder>
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/utils/tokens.py
+  - modules/AgenticCLI/src/agenticcli/utils/sdk_pane_runner.py
+  - modules/AgenticCLI/src/agenticcli/utils/session_state.py
+  - modules/AgenticCLI/src/agenticcli/console.py
+  related_agents:
+  - orchestration-executor
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

@@ -194,6 +194,111 @@ story_schema:
         If related_files changed since this commit, the story is 'uat_stale'.
       example: "b412d8e"
 
+    # UAT plan — doc-blind-executable journey for test-uat
+    uat_plan:
+      type: object
+      description: |
+        Concrete, doc-blind-executable UAT plan written from test-uat's perspective.
+        REQUIRED for all NEW stories (writer-agent enforcement, not parse-time enforcement —
+        existing stories without this field continue to load, and `agentic stories audit`
+        surfaces them for incremental backfill). The shape mirrors what
+        modules/AgenticGuidance/agents/test/test-uat/process.yml:118-123 expects
+        (persona, starting_state, journey steps, success criteria), so no test-uat
+        code changes are needed. Formalising this at story-writing time rotates story
+        boundaries toward coherent journeys and removes the implicit design work
+        test-uat used to do via self-discovery.
+      fields:
+        persona:
+          type: string
+          required: true
+          description: |
+            Who executes this journey. Must match a persona defined in
+            modules/AgenticGuidance/agents/test/test-uat/inputs.yml (the
+            `agent_blind_test` definition and any sibling personas added there).
+          enum:
+            - "agent-blind-test"
+        starting_state:
+          type: string
+          required: true
+          description: |
+            Concrete preconditions a fresh executor can establish without hidden
+            state from prior runs (e.g., "Fresh repo clone on main, no ~/.agentic
+            config, no live epics").
+        preconditions:
+          type: list
+          items:
+            type: string
+            pattern: "^US-[A-Z0-9]+-\\d{3}$"
+          description: |
+            List of US-IDs that must PASS before this journey is runnable.
+            Test-uat can refuse to run a story whose preconditions haven't passed,
+            and the health dashboard uses this to propagate failures. Empty list
+            if the story has no cross-story dependencies. Cross-references
+            `related_stories` but is stricter: preconditions are a PASS fence,
+            related_stories are discoverability pointers.
+        journey:
+          type: list
+          required: true
+          description: |
+            Ordered list of action/observe pairs. Replaces the fuzzy when/then
+            pairing on the top-level `steps` field (which stays allowed for
+            back-compat) with concretely executable commands and observable
+            outcomes.
+          item_schema:
+            step:
+              type: integer
+              description: "1-based step number."
+            action:
+              type: string
+              required: true
+              description: "Exact command or operation to run (no vague wording)."
+            observe:
+              type: list
+              items:
+                type: string
+              required: true
+              description: |
+                Concretely observable outcomes (exit code, output match, DB state,
+                file existence). NO vague "verify it worked" wording.
+        success_signals:
+          type: list
+          items:
+            type: string
+          required: true
+          description: |
+            The narrow set of things test-uat must observe to mark PASS. Distinct
+            from success_criteria: stripped of implementation color, focused on
+            what is observable at the end of the journey.
+        cleanup:
+          type: list
+          items:
+            type: string
+          description: |
+            Optional list of steps to undo side-effects. REQUIRED when the journey
+            has durable side-effects (epic created, files written, config changed)
+            to prevent state leakage between UAT runs.
+      example:
+        persona: agent-blind-test
+        starting_state: |
+          Fresh repo clone on main, no ~/.agentic config, no live epics in TinyDB.
+        preconditions: []
+        journey:
+          - step: 1
+            action: "Run `agentic epic new \"widget sorter\"`"
+            observe:
+              - "command exits 0"
+              - "`agentic epic list` includes an epic with status=seed"
+          - step: 2
+            action: "Run `agentic epic phase add --epic <folder> --id P1 --name Design --agent planner-build`"
+            observe:
+              - "command exits 0"
+              - "`agentic epic phase list --epic <folder>` shows P1 with 0 tickets"
+        success_signals:
+          - "Epic is discoverable via `agentic epic list` with the expected status"
+          - "Phase count in status output matches phases added"
+        cleanup:
+          - "`agentic epic archive <folder>`"
+
     # Lifecycle field
     lifecycle:
       type: string
@@ -413,6 +518,8 @@ validation_checklist:
     - "If 'priority' is set, it is one of: low, medium, high, critical"
     - "If 'test_status' is set, it is one of: untested, pass, fail, skip, regression"
     - "If 'related_stories' is set, each item matches the ID pattern"
+    - "NEW stories must include 'uat_plan' with persona, starting_state, journey, success_signals (enforced by writer agents and `agentic stories audit`, not by the parser — legacy stories without uat_plan still load)"
+    - "If 'uat_plan.preconditions' is set, each entry matches the US-ID pattern"
 
   directory_validation:
     - "Stories are organized under docs/userstories/<Category>/"

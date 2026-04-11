@@ -1,57 +1,151 @@
 area: installation
-description: "CLI installation, setup wizard, and health verification"
+description: CLI installation, setup wizard, and health verification
 stories:
 - id: US-SET-001
-  title: CLI Installation and Verification
-  category: configuration
+  title: CLI Setup
+  category: cli_setup
   priority: critical
-  description: As a new user, I want to install, configure, and verify the CLI so that I have
-    a working tool immediately after setup and can quickly diagnose any issues.
+  lifecycle: implemented
+  description: 'As a new user, I want to install the agentic CLI, run the setup wizard,
+
+    and verify the resulting installation via a single health check, so that
+
+    I have a working tool immediately after first-run setup and can diagnose
+
+    any missing dependencies before doing real work.
+
+
+    This is the first-run journey. Configuration mutation (set/get/clear,
+
+    env vars) lives in US-SET-008 (CLI Configuration).
+
+    '
   prerequisites: []
   steps:
   - step: 1
-    when: the feature is used
+    when: a new user installs the CLI
     then:
-    - Installation via uv sync works from modules/AgenticCLI/
-    - agentic is available at /usr/local/bin/agentic
+    - Installation works via `uv sync` from modules/AgenticCLI/ (the supported install
+      path); the binary is then available on PATH (commonly /usr/local/bin/agentic
+      depending on uv configuration)
+    - Subsequent invocations of `agentic --help` and `agentic --version` work without
+      additional setup
   - step: 2
-    when: the feature is used
+    when: agentic setup init is invoked
     then:
-    - agentic setup init runs an interactive setup wizard
-    - The --force flag re-runs setup even if already configured
+    - The CLI runs an interactive setup wizard that creates ~/.config/agenticcli/config.toml
+      with sensible defaults
+    - The --force flag re-runs the wizard even when an existing config file is present
+      (re-init is supported, not destructive by accident)
   - step: 3
-    when: the feature is used
+    when: setup init checks dependencies
     then:
-    - Setup validates that dependencies are available (python3, uv, tmux)
-    - Configuration is stored in ~/.config/agenticcli/
+    - The wizard validates python3, uv, git, and (where used) claude CLI are present
+      on PATH; each missing dependency is named individually
+    - "The wizard does NOT install dependencies \u2014 it reports what is missing\
+      \ and exits non-zero so the user can install them manually"
   - step: 4
-    when: the feature is used
+    when: a dependency check fails (python3 missing, uv missing, claude CLI missing)
     then:
-    - --help lists all commands and no-args shows help
-    - --version shows version
-    - Command aliases work; global commands work anywhere, project commands require git repo
+    - "The wizard exits non-zero, names the missing dependency, and prints a one-line\
+      \ install hint per dependency (degradation contract \u2014 depender fails closed\
+      \ when a required runtime is missing)"
+    - No partial config file is left behind by a failed wizard run
   - step: 5
-    when: the feature is used
+    when: agentic health is invoked
     then:
-    - agentic health checks CLI installation, dependencies, and configuration
-    - Includes version checks for python3, uv, git, and claude CLI
+    - Health checks run across the CLI installation, dependencies, and configuration;
+      output reports each component as OK / WARNING / ERROR
+    - Version checks run for python3, uv, git, and claude CLI; mismatched or missing
+      versions are reported with the expected baseline
+    - Configuration file presence and validity are reported separately from dependency
+      checks
   - step: 6
-    when: an error condition occurs
+    when: agentic health finds problems
     then:
-    - Reports the status of each component (OK, WARNING, ERROR)
-    - Reports configuration file presence and validity
-    - Suggests fixes for any issues found
+    - "For each non-OK component, the output suggests a fix (install command, config\
+      \ repair step) \u2014 health is diagnostic, not silent"
+  - step: 7
+    when: ~/.config/agenticcli/ is unwritable
+    then:
+    - "setup init exits non-zero before touching the config file and names the directory\
+      \ in the error; the user is told to fix permissions and retry (degradation contract\
+      \ \u2014 depender fails closed when the consumed config directory is unusable)"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh shell. ~/.config/agenticcli/ either does not exist or contains
+
+      no config file. python3, uv, and git are available on PATH (the
+
+      supported baseline). The agentic CLI is not yet installed in this
+
+      session.
+
+      '
+    preconditions: []
+    journey:
+    - step: 1
+      action: From modules/AgenticCLI/, run `uv sync`
+      observe:
+      - command exits 0
+      - '`agentic --version` then exits 0 and prints a version string'
+    - step: 2
+      action: Run `agentic --help`
+      observe:
+      - command exits 0
+      - help text lists at least the top-level commands setup, epic, orchestrate,
+        stories, health
+    - step: 3
+      action: Run `agentic setup init` and walk through any prompts (or accept defaults)
+      observe:
+      - command exits 0
+      - ~/.config/agenticcli/config.toml exists after the run
+    - step: 4
+      action: Run `agentic health`
+      observe:
+      - command exits 0
+      - every component row is OK or has a clear fix hint if not OK
+    - step: 5
+      action: Run `agentic setup init --force`
+      observe:
+      - command exits 0 (re-init is supported)
+      - config file still exists and is well-formed
+    - step: 6
+      action: Temporarily make ~/.config/agenticcli/ unwritable (chmod 555) and run
+        `agentic setup init --force`
+      observe:
+      - command exits non-zero
+      - stderr names the unwritable directory
+      - no partial config file is created
+    - step: 7
+      action: (Optional, slow) Temporarily prepend a fake `python3` shim to PATH that
+        exits 1, then run `agentic health`
+      observe:
+      - health reports python3 as ERROR with an install hint
+      - the rest of the report still renders (one component error does not crash the
+        report)
+    success_signals:
+    - "Fresh-install journey completes in five commands (sync \u2192 version \u2192\
+      \ help \u2192 init \u2192 health)"
+    - Re-init via --force is non-destructive
+    - Missing dependencies are named individually, not lumped into one generic error
+    - Unwritable config directory fails the wizard closed with a named-path error
+    cleanup:
+    - chmod 755 ~/.config/agenticcli/ if step 6 modified it
+    - Restore PATH if step 7 was executed
   related_commands:
+  - uv sync
+  - agentic --help
+  - agentic --version
   - agentic setup init
   - agentic setup init --force
-  - agentic --help
-  - agentic -v
   - agentic health
   related_files:
   - modules/AgenticCLI/src/agenticcli/commands/setup.py
   - modules/AgenticCLI/src/agenticcli/commands/health.py
   - modules/AgenticCLI/src/agenticcli/cli.py
-  last_tested: null
-  test_status: untested
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

@@ -1,0 +1,92 @@
+area: agent_context_bootstrap
+description: "Claude Code Instance (CCI) bootstrap protocol — agents loading their own context"
+stories:
+- id: US-GDN-105
+  title: Agent Context Bootstrap
+  category: agent_guidance
+  priority: high
+  lifecycle: implemented
+  description: |
+    As a freshly-spawned Claude Code Instance (CCI) acting as an agent, I
+    want a single bootstrap command (`agentic -j agent context bootstrap`)
+    that returns my role's compiled process + inputs + assets so I do not
+    have to discover guidance files by grepping the repo, and so the
+    spawn-time context contract is the same regardless of transport
+    (sdk-tmux, tmux, subprocess).
+
+    Added on 2026-04-07. The bootstrap mechanic is the entry point that
+    US-GDN-100 (Agent Context Compilation) produces output for; this
+    story claims the CLI surface and the agent-side contract.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: a CCI is spawned with a role assignment
+    then:
+    - "Its first action is `agentic -j agent context bootstrap --role <role>` (or equivalent role-from-env resolution)"
+    - The response is JSON with process, inputs, assets, and any phase-specific guidance the executor injected
+  - step: 2
+    when: the role is unknown
+    then:
+    - The CLI exits non-zero and lists known roles in stderr (degradation contract — fail closed with a discoverable error)
+  - step: 3
+    when: the agent's process.yml or inputs.yml is malformed
+    then:
+    - The bootstrap exits non-zero and names the bad file; the CCI knows immediately that its guidance is broken instead of running without it
+  - step: 4
+    when: an executor passes phase-scoped guidance via stdin or env
+    then:
+    - The bootstrap output merges that guidance into the assets section so the agent sees one unified context blob
+  - step: 5
+    when: bootstrap is called outside a spawned session (operator running it manually)
+    then:
+    - It still works — the CLI does not require a session id; the role flag is the only required input
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: |
+      Fresh shell with `agentic` on PATH. AgenticGuidance assets are
+      installed (via `agentic setup init`).
+    preconditions:
+    - US-SET-001
+    - US-GDN-100
+    journey:
+    - step: 1
+      action: "Run `agentic -j agent context bootstrap --role build-python`"
+      observe:
+      - "command exits 0"
+      - "JSON contains process, inputs, assets keys"
+      - "process content matches the file under modules/AgenticGuidance/agents/build/build-python/process.yml"
+    - step: 2
+      action: "Run `agentic -j agent context bootstrap --role does-not-exist`"
+      observe:
+      - "command exits non-zero"
+      - "stderr lists known roles"
+    - step: 3
+      action: "Temporarily corrupt build-python/process.yml (e.g., write `not: valid: yaml`) and re-run step 1"
+      observe:
+      - "command exits non-zero"
+      - "stderr names the corrupted file path"
+    - step: 4
+      action: "Restore the file and re-run step 1"
+      observe:
+      - "command exits 0 again"
+    success_signals:
+    - "Bootstrap returns a single canonical context blob per role"
+    - "Unknown role and malformed guidance both fail closed with named errors"
+    - "Restoring a broken file fixes bootstrap immediately (no caching)"
+    cleanup:
+    - "Restore any temporarily-corrupted guidance files"
+  related_commands:
+  - agentic agent context bootstrap --role <role>
+  - agentic -j agent context bootstrap --role <role>
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/agent.py
+  - modules/AgenticGuidance/src/agenticguidance/services/agent_context.py
+  related_agents:
+  - orchestration-executor
+  related_stories:
+  - US-GDN-100
+  - US-SES-030
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

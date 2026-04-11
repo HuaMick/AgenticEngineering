@@ -23,14 +23,14 @@ logger = logging.getLogger(__name__)
 ANCHOR_UNREACHABLE = object()
 
 # 7-value canonical status enum for story health.
-StoryStatus = Literal["unhealthy", "stale", "never-passed", "no-test", "passing", "uat-verified", "archived"]
+StoryStatus = Literal["broken", "stale", "never-passed", "untested", "passing", "uat-verified", "archived"]
 
 # Sort order for triage: lower index = higher priority.
 STORY_STATUS_SORT_ORDER: dict[str, int] = {
-    "unhealthy": 0,
+    "broken": 0,
     "stale": 1,
     "never-passed": 2,
-    "no-test": 3,
+    "untested": 3,
     "passing": 4,
     "uat-verified": 5,
     "archived": 6,
@@ -374,11 +374,20 @@ class StoryService:
         tested_by: str = "",
         test_notes: str = "",
         last_tested: str = "",
+        commit: str = "",
+        commit_kind: str = "test",
     ) -> bool:
         """Update test status for a story (writes back to YAML).
 
         Uses FileLock for atomic read-modify-write to prevent corruption
         from concurrent updates.
+
+        When ``commit`` is supplied and ``status`` indicates a pass
+        (``pass`` or ``passing``), the commit hash is written to
+        ``last_pass_commit`` (``commit_kind="test"``) or ``last_uat_commit``
+        (``commit_kind="uat"``) in the same atomic write. This prevents
+        the two-write-path gap where a story could be recorded as passing
+        with no commit hash attached.
         """
         story = self.get_by_id(story_id)
         if not story or not story.source_file:
@@ -405,6 +414,13 @@ class StoryService:
                                 item["test_notes"] = test_notes
                             if last_tested:
                                 item["last_tested"] = last_tested
+                            if commit and status in ("pass", "passing"):
+                                field = (
+                                    "last_uat_commit"
+                                    if commit_kind == "uat"
+                                    else "last_pass_commit"
+                                )
+                                item[field] = commit
                             path.write_text(
                                 yaml.dump(content, sort_keys=False, default_flow_style=False)
                             )
@@ -539,13 +555,18 @@ class StoryService:
 
         # 2. Failing test.
         if ts in ("fail", "regression"):
-            return "unhealthy"
+            return "broken"
 
         # 3. Not yet passing — distinguish never-passed from no-test.
-        if ts not in ("pass", "passing"):
+        #    Also guard: "passing" without a recorded commit hash is unearned
+        #    metadata (hand-authored YAML that never flowed through
+        #    record_story_pass). Treat it as if the story had never passed so
+        #    the dashboard prompts action instead of trusting stale labels.
+        is_unearned_pass = ts in ("pass", "passing") and not story.last_pass_commit
+        if ts not in ("pass", "passing") or is_unearned_pass:
             if story_markers is not None and story.id in story_markers:
                 return "never-passed"
-            return "no-test"
+            return "untested"
 
         # Story has passed at least once (test_status == pass/passing).
         # 4. Staleness check.

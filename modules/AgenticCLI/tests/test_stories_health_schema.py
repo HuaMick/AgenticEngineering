@@ -26,7 +26,7 @@ import yaml
 pytestmark = pytest.mark.story("US-STR-020")
 
 _CANONICAL_STATUSES = frozenset(
-    {"unhealthy", "stale", "never-passed", "no-test", "passing", "uat-verified", "archived"}
+    {"broken", "stale", "never-passed", "untested", "passing", "uat-verified", "archived"}
 )
 
 

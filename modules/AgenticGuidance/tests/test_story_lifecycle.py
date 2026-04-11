@@ -223,7 +223,7 @@ class TestArchivedOverridesTestState:
             test_status="fail",
         )
         status = svc.compute_story_status(story)
-        assert status == "unhealthy"
+        assert status == "broken"
 
 
 class TestTreeHashFallback:

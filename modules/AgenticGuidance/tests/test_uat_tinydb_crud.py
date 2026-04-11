@@ -264,7 +264,7 @@ class TestPhaseCRUD:
 
     def test_get_phase_by_name(self, repo):
         repo.create_epic(_epic_data("260105EE_get_phase"))
-        repo.add_phase("260105EE_get_phase", {"name": "Setup", "description": "Setup phase", "status": "pending"})
+        repo.add_phase("260105EE_get_phase", {"name": "Setup", "description": "Setup phase", "status": "planning"})
         phase = repo.get_phase("260105EE_get_phase", "Setup")
         assert phase is not None
         assert phase.name == "Setup"
@@ -277,13 +277,13 @@ class TestPhaseCRUD:
 
     def test_update_phase_succeeds(self, repo):
         repo.create_epic(_epic_data("260105GG_update_phase"))
-        repo.add_phase("260105GG_update_phase", {"name": "Phase 1", "status": "pending"})
+        repo.add_phase("260105GG_update_phase", {"name": "Phase 1", "status": "planning"})
         result = repo.update_phase("260105GG_update_phase", "Phase 1", {"status": "active"})
         assert result is True
 
     def test_update_phase_changes_persisted(self, repo):
         repo.create_epic(_epic_data("260105HH_phase_persist"))
-        repo.add_phase("260105HH_phase_persist", {"name": "Phase 1", "status": "pending"})
+        repo.add_phase("260105HH_phase_persist", {"name": "Phase 1", "status": "planning"})
         repo.update_phase("260105HH_phase_persist", "Phase 1", {"status": "completed", "description": "Done"})
         phase = repo.get_phase("260105HH_phase_persist", "Phase 1")
         assert phase.status == "completed"

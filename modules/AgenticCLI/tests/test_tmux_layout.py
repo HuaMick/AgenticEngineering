@@ -425,14 +425,17 @@ class TestCreateOrchestrationLayout:
                         assert "15" in all_cmds_str
                         assert "30" in all_cmds_str
 
-    def test_cleans_up_orphaned_sessions_before_new(self, sample_claude_cmd_str, mock_subprocess_success):
-        """Cleans up orphaned agentic-orch-* sessions before creating a new one."""
-        def mock_run_with_list(cmd, **kwargs):
-            if "list-sessions" in cmd:
-                mock = MagicMock()
-                mock.returncode = 0
-                mock.stdout = "agentic-orch-111\nagentic-orch-222\nclaude\n"
-                return mock
+    def test_does_not_kill_unrelated_orchestration_sessions(self, sample_claude_cmd_str, mock_subprocess_success):
+        """Layout creation must NOT bulk-kill agentic-orch-* sessions.
+
+        Bulk orphan cleanup used to run unconditionally here, racing against
+        sibling orchestrations and parallel test sessions. The new behavior
+        only kills the exact target session if it already exists.
+        """
+        def mock_run_with_check(cmd, **kwargs):
+            if "has-session" in cmd:
+                # Target session does NOT pre-exist
+                return MagicMock(returncode=1)
             if "kill-session" in cmd:
                 return MagicMock(returncode=0)
             return mock_subprocess_success(cmd, **kwargs)
@@ -440,13 +443,14 @@ class TestCreateOrchestrationLayout:
         with patch.dict("os.environ", {}, clear=True):
             with patch("shutil.which", return_value="/usr/bin/tmux"):
                 with patch("agenticcli.utils.tmux_layout.is_in_tmux", return_value=False):
-                    with patch("subprocess.run", side_effect=mock_run_with_list) as mock_run:
+                    with patch("subprocess.run", side_effect=mock_run_with_check) as mock_run:
                         create_orchestration_layout(claude_cmd_str=sample_claude_cmd_str)
 
-                        # Verify kill-session was called for orphaned sessions
+                        # Zero kill-session calls — target did not exist, so
+                        # nothing should be killed.
                         kill_calls = [c for c in mock_run.call_args_list
                                       if "kill-session" in c[0][0]]
-                        assert len(kill_calls) == 2
+                        assert len(kill_calls) == 0
 
 
 class TestAttachToSession:

@@ -146,6 +146,15 @@ process:
       a matching @pytest.mark.story marker in your test files.
       Verify with `agentic stories coverage --project <module> -j` that coverage
       has not decreased.
+
+      DO NOT call `agentic stories update --status pass` yourself. The
+      orchestration executor owns the `last_pass_commit` write — when your
+      phase completes successfully, the framework reads the story set from
+      ticket.story_ids (or scans @pytest.mark.story markers as a fallback)
+      and records the HEAD hash via `StoryService.update_test_status(...,
+      commit_kind="test")` in-process. Agent-side writes are forbidden to
+      prevent the double-write / drift class of bug that previously left
+      stories stuck on `never-passed`.
     - |
       If blocked on unclear test expectations, generate a question:
       - Common scenarios requiring questions:

@@ -52,12 +52,16 @@ process:
         agentic epic phase add --epic {epic_folder} --name "Test" --agent test-builder --execution sequential
         agentic epic phase add --epic {epic_folder} --name "Cleanup" --agent build-python --execution sequential
         agentic epic phase add --epic {epic_folder} --name "Audit" --agent planner-audit --execution sequential
-        agentic epic phase add --epic {epic_folder} --name "UAT" --agent test-uat --execution sequential
         ```
+
+        DO NOT scaffold a "UAT" phase (2026-04-11 contract change). UAT is
+        a separate on-demand workflow invoked via
+        `agentic orchestrate session uat --story|--epic|--stale`, not a
+        phase in the build loop. Epic completion only gates on build+test
+        phases being terminal.
 
         Adjust phases based on the epic objective:
         - Pure guidance work: teach phases instead of build
-        - Infrastructure: may skip UAT
         - Complex epics: may need multiple build phases
       required: true
 
@@ -119,7 +123,7 @@ guidelines:
   - "Create SKELETON tickets — descriptions only, no implementation details."
   - "Downstream agents (planner-explore) will enrich tickets with target-files and guidance."
   - "When in doubt about phase structure, prefer more granular phases over fewer monolithic ones."
-  - "Always include a Test phase and a UAT phase for user-facing changes."
+  - "Always include a Test phase for user-facing changes. UAT is a separate on-demand workflow (`agentic orchestrate session uat`), not a phase."
   - |
     STORY_IDS TIMING: epic-creator is step 1 of the planning pipeline.
     story-writer runs in step 2 and produces docs/userstories/EpicStories/{epic_folder}.yml. planner-explore

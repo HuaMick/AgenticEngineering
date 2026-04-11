@@ -57,7 +57,7 @@ def validate_phase_routing(
         return False, "no phases in TinyDB"
 
     # 2. Check all phases have agent routing
-    unrouted = [p.name for p in phases if not p.agent]
+    unrouted = [(p.phase_id or p.name) for p in phases if not p.agent]
     if unrouted:
         names = ", ".join(unrouted)
         return False, f"phases missing agent routing: {names}"
@@ -67,9 +67,9 @@ def validate_phase_routing(
 
     valid_agents = get_valid_agent_types()
     if valid_agents:
-        invalid = [(p.name, p.agent) for p in phases if p.agent and p.agent not in valid_agents]
+        invalid = [((p.phase_id or p.name), p.agent) for p in phases if p.agent and p.agent not in valid_agents]
         if invalid:
-            details = ", ".join(f"{name} (agent={agent})" for name, agent in invalid)
+            details = ", ".join(f"{label} (agent={agent})" for label, agent in invalid)
             return False, f"phases have invalid agent names: {details}"
 
     # 3. Check ticket status — all-proposed means skeleton only, needs planning

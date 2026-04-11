@@ -47,7 +47,7 @@ def folder_free_repo(tmp_path, _isolate_tinydb):
             "phases": [
                 {
                     "name": "Phase 1",
-                    "status": "pending",
+                    "status": "planning",
                     "agent": "build-python",
                     "tickets": [
                         {"id": "T1", "name": "First ticket", "status": "proposed"},
@@ -84,7 +84,7 @@ def mixed_epics_repo(tmp_path, _isolate_tinydb):
             "phases": [
                 {
                     "name": "P1",
-                    "status": "pending",
+                    "status": "planning",
                     "agent": "build-python",
                     "tickets": [
                         {"id": "A1", "name": "Ticket A1", "status": "pending"},
@@ -105,7 +105,7 @@ def mixed_epics_repo(tmp_path, _isolate_tinydb):
             "phases": [
                 {
                     "name": "P1",
-                    "status": "pending",
+                    "status": "planning",
                     "agent": "test-builder",
                     "tickets": [
                         {"id": "B1", "name": "Ticket B1", "status": "proposed"},
@@ -137,7 +137,7 @@ def folder_free_with_tickets_repo(tmp_path, _isolate_tinydb):
             "phases": [
                 {
                     "name": "Phase 1",
-                    "status": "pending",
+                    "status": "planning",
                     "agent": "build-python",
                     "tickets": [
                         {"id": "S1", "name": "Status ticket 1", "status": "completed"},

@@ -1,0 +1,126 @@
+area: story_lifecycle
+description: "Story lifecycle state machine and the deprecation-over-deletion contract"
+stories:
+- id: US-STR-031
+  title: Story Lifecycle Transitions
+  category: story_management
+  priority: medium
+  lifecycle: implemented
+  description: |
+    As a story author or planner agent, I want stories to move through an
+    explicit lifecycle (proposal → under-construction → implemented →
+    deprecated → archived) via CLI commands, so that promotion and
+    deprecation are recorded events with traceability — not silent file
+    edits — and merging duplicate stories preserves traceability for
+    source-file `# story:` headers and test markers.
+
+    Added on 2026-04-07 to claim the lifecycle field, the
+    promote/deprecate/archive CLI commands, and the
+    deprecation-over-deletion contract that the build-story-writer
+    guidance now mandates.
+  prerequisites: []
+  steps:
+  - step: 1
+    when: a new story is drafted
+    then:
+    - The story starts at `lifecycle: proposal` (writer agents are required to set this; the schema does not auto-default to implemented for new stories)
+    - This signals to readers that the story is a contract draft, not yet a verified mechanic
+  - step: 2
+    when: implementation begins on a proposal story
+    then:
+    - "`agentic stories promote <id>` advances the lifecycle by one step (proposal → under-construction → implemented)"
+    - The transition is enforced — promote refuses to skip states (under-construction cannot jump to deprecated; the path is linear)
+  - step: 3
+    when: a story is superseded by a successor
+    then:
+    - "`agentic stories deprecate <id>` flips lifecycle from implemented to deprecated"
+    - "The story file is rewritten to a stub: empty `steps`, `related_stories` listing the successor, `test_status: skip`, a `test_notes` line explaining the merge"
+    - The original ID is preserved (not renamed) so source-file `# story:` headers and `@pytest.mark.story` markers continue to resolve
+  - step: 4
+    when: a deprecated story has no remaining references
+    then:
+    - "`agentic stories archive <id>` flips lifecycle from deprecated to archived"
+    - Archived stories are hidden from the default `agentic stories health` view; `--all` surfaces them with grey styling (see US-STR-020 step 2)
+  - step: 5
+    when: any audit or health command runs
+    then:
+    - Deprecated and archived stories are excluded from the active count and from the uat_plan audit (their journey is owned by the successor)
+    - The summary footer notes how many archived rows are hidden
+  - step: 6
+    when: a writer agent considers hard-deleting a story
+    then:
+    - "Hard delete is forbidden by default — the deprecation-over-deletion rule applies. The exception is stories that were demonstrably never claimed by any code, test, or epic; verification requires `grep -rn US-XXX-NNN` across modules/ and docs/epics/ before deletion is allowed."
+  - step: 7
+    when: agentic stories promote/deprecate/archive is called against a story whose current lifecycle is wrong for the requested transition
+    then:
+    - The CLI rejects the transition with a clear "cannot transition from <current> to <target>" error and does NOT mutate the file (degradation contract — depender refuses to corrupt the lifecycle state machine)
+  - step: 8
+    when: the underlying YAML file is read-only or otherwise unwritable
+    then:
+    - The CLI exits non-zero before attempting the transition and names the file path; the lifecycle field is not partially updated
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: |
+      A clean checkout. A throwaway story file is available for promote/
+      deprecate/archive cycling: `docs/userstories/_test/01_lifecycle_test.yml`
+      with one story `US-TST-001` initially at lifecycle: proposal.
+    preconditions:
+    - US-STR-001
+    journey:
+    - step: 1
+      action: "Create the throwaway story file with US-TST-001 at lifecycle: proposal"
+      observe:
+      - "`agentic stories find US-TST-001` exits 0 and shows the story"
+    - step: 2
+      action: "Run `agentic stories promote US-TST-001`"
+      observe:
+      - "command exits 0"
+      - "`agentic stories find US-TST-001` shows lifecycle: under-construction"
+    - step: 3
+      action: "Run `agentic stories promote US-TST-001` again"
+      observe:
+      - "command exits 0"
+      - "lifecycle is now implemented"
+    - step: 4
+      action: "Run `agentic stories deprecate US-TST-001`"
+      observe:
+      - "command exits 0"
+      - "lifecycle is now deprecated"
+      - "`agentic stories audit --check-uat-plan` does NOT report US-TST-001 as missing (deprecated exclusion)"
+    - step: 5
+      action: "Run `agentic stories archive US-TST-001`"
+      observe:
+      - "command exits 0"
+      - "lifecycle is now archived"
+      - "`agentic stories health` does NOT show US-TST-001 in the default view"
+      - "`agentic stories health --all` does show it"
+    - step: 6
+      action: "Try `agentic stories promote US-TST-001` (currently archived)"
+      observe:
+      - "command exits non-zero"
+      - "stderr names the invalid transition"
+      - "the YAML file is unchanged"
+    success_signals:
+    - "Promote is linear and enforced; transitions out of order are rejected"
+    - "Deprecate writes a stub that preserves the ID for traceability"
+    - "Audit and health correctly exclude deprecated/archived stories"
+    - "Invalid transitions fail closed without mutating the file"
+    cleanup:
+    - "Delete docs/userstories/_test/ entirely"
+  related_commands:
+  - agentic stories promote <id>
+  - agentic stories deprecate <id>
+  - agentic stories archive <id>
+  - agentic stories find <id>
+  - agentic stories health --all
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/stories.py
+  - modules/AgenticGuidance/src/agenticguidance/services/story.py
+  related_stories:
+  - US-STR-001
+  - US-STR-020
+  - US-STR-030
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null

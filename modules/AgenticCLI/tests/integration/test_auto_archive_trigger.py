@@ -106,7 +106,7 @@ class TestNoAutoArchiveOnCompletion:
                 {
                     "phase_id": "build_01",
                     "name": "Build Phase",
-                    "status": "pending",
+                    "status": "planning",
                     "tickets": [
                         {
                             "task_id": "build_01_001",
@@ -180,7 +180,7 @@ class TestNoAutoArchiveOnCompletion:
                 {
                     "phase_id": "test_01",
                     "name": "Test Phase",
-                    "status": "pending",
+                    "status": "planning",
                     "tickets": [
                         {
                             "task_id": "test_01_001",
@@ -422,7 +422,7 @@ class TestIsPlanFullyCompleted:
                 {
                     "phase_id": "build_01",
                     "name": "Build Phase",
-                    "status": "pending",
+                    "status": "planning",
                     "tickets": [],  # Empty tickets
                 }
             ],
@@ -575,14 +575,14 @@ class TestIsPlanFullyCompleted:
         with open(plan_folder / "plan_build.yml", "w") as f:
             yaml.dump(plan_build, f)
 
-        # Second file - still pending
+        # Second file - still planning
         plan_test = {
             "name": "test-plan",
             "phases": [
                 {
                     "phase_id": "test_01",
                     "name": "Test Phase",
-                    "status": "pending",
+                    "status": "planning",
                     "tickets": [
                         {"task_id": "test_001", "description": "Test", "status": "pending"},
                     ],

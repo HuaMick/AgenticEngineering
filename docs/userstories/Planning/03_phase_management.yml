@@ -1,52 +1,106 @@
 area: phase_management
-description: "Phase add/list/update, orchestration generate"
+description: Phase add/list/update, orchestration generate
 stories:
 - id: US-PLN-015
-  title: Manage Epic Phases
+  title: Epic Populate
   category: phase_management
   priority: high
-  description: As a planner agent structuring an epic, I want to add, list, and update phases within an epic, so that the
-    epic has clear execution milestones.
+  description: As a planner agent structuring an epic, I want to add, list, and update
+    phases within an epic, so that the epic has clear execution milestones.
   prerequisites: []
   inherits_patterns:
   - id: PAT-DAT-002
     bind:
       entity: phase
       repository: EpicRepository
-      operations: [add, list, update]
+      operations:
+      - add
+      - list
+      - update
   steps:
   - step: 1
-    when: the feature is used
+    when: a planner adds a phase to an epic
     then:
-    - agentic epic phase add --id P1 --name 'Name' creates a new phase
+    - agentic epic phase add --epic <folder> --id <id> --name <name> --agent <agent>
+      creates a phase record in TinyDB via repo.add_phase
+    - The --agent flag is the routing field that orchestration-executor reads at run
+      time; it is set at plan time, not at execution time
   - step: 2
-    when: the feature is used
+    when: the same `phase add` is run twice with identical id+name
     then:
-    - The --description flag adds scope information to the phase
+    - "The second call is idempotent and exits 0 \u2014 no duplicate phase is created\
+      \ (this is a deliberate non-obvious choice; rejecting duplicates would break\
+      \ the planner-orchestration retry loop)"
   - step: 3
-    when: the feature is used
+    when: agentic epic phase list is run
     then:
-    - agentic epic phase list shows all phases with status and ticket counts
+    - The CLI sources phases via repo.list_phases() (TinyDB query, no filesystem scan);
+      each row shows id, name, agent, status, and ticket count derived from the same
+      atomic snapshot
   - step: 4
-    when: the feature is used
+    when: agentic epic phase update <id> --status <new> is invoked
     then:
-    - agentic epic phase update <id> --status in_progress changes phase status
+    - The CLI calls repo.update_phase under FileLock; the status transition is persisted
+      atomically before the command returns
   - step: 5
-    when: the feature is used
+    when: TinyDB FileLock cannot be acquired within the timeout
     then:
-    - Phase IDs are unique within an epic
+    - phase add/update/list exits non-zero with a lock-timeout message naming the
+      holding PID if discoverable; the TinyDB file is not corrupted (degradation contract
+      for the FileLock dependency)
   - step: 6
-    when: the feature is used
+    when: phase update is called with an unsupported status value
     then:
-    - Phase data is stored in TinyDB (repo.add_phase, repo.update_phase)
-  - step: 7
-    when: the feature is used
-    then:
-    - Phase list sources data from TinyDB
-  - step: 8
-    when: the feature is used
-    then:
-    - Status transitions are validated
+    - The CLI rejects the call with an enum-mismatch error and does NOT touch TinyDB;
+      supported statuses are planning|in_progress|completed|blocked
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'A seed epic exists in TinyDB via `agentic epic new "UAT phase
+      mgmt"
+
+      --branch plan-uat-phase-mgmt`. No phases have been added yet.
+
+      '
+    preconditions:
+    - US-PLN-001
+    journey:
+    - step: 1
+      action: Run `agentic epic phase add --epic <folder> --id P1 --name Design --agent
+        planner-build --description "Design phase"`
+      observe:
+      - command exits 0
+      - '`agentic epic phase list --epic <folder>` shows P1 with status=planning and
+        0 tickets'
+    - step: 2
+      action: Run `agentic epic phase add --epic <folder> --id P2 --name Implement
+        --agent build-python`
+      observe:
+      - command exits 0
+      - '`agentic epic phase list --epic <folder>` shows P2 alongside P1'
+    - step: 3
+      action: Run `agentic epic phase add --epic <folder> --id P1 --name Design --agent
+        planner-build` again
+      observe:
+      - command exits 0 (idempotent re-add) OR exits non-zero with a clear 'already
+        exists' message
+      - '`agentic epic phase list --epic <folder>` still shows exactly two phases
+        (no duplicate)'
+    - step: 4
+      action: Run `agentic epic phase update P1 --epic <folder> --status in_progress`
+      observe:
+      - command exits 0
+      - '`agentic epic phase list --epic <folder>` shows P1 with status=in_progress'
+    - step: 5
+      action: Run `agentic epic phase update P1 --epic <folder> --status completed`
+      observe:
+      - command exits 0
+      - '`agentic epic phase list --epic <folder>` shows P1 with status=completed'
+    success_signals:
+    - Multiple phases can be added to one epic and all are listed via `phase list`
+    - Phase status transitions are persisted across independent CLI invocations
+    - Adding a duplicate phase does not silently corrupt the phase list
+    cleanup:
+    - '`agentic epic archive <folder>`'
   related_commands:
   - agentic epic phase add --id P1 --name 'Core Implementation'
   - agentic epic phase list
@@ -54,7 +108,8 @@ stories:
   related_files:
   - modules/AgenticCLI/src/agenticcli/commands/epic.py
   - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
-  last_tested: '2026-02-24'
-  test_status: passing
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
   test_notes: ''
-  tested_by_plan: 260223NE_migrate_planrepository_to_use_filelock_with_tinydb
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

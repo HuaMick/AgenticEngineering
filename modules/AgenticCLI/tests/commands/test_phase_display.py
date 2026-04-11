@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def _make_phase(name, phase_id=None, status="pending", tasks=None):
+def _make_phase(name, phase_id=None, status="planning", tasks=None):
     """Create a mock PhaseData."""
     p = MagicMock()
     p.name = name

@@ -60,7 +60,7 @@ class TestEpicRepositoryPhaseMaxTurnsRoundTrip:
         repo.add_phase("test_epic", {
             "name": "Build",
             "phase_id": "P1",
-            "status": "pending",
+            "status": "planning",
             "agent": "build-python",
             "max_turns": 150,
         })
@@ -77,7 +77,7 @@ class TestEpicRepositoryPhaseMaxTurnsRoundTrip:
         repo.add_phase("test_epic", {
             "name": "Test",
             "phase_id": "P2",
-            "status": "pending",
+            "status": "planning",
             "agent": "test-builder",
             "max_turns": 75,
         })
@@ -93,7 +93,7 @@ class TestEpicRepositoryPhaseMaxTurnsRoundTrip:
         repo.add_phase("test_epic", {
             "name": "Deploy",
             "phase_id": "P3",
-            "status": "pending",
+            "status": "planning",
             "agent": "deploy-agent",
         })
 
@@ -108,7 +108,7 @@ class TestEpicRepositoryPhaseMaxTurnsRoundTrip:
         repo.add_phase("test_epic", {
             "name": "Build",
             "phase_id": "P1",
-            "status": "pending",
+            "status": "planning",
             "agent": "build-python",
         })
 
@@ -129,7 +129,7 @@ class TestEpicRepositoryPhaseMaxTurnsRoundTrip:
         repo.add_phase("test_epic", {
             "name": "Build",
             "phase_id": "P1",
-            "status": "pending",
+            "status": "planning",
             "agent": "build-python",
             "max_turns": 250,
         })
@@ -146,21 +146,21 @@ class TestEpicRepositoryPhaseMaxTurnsRoundTrip:
         repo.add_phase("test_epic", {
             "name": "Build",
             "phase_id": "P1",
-            "status": "pending",
+            "status": "planning",
             "agent": "build-python",
             "max_turns": 100,
         })
         repo.add_phase("test_epic", {
             "name": "Test",
             "phase_id": "P2",
-            "status": "pending",
+            "status": "planning",
             "agent": "test-builder",
             "max_turns": 50,
         })
         repo.add_phase("test_epic", {
             "name": "Deploy",
             "phase_id": "P3",
-            "status": "pending",
+            "status": "planning",
             "agent": "deploy-agent",
             # No max_turns
         })

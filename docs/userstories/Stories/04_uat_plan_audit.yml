@@ -1,0 +1,123 @@
+area: uat_plan_audit
+description: "uat_plan field on stories and the --check-uat-plan audit mode"
+stories:
+- id: US-STR-030
+  title: Story UAT Plan Audit
+  category: story_management
+  priority: high
+  lifecycle: implemented
+  description: |
+    As a planner-test agent or story author, I want every story to carry a
+    concrete `uat_plan` block (persona, starting_state, journey, success_signals,
+    optional cleanup) and a CLI audit mode that flags stories missing one,
+    so that doc-blind UAT becomes a forcing function on story coherence
+    instead of test-uat doing implicit design work at run time.
+
+    Added on 2026-04-07 to claim the uat_plan mechanic that was added to
+    story-schema.yml and stories.py earlier in the same session. The
+    audit mode is `agentic stories audit --check-uat-plan` (with optional
+    --category filter and --strict).
+  prerequisites: []
+  steps:
+  - step: 1
+    when: a story author drafts a new story
+    then:
+    - The story MUST include a uat_plan top-level field with persona, starting_state, journey, and success_signals as required sub-fields; preconditions and cleanup are optional
+    - The forcing-function rule (build-story-writer/process.yml UAT-FIRST FENCE) requires drafting the uat_plan FIRST — if a coherent doc-blind journey cannot be written, the story is the wrong size and must be split, merged, or rescoped before drafting steps
+  - step: 2
+    when: persona is set on a uat_plan
+    then:
+    - persona must match an enum value defined by test-uat (currently `agent-blind-test`); story-schema.yml records the enum so writer agents can self-validate
+  - step: 3
+    when: each journey entry is drafted
+    then:
+    - "Each journey step requires step (int), action (string), and observe (list of concretely observable outcomes)"
+    - "Vague observe items like 'verify it worked' are forbidden; observe items must be checkable (exit code, output match, file existence, DB state)"
+  - step: 4
+    when: a story has cross-story dependencies
+    then:
+    - "uat_plan.preconditions lists US-IDs that must PASS before this journey is runnable; this is the dependency graph the health dashboard uses for failure propagation"
+  - step: 5
+    when: agentic stories audit --check-uat-plan is invoked
+    then:
+    - The CLI walks every story file under docs/userstories/, checks each story for a minimally-populated uat_plan, and reports the missing IDs
+    - "Stories with `lifecycle: deprecated` or `lifecycle: archived` are excluded — the journey is owned by the successor (deprecation-over-deletion contract)"
+    - Optional --category <substring> scopes the scan; --strict exits non-zero when any active story is missing
+    - -j / --json emits {check, total_stories, missing_uat_plan, missing_by_file, missing_count, all_have_uat_plan}
+  - step: 6
+    when: the audit detects a malformed uat_plan (missing persona, empty journey, no success_signals)
+    then:
+    - The story is reported as missing — partial uat_plans are treated the same as absent ones (no half-credit; the forcing function is binary)
+  - step: 7
+    when: docs/userstories/ is missing entirely
+    then:
+    - The audit exits non-zero with a "userstories directory not found" error naming the expected path; this is a structural prerequisite, not a story-level failure (degradation contract — depender fails closed when the consumed corpus root is gone)
+  - step: 8
+    when: a single story file is malformed YAML
+    then:
+    - The audit skips that file with a parse warning and continues with the rest; one bad file does not block the audit (matches the partial-degradation contract from US-STR-001 step 8)
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: |
+      A clean checkout with docs/userstories/ populated. At least one
+      story is known to have a uat_plan (e.g., US-PLN-001) and at least
+      one story is known to be deprecated (e.g., US-PLN-065).
+    preconditions:
+    - US-STR-001
+    journey:
+    - step: 1
+      action: "Run `agentic -j stories audit --check-uat-plan`"
+      observe:
+      - "command exits 0"
+      - "JSON contains check=uat_plan, total_stories, missing_uat_plan list, missing_count"
+      - "deprecated stories (e.g., US-PLN-065) do NOT appear in missing_uat_plan"
+    - step: 2
+      action: "Run `agentic -j stories audit --check-uat-plan --category Planning`"
+      observe:
+      - "command exits 0"
+      - "scope is restricted to Planning/ stories only (smaller total_stories)"
+    - step: 3
+      action: "Run `agentic stories audit --check-uat-plan --strict` against the current corpus (with all active stories carrying uat_plans)"
+      observe:
+      - "command exits 0"
+    - step: 4
+      action: "Temporarily strip the uat_plan block from one active story file, then re-run step 3"
+      observe:
+      - "command exits non-zero"
+      - "stderr / stdout names the affected story id"
+      - "the rest of the audit still runs"
+    - step: 5
+      action: "Restore the stripped uat_plan and re-run step 3"
+      observe:
+      - "command exits 0 again"
+    - step: 6
+      action: "Temporarily move docs/userstories/ aside and run `agentic stories audit --check-uat-plan`"
+      observe:
+      - "command exits non-zero"
+      - "stderr names 'userstories directory not found'"
+    success_signals:
+    - "--check-uat-plan distinguishes minimally-populated uat_plans from missing/partial ones"
+    - "Deprecated stories are correctly excluded from the gap report"
+    - "--strict mode flips exit code non-zero on any gap, suitable for CI gating"
+    - "--category filter scopes the audit"
+    - "Missing corpus directory fails closed with a named-path error"
+    cleanup:
+    - "Restore any temporarily moved/modified story files"
+  related_commands:
+  - agentic stories audit --check-uat-plan
+  - agentic stories audit --check-uat-plan --category Planning
+  - agentic stories audit --check-uat-plan --strict
+  - agentic -j stories audit --check-uat-plan
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/stories.py
+  - modules/AgenticGuidance/assets/specifications/story-schema.yml
+  - modules/AgenticGuidance/agents/build/build-story-writer/process.yml
+  related_stories:
+  - US-STR-001
+  related_agents:
+  - build-story-writer
+  - test-uat
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: 260406AG_story_writer_uat_first_restructure

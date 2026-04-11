@@ -115,7 +115,7 @@ class TestBlockedState:
         mock_repo = MagicMock()
         mock_repo.list_phases.return_value = [
             PhaseData(name="P1", status="blocked", agent="build-python"),
-            PhaseData(name="P2", status="pending", agent="test-builder"),
+            PhaseData(name="P2", status="planning", agent="test-builder"),
         ]
         workflow._get_repository.return_value = mock_repo
 
@@ -172,7 +172,7 @@ class TestBlockedState:
                       blocked_reason="Reason A"),
             PhaseData(name="Phase B", status="blocked", agent="test-builder",
                       blocked_reason="Reason B"),
-            PhaseData(name="Phase C", status="pending", agent="explore"),
+            PhaseData(name="Phase C", status="planning", agent="explore"),
         ]
         workflow._get_repository.return_value = mock_repo
 
@@ -200,7 +200,7 @@ class TestBlockedState:
         mock_repo = MagicMock()
         mock_repo.list_phases.return_value = [
             PhaseData(name="P1", status="blocked", agent="build-python"),
-            PhaseData(name="P2", status="pending", agent="test-builder"),
+            PhaseData(name="P2", status="planning", agent="test-builder"),
         ]
         workflow._get_repository.return_value = mock_repo
 

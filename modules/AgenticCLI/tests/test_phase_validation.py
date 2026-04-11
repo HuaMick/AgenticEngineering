@@ -303,15 +303,15 @@ class TestHasAnyRoutedPhase:
 class TestStalePhaseRecovery:
     """Tests for ExecutionRunner._recover_stale_phases."""
 
-    def test_resets_in_progress_to_pending(self, tmp_path):
-        """Phases stuck in in_progress are reset to pending."""
+    def test_resets_in_progress_to_planning(self, tmp_path):
+        """Phases stuck in in_progress are reset to planning."""
         from unittest.mock import MagicMock
         from agenticcli.workflows.orchestration import ExecutionRunner
 
         repo = _make_repo(tmp_path)
         _seed_epic(repo)
         repo.add_phase(EPIC_FOLDER, {"name": "Build", "agent": "build-python", "status": "in_progress"})
-        repo.add_phase(EPIC_FOLDER, {"name": "Test", "agent": "test-builder", "status": "pending"})
+        repo.add_phase(EPIC_FOLDER, {"name": "Test", "agent": "test-builder", "status": "planning"})
 
         runner = ExecutionRunner.__new__(ExecutionRunner)
         runner.workflow = MagicMock()
@@ -321,8 +321,8 @@ class TestStalePhaseRecovery:
         phases = repo.list_phases(EPIC_FOLDER)
         build_phase = next(p for p in phases if p.name == "Build")
         test_phase = next(p for p in phases if p.name == "Test")
-        assert build_phase.status == "pending"
-        assert test_phase.status == "pending"  # unchanged
+        assert build_phase.status == "planning"
+        assert test_phase.status == "planning"  # unchanged
 
     def test_ignores_completed_phases(self, tmp_path):
         """Completed phases are not touched by recovery sweep."""

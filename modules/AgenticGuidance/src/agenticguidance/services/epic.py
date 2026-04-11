@@ -30,6 +30,7 @@ class EpicStatus(Enum):
 
 
 # @story US-RES-001
+# @story US-PLN-015
 class PhaseStatus(Enum):
     """Canonical phase status values.
 
@@ -37,7 +38,7 @@ class PhaseStatus(Enum):
     orchestration-executor-specification.yml.
     """
 
-    PENDING = "pending"
+    PLANNING = "planning"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     FAILED = "failed"

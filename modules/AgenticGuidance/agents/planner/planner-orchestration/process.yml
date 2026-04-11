@@ -60,7 +60,11 @@ process:
         - test phases -> tester agents (test-builder, test-builder)
         - cleanup phases -> builder agents (cleanup tasks use builders)
         - audit phases -> planner-audit (epic folder compliance)
-        - uat phases -> test-uat (user acceptance testing)
+
+        DO NOT create "uat" phases. As of 2026-04-11 UAT is a standalone
+        workflow (`agentic orchestrate session uat`) that runs on-demand
+        against story uat_plan blocks. Epic phase lists contain only
+        build/test/cleanup/audit/teach phases.
 
         For each phase, resolve the generic type to the specific agent based on:
         - Task agent_type fields in TinyDB
@@ -117,7 +121,7 @@ process:
         epics bypass this requirement.
 
         Required fields per phase record:
-        - name: Phase name (e.g., "Build", "Test", "Cleanup", "UAT")
+        - name: Phase name (e.g., "Build", "Test", "Cleanup", "Audit")
         - agent: Resolved agent type (e.g., "build-python", "test-builder")
         - execution: "sequential" or "parallel"
         - status: "pending" (initial value)
@@ -129,16 +133,16 @@ process:
         - affected_stories: Story IDs from plan metadata (if present)
 
         STORY METADATA IN PHASE RECORDS:
-        When plan has affected_stories, include in the UAT phase record.
-        UAT phase records should annotate which stories they validate.
-        STORY_REGRESSION trigger should be included in feedback_triggers.
-        This enables the executor to read story context directly from TinyDB.
+        Ticket.story_ids links each ticket to the stories it validates.
+        The executor uses this mapping to record `last_pass_commit` for
+        every covered story when the phase completes successfully. UAT
+        validation is separate (see `agentic orchestrate session uat`).
 
       example: |
         # Example phase creation for a build epic:
         agentic epic phase add --epic 260207PO_refactor --name "Build" --agent build-python --execution sequential
         agentic epic phase add --epic 260207PO_refactor --name "Test" --agent test-builder --execution sequential
-        agentic epic phase add --epic 260207PO_refactor --name "UAT" --agent test-uat --execution sequential
+        agentic epic phase add --epic 260207PO_refactor --name "Audit" --agent planner-audit --execution sequential
 
     # ========================================
     # STEP 6: Validate Phase Records

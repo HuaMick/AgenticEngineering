@@ -1,64 +1,118 @@
 area: agent_definitions
-description: "Manifest structure, archetypes, agent identity"
+description: Manifest structure, archetypes, agent identity
 stories:
 - id: US-GDN-005
-  title: Agent Manifest Structure
+  title: Agent Manifest Archetypes
   category: agent_definitions
   priority: high
-  description: As an agent or developer understanding the system, I want to know what a manifest.yml declares and how
-    its structure varies by agent archetype, so that I understand agent identity, capabilities, and routing contracts.
+  lifecycle: implemented
+  description: "As an agent or developer understanding the orchestration registry,\
+    \ I want\neach agent's manifest.yml to declare its archetype (category hub,\n\
+    orchestrator, or execution agent) and \u2014 for orchestrators \u2014 its spawn\n\
+    fence, so that the orchestration loop can verify routing decisions\nagainst the\
+    \ registry without runtime detection.\n\nThis is a Guidance-internal story by\
+    \ depender ownership: manifest\narchetypes are defined by Guidance, the orchestration\
+    \ registry resolver\nconsumes them, and the spawn fence is enforced at spawn time\
+    \ before\nany CLI process is launched.\n"
   prerequisites: []
   steps:
   - step: 1
-    when: the feature is used
+    when: a manifest is loaded by the agent registry
     then:
-    - Every agent has a manifest.yml in modules/AgenticGuidance/agents/{category}/{agent-name}/
+    - "manifest.yml lives at modules/AgenticGuidance/agents/{category}/{agent-name}/manifest.yml;\
+      \ absence of the file means \"not registered\" \u2014 no fallback discovery\
+      \ exists"
+    - Every manifest carries name, description, version, and category as identity
+      fields
   - step: 2
-    when: the feature is used
+    when: the registry classifies a loaded manifest into one of three archetypes
     then:
-    - 'Core fields shared by all manifests: name, description, version, category'
+    - "Category hub: contains sub_agents: + routing_logic: \u2014 acts as a registry\
+      \ for an agent family (e.g., the planner category hub lists planner-build, planner-test,\
+      \ etc.)"
+    - "Orchestrator: contains spawns: \u2014 each entry declares agent, purpose, and\
+      \ when (conditions). Spawns: acts as a fence \u2014 orchestrators MAY only spawn\
+      \ agents listed in their own spawns: block"
+    - "Execution agent: has neither sub_agents: nor spawns: \u2014 it is a leaf that\
+      \ does work and emits outputs"
   - step: 3
-    when: the feature is used
+    when: an orchestrator agent attempts to spawn another agent
     then:
-    - 'Three manifest archetypes exist: category hub, orchestrator, and execution agent'
+    - The spawn pipeline checks the parent orchestrator's spawns: list before launch
+    - A spawn that names an agent NOT in the parent's spawns: "block is rejected with\
+        \ a fence-violation error before tmux/SDK launch (degradation contract \u2014\
+        \ depender fails closed when consumed routing data forbids the spawn)"
   - step: 4
-    when: the feature is used
+    when: 'an execution agent declares outputs:'
     then:
-    - 'Category hub manifests (7) include sub_agents: and routing_logic: — act as registries for agent families'
+    - The outputs: section names artifacts (name, path_template, description, required)
+        so downstream validation gates can check the agent produced what it claimed
+    - Missing required outputs cause the executor to mark the phase blocked rather
+      than completed (validation gate; see US-PLN-061 step 3)
   - step: 5
-    when: the feature is used
+    when: 'an orchestrator''s spawns: list references an agent that no longer has
+      a manifest on disk'
     then:
-    - 'Orchestrator manifests (3) include spawns: — each entry declares agent, purpose, and when (conditions)'
-  - step: 6
-    when: the feature is used
-    then:
-    - 'Spawn declarations act as a fence: only listed agents may be spawned by that orchestrator'
-  - step: 7
-    when: the feature is used
-    then:
-    - 'Execution agent manifests (~17) have no spawns: — they are leaf nodes that do actual work'
-  - step: 8
-    when: the feature is used
-    then:
-    - 'Optional fields vary by archetype: outputs (artifact declarations), project_type (builders), architecture_checklist (planner-build), boundaries, responsibilities'
-  - step: 9
-    when: the feature is used
-    then:
-    - 'outputs: section declares name, path_template, description, required — enables downstream validation of completeness'
-  - step: 10
-    when: the feature is used
-    then:
-    - 'Example: orchestration-planning spawns planner-build, planner-test, planner-orchestration'
-  - step: 11
-    when: the feature is used
-    then:
-    - 'Example: planner-build outputs TinyDB ticket records (build phase) and TinyDB phase records'
+    - "The registry refuses to load the orchestrator at all and prints \"spawns target\
+      \ not found\" naming the missing agent; the orchestrator cannot be invoked until\
+      \ the dangling reference is repaired (single-custodian rule \u2014 teacher-update-guidance\
+      \ owns these files)"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh repo clone on main. The agent registry can be inspected
+      via
+
+      `agentic agent list` or by reading the compiled context for any role.
+
+      '
+    preconditions: []
+    journey:
+    - step: 1
+      action: Run `agentic agent list` (or its JSON variant) and pick three agents
+        to spot-check
+      observe:
+      - command exits 0
+      - list includes at least one orchestrator (e.g., orchestration-planning) and
+        at least one execution agent (e.g., build-python)
+    - step: 2
+      action: Run `agentic agent context bootstrap --role orchestration-planning`
+        and grep the compiled context for `spawns:`
+      observe:
+      - 'spawns: block is present and lists planner-* agents'
+      - 'no execution agents are listed in spawns: of an execution agent (cross-check
+        by running the same command for build-python)'
+    - step: 3
+      action: 'Temporarily rename one agent referenced in orchestration-planning''s
+        spawns: list (e.g., move modules/AgenticGuidance/agents/planner/planner-build/manifest.yml
+        aside)'
+      observe:
+      - subsequent `agentic agent context bootstrap --role orchestration-planning`
+        exits non-zero
+      - stderr names the missing agent and the dangling spawns reference
+    - step: 4
+      action: Restore the renamed manifest and re-run step 2
+      observe:
+      - context resolution succeeds again
+    success_signals:
+    - Three archetypes (hub / orchestrator / execution) are observable from the compiled
+      context, not from the file system layout
+    - "Spawns: list is a hard fence \u2014 dangling references break load, not just\
+      \ runtime"
+    - Restoring the missing manifest immediately repairs the registry without further
+      action
+    cleanup:
+    - Restore any temporarily renamed manifest files
+  related_commands:
+  - agentic agent list
+  - agentic agent context bootstrap --role <agent>
   related_agents:
   - orchestration-planning
   - orchestration-executor
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/context.py
-  last_tested: null
-  test_status: untested
+  - modules/AgenticGuidance/agents/
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4

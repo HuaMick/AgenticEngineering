@@ -46,17 +46,17 @@ class TestTimeouts:
         from agenticcli.utils.sdk_runner import get_timeout_for_role
         assert get_timeout_for_role("build-story-writer") == 600
 
-    def test_test_uat_timeout_is_1800(self):
+    def test_test_uat_timeout_is_3600(self):
         from agenticcli.utils.sdk_runner import get_timeout_for_role
-        assert get_timeout_for_role("test-uat") == 1800
+        assert get_timeout_for_role("test-uat") == 3600
 
-    def test_trace_explorer_timeout_is_1800(self):
+    def test_trace_explorer_timeout_is_3600(self):
         from agenticcli.utils.sdk_runner import get_timeout_for_role
-        assert get_timeout_for_role("trace-explorer") == 1800
+        assert get_timeout_for_role("trace-explorer") == 3600
 
-    def test_build_docs_writer_timeout_is_1800(self):
+    def test_build_docs_writer_timeout_is_3600(self):
         from agenticcli.utils.sdk_runner import get_timeout_for_role
-        assert get_timeout_for_role("build-docs-writer") == 1800
+        assert get_timeout_for_role("build-docs-writer") == 3600
 
 
 class TestRegistryPresence:

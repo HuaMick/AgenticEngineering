@@ -237,7 +237,7 @@ class TestEpicRepositoryStoryIds:
         })
         repo.add_phase("test_epic", {
             "name": "Build",
-            "status": "pending",
+            "status": "planning",
         })
 
         # Add ticket with story_ids
@@ -268,7 +268,7 @@ class TestEpicRepositoryStoryIds:
             "epic_folder": str(tmp_path / "test_epic"),
             "description": "Test epic",
         })
-        repo.add_phase("test_epic", {"name": "Build", "status": "pending"})
+        repo.add_phase("test_epic", {"name": "Build", "status": "planning"})
         repo.add_ticket("test_epic", "Build", {
             "id": "T1",
             "name": "Task 1",
@@ -293,7 +293,7 @@ class TestEpicRepositoryStoryIds:
             "epic_folder": str(tmp_path / "test_epic"),
             "description": "Test epic",
         })
-        repo.add_phase("test_epic", {"name": "Build", "status": "pending"})
+        repo.add_phase("test_epic", {"name": "Build", "status": "planning"})
         repo.add_ticket("test_epic", "Build", {
             "id": "T1",
             "name": "Task 1",
@@ -317,7 +317,7 @@ class TestEpicRepositoryStoryIds:
             "epic_folder": str(tmp_path / "test_epic"),
             "description": "Test epic",
         })
-        repo.add_phase("test_epic", {"name": "Build", "status": "pending"})
+        repo.add_phase("test_epic", {"name": "Build", "status": "planning"})
         repo.add_ticket("test_epic", "Build", {
             "id": "T1",
             "name": "Task 1",

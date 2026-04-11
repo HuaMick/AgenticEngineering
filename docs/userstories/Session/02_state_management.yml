@@ -1,48 +1,125 @@
 area: state_management
-description: "Process state registry inspection and cleanup"
+description: Process state registry inspection and cleanup
 stories:
 - id: US-SES-006
-  title: Process State Management
+  title: Session State Registry
   category: state_management
   priority: medium
-  description: As a developer debugging CLI operations, I want to inspect registered CLI processes and clean up stale
-    records, so that I can track what operations are running, diagnose issues, and keep the state registry accurate.
+  lifecycle: implemented
+  description: "As a developer debugging CLI operations, I want to inspect the in-process\n\
+    state registry, clean up stale records, and keep TinyDB-backed session\nstate\
+    \ accurate, so that I can track what is actually running and recover\nfrom crashes\
+    \ that left orphaned PID entries.\n\nThis is a CLI story by depender ownership.\
+    \ The registry resolver lives\nat services/state.py in AgenticGuidance; the CLI\
+    \ consumes it via the\n`agentic orchestrate debug state` subcommands. The Guidance\
+    \ file is\nlisted in related_files for staleness detection only \u2014 it is not\
+    \ a\nco-owner.\n"
   prerequisites: []
   inherits_patterns:
   - id: PAT-CLI-001
     bind:
-      command: "agentic orchestrate debug state list"
-      expected_keys: [pid, command, status, start_time]
+      command: agentic orchestrate debug state list
+      expected_keys:
+      - pid
+      - command
+      - status
+      - start_time
   steps:
   - step: 1
-    when: state is listed
+    when: agentic orchestrate debug state list is invoked
     then:
-    - agentic orchestrate debug state list shows all registered processes with PID, command, status, start time
-    - The --active flag filters to show only running processes
-    - Dead processes are automatically cleaned up on list
+    - The CLI lists all registered processes with PID, command, status, start_time
+    - The --active flag filters to processes whose PID is still alive on the host
+    - "Dead processes (PID not found) are automatically pruned from the registry on\
+      \ list \u2014 list is the cheap auto-cleanup path"
   - step: 2
-    when: a specific process is inspected
+    when: agentic orchestrate debug state show <pid> is invoked
     then:
-    - agentic orchestrate debug state show <pid> displays full process details
-    - Output includes command, args, cwd, environment
-    - Start time, end time, and duration are shown
-    - Exit code is displayed if process completed
+    - "The CLI prints full registry details for the named PID \u2014 command, args,\
+      \ cwd, environment, start/end time, duration, exit code if completed"
   - step: 3
-    when: completed records are cleared
+    when: agentic orchestrate debug state clear is invoked
     then:
-    - agentic orchestrate debug state clear removes all completed process records
-    - Active processes are not cleared unless --all is specified
+    - Completed process records are removed; active processes are NOT cleared unless
+      --all is also passed
+    - --all + --force is required to remove still-running entries; --force skips the
+      interactive confirmation
   - step: 4
-    when: all records are cleared
+    when: agentic orchestrate debug state cleanup is invoked
     then:
-    - The --all flag removes all records including active processes
-    - The --force flag skips confirmation prompt
+    - Each registered PID is checked for liveness; dead entries are removed and a
+      cleaned-count is printed
+    - Cleanup is the explicit form of the auto-prune that list also performs (cheaper
+      to call directly when you don't need the listing output)
   - step: 5
-    when: dead records are cleaned
+    when: TinyDB FileLock cannot be acquired during a state operation
     then:
-    - agentic orchestrate debug state cleanup removes dead process records
-    - Process liveness is checked via PID
-    - Count of cleaned processes is displayed
+    - The CLI retries with backoff and, if the lock remains held, exits non-zero naming
+      the holding PID if discoverable; the registry file is never partially written
+      (degradation contract for the FileLock dependency)
+  - step: 6
+    when: services/state.py state file is missing or corrupted
+    then:
+    - "state list reports an empty registry without error (missing state file = no\
+      \ processes); state show / clear / cleanup fail closed with a \"registry unreadable\"\
+      \ error naming the file path (asymmetric \u2014 read tolerates absence, write\
+      \ does not)"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Fresh shell with `agentic` on PATH. ~/.agentic/sessions/ is empty
+
+      or contains no test process records.
+
+      '
+    preconditions: []
+    journey:
+    - step: 1
+      action: Run `agentic orchestrate debug state list`
+      observe:
+      - command exits 0
+      - output is empty or shows only legitimately running entries
+    - step: 2
+      action: 'Spawn a quick session: `agentic orchestrate session spawn --prompt
+        ''echo hi'' --max-turns 1 --background`'
+      observe:
+      - command exits 0 and prints a session id
+    - step: 3
+      action: Run `agentic orchestrate debug state list --active`
+      observe:
+      - the spawned session's PID appears in the list with status running (or already
+        completed depending on timing)
+    - step: 4
+      action: Pick the PID and run `agentic orchestrate debug state show <pid>`
+      observe:
+      - 'full record is printed: command, args, cwd, start_time'
+    - step: 5
+      action: Wait for the spawned session to complete, then run `agentic orchestrate
+        debug state cleanup`
+      observe:
+      - command exits 0
+      - cleaned-count > 0 if the spawned session has exited
+    - step: 6
+      action: Run `agentic orchestrate debug state list` again
+      observe:
+      - the cleaned record is gone
+    - step: 7
+      action: Manually corrupt the state file by writing junk to it (e.g., `echo not-json
+        > <state-file>`), then run `agentic orchestrate debug state show 1`
+      observe:
+      - command exits non-zero
+      - stderr names the registry file path and 'registry unreadable'
+    - step: 8
+      action: Restore the state file by running `agentic orchestrate debug state clear
+        --all --force` (which writes a fresh empty registry)
+      observe:
+      - registry is reset to empty without error
+    success_signals:
+    - Read operations tolerate a missing registry; write operations fail closed on
+      corruption
+    - Cleanup and list both prune dead PIDs (list is the cheap path; cleanup is explicit)
+    - FileLock contention degrades to a named-PID error, never silent corruption
+    cleanup:
+    - '`agentic orchestrate debug state clear --all --force` if any test entries remain'
   related_commands:
   - agentic orchestrate debug state list
   - agentic orchestrate debug state list --active
@@ -54,7 +131,8 @@ stories:
   - modules/AgenticCLI/src/agenticcli/commands/state.py
   - modules/AgenticGuidance/src/agenticguidance/services/state.py
   related_agents: []
-  last_tested: null
-  test_status: untested
+  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  test_status: pass
   test_notes: ''
-  tested_by_plan: null
+  tested_by_plan: executor:260411UA_exec_order:Mu Phase
+  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4
