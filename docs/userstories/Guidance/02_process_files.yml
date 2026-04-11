@@ -1,42 +1,280 @@
 area: process_files
-description: "process.yml structure, paths/fences/signposts"
+description: "process.yml schema, spawn context compilation, and write-ownership conventions"
+
+# REFINEMENT NOTES (2026-04-11, branch claude/review-next-story-tuTGQ):
+#
+# The original US-GDN-010 "Process Context Model" fused three concerns (schema,
+# compilation, ownership) and attributed _compile_spawn_context() to
+# modules/AgenticGuidance/src/agenticguidance/services/context.py — which is
+# wrong. The function lives at modules/AgenticCLI/src/agenticcli/commands/session.py:99
+# and uses context.py helpers (get_role_process, get_role_inputs_manifest) to
+# reach into the agent tree. Splitting into US-GDN-010 / 011 / 012 lets each
+# story reference the correct call site.
+#
+# The original also described process.yml as having "paths / fences / signposts"
+# as top-level YAML keys. In practice the file uses: goal, loop_context, inputs,
+# outputs, steps, guidelines, and optionally a fences: block. "Path" / "fence" /
+# "signpost" are conceptual categories defined in
+# modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml and path.yml,
+# NOT literal YAML keys. The refined stories below reflect the actual schema.
+#
+# US-GDN-012 (ownership) is intentionally framed as a CONVENTION-AND-AUDIT story,
+# not a runtime-enforcement story, because no write-gate exists today — the
+# boundary is documented in teacher-update-guidance/manifest.yml and enforced
+# only by ticket-authoring convention. Aspirational enforcement (lint, pre-commit
+# hook, planner check) is listed separately in the story's `aspirational` block
+# so it is visible but does not poison the acceptance criteria.
+
 stories:
+
 - id: US-GDN-010
-  title: Process Context Model
+  title: "Process.yml Schema: Goal, Steps, Fences, and Guidelines"
   category: process_files
   priority: critical
-  description: As an agent or developer understanding the system, I want to know how process.yml
-    guidance is structured and compiled into agent context, so that I understand the execution
-    guidance architecture.
+  description: >
+    As a teacher agent or developer authoring agent guidance, I want process.yml
+    to follow a defined schema with goal, steps, fences, and guidelines sections,
+    so that every agent has a consistent, machine-readable execution contract
+    and the context compiler can ingest it without format negotiation.
   prerequisites: []
   steps:
   - step: 1
-    when: the feature is used
+    when: a process.yml is loaded by _load_agent_process() from an agent directory
     then:
-    - Each agent has a process.yml defining its execution guidance
+    - _load_agent_process() calls yaml.safe_load on the file with no schema validation
+    - The returned dict has role_id, category, process, manifest, and invocation_context keys
+    - If process.yml is missing, the function returns None unless manifest.yml exists
+    - Parse errors (yaml.YAMLError, IOError) are swallowed and the process field is left as None
   - step: 2
-    when: the feature is used
+    when: a well-formed process.yml is loaded
     then:
-    - 'Process guidance uses a tripartite model: paths (sequential workflow steps), fences
-      (constraints on what NOT to do), and signposts (conditional decision hints)'
+    - "The top-level document has a `process:` key containing the agent's execution contract"
+    - "The `process:` block contains `goal:` as the single-sentence mission statement"
+    - "The `process:` block contains `steps:` as an ordered list of discrete actions"
+    - "Optional sub-keys include `loop_context:`, `inputs:`, `outputs:`, `fences:`, and `guidelines:`"
   - step: 3
-    when: the feature is used
+    when: "a `fences:` block is declared inside process.yml"
     then:
-    - This three-part model is specific to this system — generic agent frameworks typically
-      flatten steps and constraints into one structure
+    - "Each fence has a `name:` and `description:` key"
+    - 'The description by convention begins with "FENCE:" as a human marker (the loader does not enforce this)'
+    - "Fences may appear at the top level of `process:` or inline within a step block"
+    - The loader returns whatever structure yaml.safe_load produced; downstream code is responsible for traversal
   - step: 4
-    when: the feature is used
+    when: "a `guidelines:` block is present in process.yml"
     then:
-    - _compile_spawn_context() in session.py programmatically reads process.yml and assembles
-      it with inputs and ticket context into a single markdown document injected into the agent session
+    - guidelines is a list of multiline strings expressing behavioral intent
+    - Guidelines differ from fences in that they state principles, not hard constraints
+    - Guidelines are included verbatim in the compiled spawn context (see US-GDN-011)
   - step: 5
-    when: the feature is used
+    when: "agentic <agent-name> is called for any known agent"
     then:
-    - Process files are maintained by teacher-update-guidance agent, not by the agents that consume them
-  related_agents:
-  - teacher-update-guidance
+    - The CLI reads process.yml via agent_help._load_agent_context()
+    - 'The rendered help surfaces process.process.steps as the agent''s "path"'
+    - Sections missing from process.yml are silently omitted from the help output, not errored
+  success_criteria:
+  - _load_agent_process() returns a dict with role_id, category, process, and manifest for any directory that has at least one of process.yml or manifest.yml
+  - Every shipped process.yml under modules/AgenticGuidance/agents/**/ has process.goal and process.steps (enforced by convention and teacher review, not by the loader)
+  - Every shipped process.yml with steps: uses a list type, never a scalar (loader does not coerce; violations break downstream iteration)
+  - agentic <agent-name> renders steps extracted from process.process.steps for every agent in the roster without raising
+  - YAML parse errors in a single agent's process.yml do not crash the loader for sibling agents
+  related_commands:
+  - "agentic <agent-name>"
+  - "agentic <agent-name> --bootstrap"
+  - "agentic <agent-name> -j"
   related_files:
   - modules/AgenticGuidance/src/agenticguidance/services/context.py
+  - modules/AgenticCLI/src/agenticcli/commands/agent_help.py
+  - modules/AgenticGuidance/assets/definitions/guidance-artifacts.yml
+  - modules/AgenticGuidance/assets/definitions/path.yml
+  - modules/AgenticGuidance/agents/build/build-python/process.yml
+  - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml
+  related_agents:
+  - teacher-update-guidance
+  related_stories:
+  - US-GDN-011
+  - US-GDN-012
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+
+- id: US-GDN-011
+  title: "Spawn Context Compilation"
+  category: process_files
+  priority: critical
+  description: >
+    As a spawned agent receiving a pre-compiled context file, I want
+    _compile_spawn_context() to merge the base prompt, role process, inputs
+    manifest, phase constraint, and current ticket into a single markdown
+    document written to a temp file, so that I can start work immediately
+    without running additional bootstrap commands.
+  prerequisites:
+  - US-GDN-010
+  inherits_patterns:
+  - id: PAT-AGT-001
+    bind:
+      agent_role: "any spawned role (build-python, planner-build, teacher-update-guidance, …)"
+      spawn_method: "sdk-tmux"
+  steps:
+  - step: 1
+    when: _compile_spawn_context() is called with a non-null role
+    then:
+    - The function calls get_role_process(role) from agenticguidance.services.context
+    - If a process dict is returned, a "## Role Process" section with a YAML dump of the process is appended
+    - The function then calls get_role_inputs_manifest(role)
+    - If the manifest has inputs, an "## Essential Inputs" section listing up to 10 inputs (name, description, location) is appended
+  - step: 2
+    when: _compile_spawn_context() is called with a non-null phase_id and epic_folder
+    then:
+    - A "## Phase Constraint" section is inserted BEFORE the Role Process section
+    - The section tells the agent to restrict work to the named phase
+    - The section embeds the exact command "agentic -j epic ticket current --epic <epic> --phase <phase>"
+    - Agents spawned without phase_id do not see a Phase Constraint section
+  - step: 3
+    when: _compile_spawn_context() is called with epic_folder set
+    then:
+    - MainFirstPlanResolver.extract_current_task(epic_folder) is called
+    - If a current ticket is found, a "## Current Ticket" section with id, name, status, and description is appended
+    - If extract_current_task() raises, the inner except swallows it and the compiled context is still returned
+  - step: 4
+    when: _compile_spawn_context() is called with role=None
+    then:
+    - Only the base prompt (plus the phase constraint block, if phase_id was provided) is returned
+    - No Role Process, Essential Inputs, or Current Ticket sections are added
+    - The function returns early after the phase constraint block
+  - step: 5
+    when: the compiled context is returned from _compile_spawn_context()
+    then:
+    - The caller at session.py:754 writes the result to a temp file via write_context_file(session_id, compiled_context)
+    - The agent receives a short_prompt pointing to the context file path, not the full context as a CLI argument
+    - This avoids OS argument length limits for large process files and ticket descriptions
+  - step: 6
+    when: any exception occurs inside the outer bootstrap try block
+    then:
+    - The except clause logs at DEBUG level and appends a fallback note
+    - The fallback note instructs the agent to run "agentic -j epic status --epic <epic>" manually
+    - The function does not raise — a degraded but usable context string is always returned
+  success_criteria:
+  - _compile_spawn_context() never raises; it always returns a non-empty string
+  - When role is provided and get_role_process() returns data, the output contains "## Role Process"
+  - When phase_id is provided, the output contains "## Phase Constraint" with the scoped ticket-current command
+  - When epic_folder has a current ticket, the output contains "## Current Ticket" with the ticket id
+  - Essential Inputs is capped at 10 entries regardless of manifest size
+  - The compiled context is written to disk via write_context_file(), not passed as a CLI argument to claude
+  - Bootstrap failures append a fallback note; they do not abort the spawn
+  related_commands:
+  - "agentic orchestrate session spawn --role <agent> --plan <epic-folder>"
+  - "agentic <agent-name> --bootstrap"
+  related_files:
+  - modules/AgenticCLI/src/agenticcli/commands/session.py
+  - modules/AgenticGuidance/src/agenticguidance/services/context.py
+  - modules/AgenticCLI/src/agenticcli/utils/context_file.py
+  - modules/AgenticCLI/tests/test_execution_resilience.py
+  related_agents:
+  - build-python
+  - planner-build
+  - teacher-update-guidance
+  related_stories:
+  - US-GDN-010
+  - US-GDN-012
+  last_tested: null
+  test_status: untested
+  test_notes: >
+    Pre-existing tests in modules/AgenticCLI/tests/test_execution_resilience.py
+    (test_compile_spawn_context_includes_phase_constraint,
+    test_compile_spawn_context_no_phase_when_none) already exercise steps 2 and
+    4. They need @pytest.mark.story("US-GDN-011") to count toward coverage.
+  tested_by_plan: null
+
+- id: US-GDN-012
+  title: "Process File Ownership (Convention + Audit, Not Enforcement)"
+  category: process_files
+  priority: high
+  description: >
+    As a system operator or auditor, I want process.yml files across all agent
+    directories to be modified only by teacher-update-guidance, so that
+    execution guidance remains coherent, reviewed, and traceable to friction
+    analysis. Today this boundary is a convention documented in
+    teacher-update-guidance/manifest.yml and enforced by ticket-authoring
+    discipline; this story captures the current state and specifies an
+    auditable check rather than a runtime write-gate.
+  prerequisites:
+  - US-GDN-010
+  steps:
+  - step: 1
+    when: teacher-update-guidance is spawned with a target_agent and guidance_changes input
+    then:
+    - The agent locates the target agent's process.yml under modules/AgenticGuidance/agents/<category>/<agent>/
+    - It applies the specified changes and writes the updated file
+    - Its outputs schema records each modified file with path, change_type, and summary
+  - step: 2
+    when: a ticket is created for a non-teacher agent (build-python, planner-build, etc.)
+    then:
+    - By convention, the ticket's target_files list does not include process.yml paths belonging to agents other than the ticket's own working scope
+    - This convention is expressed in teacher-update-guidance/manifest.yml boundaries and relied on by planner-build
+    - No runtime gate prevents violation; the only enforcement is ticket-review discipline and (if added) the audit check described in step 4
+  - step: 3
+    when: agentic <teacher-update-guidance> is called
+    then:
+    - The rendered help lists process.yml and inputs.yml improvement as primary responsibilities
+    - The boundaries section explicitly states the agent does NOT create epics and does NOT update shared assets
+    - The agent can be spawned via "agentic orchestrate session spawn --role teacher-update-guidance --plan <epic-folder>"
+  - step: 4
+    when: a process-file ownership audit is run (aspirational — see aspirational block below)
+    then:
+    - The audit scans TinyDB tickets for target_files containing "modules/AgenticGuidance/agents/**/process.yml"
+    - For each match, it checks whether the ticket's owning agent role is teacher-update-guidance
+    - Violations are reported as a list of (ticket_id, role, offending_target_file) tuples
+    - A clean audit exits 0; a dirty audit exits non-zero with the violation list
+  success_criteria:
+  - teacher-update-guidance/manifest.yml responsibilities include "Improve process.yml files" or equivalent
+  - teacher-update-guidance/manifest.yml boundaries explicitly exclude epic creation and shared-assets modification
+  - The rendered output of "agentic teacher-update-guidance" surfaces those boundaries verbatim from manifest.yml
+  - teacher-update-guidance's output schema records modified files with path, change_type, and summary per file
+  - A manual grep across TinyDB tickets shows no non-teacher ticket whose target_files list contains another agent's process.yml (current convention-level success criterion)
+  aspirational:
+    status: not_implemented
+    summary: >
+      No runtime enforcement prevents a non-teacher agent from writing to any
+      process.yml. The boundary is convention-only today. The items below are
+      NOT part of the success criteria — they are the follow-up work that
+      would convert this story from convention to enforcement.
+    proposals:
+    - id: AUDIT_CMD
+      description: >
+        Add "agentic stories audit --process-ownership" (or extend an existing
+        audit) to scan TinyDB tickets for target_files containing another
+        agent's process.yml and report violations. Exit non-zero on violation.
+    - id: PLANNER_GATE
+      description: >
+        Have planner-build refuse to create a ticket whose target_files
+        include a process.yml outside the ticket's owning agent directory,
+        unless the ticket's role is teacher-update-guidance.
+    - id: PRECOMMIT_HOOK
+      description: >
+        Add a pre-commit hook that rejects a commit touching
+        modules/AgenticGuidance/agents/**/process.yml unless the commit
+        message or branch name references teacher-update-guidance or a
+        guidance-update epic.
+    - id: LOADER_PROVENANCE
+      description: >
+        Record the last-editor role in a process.yml header comment
+        (e.g., "# last-edited-by: teacher-update-guidance") and have the
+        loader log a warning when a process.yml is modified without a
+        matching provenance marker.
+  related_commands:
+  - "agentic teacher-update-guidance"
+  - "agentic teacher-update-guidance --bootstrap"
+  - "agentic orchestrate session spawn --role teacher-update-guidance --plan <epic-folder>"
+  related_files:
+  - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/manifest.yml
+  - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/process.yml
+  - modules/AgenticGuidance/agents/teacher/teacher-update-guidance/inputs.yml
+  related_agents:
+  - teacher-update-guidance
+  related_stories:
+  - US-GDN-010
+  - US-GDN-011
   last_tested: null
   test_status: untested
   test_notes: ''
