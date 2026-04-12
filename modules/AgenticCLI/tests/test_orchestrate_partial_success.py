@@ -38,13 +38,13 @@ class TestSummariseRunnerErrors:
         errors = [
             {
                 "plan": "260401XX_test",
-                "error": "fixture-crash-fast: deliberate SDK-style failure",
+                "error": "mock-crash-fast: deliberate SDK-style failure",
                 "phase": "P1",
                 "session_id": "abc123",
             }
         ]
         result = self._fn()(errors)
-        assert result == "fixture-crash-fast: deliberate SDK-style failure"
+        assert result == "mock-crash-fast: deliberate SDK-style failure"
 
     @pytest.mark.story("US-PLN-046")
     def test_dict_missing_error_field_returns_unknown(self):
@@ -114,7 +114,7 @@ class TestRunPlanningLoopPartialSuccessHeadline:
         """Headline must contain the actual error, not 'budget' or 'iteration cap'."""
         from agenticcli.commands.orchestrate import _run_planning_loop
 
-        fixture_error = "fixture-crash-fast: deliberate SDK-style failure"
+        fixture_error = "mock-crash-fast: deliberate SDK-style failure"
         error_dict = {
             "plan": "260401XX_test_epic",
             "error": fixture_error,
@@ -158,8 +158,8 @@ class TestRunPlanningLoopPartialSuccessHeadline:
         captured = capsys.readouterr()
         output = captured.out + captured.err
 
-        assert "fixture-crash-fast" in output, (
-            f"Expected 'fixture-crash-fast' in output; got:\n{output}"
+        assert "mock-crash-fast" in output, (
+            f"Expected 'mock-crash-fast' in output; got:\n{output}"
         )
         assert "budget" not in output, (
             f"'budget' should not appear in output; got:\n{output}"

@@ -56,9 +56,9 @@ def get_valid_agent_types(agents_dir: Path | None = None) -> set[str]:
     for category_dir in agents_dir.iterdir():
         if not category_dir.is_dir():
             continue
-        # Underscore-prefixed categories (e.g. `_fixtures/`) are UAT-only harnesses
+        # Underscore-prefixed categories (e.g. `_mock/`) are UAT-only harnesses
         # and must never be routable as production agents. See
-        # modules/AgenticGuidance/agents/_fixtures/README.md.
+        # modules/AgenticGuidance/agents/_mock/README.md.
         if category_dir.name.startswith("_"):
             continue
         for agent_dir in category_dir.iterdir():

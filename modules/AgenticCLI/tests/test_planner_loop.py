@@ -2394,15 +2394,15 @@ class TestConcurrentGuard:
 
 
 # ---------------------------------------------------------------------------
-# FIX-001 / FIX-003: fixture-crash-fast integration test
+# FIX-001 / FIX-003: mock-crash-fast integration test
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="requires fixture-crash-fast agent from Phase 2")
+@pytest.mark.skip(reason="requires mock-crash-fast agent from Phase 2")
 def test_fixture_crash_fast_halts_after_one_attempt(tmp_path, monkeypatch):
-    """Integration test: fixture-crash-fast causes runner to halt after 1 attempt.
+    """Integration test: mock-crash-fast causes runner to halt after 1 attempt.
 
-    TODO: Remove skip once modules/AgenticGuidance/agents/_fixtures/fixture-crash-fast/
+    TODO: Remove skip once modules/AgenticGuidance/agents/_mock/mock-crash-fast/
     is created by Phase 2 of the plan.
 
     The fixture agent must write a pane log containing a fatal sdk-tmux pattern
@@ -2421,9 +2421,9 @@ def test_fixture_crash_fast_halts_after_one_attempt(tmp_path, monkeypatch):
     runner.state = {"errors": [], "costs": []}
     runner.working_dir = str(tmp_path)
 
-    # Simulate a single explore call that hits the fixture-crash-fast agent
+    # Simulate a single explore call that hits the mock-crash-fast agent
     explore_result = _fail_result(
-        result="fixture-crash-fast: deliberate SDK-style failure",
+        result="mock-crash-fast: deliberate SDK-style failure",
         session_id="crash-session-001",
     )
 
@@ -2444,6 +2444,6 @@ def test_fixture_crash_fast_halts_after_one_attempt(tmp_path, monkeypatch):
     assert len(errors) == 1
     err = errors[0]
     assert err["plan"] == "crash-test-epic"
-    assert "fixture-crash-fast" in err["error"]
+    assert "mock-crash-fast" in err["error"]
     assert err["phase"] == "explore"
     assert err["session_id"] == "crash-session-001"
