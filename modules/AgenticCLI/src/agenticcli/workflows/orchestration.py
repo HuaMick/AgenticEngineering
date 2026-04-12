@@ -593,7 +593,10 @@ class ExecutionRunner:
                         ", ".join(incomplete[:5]),
                     )
 
-                repo.update_phase(plan_folder, next_phase.name, {"status": "completed"})
+                # Atomic writeback: commit status before propagating any interrupt.
+                self._commit_phase_result_atomic(
+                    repo, plan_folder, next_phase.name, "completed"
+                )
                 self.state["phases_completed"].append(f"{plan_folder}:{next_phase.name}")
                 self._phase_log.info("Phase completed")
 
@@ -625,22 +628,91 @@ class ExecutionRunner:
         logger.warning("Max iterations (%d) reached for %s", max_iterations, plan_folder)
         return False
 
+    def _commit_phase_result_atomic(
+        self, repo, plan_folder: str, phase_name: str, status: str
+    ) -> None:
+        """Write phase status to TinyDB in a KeyboardInterrupt-safe block.
+
+        If a SIGINT arrives between agent-completion-detected and this write,
+        the update is committed before the interrupt propagates.
+
+        Args:
+            repo: EpicRepository instance.
+            plan_folder: Epic folder name.
+            phase_name: Phase name to update.
+            status: Target status string (e.g. "completed", "failed").
+        """
+        _pending_interrupt: Optional[BaseException] = None
+        try:
+            repo.update_phase(plan_folder, phase_name, {"status": status})
+        except KeyboardInterrupt as _ki:
+            _pending_interrupt = _ki
+            try:
+                repo.update_phase(plan_folder, phase_name, {"status": status})
+            except Exception:
+                pass
+        finally:
+            if _pending_interrupt is not None:
+                raise _pending_interrupt  # type: ignore[misc]
+
     def _recover_stale_phases(self, repo, plan_folder: str) -> None:
         """Reset in_progress phases left by interrupted prior runs.
 
-        On startup, any phase stuck in in_progress without an active tmux
-        session is presumed orphaned and marked as failed so the normal
-        retry/feedback logic can handle it.
+        On startup, any phase stuck in in_progress is checked against the
+        StateStore. If the last session for that phase completed successfully,
+        the phase is auto-promoted to completed. Otherwise it is reset to
+        planning so the normal retry/feedback logic can handle it.
 
         Also kills orphaned agentic-* tmux sessions that don't belong to
-        any running session in the state store — prevents concurrent TinyDB
-        access from zombie agents.
+        any running session in the state store.
         """
+        from agenticcli.utils.state_store import StateStore
+        session_store = StateStore("sessions", id_key="session_id")
+
+        _tinydb_query = None
+        try:
+            from tinydb import Query as _TinyQuery
+            _tinydb_query = _TinyQuery()
+        except ImportError:
+            pass
+
         phases = repo.list_phases(plan_folder)
         for phase in phases:
             if phase.status != "in_progress":
                 continue
             recovery_log = self._make_phase_logger(plan_folder, phase.name)
+
+            last_session_id = None
+            if _tinydb_query is not None:
+                try:
+                    raw_docs = repo._phases.search(
+                        (_tinydb_query.epic_folder_name == plan_folder)
+                        & (_tinydb_query.phase_name == phase.name)
+                    )
+                    if raw_docs:
+                        last_session_id = raw_docs[0].get("last_session_id")
+                except Exception as _e:
+                    recovery_log.debug(
+                        "Could not read last_session_id from TinyDB: %s", _e
+                    )
+
+            if last_session_id:
+                session_rec = session_store.load(last_session_id)
+                if (
+                    session_rec
+                    and session_rec.get("status") == "completed"
+                    and session_rec.get("exit_code", 1) == 0
+                ):
+                    recovery_log.warning(
+                        "Reconciled stuck phase %s: session %s completed "
+                        "successfully while phase was in_progress — "
+                        "auto-promoting to completed",
+                        phase.name,
+                        last_session_id[:8],
+                    )
+                    repo.update_phase(plan_folder, phase.name, {"status": "completed"})
+                    continue
+
             recovery_log.warning(
                 "Recovery sweep: stuck in_progress — resetting to planning",
             )
@@ -794,6 +866,17 @@ class ExecutionRunner:
         if not session_id:
             plog.error("No session_id returned%s", retry_label)
             return False, None, False
+
+        # Store session_id in TinyDB so startup reconciliation can recover
+        # phases left in_progress after an executor Ctrl-C.
+        _phase_repo = self.workflow._get_repository()
+        if _phase_repo:
+            try:
+                _phase_repo.update_phase(
+                    plan_folder, phase_id, {"last_session_id": session_id}
+                )
+            except Exception as _sid_err:
+                plog.debug("Could not store last_session_id in phase: %s", _sid_err)
 
         # Log tmux session name for operator visibility (attach for debugging)
         tmux_session = data.get("tmux_session")
