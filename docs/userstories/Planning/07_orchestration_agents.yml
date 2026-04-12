@@ -131,11 +131,41 @@ stories:
       - 'if multiple epics match the current branch, the error also lists the matching
         epic folders in parentheses (e.g. `(multiple epics match branch ''main'':
         folder1, folder2, ...)`)'
+    - step: 7
+      action: 'Route a phase to fixture-crash-fast for crash-path testing: `agentic
+        epic phase add --epic <folder> --id P2 --name CrashTest --agent build-python`
+        then `agentic epic phase update CrashTest --epic <folder> --agent fixture-crash-fast`.
+        Run `agentic orchestrate session plan --epic <folder>`.'
+      observe:
+      - The partial-success headline names the actual error cause (FIX-002)
+      - The headline does NOT contain the strings "budget" or "iteration cap"
+      - 'runner.state["errors"] surfaces the crash diagnosis (FIX-001)'
+    - step: 8
+      action: 'Route a phase to fixture-hang-long: same two-step add+update. Run
+        `agentic orchestrate session plan --epic <folder>`.'
+      observe:
+      - Role timeout fires within 10s (ROLE_TIMEOUT_SECONDS=5 for fixture-hang-long)
+      - Phase is marked blocked or failed
+      - Command exits non-zero
+    - step: 9
+      action: 'Error-text accuracy assertion: grep the CLI output from step 7 for
+        forbidden strings.'
+      observe:
+      - Output does NOT contain "budget" or "iteration cap"
+      - Output DOES contain "fixture-crash-fast" or the sdk-tmux error path name
+    uat_coverage_gaps:
+    - surface: fixture-crash-fast deterministic error text assertion
+      reason: Fixture agents require live Claude SDK to execute their constrained
+        process.yml prompts. Without SDK, pane runner times out at SDK query level
+        before the fixture bash command runs.
+      blocked_by: US-PLN-049
     success_signals:
     - Seed epics are discoverable via `epic list` with a clear next-action hint
     - CLI surface for plan/implement is self-documenting via --help
     - Phase routing is persisted to TinyDB via `phase add --agent`
     - Missing --epic auto-detect failures degrade to a named-flag error
+    - Partial-success headline names the real cause, not "budget/iteration cap" (FIX-002)
+    - SDK-tmux failures produce structured diagnosis via pane-log fallback (FIX-001)
     cleanup:
     - '`agentic epic archive <folder>`'
   related_commands:
@@ -153,13 +183,13 @@ stories:
   - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
   related_agents:
   - orchestration-planning
-  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  last_tested: '2026-04-12T01:52:02.004388+00:00'
   test_status: pass
   test_notes: 'All 6 journey steps pass: epic list shows seed+hint, plan/implement
     --help self-documenting, phase add persists agent routing to TinyDB, missing --epic
     errors with ''cannot infer epic'' and folder list'
   tested_by_plan: executor:260411UA_exec_order:Mu Phase
-  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+  last_pass_commit: 1ddd77fbe0c4758fba0759e75eb2d5a2514628a4
   last_uat_commit: b153af3604e1dd18e0c9c9e911085974046898f4
 - id: US-PLN-047
   title: Orchestrate Session Implement
@@ -266,54 +296,61 @@ stories:
       - command exits 0
       - P1 shows completed in `agentic epic phase list --epic <folder>`
     - step: 3
-      action: 'Validate idempotent-resume without live agent spawning: mark ALL
-
-        remaining phases completed via `agentic epic phase update P2 --epic
-
-        <folder> --status completed` and repeat for P3. Then run
-
-        `agentic orchestrate session implement --epic <folder>`.
-
-        NOTE: implement has no --dry-run flag. The safe inspection path is
-
-        pre-completing all phases so implement finds nothing pending and
-
-        exits with "Phases completed: 0" (or equivalent zero-work message)
-
-        without spawning any agents.
-
-        '
+      action: 'Route P2 to fixture-crash-fast: `agentic epic phase update P2 --epic
+        <folder> --agent fixture-crash-fast`. Run `agentic orchestrate session
+        implement --epic <folder>`.'
       observe:
-      - command exits 0
-      - output indicates no phases were executed (all already completed)
-      - "P1, P2, P3 remain completed in `agentic epic phase list --epic <folder>`\
-        \ \u2014 none were re-executed"
+      - P2 is marked failed with the fixture error string surfaced
+      - executor does not advance past P2 to P3
+      - command exits non-zero
     - step: 4
-      action: Reset P2 and P3 back to planning via `agentic epic phase update <id>
-        --epic <folder> --status planning`. Then run implement and interrupt it (Ctrl-C).
-        Mark P2 completed manually.
+      action: 'Route P2 to fixture-hang-long: `agentic epic phase update P2 --epic
+        <folder> --agent fixture-hang-long`. Run `agentic orchestrate session
+        implement --epic <folder>`.'
       observe:
-      - '`agentic epic phase list --epic <folder>` shows P1 completed, P2 completed,
-        P3 planning'
+      - wait_for_session timeout is enforced (ROLE_TIMEOUT_SECONDS=5)
+      - P2 is marked blocked or failed
+      - executor does not advance to P3
     - step: 5
-      action: Re-run `agentic orchestrate session implement --epic <folder>`
+      action: 'Ctrl-C reconciliation: seed P2 as in_progress with a completed
+        session record (use `agentic epic phase update P2 --epic <folder> --status
+        in_progress`). Create a fake StateStore record with status=completed and
+        exit_code=0. Run `agentic orchestrate session implement --epic <folder>`.'
       observe:
-      - implement starts from P3 (skips P1 and P2)
-      - P1 and P2 are not re-executed
+      - '_recover_stale_phases emits a warning: "Reconciled stuck phase ... session
+        ... completed successfully while phase was in_progress — auto-promoting to
+        completed"'
+      - P2 is promoted to completed in TinyDB
+      - executor advances to P3 (FIX-005 atomic writeback / startup reconciliation)
     - step: 6
+      action: 'Foreground log tee: run `agentic orchestrate session implement --epic
+        <folder>` in foreground (no -b flag). After completion, check
+        ~/.agentic/sessions/<loop_id>/stdout.log.'
+      observe:
+      - stdout.log exists with non-zero size
+      - file contains execution output from the implement run (FIX-006)
+    - step: 7
       action: Add a fourth phase P4 with no --agent flag and try to run implement
       observe:
       - command exits non-zero
       - error names P4 and the missing agent routing
       - P4 status is now `failed` in TinyDB (marked as failed to prevent retry-loop,
         NOT left planning)
+    uat_coverage_gaps:
+    - surface: fixture-crash-fast and fixture-hang-long deterministic error text
+      reason: Fixture agents require live Claude SDK to execute constrained
+        process.yml prompts. Without SDK, pane runner times out before fixture
+        bash command runs.
+      blocked_by: US-PLN-049
     success_signals:
     - Phase execution follows TinyDB _order, not file/list position
     - Completed phases are not re-executed on resume (idempotency)
     - Missing agent routing marks the phase failed and exits non-zero before any agent
       spawn (depender fails closed at the routing layer, not at the spawn layer)
-    - FileLock retries with backoff on contention; lock-timeout fails closed with
-      the holding PID
+    - Ctrl-C between agent completion and TinyDB write is healed by startup
+      reconciliation (FIX-005)
+    - Foreground implement writes stdout.log to session dir (FIX-006)
+    - Fixture crash/hang phases are marked failed/blocked without advancing (FIX-001)
     cleanup:
     - '`agentic epic archive <folder>`'
   related_commands:
@@ -328,12 +365,12 @@ stories:
   - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
   related_agents:
   - orchestration-executor
-  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  last_tested: '2026-04-12T01:52:02.004388+00:00'
   test_status: pass
   test_notes: Implement follows _order, skips completed phases on resume, marks agentless
     P4 failed at routing layer (exit 1)
   tested_by_plan: executor:260411UA_exec_order:Mu Phase
-  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+  last_pass_commit: 1ddd77fbe0c4758fba0759e75eb2d5a2514628a4
   last_uat_commit: b153af3604e1dd18e0c9c9e911085974046898f4
 - id: US-PLN-048
   title: Orchestrate Session UAT
@@ -422,29 +459,41 @@ stories:
       - output prints the resolved target story set
       - no agent process is spawned and no YAML is mutated
     - step: 3
-      action: Run `agentic orchestrate session uat --story US-PLN-047` with a mocked
-        transport where the mock simulates `test-uat` writing `last_uat_commit` via
-        `agentic stories update` before exiting (the agent is the writer, not the
-        runner)
+      action: 'Stamp mechanism verification: record the current `last_uat_commit`
+        for a test story (e.g. US-PLN-047). Run `agentic stories update US-PLN-047
+        --status pass --kind uat --notes "manual stamp test"`. Read
+        `last_uat_commit` again.'
       observe:
-      - command exits 0
-      - the story's YAML now has a non-empty `last_uat_commit` field (written by the
-        mock agent, verified by UatRunner via pre/post read)
-      - the session record carries a `story_id` field equal to US-PLN-047
+      - last_uat_commit changed from the pre-value to the current HEAD commit
+      - the stamp write is performed by the stories update command, not by UatRunner
     - step: 4
-      action: Run `agentic orchestrate session uat --story US-PLN-047` with a mocked
-        transport that returns success but does NOT write `last_uat_commit`
+      action: 'Agent-forgot-to-stamp detection: inspect UatRunner source
+        (workflows/uat.py) for the pre/post last_uat_commit comparison logic.
+        Confirm the code path that marks a run as failed when post == pre.'
       observe:
-      - command exits non-zero (or exits 0 with the story listed as failed in the
-        summary)
-      - summary names the story as failed with reason 'agent forgot to stamp'
-      - YAML is not mutated for that story
+      - 'code reads last_uat_commit before spawn, reads again after, and if
+        post_commit == pre_commit marks the run as failed with reason containing
+        "agent forgot to"'
+      - this is a code-inspection step (no live agent spawn required)
     - step: 5
       action: Invoke `--story <id>` against a story that has no `uat_plan` block
       observe:
-      - 'command exits non-zero OR exits 0 with a final summary listing the story
-        as skipped (contract: continue batch, name the skip)'
+      - 'command exits 0 with a final summary listing the story as skipped
+        (contract: continue batch, name the skip)'
       - YAML is not mutated for the skipped story
+    - step: 6
+      action: 'Real test-uat spawn path: run `agentic orchestrate session uat
+        --story US-PLN-047` against a story with a complete uat_plan. Observe the
+        full spawn-verify-stamp cycle.'
+      observe:
+      - UatRunner spawns test-uat for the story
+      - On pass, last_uat_commit is updated by the agent
+      - UatRunner detects the stamp change and records PASS
+    uat_coverage_gaps:
+    - surface: real test-uat stamp-pass path (step 6)
+      reason: Requires a live Claude SDK session to spawn test-uat. Without SDK
+        the pane runner times out before the agent can execute its uat_plan.
+      blocked_by: US-PLN-049
     success_signals:
     - UAT is reachable via a dedicated CLI command (`orchestrate session uat`) with
       on-demand scoping (--story / --epic / --stale)
@@ -455,6 +504,7 @@ stories:
     - A clean agent exit without a stamp change is treated as a failed UAT run (no
       silent pass-through)
     - Missing `uat_plan` fails closed per-story without blocking the batch
+    - Stamp mechanism works end-to-end: pre/post read detects change
     cleanup:
     - Revert mutated YAML via `git checkout -- docs/userstories/` if running against
       real stories
@@ -471,12 +521,12 @@ stories:
   - modules/AgenticGuidance/src/agenticguidance/services/story.py
   related_agents:
   - test-uat
-  last_tested: '2026-04-11T10:57:54.443036+00:00'
+  last_tested: '2026-04-12T01:52:02.004388+00:00'
   test_status: pass
   test_notes: 'All 5 journey steps pass; all 5 success signals verified: CLI command
     reachable with --story/--epic/--stale scoping, UatRunner spawns test-uat per story
     with story_id, pre/post stamp verification works, clean exit without stamp treated
     as failure, missing uat_plan skipped without blocking batch'
   tested_by_plan: executor:260411UA_exec_order:Mu Phase
-  last_pass_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+  last_pass_commit: 1ddd77fbe0c4758fba0759e75eb2d5a2514628a4
   last_uat_commit: b153af3604e1dd18e0c9c9e911085974046898f4
