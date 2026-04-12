@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from agenticcli.utils.context_file import get_context_dir, write_context_file
+from agenticcli.utils.sdk_pane_runner import pane_log_path_for
 from agenticcli.utils.session_id import generate_session_id
 from agenticcli.utils.session_id import tmux_session_name as _tmux_session_name_util
 from agenticcli.utils.session_state import mark_failed
@@ -49,8 +50,8 @@ def _enable_pipe_pane_logging(tmux_session_name: str, session_id: str) -> None:
     starts producing significant output. The log file is written to
     ~/.agentic/sessions/logs/{session_id}.pane.log.
     """
-    logs_dir = _get_logs_dir()
-    pane_log = logs_dir / f"{session_id}.pane.log"
+    _get_logs_dir()  # ensure directory exists
+    pane_log = pane_log_path_for(session_id)
     try:
         subprocess.run(
             ["tmux", "pipe-pane", "-t", tmux_session_name,

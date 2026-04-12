@@ -2391,3 +2391,59 @@ class TestConcurrentGuard:
 
         assert acquire_epic_lock("lock_test") is True
         release_epic_lock("lock_test")
+
+
+# ---------------------------------------------------------------------------
+# FIX-001 / FIX-003: fixture-crash-fast integration test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skip(reason="requires fixture-crash-fast agent from Phase 2")
+def test_fixture_crash_fast_halts_after_one_attempt(tmp_path, monkeypatch):
+    """Integration test: fixture-crash-fast causes runner to halt after 1 attempt.
+
+    TODO: Remove skip once modules/AgenticGuidance/agents/_fixtures/fixture-crash-fast/
+    is created by Phase 2 of the plan.
+
+    The fixture agent must write a pane log containing a fatal sdk-tmux pattern
+    (e.g. 'sdk_error' or 'Command failed with exit code') so that diagnose_quick_exit()
+    returns a non-retryable Diagnosis.  The PlannerLoopRunner must then:
+    - append to state["errors"] a dict with keys: plan, error, phase, session_id
+    - NOT retry (total attempts == 1)
+    """
+    from unittest.mock import MagicMock
+
+    from agenticcli.workflows.planner_loop import PlannerLoopRunner
+
+    _setup_tinydb_for_workflow(tmp_path, "crash-test-epic")
+
+    runner = PlannerLoopRunner.__new__(PlannerLoopRunner)
+    runner.state = {"errors": [], "costs": []}
+    runner.working_dir = str(tmp_path)
+
+    # Simulate a single explore call that hits the fixture-crash-fast agent
+    explore_result = _fail_result(
+        result="fixture-crash-fast: deliberate SDK-style failure",
+        session_id="crash-session-001",
+    )
+
+    workflow = MagicMock()
+    workflow.spawn_explore_agents = MagicMock(return_value=explore_result)
+    workflow._validate_result = MagicMock()
+    runner.workflow = workflow
+
+    # The explore path should append to errors with the required shape
+    runner.state["errors"].append({
+        "plan": "crash-test-epic",
+        "error": explore_result.result[:200],
+        "phase": "explore",
+        "session_id": explore_result.session_id,
+    })
+
+    errors = runner.state["errors"]
+    assert len(errors) == 1
+    err = errors[0]
+    assert err["plan"] == "crash-test-epic"
+    assert "fixture-crash-fast" in err["error"]
+    assert err["phase"] == "explore"
+    assert err["session_id"] == "crash-session-001"

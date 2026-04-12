@@ -24,6 +24,7 @@ class ErrorType(str, Enum):
     PERMISSION_DENIED = "permission_denied"
     API_KEY_MISSING = "api_key_missing"
     RATE_LIMIT = "rate_limit"
+    SDK_ERROR = "sdk_error"
     UNKNOWN = "unknown"
 
 
@@ -112,6 +113,31 @@ _ERROR_PATTERNS: list[tuple[str, ErrorType, SuggestedAction, bool]] = [
         SuggestedAction.WAIT_AND_RETRY,
         True,
     ),
+    # sdk-tmux specific fatal patterns
+    (
+        "sdk_error",
+        ErrorType.SDK_ERROR,
+        SuggestedAction.ESCALATE,
+        False,
+    ),
+    (
+        "is_error=True",
+        ErrorType.SDK_ERROR,
+        SuggestedAction.ESCALATE,
+        False,
+    ),
+    (
+        "ResultMessage",
+        ErrorType.SDK_ERROR,
+        SuggestedAction.ESCALATE,
+        False,
+    ),
+    (
+        "Command failed with exit code",
+        ErrorType.SDK_ERROR,
+        SuggestedAction.ESCALATE,
+        False,
+    ),
 ]
 
 # Maximum bytes to read from log files for pattern matching.
@@ -188,6 +214,10 @@ def diagnose_session_state(session_data: dict) -> Optional[SessionDiagnosis]:
     Convenience wrapper that extracts log paths from session state and
     delegates to diagnose_session_log.
 
+    For sdk-tmux sessions that carry neither stdout_log nor stderr_log,
+    falls back to reading the pane log at pane_log_path (if present in
+    state) or the canonical path derived from session_id.
+
     Args:
         session_data: Session state dict (from StateStore).
 
@@ -197,13 +227,28 @@ def diagnose_session_state(session_data: dict) -> Optional[SessionDiagnosis]:
     stdout_log = session_data.get("stdout_log")
     stderr_log = session_data.get("stderr_log")
 
-    if not stdout_log and not stderr_log:
-        return None
+    if stdout_log or stderr_log:
+        return diagnose_session_log(
+            log_path=stdout_log or "/dev/null",
+            stderr_path=stderr_log,
+        )
 
-    return diagnose_session_log(
-        log_path=stdout_log or "/dev/null",
-        stderr_path=stderr_log,
-    )
+    # Fallback for sdk-tmux sessions: read pane log
+    pane_log_path = session_data.get("pane_log_path")
+    if not pane_log_path:
+        # Derive path from session_id if stored in state
+        session_id = session_data.get("session_id")
+        if session_id:
+            try:
+                from agenticcli.utils.sdk_pane_runner import pane_log_path_for
+                pane_log_path = str(pane_log_path_for(session_id))
+            except ImportError:
+                pane_log_path = None
+
+    if pane_log_path and Path(pane_log_path).exists():
+        return diagnose_session_log(log_path=pane_log_path)
+
+    return None
 
 
 def failure_summary(diagnosis: SessionDiagnosis) -> dict:

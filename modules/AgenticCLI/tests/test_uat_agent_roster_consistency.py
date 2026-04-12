@@ -35,6 +35,10 @@ class TestFallbackAgentTypes:
         for category_dir in agents_dir.iterdir():
             if not category_dir.is_dir() or category_dir.name.startswith("."):
                 continue
+            # Underscore-prefixed categories (e.g. `_fixtures/`) are UAT-only
+            # harnesses and excluded from the production roster.
+            if category_dir.name.startswith("_"):
+                continue
             for agent_dir in category_dir.iterdir():
                 if agent_dir.is_dir() and (agent_dir / "manifest.yml").exists():
                     fs_agents.add(agent_dir.name)

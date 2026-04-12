@@ -374,3 +374,102 @@ def test_unicode_error_all_invalid_bytes(tmp_path):
 
     # Should not raise regardless of content
     assert isinstance(result, SessionDiagnosis)
+
+
+# ---------------------------------------------------------------------------
+# FIX-001: pane log fallback for sdk-tmux sessions
+# ---------------------------------------------------------------------------
+
+
+def test_diagnose_session_state_pane_log_fallback_via_pane_log_path(tmp_path, monkeypatch):
+    """diagnose_session_state uses pane_log_path when stdout_log/stderr_log absent."""
+    pane_log = tmp_path / "fake-session-id.pane.log"
+    pane_log.write_text("ResultMessage(is_error=True, duration_ms=123)\n")
+
+    state = {
+        "session_id": "fake-session-id",
+        "status": "failed",
+        "transport": "sdk-tmux",
+        "pane_log_path": str(pane_log),
+        # intentionally no stdout_log / stderr_log
+    }
+
+    result = diagnose_session_state(state)
+
+    assert result is not None
+    assert result.retryable is False
+    assert result.error_type == ErrorType.SDK_ERROR
+
+
+def test_diagnose_session_state_pane_log_fallback_via_session_id(tmp_path, monkeypatch):
+    """diagnose_session_state derives pane log path from session_id when pane_log_path absent."""
+    session_id = "test-sess-001"
+    logs_dir = tmp_path / ".agentic" / "sessions" / "logs"
+    logs_dir.mkdir(parents=True)
+    pane_log = logs_dir / f"{session_id}.pane.log"
+    pane_log.write_text("sdk_error: exit code 1\n")
+
+    monkeypatch.setattr(
+        "agenticcli.utils.sdk_pane_runner.pane_log_path_for",
+        lambda sid: logs_dir / f"{sid}.pane.log",
+    )
+
+    state = {
+        "session_id": session_id,
+        "status": "failed",
+        "transport": "sdk-tmux",
+        # no pane_log_path, no stdout_log, no stderr_log
+    }
+
+    result = diagnose_session_state(state)
+
+    assert result is not None
+    assert result.retryable is False
+    assert result.error_type == ErrorType.SDK_ERROR
+
+
+def test_diagnose_session_state_no_logs_no_pane_log():
+    """diagnose_session_state returns None when no log paths available at all."""
+    state = {"session_id": "nonexistent-session", "status": "failed", "transport": "sdk-tmux"}
+
+    result = diagnose_session_state(state)
+
+    # pane log file does not exist, so result should be None
+    assert result is None
+
+
+def test_diagnose_quick_exit_uses_pane_log(tmp_path, monkeypatch):
+    """diagnose_quick_exit returns non-retryable Diagnosis from pane log content."""
+    import json as _json
+    session_id = "qe-test-sess-002"
+    state_dir = tmp_path / ".agentic" / "sessions"
+    state_dir.mkdir(parents=True)
+    logs_dir = state_dir / "logs"
+    logs_dir.mkdir(parents=True)
+
+    pane_log = logs_dir / f"{session_id}.pane.log"
+    pane_log.write_text("Command failed with exit code 1\nsdk_error: something went wrong\n")
+
+    state_data = {
+        "session_id": session_id,
+        "status": "failed",
+        "transport": "sdk-tmux",
+        "pane_log_path": str(pane_log),
+    }
+
+    class _FakeStore:
+        def load(self, sid):
+            if sid == session_id:
+                return state_data
+            return None
+        def save(self, data):
+            pass
+
+    monkeypatch.setattr("agenticcli.utils.state_store.StateStore", lambda *a, **kw: _FakeStore())
+
+    from agenticcli.utils.session_diagnostics import diagnose_quick_exit
+    result = diagnose_quick_exit(session_id)
+
+    assert result is not None
+    assert result.retryable is False
+    assert result.error_type == ErrorType.SDK_ERROR

@@ -17,6 +17,70 @@ from agenticcli.utils.session_id import generate_loop_id
 from agenticcli.utils.state_store import StateStore
 
 
+def _summarise_runner_errors(errors: list) -> str:
+    """Extract a concise cause string from a heterogeneous errors list.
+
+    Accepts strings (from PlanningRunner) and dicts (from PlannerLoopRunner).
+    Dict shape: {"plan": ..., "error": ..., "phase": ..., "session_id": ...}
+    Returns at most 120 chars with the first error's cause. First error wins.
+    """
+    if not errors:
+        return "no error details"
+    first = errors[0]
+    if isinstance(first, dict):
+        cause = str(first.get("error", "unknown error"))
+    else:
+        cause = str(first)
+    if len(cause) > 120:
+        cause = cause[:120] + "..."
+    return cause
+
+
+class _TeeStream:
+    """Duplicate writes to an underlying stream AND a log file.
+
+    Preserves interactive TTY behaviour — original stream continues to
+    receive all writes while a log file captures them in parallel.
+    """
+
+    def __init__(self, original, log_path: Path, append: bool = False) -> None:
+        self.original = original
+        mode = "a" if append else "w"
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            self._log = open(log_path, mode, encoding="utf-8", errors="replace")
+        except OSError:
+            self._log = None
+
+    def write(self, data: str) -> int:
+        n = self.original.write(data)
+        if self._log is not None:
+            try:
+                self._log.write(data)
+            except OSError:
+                pass
+        return n
+
+    def flush(self) -> None:
+        self.original.flush()
+        if self._log is not None:
+            try:
+                self._log.flush()
+            except OSError:
+                pass
+
+    def close(self) -> None:
+        if self._log is not None:
+            try:
+                self._log.close()
+            except OSError:
+                pass
+            self._log = None
+
+    def __getattr__(self, name):
+        return getattr(self.original, name)
+
+
 def _get_repo_root() -> Path:
     """Find the repository root via git rev-parse."""
     try:
@@ -151,6 +215,16 @@ def _run_planning_loop(args, ctx=None):
     state["status"] = "running"
     _store.save(state)
 
+    # Tee stdout/stderr to log file so foreground runs leave the same
+    # artifact as background runs (mirrors lines 118-121 above).
+    _plan_logs_dir = _store.get_dir() / loop_id
+    _plan_logs_dir.mkdir(parents=True, exist_ok=True)
+    _plan_tee = _TeeStream(sys.stdout, _plan_logs_dir / "stdout.log")
+    _plan_old_stdout = sys.stdout
+    _plan_old_stderr = sys.stderr
+    sys.stdout = _plan_tee
+    sys.stderr = _TeeStream(sys.stderr, _plan_logs_dir / "stdout.log", append=True)
+
     from agenticcli.workflows.orchestration import PlanningRunner
     from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
@@ -222,11 +296,11 @@ def _run_planning_loop(args, ctx=None):
                 print_success(f"Orchestration loop {loop_id} completed")
                 console.print(f"[dim]Plans processed: {len(runner.state['plans_processed'])}[/dim]")
             elif partial_success:
+                cause = _summarise_runner_errors(runner.state["errors"])
                 if partial_ready_to_implement:
                     print_success(
                         f"Orchestration loop {loop_id} partial: epic '{plan_folder}' "
-                        f"has {partial_summary} despite early exit "
-                        "(likely budget/iteration cap).\n"
+                        f"has {partial_summary} — halted early: {cause}.\n"
                         "Phases are fully routed — run "
                         "`agentic orchestrate session implement "
                         f"--epic {plan_folder}` to proceed."
@@ -235,14 +309,18 @@ def _run_planning_loop(args, ctx=None):
                     from agenticcli.console import print_warning
                     print_warning(
                         f"Orchestration loop {loop_id} partial: epic '{plan_folder}' "
-                        f"has {partial_summary} but planning did not finish "
-                        "(likely budget/iteration cap).\n"
+                        f"has {partial_summary} but planning did not finish — "
+                        f"halted early: {cause}.\n"
                         "Inspect with `agentic epic status --epic "
                         f"{plan_folder}` then re-run plan with a higher "
                         "`--budget` to complete routing."
                     )
                 for err in runner.state["errors"]:
-                    console.print(f"[yellow]  {err}[/yellow]")
+                    if isinstance(err, dict):
+                        msg = err.get("error", str(err))
+                    else:
+                        msg = str(err)
+                    console.print(f"[yellow]  {msg}[/yellow]")
             else:
                 print_error(f"Orchestration loop {loop_id} finished with errors")
                 for err in runner.state["errors"]:
@@ -256,6 +334,10 @@ def _run_planning_loop(args, ctx=None):
         _store.save(state)
         print_error(f"Orchestration loop failed: {e}")
         sys.exit(1)
+    finally:
+        sys.stdout = _plan_old_stdout
+        sys.stderr = _plan_old_stderr
+        _plan_tee.close()
 
 
 def _run_dry_run(args, ctx=None):
@@ -438,6 +520,16 @@ def _run_executing_loop(args, ctx=None):
     state["status"] = "running"
     _store.save(state)
 
+    # Tee stdout/stderr to log file so foreground runs leave the same
+    # artifact as background runs (mirrors lines 405-409 above).
+    _exec_logs_dir = _store.get_dir() / loop_id
+    _exec_logs_dir.mkdir(parents=True, exist_ok=True)
+    _exec_tee = _TeeStream(sys.stdout, _exec_logs_dir / "stdout.log")
+    _exec_old_stdout = sys.stdout
+    _exec_old_stderr = sys.stderr
+    sys.stdout = _exec_tee
+    sys.stderr = _TeeStream(sys.stderr, _exec_logs_dir / "stdout.log", append=True)
+
     from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
 
     workflow = OrchestrationWorkflow(working_dir=working_dir)
@@ -495,6 +587,10 @@ def _run_executing_loop(args, ctx=None):
         _store.save(state)
         print_error(f"Execution loop failed: {e}")
         sys.exit(1)
+    finally:
+        sys.stdout = _exec_old_stdout
+        sys.stderr = _exec_old_stderr
+        _exec_tee.close()
 
 
 def _get_current_branch() -> Optional[str]:

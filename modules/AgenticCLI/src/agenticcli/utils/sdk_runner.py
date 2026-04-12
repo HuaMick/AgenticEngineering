@@ -103,6 +103,10 @@ ROLE_TIMEOUT_SECONDS: dict[str, int] = {
     # ── Teacher roles: 60 min ──
     "teacher-update-guidance": 3600,
     "teacher-update-assets": 3600,
+    # ── UAT fixture agents (deterministic harnesses, not production) ──
+    "fixture-crash-fast": 10,
+    "fixture-hang-long": 5,
+    "fixture-slow-steady": 120,
 }
 
 

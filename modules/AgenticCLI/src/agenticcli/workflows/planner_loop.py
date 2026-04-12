@@ -555,7 +555,7 @@ class PlannerLoopWorkflow:
                     sdk_metrics = read_sdk_metrics(spawned_session_id)
                     result = SessionResult(
                         status="failed",
-                        result=f"Non-retryable quick exit: {diagnosis.error_type.value}",
+                        result=diagnosis.detail[:500],
                         cost_usd=sdk_metrics["cost_usd"],
                         duration_ms=sdk_metrics["duration_ms"],
                         session_id=sdk_metrics["sdk_session_id"] or spawned_session_id,
@@ -1915,8 +1915,9 @@ class PlannerLoopRunner:
             if explore_result.status != "completed":
                 self.state["errors"].append({
                     "plan": epic_folder,
-                    "error": f"Explore agent failed: {explore_result.result[:200]}",
+                    "error": explore_result.result[:200],
                     "phase": "explore",
+                    "session_id": explore_result.session_id,
                 })
                 return False
 

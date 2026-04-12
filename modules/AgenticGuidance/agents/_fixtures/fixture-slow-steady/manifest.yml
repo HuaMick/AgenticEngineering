@@ -1,0 +1,26 @@
+name: fixture-slow-steady
+description: |
+  UAT-only deterministic fixture. Prints a heartbeat line to stdout every 5 s
+  for 60 s (12 heartbeats total), then exits 0. Used to reproduce pane-log
+  capture truncation (FIX-004) and verify that streaming output is captured
+  correctly over the full agent lifetime.
+version: "1.0"
+category: _fixtures
+uat_only: true
+
+# Determinism mechanism:
+# The process.yml prompt instructs Claude to run a Bash for-loop that echoes
+# a fixed heartbeat string 12 times with 5 s gaps. Output lines are
+# load-bearing; UAT assertions count them.
+
+structure:
+  - path: "modules/AgenticGuidance/agents/_fixtures/fixture-slow-steady/"
+    description: "Agent root"
+
+responsibilities:
+  - Print exactly 12 heartbeat lines to stdout, one every 5 s
+  - Exit 0 after the 12th heartbeat (~60 s total)
+
+boundaries:
+  - Must NOT be routed by any production epic phase
+  - Must NOT be listed in get_valid_agent_types() results for production use

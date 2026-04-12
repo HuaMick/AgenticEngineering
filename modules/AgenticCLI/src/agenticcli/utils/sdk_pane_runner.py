@@ -68,6 +68,15 @@ from agenticcli.utils.sdk_runner import (
 )
 
 
+def pane_log_path_for(session_id: str) -> Path:
+    """Return the canonical pane log path for a given session ID.
+
+    Single source of truth: ~/.agentic/sessions/logs/<session_id>.pane.log
+    Used by sdk_pane_runner (writer) and session diagnostics (reader).
+    """
+    return Path.home() / ".agentic" / "sessions" / "logs" / f"{session_id}.pane.log"
+
+
 def _write_state_atomic(state_file: Path, data: dict) -> None:
     """Write session state atomically (write to temp file, rename).
 
@@ -411,6 +420,7 @@ def run_pane(
             "usage": result["usage"],
             "sdk_session_id": result["sdk_session_id"],
             "transport": "sdk-tmux",
+            "pane_log_path": str(pane_log_path_for(session_id)),
         })
 
         if result["error"]:
