@@ -292,6 +292,42 @@ process:
         A story CAN be long — 10, 15, even 20 steps — if the journey genuinely spans
         that much ground. Length is not a smell; fragmentation across stories with the
         same objective IS a smell.
+
+        ## UAT PLAN DEPTH DIAL
+
+        a. Default posture — a uat_plan.journey aims for the WIDEST testable coverage
+           of the described user flow, including agent spawn paths, real subprocess
+           execution, and at least one error path when the flow involves spawning.
+
+        b. Iteration principle — stories are iterative. When a piece of the flow is
+           not yet testable (missing fixture agent, missing CLI flag, missing hook),
+           the uat_plan may scope it out ONLY IF the story carries an explicit
+           uat_coverage_gaps list naming the untested surface and the US-ID that will
+           close the gap. Default is to test; scoping out requires justification.
+
+        c. Anti-pattern list — the following phrases must NEVER appear in a uat_plan:
+           - "mocked transport" / "mocked agent" / "inject fake" (these belong in
+             Python unit tests, not UAT)
+           - "pre-completing all phases" / "without spawning any agents" /
+             "safe inspection path"
+           - "skip this step because" without an accompanying uat_coverage_gaps entry
+
+        d. Maximum-coverage heuristic — if a story touches an orchestration command,
+           the journey MUST include at least one step that exercises a real agent spawn
+           AND one step that exercises a failure path (crash, hang, or timeout).
+           Fixture agents for this purpose live under
+           modules/AgenticGuidance/agents/_fixtures/ (fixture-crash-fast,
+           fixture-hang-long, fixture-slow-steady).
+
+        e. Testability dial examples:
+           - Pure CRUD surface (epic create, ticket update): no dial — test everything.
+             Every command, every flag, every error message.
+           - Subprocess-spawning surface (orchestrate plan, implement, uat): dial at
+             the crash/hang/timeout surface. The journey must include fixture-agent
+             spawns that deterministically crash or hang, plus assertions that the
+             error surfacing and recovery paths work correctly. Use uat_coverage_gaps
+             for surfaces that require infrastructure not yet available (e.g. live
+             SDK environment).
       required: true
 
     - name: "Define categories"

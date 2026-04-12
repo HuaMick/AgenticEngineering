@@ -1,0 +1,66 @@
+# build-story-writer — input declarations
+#
+# This file lists the external resources this agent consumes at runtime.
+# Path resolution: paths starting with docs/ or modules/ resolve against the
+# repo root; others resolve against this module root.
+
+inputs:
+  - name: epic_context
+    description: |
+      CCI bootstrap output from `agentic -j agent context bootstrap --role build-story-writer`.
+      Provides epic_folder, objective, and project context for this run.
+    required: true
+
+  - name: epic_readme
+    description: |
+      Epic objective file at docs/epics/live/{epic_folder}/objective.md (or README.md).
+      Read to extract goal, stakeholders, and success criteria.
+    required: true
+
+  - name: existing_stories
+    description: |
+      All story files under docs/userstories/ discovered via `agentic stories find`.
+      The agent performs overlap analysis before drafting anything new.
+    required: true
+
+  - name: ticket_list
+    description: |
+      TinyDB ticket data loaded via `agentic -j epic ticket list --epic {epic_folder}`.
+      Used to confirm scope and identify functional areas being changed.
+    required: true
+
+  - name: story_schema
+    description: |
+      Canonical story field definitions and validation rules.
+      Path: modules/AgenticGuidance/assets/specifications/story-schema.yml
+
+      Pay particular attention to:
+      - The uat_plan field shape (persona, starting_state, preconditions, journey,
+        success_signals, cleanup).
+      - The uat_coverage_gaps field (optional list; required when uat_plan.journey
+        deliberately excludes a surface the story description mentions).
+
+      See the UAT PLAN DEPTH DIAL principle in process.yml (the "Draft new story"
+      step) for the rules governing when uat_coverage_gaps must be present and what
+      strings are forbidden from uat_plan.journey text.
+    required: false
+
+  - name: uat_plan_guidance
+    description: |
+      Governs how deeply uat_plan.journey must cover the described user flow.
+      Source: the UAT PLAN DEPTH DIAL section in process.yml ("Draft new story" step).
+
+      Key rules:
+      1. Default posture is maximum testable coverage, including real spawns and
+         at least one error path for any orchestration-touching story.
+      2. Fixture agents for crash/hang/timeout testing live under
+         modules/AgenticGuidance/agents/_fixtures/ — use fixture-crash-fast,
+         fixture-hang-long, fixture-slow-steady by name in journey steps.
+      3. Scoping out a surface is only allowed when uat_coverage_gaps lists the
+         surface and the US-ID that will close the gap.
+      4. The anti-pattern strings listed in process.yml must never appear in a
+         uat_plan this agent writes.
+
+      Cross-reference: story-schema.yml uat_coverage_gaps field for the
+      tracked-debt shape (surface, reason, blocked_by).
+    required: false
