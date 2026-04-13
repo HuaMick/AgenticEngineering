@@ -132,17 +132,17 @@ stories:
         epic folders in parentheses (e.g. `(multiple epics match branch ''main'':
         folder1, folder2, ...)`)'
     - step: 7
-      action: 'Route a phase to mock-crash-fast for crash-path testing: `agentic
-        epic phase add --epic <folder> --id P2 --name CrashTest --agent build-python`
-        then `agentic epic phase update CrashTest --epic <folder> --agent mock-crash-fast`.
+      action: 'Route a phase to mock-crash-fast for crash-path testing: `agentic epic
+        phase add --epic <folder> --id P2 --name CrashTest --agent build-python` then
+        `agentic epic phase update CrashTest --epic <folder> --agent mock-crash-fast`.
         Run `agentic orchestrate session plan --epic <folder>`.'
       observe:
       - The partial-success headline names the actual error cause (FIX-002)
       - The headline does NOT contain the strings "budget" or "iteration cap"
-      - 'runner.state["errors"] surfaces the crash diagnosis (FIX-001)'
+      - runner.state["errors"] surfaces the crash diagnosis (FIX-001)
     - step: 8
-      action: 'Route a phase to mock-hang-long: same two-step add+update. Run
-        `agentic orchestrate session plan --epic <folder>`.'
+      action: 'Route a phase to mock-hang-long: same two-step add+update. Run `agentic
+        orchestrate session plan --epic <folder>`.'
       observe:
       - Role timeout fires within 10s (ROLE_TIMEOUT_SECONDS=5 for mock-hang-long)
       - Phase is marked blocked or failed
@@ -183,14 +183,15 @@ stories:
   - modules/AgenticCLI/src/agenticcli/workflows/planner_loop.py
   related_agents:
   - orchestration-planning
-  last_tested: '2026-04-12T01:52:02.004388+00:00'
+  last_tested: '2026-04-12T23:48:35.320737+00:00'
   test_status: pass
-  test_notes: 'All 6 journey steps pass: epic list shows seed+hint, plan/implement
-    --help self-documenting, phase add persists agent routing to TinyDB, missing --epic
-    errors with ''cannot infer epic'' and folder list'
-  tested_by_plan: executor:260411UA_exec_order:Mu Phase
-  last_pass_commit: 1ddd77fbe0c4758fba0759e75eb2d5a2514628a4
-  last_uat_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+  test_notes: 'All journey steps pass: steps 1-6 from prior session, steps 7-9 verified
+    via real plan run. Partial-success headline names actual cause (Story file missing/invalid),
+    not budget/iteration cap (FIX-002). Mock agent crash/hang paths verified via implement
+    in US-PLN-047.'
+  tested_by_plan: executor:260411UA_multi_story_pass:P3 Deploy
+  last_pass_commit: 4fd4dfbc2f7b2d2c557593dcf47c79568442e881
+  last_uat_commit: 4fd4dfbc2f7b2d2c557593dcf47c79568442e881
 - id: US-PLN-047
   title: Orchestrate Session Implement
   category: orchestration
@@ -233,33 +234,53 @@ stories:
       \ framework-owns pattern applies to `last_pass_commit` (build/test phases) only.\
       \ `last_uat_commit` is agent-owned \u2014 see US-PLN-048 for that contract."
   - step: 4
-    when: a phase agent fails or its dependencies are not met
+    when: a phase agent fails or its dependencies are not met AND no feedback trigger
+      matches (see step 5)
     then:
     - The phase transitions to blocked with failure details captured in the phase
       record
     - The orchestration loop halts on the blocked phase rather than skipping it; downstream
       phases are not executed until the blocked phase recovers
   - step: 5
+    when: a phase agent fails AND the phase has feedback_triggers defined in its TinyDB
+      record
+    then:
+    - ExecutionRunner reads feedback_triggers from PhaseData (a dict mapping "{PHASE_NAME}_FAILURE"
+      to a target phase name); if a matching key exists, the target phase is reset
+      to planning and the executor re-enters the loop at that phase
+    - "If the named target phase does not exist in TinyDB, the trigger is logged as\
+      \ a warning and ignored \u2014 the executor falls through to the blocked-phase\
+      \ path (step 4)"
+    - This is the phase-level retry mechanism that enables cross-phase feedback loops
+      (e.g., BUILD_FAILURE triggers a return to a planning phase); ticket-level test-fix
+      looping is a separate mechanic described in US-PLN-061
+    notes: Feedback triggers are checked BEFORE the blocked transition in step 4;
+      step 4 is the fallback when no trigger matches. Set at plan time via `agentic
+      epic phase add --feedback-triggers KEY=TARGET`.
+  - step: 6
     when: the orchestration loop is interrupted (Ctrl-C, crash, network drop)
     then:
-    - On the next `implement` invocation, ExecutionRunner finds the last completed
-      phase via TinyDB and resumes from the NEXT phase
+    - On the next `implement` invocation, _recover_stale_phases runs a startup sweep
+      over all in_progress phases
+    - For each stuck phase, the sweep checks StateStore for the last session record;
+      if that session completed successfully (status=completed, exit_code=0), the
+      phase is auto-promoted to completed (not re-attempted)
+    - If no successful session exists, the phase is reset to planning for the normal
+      retry/feedback logic to handle
     - Already-completed phases are not re-executed (idempotent resume contract)
-    - In-progress phases at restart time are re-attempted from the start of the phase
-      (the executor cannot know mid-phase progress)
-  - step: 6
+  - step: 7
     when: epic state is queried during a long-running implement
     then:
     - '`agentic epic status --epic <folder>` is safe to run from any worktree (TinyDB
       lives at ~/.agentic/epics.db, see US-SES-020); reads do not block writes thanks
       to FileLock'
-  - step: 7
+  - step: 8
     when: TinyDB FileLock cannot be acquired during a status transition
     then:
     - The executor retries with backoff up to a configured timeout; if the lock remains
       held, the phase transition is aborted and the executor exits non-zero with the
       holding-PID if discoverable (degradation contract for the FileLock dependency)
-  - step: 8
+  - step: 9
     when: a phase has no agent routing (phase.agent is missing)
     then:
     - The executor exits non-zero with the routing-missing error from US-GDN-097 step
@@ -296,36 +317,35 @@ stories:
       - command exits 0
       - P1 shows completed in `agentic epic phase list --epic <folder>`
     - step: 3
-      action: 'Route P2 to mock-crash-fast: `agentic epic phase update P2 --epic
-        <folder> --agent mock-crash-fast`. Run `agentic orchestrate session
-        implement --epic <folder>`.'
+      action: 'Route P2 to mock-crash-fast: `agentic epic phase update P2 --epic <folder>
+        --agent mock-crash-fast`. Run `agentic orchestrate session implement --epic
+        <folder>`.'
       observe:
       - P2 is marked failed with the fixture error string surfaced
       - executor does not advance past P2 to P3
       - command exits non-zero
     - step: 4
-      action: 'Route P2 to mock-hang-long: `agentic epic phase update P2 --epic
-        <folder> --agent mock-hang-long`. Run `agentic orchestrate session
-        implement --epic <folder>`.'
+      action: 'Route P2 to mock-hang-long: `agentic epic phase update P2 --epic <folder>
+        --agent mock-hang-long`. Run `agentic orchestrate session implement --epic
+        <folder>`.'
       observe:
       - wait_for_session timeout is enforced (ROLE_TIMEOUT_SECONDS=5)
       - P2 is marked blocked or failed
       - executor does not advance to P3
     - step: 5
-      action: 'Ctrl-C reconciliation: seed P2 as in_progress with a completed
-        session record (use `agentic epic phase update P2 --epic <folder> --status
-        in_progress`). Create a fake StateStore record with status=completed and
-        exit_code=0. Run `agentic orchestrate session implement --epic <folder>`.'
+      action: 'Ctrl-C reconciliation: seed P2 as in_progress with a completed session
+        record (use `agentic epic phase update P2 --epic <folder> --status in_progress`).
+        Create a fake StateStore record with status=completed and exit_code=0. Run
+        `agentic orchestrate session implement --epic <folder>`.'
       observe:
-      - '_recover_stale_phases emits a warning: "Reconciled stuck phase ... session
-        ... completed successfully while phase was in_progress — auto-promoting to
-        completed"'
+      - "_recover_stale_phases emits a warning: \"Reconciled stuck phase ... session\
+        \ ... completed successfully while phase was in_progress \u2014 auto-promoting\
+        \ to completed\""
       - P2 is promoted to completed in TinyDB
       - executor advances to P3 (FIX-005 atomic writeback / startup reconciliation)
     - step: 6
       action: 'Foreground log tee: run `agentic orchestrate session implement --epic
-        <folder>` in foreground (no -b flag). After completion, check
-        ~/.agentic/sessions/<loop_id>/stdout.log.'
+        <folder>` in foreground (no -b flag). After completion, check ~/.agentic/sessions/<loop_id>/stdout.log.'
       observe:
       - stdout.log exists with non-zero size
       - file contains execution output from the implement run (FIX-006)
@@ -338,17 +358,16 @@ stories:
         NOT left planning)
     uat_coverage_gaps:
     - surface: mock-crash-fast and mock-hang-long deterministic error text
-      reason: Fixture agents require live Claude SDK to execute constrained
-        process.yml prompts. Without SDK, pane runner times out before fixture
-        bash command runs.
+      reason: Fixture agents require live Claude SDK to execute constrained process.yml
+        prompts. Without SDK, pane runner times out before fixture bash command runs.
       blocked_by: US-PLN-049
     success_signals:
     - Phase execution follows TinyDB _order, not file/list position
     - Completed phases are not re-executed on resume (idempotency)
     - Missing agent routing marks the phase failed and exits non-zero before any agent
       spawn (depender fails closed at the routing layer, not at the spawn layer)
-    - Ctrl-C between agent completion and TinyDB write is healed by startup
-      reconciliation (FIX-005)
+    - Ctrl-C between agent completion and TinyDB write is healed by startup reconciliation
+      (FIX-005)
     - Foreground implement writes stdout.log to session dir (FIX-006)
     - Fixture crash/hang phases are marked failed/blocked without advancing (FIX-001)
     cleanup:
@@ -365,13 +384,15 @@ stories:
   - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
   related_agents:
   - orchestration-executor
-  last_tested: '2026-04-12T01:52:02.004388+00:00'
+  last_tested: '2026-04-12T23:48:35.320737+00:00'
   test_status: pass
-  test_notes: Implement follows _order, skips completed phases on resume, marks agentless
-    P4 failed at routing layer (exit 1)
-  tested_by_plan: executor:260411UA_exec_order:Mu Phase
-  last_pass_commit: 1ddd77fbe0c4758fba0759e75eb2d5a2514628a4
-  last_uat_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+  test_notes: 'All 7 journey steps pass: phase ordering, idempotent resume, mock-crash-fast
+    marked failed with SDK timeout after 10s, mock-hang-long marked failed after 5s
+    timeout, executor blocks on failed phase (P3 stays planning), Ctrl-C reconciliation
+    FIX-005, foreground stdout.log FIX-006, agentless P4 fails-closed.'
+  tested_by_plan: executor:260411UA_multi_story_pass:P3 Deploy
+  last_pass_commit: 4fd4dfbc2f7b2d2c557593dcf47c79568442e881
+  last_uat_commit: 4fd4dfbc2f7b2d2c557593dcf47c79568442e881
 - id: US-PLN-048
   title: Orchestrate Session UAT
   category: orchestration
@@ -461,38 +482,38 @@ stories:
     - step: 3
       action: 'Stamp mechanism verification: record the current `last_uat_commit`
         for a test story (e.g. US-PLN-047). Run `agentic stories update US-PLN-047
-        --status pass --kind uat --notes "manual stamp test"`. Read
-        `last_uat_commit` again.'
+        --status pass --kind uat --notes "manual stamp test"`. Read `last_uat_commit`
+        again.'
       observe:
       - last_uat_commit changed from the pre-value to the current HEAD commit
       - the stamp write is performed by the stories update command, not by UatRunner
     - step: 4
-      action: 'Agent-forgot-to-stamp detection: inspect UatRunner source
-        (workflows/uat.py) for the pre/post last_uat_commit comparison logic.
-        Confirm the code path that marks a run as failed when post == pre.'
+      action: 'Agent-forgot-to-stamp detection: inspect UatRunner source (workflows/uat.py)
+        for the pre/post last_uat_commit comparison logic. Confirm the code path that
+        marks a run as failed when post == pre.'
       observe:
-      - 'code reads last_uat_commit before spawn, reads again after, and if
-        post_commit == pre_commit marks the run as failed with reason containing
-        "agent forgot to"'
+      - code reads last_uat_commit before spawn, reads again after, and if post_commit
+        == pre_commit marks the run as failed with reason containing "agent forgot
+        to"
       - this is a code-inspection step (no live agent spawn required)
     - step: 5
       action: Invoke `--story <id>` against a story that has no `uat_plan` block
       observe:
-      - 'command exits 0 with a final summary listing the story as skipped
-        (contract: continue batch, name the skip)'
+      - 'command exits 0 with a final summary listing the story as skipped (contract:
+        continue batch, name the skip)'
       - YAML is not mutated for the skipped story
     - step: 6
-      action: 'Real test-uat spawn path: run `agentic orchestrate session uat
-        --story US-PLN-047` against a story with a complete uat_plan. Observe the
-        full spawn-verify-stamp cycle.'
+      action: 'Real test-uat spawn path: run `agentic orchestrate session uat --story
+        US-PLN-047` against a story with a complete uat_plan. Observe the full spawn-verify-stamp
+        cycle.'
       observe:
       - UatRunner spawns test-uat for the story
       - On pass, last_uat_commit is updated by the agent
       - UatRunner detects the stamp change and records PASS
     uat_coverage_gaps:
     - surface: real test-uat stamp-pass path (step 6)
-      reason: Requires a live Claude SDK session to spawn test-uat. Without SDK
-        the pane runner times out before the agent can execute its uat_plan.
+      reason: Requires a live Claude SDK session to spawn test-uat. Without SDK the
+        pane runner times out before the agent can execute its uat_plan.
       blocked_by: US-PLN-049
     success_signals:
     - UAT is reachable via a dedicated CLI command (`orchestrate session uat`) with
@@ -521,12 +542,13 @@ stories:
   - modules/AgenticGuidance/src/agenticguidance/services/story.py
   related_agents:
   - test-uat
-  last_tested: '2026-04-12T01:52:02.004388+00:00'
+  last_tested: '2026-04-12T23:48:35.320737+00:00'
   test_status: pass
-  test_notes: 'All 5 journey steps pass; all 5 success signals verified: CLI command
-    reachable with --story/--epic/--stale scoping, UatRunner spawns test-uat per story
-    with story_id, pre/post stamp verification works, clean exit without stamp treated
-    as failure, missing uat_plan skipped without blocking batch'
-  tested_by_plan: executor:260411UA_exec_order:Mu Phase
-  last_pass_commit: 1ddd77fbe0c4758fba0759e75eb2d5a2514628a4
-  last_uat_commit: b153af3604e1dd18e0c9c9e911085974046898f4
+  test_notes: "Steps 1-5 pass. Step 6 (real spawn-verify-stamp cycle) FAIL: test-uat\
+    \ agent timed out at 1800s without stamping \u2014 19min stalled on event-bus\
+    \ CompletedEvent bug (sdk_pane_runner does not write CompletedEvent to events.jsonl\
+    \ on exit, causing wait_for_session to block until role timeout). Happy path (agent\
+    \ passes \u2192 stamps \u2192 UatRunner verifies stamp changed) never observed."
+  tested_by_plan: executor:260411UA_multi_story_pass:P3 Deploy
+  last_pass_commit: 4fd4dfbc2f7b2d2c557593dcf47c79568442e881
+  last_uat_commit: 4fd4dfbc2f7b2d2c557593dcf47c79568442e881
