@@ -948,7 +948,7 @@ class ExecutionRunner:
         try:
             story_ids: set[str] = set()
             try:
-                tickets = repo.list_tickets(plan_folder)
+                tickets = repo.get_tickets(plan_folder)
             except Exception:
                 tickets = []
             for t in tickets:
@@ -1011,7 +1011,7 @@ class ExecutionRunner:
             List of incomplete ticket IDs. Empty list means all complete.
         """
         try:
-            tickets = repo.list_tickets(plan_folder)
+            tickets = repo.get_tickets(plan_folder)
             incomplete = []
             for t in tickets:
                 if t.phase_name == phase_name and t.status != "completed":

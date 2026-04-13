@@ -32,7 +32,7 @@ def _make_execution_runner(tmp_path, plan_folder="test_epic"):
     from agenticcli.workflows.orchestration import ExecutionRunner, OrchestrationWorkflow
 
     epics_dir = tmp_path / "docs" / "epics" / "live"
-    epics_dir.mkdir(parents=True)
+    epics_dir.mkdir(parents=True, exist_ok=True)
     workflow = MagicMock(spec=OrchestrationWorkflow)
     workflow.working_dir = str(tmp_path)
     workflow.epics_dir = epics_dir
@@ -1393,3 +1393,385 @@ class TestStoryPassRecording:
         assert record_calls == ["P1 Build", "P2 Test", "P3 Deploy"], (
             f"Each phase should trigger its own recording, got: {record_calls}"
         )
+
+
+# ── UAT: _check_phase_tickets_complete unit tests ────────────────────
+
+
+class TestCheckPhaseTicketsComplete:
+    """Verify _check_phase_tickets_complete returns correct incomplete ticket IDs."""
+
+    def test_all_tickets_completed_returns_empty(self, tmp_path, tinydb_populator):
+        """When all tickets in the phase are completed, returns empty list."""
+        epic = "260412UA_tkt_all_done"
+        epic_dir = tmp_path / epic
+        epic_dir.mkdir()
+        tinydb_populator(epic, epic_dir, {
+            "name": "All Tickets Done",
+            "status": "in_progress",
+            "phases": [
+                {
+                    "name": "P1 Build", "agent": "build-python", "status": "in_progress",
+                    "tickets": [
+                        {"id": "T1", "name": "Task 1", "status": "completed"},
+                        {"id": "T2", "name": "Task 2", "status": "completed"},
+                    ],
+                },
+            ],
+        })
+
+        runner, workflow = _make_execution_runner(tmp_path, plan_folder=epic)
+
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(auto_bootstrap=False)
+
+        incomplete = runner._check_phase_tickets_complete(repo, epic, "P1 Build")
+        assert incomplete == []
+
+    def test_some_tickets_incomplete_returns_ids(self, tmp_path, tinydb_populator):
+        """When some tickets are not completed, returns their IDs."""
+        epic = "260412UA_tkt_partial"
+        epic_dir = tmp_path / epic
+        epic_dir.mkdir()
+        tinydb_populator(epic, epic_dir, {
+            "name": "Partial Tickets",
+            "status": "in_progress",
+            "phases": [
+                {
+                    "name": "P1 Build", "agent": "build-python", "status": "in_progress",
+                    "tickets": [
+                        {"id": "T1", "name": "Task 1", "status": "completed"},
+                        {"id": "T2", "name": "Task 2", "status": "in_progress"},
+                        {"id": "T3", "name": "Task 3", "status": "proposed"},
+                    ],
+                },
+            ],
+        })
+
+        runner, workflow = _make_execution_runner(tmp_path, plan_folder=epic)
+
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(auto_bootstrap=False)
+
+        incomplete = runner._check_phase_tickets_complete(repo, epic, "P1 Build")
+        assert "T2" in incomplete
+        assert "T3" in incomplete
+        assert "T1" not in incomplete
+
+    def test_no_tickets_returns_empty(self, tmp_path, tinydb_populator):
+        """A phase with no tickets returns empty list (not an error)."""
+        epic = "260412UA_tkt_none"
+        epic_dir = tmp_path / epic
+        epic_dir.mkdir()
+        tinydb_populator(epic, epic_dir, {
+            "name": "No Tickets",
+            "status": "in_progress",
+            "phases": [
+                {"name": "P1 Build", "agent": "build-python", "status": "in_progress"},
+            ],
+        })
+
+        runner, workflow = _make_execution_runner(tmp_path, plan_folder=epic)
+
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(auto_bootstrap=False)
+
+        incomplete = runner._check_phase_tickets_complete(repo, epic, "P1 Build")
+        assert incomplete == []
+
+    def test_other_phase_tickets_ignored(self, tmp_path, tinydb_populator):
+        """Tickets in OTHER phases should not affect completeness check for target phase."""
+        epic = "260412UA_tkt_cross_phase"
+        epic_dir = tmp_path / epic
+        epic_dir.mkdir()
+        tinydb_populator(epic, epic_dir, {
+            "name": "Cross Phase Tickets",
+            "status": "in_progress",
+            "phases": [
+                {
+                    "name": "P1 Build", "agent": "build-python", "status": "in_progress",
+                    "tickets": [
+                        {"id": "T1", "name": "Build Task", "status": "completed"},
+                    ],
+                },
+                {
+                    "name": "P2 Test", "agent": "test-builder", "status": "planning",
+                    "tickets": [
+                        {"id": "T2", "name": "Test Task", "status": "proposed"},
+                    ],
+                },
+            ],
+        })
+
+        runner, workflow = _make_execution_runner(tmp_path, plan_folder=epic)
+
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(auto_bootstrap=False)
+
+        incomplete = runner._check_phase_tickets_complete(repo, epic, "P1 Build")
+        # T2 belongs to P2 Test, should NOT appear in P1 Build check
+        assert incomplete == []
+
+    def test_exception_returns_empty_not_crash(self, tmp_path):
+        """If repo.list_tickets throws, return empty list (graceful degradation)."""
+        runner, workflow = _make_execution_runner(tmp_path, plan_folder="nonexistent")
+
+        broken_repo = MagicMock()
+        broken_repo.list_tickets.side_effect = RuntimeError("DB corrupted")
+
+        # Must NOT raise — returns empty list
+        incomplete = runner._check_phase_tickets_complete(broken_repo, "nonexistent", "P1")
+        assert incomplete == []
+
+
+# ── UAT: _commit_phase_result_atomic normal path ─────────────────────
+
+
+class TestCommitPhaseResultAtomic:
+    """Verify _commit_phase_result_atomic writes status to TinyDB."""
+
+    def test_atomic_commit_writes_completed_status(self, tmp_path, tinydb_populator):
+        """Normal path: status is written to TinyDB via repo.update_phase."""
+        epic = "260412UA_atomic_commit"
+        epic_dir = tmp_path / epic
+        epic_dir.mkdir()
+        tinydb_populator(epic, epic_dir, {
+            "name": "Atomic Commit Test",
+            "status": "in_progress",
+            "phases": [
+                {"name": "P1 Build", "agent": "build-python", "status": "in_progress"},
+            ],
+        })
+
+        runner, workflow = _make_execution_runner(tmp_path, plan_folder=epic)
+
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(auto_bootstrap=False)
+
+        runner._commit_phase_result_atomic(repo, epic, "P1 Build", "completed")
+
+        phases = repo.list_phases(epic)
+        p1 = next(p for p in phases if p.name == "P1 Build")
+        assert p1.status == "completed"
+
+    def test_atomic_commit_writes_failed_status(self, tmp_path, tinydb_populator):
+        """Normal path: failed status is written to TinyDB."""
+        epic = "260412UA_atomic_fail"
+        epic_dir = tmp_path / epic
+        epic_dir.mkdir()
+        tinydb_populator(epic, epic_dir, {
+            "name": "Atomic Fail Test",
+            "status": "in_progress",
+            "phases": [
+                {"name": "P1 Build", "agent": "build-python", "status": "in_progress"},
+            ],
+        })
+
+        runner, workflow = _make_execution_runner(tmp_path, plan_folder=epic)
+
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(auto_bootstrap=False)
+
+        runner._commit_phase_result_atomic(repo, epic, "P1 Build", "failed")
+
+        phases = repo.list_phases(epic)
+        p1 = next(p for p in phases if p.name == "P1 Build")
+        assert p1.status == "failed"
+
+
+# ── UAT Step 6: Concurrent status query safety ──────────────────────
+
+
+class TestConcurrentStatusQuery:
+    """UAT Step 6: `agentic epic status --epic <folder>` is safe during a running implement.
+
+    Verifies that repo.get_epic() and repo.list_phases() can be called while
+    _execute_plan() is in progress (TinyDB reads don't block writes).
+    """
+
+    def test_status_query_during_phase_execution(self, tmp_path, tinydb_populator):
+        """During _run_phase, a concurrent status query succeeds and shows in_progress."""
+        epic = "260412UA_concurrent_query"
+        epic_dir = tmp_path / epic
+        epic_dir.mkdir()
+        tinydb_populator(epic, epic_dir, {
+            "name": "Concurrent Query Test",
+            "status": "in_progress",
+            "phases": [
+                {"name": "P1 Build", "agent": "build-python", "status": "planning"},
+                {"name": "P2 Test", "agent": "test-builder", "status": "planning"},
+            ],
+        })
+
+        runner, workflow = _make_execution_runner(tmp_path, plan_folder=epic)
+
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(auto_bootstrap=False)
+        workflow._get_repository.return_value = repo
+
+        query_results = []
+
+        def _mock_run_phase(plan_folder, phase_id, agent_type, routing, **kwargs):
+            # Simulate a concurrent status query during phase execution
+            # This is what `agentic epic status --epic <folder>` does
+            queried_epic = repo.get_epic(plan_folder)
+            queried_phases = repo.list_phases(plan_folder)
+            query_results.append({
+                "epic_status": queried_epic.status,
+                "phase_name": phase_id,
+                "phase_statuses": {p.name: p.status for p in queried_phases},
+            })
+            return True
+
+        runner._run_phase = _mock_run_phase
+
+        result = runner._execute_plan(epic, max_iterations=10)
+
+        assert result is True
+        # Query during P1 execution should show P1 as in_progress
+        assert len(query_results) == 2
+        assert query_results[0]["phase_statuses"]["P1 Build"] == "in_progress"
+        assert query_results[0]["phase_statuses"]["P2 Test"] == "planning"
+        # Query during P2 execution should show P1 completed, P2 in_progress
+        assert query_results[1]["phase_statuses"]["P1 Build"] == "completed"
+        assert query_results[1]["phase_statuses"]["P2 Test"] == "in_progress"
+
+
+# ── UAT: Complete sequential journey test ────────────────────────────
+
+
+class TestUATJourneySequential:
+    """End-to-end sequential test following the US-PLN-047 UAT journey steps.
+
+    Walks through the UAT plan journey steps 1-6 in a single test epic,
+    verifying each step's preconditions and postconditions.
+    """
+
+    def test_full_uat_journey(self, tmp_path, tinydb_populator):
+        """Walk the entire UAT journey for US-PLN-047 in sequence.
+
+        Journey:
+          Step 1: Phase list ordering — P1/P2/P3 listed in insertion order
+          Step 2: Manual phase transition — P1 to completed
+          Step 3: Idempotent resume — all phases completed → zero work
+          Step 4: Reset P2/P3 → planning, mark P2 completed manually
+          Step 5: Resume starts from P3 (P1 and P2 already completed)
+          Step 6: Add P4 with no agent → failed + non-zero exit
+        """
+        epic = "260412UA_full_journey"
+        epic_dir = tmp_path / epic
+        epic_dir.mkdir()
+
+        # ── Step 1: Setup with 3 phases in order ─────────────────────
+        tinydb_populator(epic, epic_dir, {
+            "name": "Full Journey Test",
+            "status": "in_progress",
+            "phases": [
+                {"name": "P1 Build", "phase_id": "P1", "agent": "build-python", "status": "planning"},
+                {"name": "P2 Test", "phase_id": "P2", "agent": "test-builder", "status": "planning"},
+                {"name": "P3 Deploy", "phase_id": "P3", "agent": "build-python", "status": "planning"},
+            ],
+        })
+
+        from agenticguidance.services.epic_repository import EpicRepository
+        repo = EpicRepository(auto_bootstrap=False)
+
+        # Step 1: Verify ordering
+        phases = repo.list_phases(epic)
+        assert len(phases) == 3
+        assert [p.name for p in phases] == ["P1 Build", "P2 Test", "P3 Deploy"]
+        assert all(p.status == "planning" for p in phases)
+
+        # ── Step 2: Manual transition P1 → completed ─────────────────
+        repo.update_phase(epic, "P1 Build", {"status": "completed"})
+        phases = repo.list_phases(epic)
+        p1 = next(p for p in phases if p.name == "P1 Build")
+        assert p1.status == "completed"
+        # P2 and P3 unchanged
+        assert next(p for p in phases if p.name == "P2 Test").status == "planning"
+        assert next(p for p in phases if p.name == "P3 Deploy").status == "planning"
+
+        # ── Step 3: Complete all phases → idempotent resume ──────────
+        repo.update_phase(epic, "P2 Test", {"status": "completed"})
+        repo.update_phase(epic, "P3 Deploy", {"status": "completed"})
+
+        runner, workflow = _make_execution_runner(tmp_path, plan_folder=epic)
+        workflow._get_repository.return_value = repo
+
+        spawn_count = 0
+
+        def _counting_run_phase(plan_folder, phase_id, agent_type, routing, **kwargs):
+            nonlocal spawn_count
+            spawn_count += 1
+            return True
+
+        runner._run_phase = _counting_run_phase
+
+        result = runner._execute_plan(epic, max_iterations=10)
+        assert result is True
+        assert spawn_count == 0, "No agents should spawn when all phases are complete"
+
+        # All phases remain completed
+        for phase in repo.list_phases(epic):
+            assert phase.status == "completed"
+
+        # ── Step 4: Reset P2 and P3 → planning, mark P2 completed ───
+        repo.update_phase(epic, "P2 Test", {"status": "planning"})
+        repo.update_phase(epic, "P3 Deploy", {"status": "planning"})
+        repo.update_phase(epic, "P2 Test", {"status": "completed"})
+
+        phases = repo.list_phases(epic)
+        assert next(p for p in phases if p.name == "P1 Build").status == "completed"
+        assert next(p for p in phases if p.name == "P2 Test").status == "completed"
+        assert next(p for p in phases if p.name == "P3 Deploy").status == "planning"
+
+        # ── Step 5: Resume starts from P3 only ───────────────────────
+        runner2, workflow2 = _make_execution_runner(tmp_path, plan_folder=epic)
+        workflow2._get_repository.return_value = repo
+
+        executed_phases = []
+
+        def _tracking_run_phase(plan_folder, phase_id, agent_type, routing, **kwargs):
+            executed_phases.append(phase_id)
+            return True
+
+        runner2._run_phase = _tracking_run_phase
+
+        result = runner2._execute_plan(epic, max_iterations=10)
+        assert result is True
+        assert executed_phases == ["P3 Deploy"], (
+            f"Only P3 should execute (P1 and P2 already completed), got: {executed_phases}"
+        )
+
+        # ── Step 6: Add P4 with no agent → failed ────────────────────
+        # Reset epic status to allow further execution.
+        # Use force=True because the executor already marked the epic completed
+        # after Step 3 (all phases done), and completed → in_progress is not a
+        # valid transition — but we need to add P4 and re-execute.
+        repo.transition_epic_status(epic, "in_progress", force=True)
+
+        repo.add_phase(epic, {
+            "name": "P4 Broken",
+            "phase_id": "P4",
+            "status": "planning",
+            # No agent field!
+        })
+
+        runner3, workflow3 = _make_execution_runner(tmp_path, plan_folder=epic)
+        workflow3._get_repository.return_value = repo
+
+        runner3._run_phase = _tracking_run_phase
+
+        result = runner3._execute_plan(epic, max_iterations=10)
+        assert result is False
+
+        # P4 must be marked failed (not planning or pending)
+        phases = repo.list_phases(epic)
+        p4 = next(p for p in phases if p.name == "P4 Broken")
+        assert p4.status == "failed", (
+            f"P4 (no agent) should be 'failed', got '{p4.status}'"
+        )
+
+        # Error should mention P4
+        errs = " ".join(str(e) for e in runner3.state["errors"])
+        assert "P4" in errs, f"Error should reference P4, got: {errs}"
