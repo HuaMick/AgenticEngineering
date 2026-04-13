@@ -130,13 +130,13 @@ FENCE: Before shutdown, verify ALL validation phases have executed.
 Use CLI for all ticket state management:
 ```bash
 # Get current ticket
-agentic agent epic ticket current --epic <folder>
+agentic epic ticket current --epic <folder>
 
 # Start ticket before spawning agent
-agentic agent epic ticket start <ticket_id> --epic <folder>
+agentic epic ticket start <ticket_id> --epic <folder>
 
 # Complete ticket after agent succeeds
-agentic agent epic ticket complete <ticket_id> --epic <folder>
+agentic epic ticket complete <ticket_id> --epic <folder>
 
 # Spawn agent session
 agentic orchestrate session spawn --role <agent-role> --epic <epic-folder>

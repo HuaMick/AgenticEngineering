@@ -52,10 +52,9 @@ Audit epic folder compliance: identify misplaced, stale, or misleading files. Ou
 
 ## Process
 
-1. Run CCI bootstrap first:
+1. Get current ticket:
    ```bash
-   agentic agent context bootstrap --role planner-audit -j
-   agentic agent epic ticket current -j
+   agentic epic ticket current --epic "$EPIC_FOLDER" -j
    ```
 
 2. Validate required inputs:
@@ -71,7 +70,7 @@ Audit epic folder compliance: identify misplaced, stale, or misleading files. Ou
 ## Boundaries
 
 - **NON-DESTRUCTIVE**: Audit and report only. Cleaner agents execute cleanup.
-- **Copy-and-Sync Pattern**: Files stay in live/ while work continues; when ALL items done, delete live/ copy.
+- **TinyDB + Archive Pattern**: Tickets are tracked in TinyDB; when ALL tickets are completed, `agentic epic archive` moves the epic folder to `docs/epics/completed/` and updates TinyDB status.
 - **Severity Ratings**:
   - HIGH: Could mislead agent
   - MEDIUM: Wrong location/stale

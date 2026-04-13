@@ -23,9 +23,9 @@ You are the FIRST agent in the planning flow. Your job is to create ALL phases a
    agentic epic phase --help
    ```
 
-2. Run CCI bootstrap:
+2. Get current ticket:
    ```bash
-   agentic -j agent context bootstrap --role epic-creator
+   agentic epic ticket current --epic "$EPIC_FOLDER" -j
    ```
 
 3. Read the epic README to understand the objective

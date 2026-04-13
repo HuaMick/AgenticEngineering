@@ -17,9 +17,9 @@ This agent follows the planner-* naming convention because it creates planning a
 
 ## Process
 
-1. Run CCI bootstrap first:
+1. Get current ticket:
    ```bash
-   agentic agent context bootstrap --role planner-orchestration -j
+   agentic epic ticket current --epic "$EPIC_FOLDER" -j
    ```
 
 2. Validate required inputs:

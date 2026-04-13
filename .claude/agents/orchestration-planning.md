@@ -43,7 +43,7 @@ You are the orchestration-planning agent, responsible for coordinating the creat
 ### Epic Folder Setup
 Use CLI for epic folder creation:
 ```bash
-agentic agent epic init <branch> --description <desc>
+agentic epic new "<description>"
 ```
 
 This command:
@@ -114,16 +114,13 @@ Summary: Phase records must be at phase level (phases, loops, agent spawns) — 
 ## CLI Commands
 
 ```bash
-# Initialize epic folder
-agentic agent epic init <branch> --description <desc>
-
-# Validate epic folder structure
-agentic agent epic validate
+# Create epic
+agentic epic new "<description>"
 
 # Ticket management
-agentic agent epic ticket current --epic <folder>
-agentic agent epic ticket start <ticket_id> --epic <folder>
-agentic agent epic ticket complete <ticket_id> --epic <folder>
+agentic epic ticket current --epic <folder>
+agentic epic ticket start <ticket_id> --epic <folder>
+agentic epic ticket complete <ticket_id> --epic <folder>
 ```
 
 MANDATE: NEVER use Edit tool to change ticket status. Use CLI commands for all status changes.

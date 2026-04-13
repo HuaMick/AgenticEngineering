@@ -31,7 +31,7 @@ Audit CI/CD configuration files to prevent deployment failures caused by drift b
 
 ## Process
 
-1. **Bootstrap**: Run `agentic agent context bootstrap --role deploy-cicd -j` to get structured context
+1. **Get Current Ticket**: Run `agentic epic ticket current --epic "$EPIC_FOLDER" -j` to get your assigned work
 2. **Input Validation**: Review all inputs; if an input cannot be found, do not proceed. Flag path discrepancies in output
 3. **Cloudbuild Audit**: Validate cloudbuild.yaml test steps match actual test directories
 4. **Dockerfile Validation**: Check Dockerfile.test configuration and sed patterns for issues

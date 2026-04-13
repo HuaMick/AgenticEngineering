@@ -47,10 +47,9 @@ Plans must verify alignment with these patterns:
 
 ## Process
 
-1. Run CCI bootstrap first:
+1. Get current ticket:
    ```bash
-   agentic agent context bootstrap --role planner-build -j
-   agentic agent epic ticket current -j
+   agentic epic ticket current --epic "$EPIC_FOLDER" -j
    ```
 
 2. Validate required inputs:

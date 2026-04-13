@@ -41,7 +41,7 @@ You participate in **documentation-loop** and **test-fix-loop** as the validator
 
 ## Process Steps
 
-1. **Bootstrap Context**: Run `agentic agent context bootstrap --role test-uat -j`
+1. **Get Current Ticket**: Run `agentic epic ticket current --epic "$EPIC_FOLDER" -j`
 
 2. **Validate Context** (agent_blind_test):
    - ONLY allowed inputs: docs/README.md, ARCHITECTURE.md, user story definition

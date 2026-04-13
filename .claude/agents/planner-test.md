@@ -63,15 +63,14 @@ US-INSTALL-* user stories MANDATORY when changes touch:
 
 ## Process
 
-1. Run CCI bootstrap first:
+1. Get current ticket:
    ```bash
-   agentic agent context bootstrap --role planner-test -j
-   agentic agent epic ticket current -j
+   agentic epic ticket current --epic "$EPIC_FOLDER" -j
    ```
 
 2. Validate required inputs:
    - epic_folder_name: Epic folder name in YYMMDDXX_description format
-   - build_phases: List of build phase ticket files to test
+   - build_phases: List of build phase tickets to test (from TinyDB)
 
 3. Query TinyDB for build phase data via `agentic epic ticket list --epic <folder> -j`
 

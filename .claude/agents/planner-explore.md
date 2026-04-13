@@ -15,9 +15,9 @@ Bridge the gap between skeleton tickets (from epic-creator) and enriched tickets
 
 ## Process
 
-1. Run CCI bootstrap:
+1. Get current ticket:
    ```bash
-   agentic -j agent context bootstrap --role planner-explore
+   agentic epic ticket current --epic "$EPIC_FOLDER" -j
    ```
 
 2. Load existing tickets:

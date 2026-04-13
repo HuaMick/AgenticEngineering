@@ -32,7 +32,7 @@ You participate in **test-fix-loop** and **audit-test-fix-loop** as the builder:
 
 ## Process Steps
 
-1. **Bootstrap Context**: Run `agentic agent context bootstrap --role test-builder -j` to get seed context and input file paths
+1. **Get Current Ticket**: Run `agentic epic ticket current --epic "$EPIC_FOLDER" -j` to get your assigned work and input file paths
 
 2. **Validate Inputs**: Review all inputs. If an input cannot be found, do not proceed
 
