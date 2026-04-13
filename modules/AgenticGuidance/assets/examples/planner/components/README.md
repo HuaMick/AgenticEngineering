@@ -1,6 +1,6 @@
 # Orchestration Components
 
-Reusable Mermaid flowchart fragments that can be embedded inside any orchestration phase.
+Reusable orchestration patterns that can be embedded inside any orchestration phase.
 
 ## What Are Components?
 
@@ -25,7 +25,7 @@ Components are **small, focused workflow patterns** that solve common orchestrat
 
 ## Available Components
 
-### feedback_loop.mmd
+### feedback_loop
 
 Generic iterative refinement with feedback capture. Use when any action needs review and potential revision.
 
@@ -35,7 +35,7 @@ Primary Agent -> Reviewer -> Feedback -> Apply -> Repeat
 
 **Embed when:** Planning, building, writing - anything needing iterative improvement.
 
-### approval_gate.mmd
+### approval_gate
 
 Human approval checkpoint before proceeding. Presents context, waits for user decision, routes based on response.
 
@@ -45,7 +45,7 @@ Present Context -> Await Decision -> Route (Approve/Reject/Modify)
 
 **Embed when:** Before destructive operations, deployments, or high-risk decisions.
 
-### audit_test_fix_loop.mmd
+### audit_test_fix_loop
 
 Test quality validation and reward hacking detection. Based on the mandatory audit-test-fix-loop from agent-loops.yml.
 
@@ -55,7 +55,7 @@ Audit Tests -> Classify Issues -> Fix -> Re-run -> Repeat
 
 **Embed when:** After test phases to ensure tests are meaningful and valid.
 
-### guidance_self_review_loop.mmd
+### guidance_self_review_loop
 
 Iterative guidance improvement through agent self-review. Agents review their own guidance files, report issues, and fixes are applied.
 
@@ -65,7 +65,7 @@ Self-Review (Parallel) -> Collect Issues -> User Decisions -> Fix -> Repeat
 
 **Embed when:** Improving guidance for multiple agents based on identified friction.
 
-### guidance_blind_test.mmd
+### guidance_blind_test
 
 Validates guidance effectiveness by spawning agents without hints. If you have to tell the agent what to do, the guidance failed.
 
@@ -99,15 +99,13 @@ Reference a component in your orchestration by:
 
 Example embedding in a phase:
 
-```mermaid
-flowchart TB
-    PhaseStart --> PrepareArtifact
-    PrepareArtifact --> FeedbackLoopStart
+```
+PhaseStart --> PrepareArtifact
+PrepareArtifact --> FeedbackLoopStart
 
-    %% Embed feedback_loop.mmd content here
-    %% Or reference: COMPONENT_REF: feedback_loop.mmd
+%% Embed feedback_loop pattern here
 
-    FeedbackLoopComplete --> PhaseComplete
+FeedbackLoopComplete --> PhaseComplete
 ```
 
 ## Loop Definitions

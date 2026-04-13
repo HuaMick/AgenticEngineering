@@ -1,8 +1,9 @@
 guideline:
-  name: "Epic Completion Patterns (Copy-and-Sync)"
+  name: "Epic Completion Patterns (TinyDB + Archive)"
   description: |
-    Standard patterns for managing epic files during the transition from 'active' to 'completed' states.
-    Ensures that live workspaces remain focused while preserving a full audit trail of finished work.
+    Standard patterns for managing epic completion via TinyDB ticket tracking and CLI archival.
+    Tickets are marked complete in TinyDB; when all tickets are done, `agentic epic archive` moves
+    the epic folder to docs/epics/completed/ and updates TinyDB status.
 
   inputs:
     - location: "modules/AgenticGuidance/assets/definitions/plans.yml"
@@ -17,70 +18,58 @@ guideline:
         Allows follow-on work to continue in the live folder without losing the context
         of what was previously achieved. Avoids large, monolithic 'completed' files.
       
-    - rule: "Incremental Completion (Copy-and-Sync)"
+    - rule: "Incremental Completion"
       description: |
-        For phase epics (ticket_*.yml), files stay in live/ as long as ANY item is pending.
-        Completed items are synced to a copy in completed/.
+        Tickets are marked completed individually via CLI commands that update TinyDB.
+        The epic folder remains in docs/epics/live/ while any tickets are pending/in-progress.
       execution_pattern:
-        - "Identify completed items in live/ file"
-        - "If completed/ copy doesn't exist → Create it with ONLY completed items"
-        - "If completed/ copy exists → Update it with NEWLY completed items"
-        - "DO NOT delete from live/ until ALL items are marked completed"
+        - "Mark tickets completed via `agentic epic ticket complete <id> --epic <folder>`"
+        - "TinyDB tracks all ticket statuses"
+        - "Epic folder stays in live/ until ALL tickets are completed"
 
-    - rule: "Full Completion (Delete from Live)"
+    - rule: "Full Completion (Archive)"
       description: |
-        When ALL items in a phase file are marked completed, the file is removed from live/.
+        When ALL tickets in TinyDB are marked completed, the epic folder is archived.
       execution_pattern:
-        - "Verify all items in live/my_feature.yml are status: completed"
-        - "Ensure completed/my_feature.yml contains all these items"
-        - "Use `agentic epic move tickets --epic <epic_folder>` to archive completed tickets"
+        - "Verify all tickets in TinyDB have status: completed"
+        - "CLI auto-archives when the last ticket is marked complete"
+        - "Or manually: `agentic epic archive <epic_folder>`"
 
   examples:
-    - description: "Copy-and-Sync Pattern Demonstration"
+    - description: "TinyDB-Based Completion Demonstration"
       example: |
-        # This example shows how files move between live/ and completed/ subfolders
-        # based on their completion status.
+        # This example shows how epic completion works with TinyDB-tracked tickets.
 
-        scenario: "Work in progress with some items completed"
+        scenario: "Work in progress with some tickets completed"
 
         folder_structure:
           docs/epics/live/251215MA_main/:
-            live/:
-              ticket_enhance.yml: "Phase definition (reserved - stays in live/)"
-              my_feature.yml: "5 items: 3 completed, 2 pending (stays in live/)"
-              another_ticket.yml: "All items pending (stays in live/)"
-            completed/:
-              my_feature.yml: "3 items: only completed ones (synced copy)"
-              old_feature.yml: "All items done, deleted from live/"
-              plan_completed.yml: "Summary index (reserved)"
-            analysis/:
-              plan_iteration_1_results.yml: "Iteration logs"
+            epic.md: "Epic description and context"
+            reference/: "Optional reference materials"
 
-        state_transitions:
-          - description: "Partial completion (file in BOTH locations)"
-            file: my_feature.yml
-            live_copy: "all 5 items (working copy)"
-            completed_copy: "3 completed items only (archive)"
-
-          - description: "Full completion (file ONLY in completed/)"
-            file: old_feature.yml
-            note: "Was deleted from live/ when all items completed"
-
-          - description: "No completion yet (file ONLY in live/)"
-            file: another_ticket.yml
-            note: "Will get a completed/ copy when first item completes"
+        tinydb_state:
+          epic: "251215MA_main"
+          tickets:
+            - id: "build_01"
+              status: "completed"
+            - id: "build_02"
+              status: "completed"
+            - id: "build_03"
+              status: "in_progress"
+            - id: "test_01"
+              status: "pending"
 
         completion_workflow:
-          when_my_feature_finishes:
-            - "Sync final 2 items to completed/my_feature.yml"
-            - "Delete live/my_feature.yml"
-            - "File now exists only in completed/"
+          when_all_tickets_finish:
+            - "Mark last ticket: agentic epic ticket complete test_01 --epic 251215MA_main"
+            - "CLI auto-archives folder to docs/epics/completed/251215MA_main/"
+            - "Original may remain in live/ for follow-on work"
 
         reactivation_workflow:
-          if_issues_found_in_old_feature:
-            - "Copy completed/old_feature.yml back to live/"
-            - "Update affected items' status"
-            - "Sync fixes back to completed/ as resolved"
+          if_issues_found:
+            - "Manually move folder: mv docs/epics/completed/251215MA_main docs/epics/live/251215MA_main"
+            - "Update ticket statuses via CLI"
+            - "Re-archive when resolved"
 
   cli_commands:
     description: |
@@ -92,9 +81,9 @@ guideline:
         example: "agentic epic archive docs/epics/live/260128AG_example"
         note: "Copies to completed/ but does NOT remove source from live/"
       unarchive:
-        command: "agentic epic unarchive <epic_name>"
-        example: "agentic epic unarchive 260128AG_example"
-        note: "Moves from completed/ back to live/ (reverse archival)"
+        note: "No CLI command exists for unarchiving. This is a manual operation."
+        manual_procedure: "mv docs/epics/completed/<epic_name> docs/epics/live/<epic_name>"
+        example: "mv docs/epics/completed/260128AG_example docs/epics/live/260128AG_example"
       auto_archival:
         trigger: "When completing the last ticket with 'agentic epic ticket complete'"
         suppress: "Use --no-archive flag to prevent auto-archival"
@@ -129,8 +118,8 @@ guideline:
       archival:
         - command: "agentic epic archive <folder>"
           purpose: "Manual archival (copies to completed/)"
-        - command: "agentic epic unarchive <name>"
-          purpose: "Restore archived epic to live/"
+        - manual: "mv docs/epics/completed/<name> docs/epics/live/<name>"
+          purpose: "Restore archived epic to live/ (manual operation, no CLI command)"
     violation_indicators:
       - "Bash rm command on docs/epics/ paths"
       - "Bash mv command on docs/epics/ paths"

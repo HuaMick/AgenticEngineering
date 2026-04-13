@@ -38,19 +38,19 @@ guideline:
 
     - rule: "Prefer CCI over file exploration"
       description: |
-        Use CCI (CLI Context Injection) commands (agentic context *) as the FIRST choice for
-        gathering context. Fall back to file exploration (Glob/Grep/Read)
-        only when CCI commands don't provide the specific information needed.
+        Use CCI (CLI Context Injection) via the sdk_pane_runner --context-file mechanism
+        and epic status commands as the FIRST choice for gathering context. Fall back to
+        file exploration (Glob/Grep/Read) only when these don't provide the specific
+        information needed.
       justification: |
-        CCI commands return structured, pre-curated context at minimal
-        token cost. File exploration requires multiple tool calls, reads
-        entire files, and forces the agent to parse and filter raw content.
-        CCI provides 75-90% token reduction compared to ad-hoc exploration.
+        CCI provides structured, pre-curated context at minimal token cost.
+        File exploration requires multiple tool calls, reads entire files, and
+        forces the agent to parse and filter raw content. CCI provides 75-90%
+        token reduction compared to ad-hoc exploration.
       characteristics:
-        - "Run `agentic context bootstrap` at session start for seed context"
-        - "Use `agentic context role <role-id>` for role-specific guidance"
-        - "Use `agentic context task` to get active plan task details"
-        - "Use `agentic context inputs` for CCI manifest of relevant files"
+        - "Agents receive seed context via sdk_pane_runner --context-file at session start"
+        - "Use `agentic epic status --epic <epic>` for epic-level context"
+        - "Use `agentic epic ticket current` to get active ticket details"
         - "Only use Glob/Grep/Read when exploring unknown or unstructured content"
 
     - rule: "Precise file targeting"
@@ -93,9 +93,9 @@ guideline:
     - "Meta-files that merely list other files (noise without value)"
     - "Inline definitions >100 tokens that duplicate shared asset content"
     - "Flat content duplication instead of transitive layer loading"
-    - "Using Glob/Grep/Read for task details when CCI `agentic context task` available"
-    - "Reading plan files directly when CCI `agentic context bootstrap` provides summary"
-    - "Multiple file reads to assemble role context when CCI `agentic context role` consolidates it"
+    - "Using Glob/Grep/Read for task details when `agentic epic ticket current` available"
+    - "Reading plan files directly when sdk_pane_runner --context-file provides summary"
+    - "Multiple file reads to assemble role context when `agentic epic status --epic <epic>` consolidates it"
 
   # =============================================================================
   # QUANTITATIVE THRESHOLDS (for self-review validation)
@@ -162,8 +162,8 @@ guideline:
       CCI provides structured context more efficiently.
 
     recommended_approach:
-      first: "Run agentic epic status --epic <epic_folder>"
-      second: "Run agentic epic ticket current -j"
+      first: "Agents receive seed context via sdk_pane_runner --context-file at session start"
+      second: "Run agentic epic ticket current -j for active ticket details"
       third: "ONLY use Glob/Grep/Read if CLI indicates specific files to examine"
 
     justification: |
@@ -228,9 +228,9 @@ guideline:
     examples:
       - scenario: "Getting active task details"
         cci_approach:
-          command: "agentic context task"
+          command: "agentic epic ticket current -j"
           tokens: "~200-500 tokens"
-          description: "Returns structured task object with id, description, status, inputs"
+          description: "Returns structured ticket object with id, description, status, inputs"
         file_exploration_approach:
           steps:
             - "Glob: **/plan_live*.yml (find plan files)"
@@ -242,7 +242,7 @@ guideline:
 
       - scenario: "Getting role process and guidelines"
         cci_approach:
-          command: "agentic context role build-python"
+          command: "agentic epic status --epic <epic> --role build-python -j"
           tokens: "~300-800 tokens"
           description: "Returns role process.yml content and relevant guidelines"
         file_exploration_approach:
@@ -257,9 +257,9 @@ guideline:
 
       - scenario: "Bootstrap context for new session"
         cci_approach:
-          command: "agentic context bootstrap --role orchestration-executor"
+          command: "sdk_pane_runner --context-file (automatic at session start)"
           tokens: "~500-1500 tokens"
-          description: "Returns seed context: task, role, key guidelines, active plan summary"
+          description: "Returns seed context: task, role, key guidelines, active epic summary"
         file_exploration_approach:
           steps:
             - "Read: CLAUDE.md or README for orientation (~500 tokens)"
@@ -302,12 +302,11 @@ guideline:
           BEFORE using file exploration for context gathering, check if a CCI
           command provides the needed information:
 
-          Context Type           | CCI Command
-          -----------------------|--------------------------------
-          Active task details    | agentic context task
-          Role process/guidance  | agentic context role <role-id>
-          Plan task inputs       | agentic context inputs
-          Session bootstrap      | agentic context bootstrap
+          Context Type           | CCI Command / Mechanism
+          -----------------------|----------------------------------------
+          Active ticket details  | agentic epic ticket current -j
+          Role process/guidance  | agentic epic status --epic <epic> --role <role-id> -j
+          Session bootstrap      | sdk_pane_runner --context-file (automatic)
 
           Use file exploration ONLY when:
           - Searching for arbitrary code patterns (Grep)

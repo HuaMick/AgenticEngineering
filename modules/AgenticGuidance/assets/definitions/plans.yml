@@ -12,22 +12,22 @@ naming_convention:
     XX: "2 uppercase letters (e.g., derived from branch name or epic type)"
     description: "Sanitized description (lowercase, underscores only, max 50 chars)"
   cli_enforcement: |
-    Use 'agentic epic init <branch> --description <desc>' to generate names automatically.
+    Use 'agentic epic new <branch> --description <desc>' to generate names automatically.
     The CLI enforces this convention programmatically - agents should NOT attempt manual naming.
 
 There are 3 types of epics:
 - epics_live: Live epics in docs/epics/live/YYMMDDXX_description/ folders (e.g., 260115AG_naming_audit).
   See naming_convention above for pattern details.
-  Use 'agentic epic init' command to create - CLI enforces naming programmatically.
+  Use 'agentic epic new' command to create - CLI enforces naming programmatically.
 
   FLAT STRUCTURE REQUIREMENT:
-  Epic files (ticket_*.yml, README.md) MUST be in the folder root.
+  Epic folders contain only epic.md and optional reference materials.
+  Tickets, phases, and status are stored in TinyDB, NOT as files on disk.
   Do NOT create live/ or completed/ subdirectories within epic folders.
 
   Standard folder structure:
     YYMMDDXX_description/
-    ├── README.md              # Epic overview and status
-    ├── ticket_*.yml           # Phase files (directly in root)
+    ├── epic.md                # Epic description and context
     └── reference/             # Optional: reference materials
 
   Optional subfolders for artifacts (NOT for epic files):
@@ -83,21 +83,18 @@ cli_usage:
       example: "agentic epic archive docs/epics/live/260128AG_example"
 
     unarchive:
-      command: "agentic epic unarchive <epic_name>"
-      behavior: |
-        Moves an epic folder from completed/ back to live/.
-        Useful when an epic was archived prematurely or needs to be resumed.
-        Supports partial matching of folder names.
-      example: "agentic epic unarchive 260128AG_example"
-      notes:
-        - "Will fail if destination already exists in live/"
-        - "Prompts for confirmation unless --force is used"
+      note: "No CLI command exists for unarchiving."
+      manual_procedure: |
+        To unarchive an epic manually:
+        1. Move the folder from docs/epics/completed/<name>/ back to docs/epics/live/<name>/
+        2. Update the epic status in TinyDB if needed (via agentic epic ticket update)
+      example: "mv docs/epics/completed/260128AG_example docs/epics/live/260128AG_example"
 
   auto_archival:
     description: |
       When marking the last ticket in an epic as completed, the CLI automatically
       triggers archival to docs/epics/completed/. This can be suppressed.
-    trigger: "All tickets in all ticket_*.yml files have status: completed"
+    trigger: "All tickets in TinyDB have status: completed"
     suppress_flag: "--no-archive"
     example: "agentic epic ticket complete final_ticket_01 --epic docs/epics/live/260128AG_example --no-archive"
     notes:
@@ -123,7 +120,7 @@ cli_usage:
         - "cp -r docs/epics/live/<folder> docs/epics/completed/"
       edit_operations:
         - "Edit tool to modify status: field in epic YAML files"
-        - "Direct YAML manipulation of ticket status values"
+        - "Direct manipulation of ticket status values outside CLI"
     required_alternatives:
       ticket_status:
         instead_of: "Edit tool on status: field"
@@ -155,7 +152,7 @@ epic_lifecycle:
      - Epic execution is in progress
      - One or more phases are being worked on
      - Folder exists in docs/epics/live/
-     - Phase files (ticket_*.yml) are in folder root
+     - Phases and tickets tracked in TinyDB
 
   3. partially_completed:
      - Some phases completed, follow-on work continues
@@ -169,25 +166,21 @@ epic_lifecycle:
      - May or may not remain in docs/epics/live/ (user decision)
 
 file_taxonomy:
-  CRITICAL: Epic files (ticket_*.yml) MUST be in the epic folder root, NOT in subdirectories.
+  Epic folders contain epic.md and optional reference materials.
+  All ticket and phase data is stored in TinyDB, NOT as files on disk.
 
   Correct structure:
     YYMMDDXX_description/
-    ├── README.md
-    ├── ticket_build.yml       # <-- Directly in folder root
-    ├── ticket_teach.yml       # <-- Directly in folder root
+    ├── epic.md                # Epic description and context
     └── reference/             # Optional subfolder for reference materials
 
   WRONG structure (do NOT use):
     YYMMDDXX_description/
+    ├── ticket_*.yml           # WRONG: tickets are in TinyDB
     ├── live/
-    │   └── ticket_*.yml       # WRONG: nested in subdirectory
+    │   └── ticket_*.yml       # WRONG: nested files
     └── completed/
-        └── ticket_*.yml       # WRONG: nested in subdirectory
-
-  File naming conventions:
-    - ticket_*.yml: Phase files (build, teach, test, audit, cleanup, uat)
-    - README.md: Epic overview and status
+        └── ticket_*.yml       # WRONG: nested files
 
   Optional subfolders (for artifacts only, NOT for epic files):
     - reference/: Reference materials and research
@@ -199,31 +192,29 @@ file_taxonomy:
   # ==============================================
   flat_structure_fence:
     description: |
-      FENCE: Epic files (ticket_*.yml, README.md) MUST be at folder root.
+      FENCE: Epic folders contain only epic.md and optional reference materials.
+      Tickets and phases are in TinyDB. Do NOT create ticket files on disk.
       NEVER create nested live/, completed/, analysis/, or audit/ subdirectories for epic files.
 
     prohibited_patterns:
       - "docs/epics/live/YYMMDDXX_description/live/ticket_*.yml"
       - "docs/epics/live/YYMMDDXX_description/completed/ticket_*.yml"
-      - "ticket_live_*.yml" (outdated naming - use ticket_*.yml)
-      - "live/ticket_build.yml" (nested - should be ticket_build.yml at root)
+      - "ticket_live_*.yml" (outdated naming)
+      - "ticket_*.yml files on disk" (tickets are in TinyDB)
 
     correct_patterns:
-      - "docs/epics/live/YYMMDDXX_description/ticket_build.yml"
-      - "docs/epics/live/YYMMDDXX_description/ticket_test.yml"
+      - "docs/epics/live/YYMMDDXX_description/epic.md"
+      - "Tickets and phases stored in TinyDB at ~/.agentic/epics.db"
 
     cli_enforcement: |
-      The CLI creates epic folders with flat structure via 'agentic epic init'.
+      The CLI creates epic folders with flat structure via 'agentic epic new'.
       CLI commands expect epic files at folder root, NOT in subdirectories.
       Nested structure will cause CLI errors and auto-archival failures.
 
     migration_note: |
-      Legacy epics may have nested live/ folders or ticket_live_*.yml files.
-      These are DEPRECATED and should be migrated to flat structure:
-      1. Move ticket_*.yml files from nested live/ to folder root
-      2. Remove ticket_live_ prefix from filenames
-      3. Delete empty nested live/ directory
-      4. Update README to reflect flat structure
+      Legacy epics may have had nested live/ folders or ticket files on disk.
+      These patterns are ELIMINATED. All tickets and phases are in TinyDB.
+      Epic folders contain only epic.md and optional reference materials.
 
     rationale: |
       Flat structure ensures:
@@ -248,10 +239,9 @@ scrap_file_taxonomy:
     retention: "Archive for decision audit trail, do not delete"
 
   remediation_plans:
-    pattern: "ticket_*_remediation*.yml"
-    purpose: "Intermediate fix plans generated from audits"
-    lifecycle: "Merge approved tickets into authoritative phase epic, then delete from live/"
-    retention: "Tickets preserved in phase epic; original file deleted (not archived)"
+    description: "Remediation tickets are added to TinyDB via CLI, not as files on disk"
+    lifecycle: "Merge approved tickets into TinyDB phase records, then mark complete"
+    retention: "Tickets preserved in TinyDB; no file artifacts to clean up"
 
 two_level_completion_pattern:
   Epics use a two-level completion model: ticket-level status updates and folder-level copy.
@@ -259,28 +249,22 @@ two_level_completion_pattern:
   Note: This pattern refers to docs/epics/live/ and docs/epics/completed/ directories,
   NOT to subdirectories within epic folders. Epic files remain in their folder root.
 
-  SCRAP FILE FENCE:
-  The Copy-and-Sync pattern applies to PHASE EPICS (ticket_*.yml).
-  SCRAP FILES (audit_*.yml, review_*.yml, ticket_*_remediation*.yml) have different rules:
-  - They do NOT use Copy-and-Sync
+  NOTE ON SCRAP FILES:
+  Transient artifacts (audit_*.yml, review_*.yml) in epic folders have different lifecycle:
   - They MOVE to analysis/ or audit/ subfolders after processing
-  - remediation_plans are DELETED (not moved) after ticket merge
   - Cleanup is triggered by APPROVAL, not by completion of all items
+  - These are optional reference artifacts, NOT ticket/phase data (which is in TinyDB)
 
   TICKET-LEVEL COMPLETION:
-  Tickets are marked completed within their ticket_*.yml files in the folder root.
-  Status updates happen in-place within the epic files.
+  Tickets are marked completed via CLI commands that update TinyDB.
+  Status updates happen in TinyDB, not in files on disk.
 
   INCREMENTAL COMPLETION (partial epic completion):
   - Epic folder remains in docs/epics/live/ while any tickets are pending/in-progress
-  - Update ticket statuses within ticket_*.yml files as work progresses
-  Example:
-    docs/epics/live/260115AG_example/
-    ├── ticket_build.yml    # 5 tickets: 3 completed, 2 pending
-    └── ticket_test.yml     # All tickets pending
+  - Update ticket statuses via `agentic epic ticket complete` CLI command
 
   FULL COMPLETION (all tickets done):
-  - When ALL tickets in ALL epic files have status: completed
+  - When ALL tickets in TinyDB have status: completed
   - Copy entire folder to docs/epics/completed/
   - Original may remain in docs/epics/live/ for follow-on work
   Example:
@@ -307,7 +291,7 @@ two_level_completion_pattern:
 follow_on_work_pattern:
   DO:
   - Keep the existing folder in docs/epics/live/ for follow-on work
-  - Add new epic files (ticket_*.yml) for new phases in the folder root
+  - Add new phases and tickets via CLI commands (stored in TinyDB)
   - Reference the original work in metadata (e.g., original_epic_date, previous_phases)
   - Copy the folder to docs/epics/completed/ when initial phases complete
   - Update the docs/epics/completed/ copy when new phases complete
@@ -419,7 +403,7 @@ validation_checklist:
     - "loop_structure present for non-trivial epics"
   naming:
     - "Folder matches YYMMDDXX_description pattern (see naming_convention.regex)"
-    - "Phase files (ticket_*.yml) in folder root, NOT in subdirectories"
+    - "Phases and tickets stored in TinyDB, NOT as files on disk"
     - "Naming validated by CLI during epic init (do not validate manually)"
   quality:
     - "Success criteria are specific and verifiable"
@@ -592,7 +576,7 @@ loop_structure:
 
 concrete_example:
   # See: modules/AgenticGuidance/assets/guidelines/plan-completion.yml
-  # Demonstrates the Copy-and-Sync pattern with folder structure and state transitions.
+  # Demonstrates the TinyDB + Archive pattern with epic lifecycle and state transitions.
 
 # Path Conventions
 # Merged from folder-structure.yml
