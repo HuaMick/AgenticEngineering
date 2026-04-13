@@ -326,7 +326,7 @@ The CLI is a **persistence layer / external memory**, NOT a planning engine.
 - **6 planner agents**: planner-build, planner-test, planner-audit, planner-explore, planner-orchestration, epic-creator
 - **4 build agents**: build-python, build-flutter, build-docs-writer, build-story-writer
 - **4 test agents**: test-builder, test-audit, test-uat, trace-explorer
-- **3 orchestration agents**: orchestration-executor, orchestration-planning, orchestration-loop
+- **2 orchestration agents**: orchestration-executor, orchestration-planning
 - **2 teacher agents**: teacher-update-guidance, teacher-update-assets
 - **1 deploy agent**: deploy-cicd
 

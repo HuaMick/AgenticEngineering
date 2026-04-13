@@ -18,7 +18,7 @@ _FALLBACK_AGENT_TYPES = {
     "build-docs-writer", "build-flutter", "build-python", "build-story-writer",
     "deploy-cicd",
     "epic-creator",
-    "orchestration-executor", "orchestration-loop", "orchestration-planning",
+    "orchestration-executor", "orchestration-planning",
     "planner-audit", "planner-build", "planner-explore", "planner-orchestration", "planner-test",
     "teacher-update-assets", "teacher-update-guidance",
     "test-audit", "test-builder", "test-uat", "trace-explorer",

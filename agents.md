@@ -126,7 +126,6 @@ modules/AgenticGuidance/agents/
 | **Deploy** | `deploy-cicd` | `--role deploy-cicd` | CI/CD pipeline synchronization |
 | **Orchestration** | `orchestration-planning` | `--role orchestration-planning` | Plan creation with HITL |
 | | `orchestration-executor` | `--role orchestration-executor` | TinyDB-driven plan execution |
-| | `orchestration-loop` | `--role orchestration-loop` | Iterative orchestration loops |
 | **Planner** | `epic-creator` | `--role epic-creator` | Epic scaffolding and initialization |
 | | `planner-build` | `--role planner-build` | Implementation phase planning |
 | | `planner-test` | `--role planner-test` | Test phase planning |

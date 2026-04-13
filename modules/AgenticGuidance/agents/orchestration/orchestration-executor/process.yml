@@ -103,7 +103,7 @@ process:
       description: |
         RUNTIME DEPENDENCY RE-CHECK:
         Before executing any epic, verify its dependencies are satisfied.
-        Dependencies may have changed since orchestration-loop classified this
+        Dependencies may have changed since the orchestrator classified this
         epic as EXECUTE (e.g., a prerequisite epic completed or was unlinked).
 
         Check dependency status:
@@ -121,12 +121,12 @@ process:
         - If `dependency_blocked: false` → proceed to phase loading
         - If `dependency_blocked: true` → SKIP execution with warning:
           "Skipping {epic} — blocked by dependencies: {blocked_by}"
-          Return to orchestration-loop for re-evaluation.
+          Return to the orchestrator for re-evaluation.
 
         NOTE: The ExecutionRunner code performs this same check automatically
         via DependencyService.is_blocked(). This guidance step ensures the
         executor agent understands WHY an epic might be skipped at runtime
-        even after orchestration-loop classified it as EXECUTE.
+        even after the orchestrator classified it as EXECUTE.
 
         FENCE: DEPENDENCY-BLOCKED-NO-EXECUTE
         An epic with `dependency_blocked: true` MUST NOT proceed to phase
@@ -160,14 +160,14 @@ process:
         4. Write outcome summary to execution_state.yml instead
 
         CONTEXT IMPACT:
-        - Old approach: ~100 KB loaded at startup (all 6 plan files)
+        - Old approach: ~100 KB loaded at startup (all phase/ticket data)
         - New approach: ~10 KB at startup + ~15 KB per active phase
         - Savings: 75-85 KB reduction in initial context load
 
         FENCE: JIT LOADING CONSTRAINT
-        Do NOT load all ticket YAML files or full ticket descriptions during
-        the startup sequence. Load ticket details only when needed for the
-        current phase, then discard after summarisation.
+        Do NOT load all ticket records or full ticket descriptions during
+        the startup sequence. Load ticket details from TinyDB only when needed
+        for the current phase, then discard after summarisation.
 
         ERROR if TinyDB returns no phases or the epic does not exist.
 
@@ -626,7 +626,7 @@ process:
         5. If ANY validation result != PASS → Return to fix phase
 
         STORY VALIDATION CHECK (references planning-standard.yml#escape_hatch_rules):
-        6. If plan has affected_stories (from design_context.yml in epic folder,
+        6. If plan has affected_stories (from ticket story_ids in TinyDB,
            or via `agentic stories report --project <project> --coverage`):
            a. FENCE: Filter affected_stories by lifecycle before coverage check.
               Only stories with lifecycle "under-construction" or "implemented" are checked.
@@ -691,7 +691,7 @@ process:
         FENCE: NO SHUTDOWN WITHOUT VALIDATION
         This gate MUST run before any shutdown sequence step.
         Skipping this gate is a fence violation.
-        Validation phases are identified by querying TinyDB, not by scanning MMD files.
+        Validation phases are identified by querying TinyDB phase records.
 
     # =========================================================================
     # PHASE 2.6: INTEGRATION SMOKE TEST GATE (CLI command verification)

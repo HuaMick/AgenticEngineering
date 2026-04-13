@@ -93,14 +93,13 @@ The CLI provides reliable primitives. Agents compose those primitives with judgm
 
 The module contains 6 implemented agent categories with 20 active agents:
 
-### Orchestration (3 agents)
+### Orchestration (2 agents)
 High-level coordination of planning and execution workflows.
 
 | Agent | Purpose |
 |-------|---------|
 | `orchestration-planning` | Human-in-the-loop epic creation and approval |
 | `orchestration-executor` | TinyDB-driven dynamic agent routing |
-| `orchestration-loop` | Iterative orchestration loops |
 
 ### Planner (6 agents)
 Create executable implementation epics from objectives.
@@ -218,16 +217,16 @@ To initiate a workflow, **inject the content** of the appropriate entrypoint fil
 
 2. **Execution Phase**: Use `_orchestrate.yml` to execute the approved epic
    - Invokes `orchestration-executor` agent
-   - Discovers `orchestration_*.mmd` file in epic folder
-   - Executes phases using dynamic AGENT_ROUTING from MMD metadata
+   - Reads phase records from TinyDB via `EpicRepository.list_phases()`
+   - Routes to agents using the `agent` field on each phase record
    - Orchestrates builder, tester, and teacher agents per phase definitions
 
 ### Orchestration Agent Roles
 
 | Agent | Role |
 |-------|------|
-| `orchestration-executor` | Generic MMD-driven executor that routes to agents based on Plan-MMD metadata |
-| `orchestration-planning` | Human-in-the-loop plan creation with MMD generation |
+| `orchestration-executor` | TinyDB phase-driven executor that routes to agents based on phase record metadata |
+| `orchestration-planning` | Human-in-the-loop plan creation with TinyDB phase records |
 
 ### Main-First Planning Workflow
 
@@ -303,7 +302,6 @@ This section is the **source of truth** for agent implementation status. Epic-re
 |-------|--------|-------|
 | orchestration-planning | Implemented | Human-in-the-loop epic creation and approval |
 | orchestration-executor | Implemented | TinyDB-driven dynamic agent routing |
-| orchestration-loop | Implemented | Iterative orchestration loops |
 
 ### Planner Agents
 

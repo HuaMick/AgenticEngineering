@@ -30,9 +30,8 @@ KNOWN_AGENTS = [
     "test-builder",
     "test-uat",
     "trace-explorer",
-    # Orchestration agents (3)
+    # Orchestration agents (2)
     "orchestration-executor",
-    "orchestration-loop",
     "orchestration-planning",
     # Teacher agents (2)
     "teacher-update-assets",
@@ -59,7 +58,6 @@ AGENT_CATEGORIES = {
     "test-uat": "test",
     "trace-explorer": "test",
     "orchestration-executor": "orchestration",
-    "orchestration-loop": "orchestration",
     "orchestration-planning": "orchestration",
     "teacher-update-assets": "teacher",
     "teacher-update-guidance": "teacher",

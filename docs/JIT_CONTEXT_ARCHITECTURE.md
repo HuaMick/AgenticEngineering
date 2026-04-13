@@ -458,7 +458,7 @@ The system supports 26+ thin-client agent files organized by category:
 | Planner | planner-build, planner-test, planner-audit, planner-explore, planner-orchestration, epic-creator | 6 |
 | Build | build-python, build-flutter, build-docs-writer, build-story-writer | 4 |
 | Test | test-builder, test-audit, test-uat, trace-explorer | 4 |
-| Orchestration | orchestration-executor, orchestration-planning, orchestration-loop | 3 |
+| Orchestration | orchestration-executor, orchestration-planning | 2 |
 | Teacher | teacher-update-guidance, teacher-update-assets | 2 |
 | Deploy | deploy-cicd | 1 |
 

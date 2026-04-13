@@ -94,7 +94,7 @@ Agents are defined in `modules/AgenticGuidance/agents/<category>/<agent-name>/` 
 
 | Category | Agents | Purpose |
 |----------|--------|---------|
-| **orchestration** | orchestration-planning, orchestration-executor, orchestration-loop | Route work to planners/builders, execute TinyDB phases |
+| **orchestration** | orchestration-planning, orchestration-executor | Route work to planners/builders, execute TinyDB phases |
 | **planner** | epic-creator, planner-audit, planner-build, planner-explore, planner-orchestration, planner-test | Generate ticket files and plans |
 | **build** | build-python, build-flutter, build-story-writer, build-docs-writer | Implement code changes |
 | **test** | test-builder, test-audit, test-uat, trace-explorer | Validate implementations |
@@ -130,6 +130,25 @@ When asked to do work, follow this logic:
 4. **No phases yet?** → Run `agentic orchestrate session plan`
 5. **No epic yet?** → Help the user create one, then plan it
 6. **Small/ad-hoc task?** → Handle directly, but consider if it belongs in an epic
+
+## Using Your Own Agents (Fallback Orchestration)
+
+When the SDK orchestration path is broken or you're told to "use your own agents", assume the orchestrator persona directly:
+
+### For planning:
+Read `.claude/agents/orchestration-planning.md` and its process file at
+`modules/AgenticGuidance/agents/orchestration/orchestration-planning/process.yml`.
+Follow that process: create epic, spawn planner subagents, validate, produce TinyDB phases.
+
+### For execution:
+Read `.claude/agents/orchestration-executor.md` and its process file at
+`modules/AgenticGuidance/agents/orchestration/orchestration-executor/process.yml`.
+Follow that process: read TinyDB phases, spawn builder/tester subagents per phase.agent field.
+
+### Key distinction:
+- You ARE the orchestrator — don't delegate orchestration to a subagent
+- Spawn downstream agents (planner-build, test-builder, etc.) as subagents via the Agent tool
+- Use `agentic epic ticket start/complete` to track progress through TinyDB
 
 ## Implementation Tracking (IMPORTANT)
 

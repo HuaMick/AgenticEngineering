@@ -8,14 +8,14 @@ This directory contains agent process definitions for the AgenticGuidance module
 
 | Category | Agents | Description |
 |----------|--------|-------------|
-| [orchestration](#orchestration) | 3 | High-level coordination of planning and execution workflows |
+| [orchestration](#orchestration) | 2 | High-level coordination of planning and execution workflows |
 | [planner](#planner) | 6 | Create executable implementation epics from objectives |
 | [build](#build) | 4 | Code implementation for production deployment |
 | [test](#test) | 4 | Validation through testing and quality assurance |
 | [teacher](#teacher) | 2 | Improve agent guidance (paths, fences, signposts) |
 | [deploy](#deploy) | 1 | Infrastructure and deployment tooling |
 
-**Total: 20 active agents**
+**Total: 19 active agents**
 
 ---
 
@@ -27,12 +27,10 @@ High-level orchestration agents that coordinate planning and execution workflows
 |-------|---------|-------------|--------|
 | orchestration-planning | 2.0 | Planning-only workflows - human-in-the-loop epic creation and approval | Complete |
 | orchestration-executor | 2.0 | TinyDB-driven execution - dynamic agent routing from phase.agent field | Complete |
-| orchestration-loop | 2.0 | Iterative orchestration loops | Complete |
 
 **Routing Logic:**
 - `orchestration-planning`: Planning-only workflows, produces approved epics with TinyDB phase records for downstream use.
 - `orchestration-executor`: TinyDB-driven execution (dynamic agent routing from phase.agent field). **Use this for all execution workflows.**
-- `orchestration-loop`: Iterative looping when phases require repeated execution.
 
 ---
 
@@ -124,14 +122,14 @@ Deploy agents handle infrastructure and deployment tooling. They do not write ap
 Each agent directory contains:
 - `manifest.yml` - Agent metadata, version, and dependencies
 - `inputs.yml` - Required context files for the agent
-- `process.yml` or `process.mmd` - Step-by-step behavioral guidance
+- `process.yml` - Step-by-step behavioral guidance
 
 **Status Values:**
-- **Complete**: All three files (manifest.yml, inputs.yml, process.yml/mmd) exist
+- **Complete**: All three files (manifest.yml, inputs.yml, process.yml) exist
 - **Partial**: Some files missing
 - **Stub**: Only manifest.yml exists
 
-All 20 agents in this directory are **Complete**.
+All 19 agents in this directory are **Complete**.
 
 ---
 
@@ -141,7 +139,7 @@ The following categories have infrastructure (definitions, guidelines, shared in
 
 | Category | Infrastructure | Current Workaround | Status |
 |----------|---------------|-------------------|--------|
-| cleaner | 3 files (cleaner-shared-guidelines.yml, cleaner-shared.yml, cleanup_phase.mmd) | `planner-explore` handles discovery and cleanup planning | Planned |
+| cleaner | 2 files (cleaner-shared-guidelines.yml, cleaner-shared.yml) | `planner-explore` handles discovery and cleanup planning | Planned |
 | documentation | Minimal | `build-docs-writer` and `teacher-update-assets` handle doc updates | Planned |
 
 These categories may be implemented if dedicated agents become necessary, but current workarounds are sufficient.
@@ -157,8 +155,7 @@ modules/AgenticGuidance/agents/
 ├── orchestration/                  # Orchestration agents
 │   ├── manifest.yml
 │   ├── orchestration-planning/
-│   ├── orchestration-executor/
-│   └── orchestration-loop/
+│   └── orchestration-executor/
 ├── planner/                        # Planner agents
 │   ├── manifest.yml
 │   ├── epic-creator/

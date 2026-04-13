@@ -32,7 +32,6 @@ Each mode loads its process file from the agent profile directory:
 modules/AgenticGuidance/agents/orchestration/
   orchestration-planning/   process.yml   - planning process
   orchestration-executor/   process.yml   - execution protocol
-  orchestration-loop/       process.yml   - full lifecycle loop
 ```
 
 These profiles are the source of truth. This file and the mode-specific

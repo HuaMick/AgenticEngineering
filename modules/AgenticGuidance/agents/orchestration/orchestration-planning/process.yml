@@ -1,0 +1,262 @@
+process:
+  goal: |
+    Coordinate the creation and approval of implementation plans without executing them.
+    Spawn planning agents, manage review/approval, and output approved epics with
+    TinyDB phase records for downstream consumption by orchestration-executor.
+
+  profile: "orchestrator"
+
+  inputs:
+    - location: "modules/AgenticGuidance/agents/orchestration/orchestration-planning/inputs.yml"
+      description: "Planning inputs including required/runtime inputs, story discovery, and dependency fields"
+
+  outputs:
+    - name: "epic_folder_path"
+      description: "Absolute path to the approved epic folder in docs/epics/live/"
+      required: true
+    - name: "phases_created"
+      description: "List of TinyDB phase records created with agent routing"
+      required: true
+    - name: "next_step"
+      description: "Always: agentic orchestrate session implement --plan <epic-folder>"
+
+  # =============================================================================
+  # PLANNING WORKFLOW
+  # =============================================================================
+  # Sequential steps: Validate → Setup → Stories → Explore → Plan → Validate → Approve
+  # =============================================================================
+
+  steps:
+    # =========================================================================
+    # STEP 1: INPUT VALIDATION
+    # =========================================================================
+    - id: "input_validation"
+      name: "Input Validation"
+      description: |
+        Verify all required inputs before proceeding:
+
+        1. planning_objective (string, required)
+           - High-level description of what to plan
+           - ERROR if missing: "STOP: No planning_objective provided."
+
+        2. target_project_path (string, required)
+           - Absolute path to the target project root
+           - ERROR if missing: "STOP: No target_project_path provided."
+
+        3. planning_intent (enum, optional)
+           - Values: build, teach, test
+           - Influences phase determination and planner selection order
+           - Default: inferred from objective analysis
+
+        If ANY required input is missing, ask user for clarification and STOP.
+
+    # =========================================================================
+    # STEP 2: EPIC FOLDER SETUP
+    # =========================================================================
+    - id: "epic_setup"
+      name: "Epic Folder Setup"
+      description: |
+        Create or verify the epic folder structure using CLI:
+
+        ```bash
+        agentic epic new "<description>"
+        ```
+
+        This command:
+        - Enforces YYMMDDXX_description naming convention
+        - Creates epic folder in docs/epics/live/
+        - Creates epic.md with description
+        - Returns JSON with epic_folder_name and epic_folder path
+
+        If an existing epic matches the objective, reuse it instead of creating a new one.
+        Check with: `agentic epic list`
+
+    # =========================================================================
+    # STEP 3: PHASE DETERMINATION
+    # =========================================================================
+    - id: "phase_determination"
+      name: "Phase Determination"
+      description: |
+        Analyze the objective to determine required phases:
+
+        Phase types and their planners:
+        - **build**: Code implementation → planner-build
+        - **teach**: Guidance improvements → planner-build (includes guidance scope)
+        - **test**: Test strategy/validation → planner-test
+        - **cleanup**: Code removal/cleanup → planner-build
+        - **audit**: Epic folder compliance → planner-audit
+        - **uat**: User acceptance testing → planner-test (MANDATORY for build epics)
+
+        Phase sequence: stories → explore → build → teach → test → cleanup → audit → uat
+
+        Planning intent influences priority:
+        - planning_intent: "build" → prioritize planner-build
+        - planning_intent: "teach" → prioritize guidance phases
+        - planning_intent: "test" → prioritize planner-test
+
+    # =========================================================================
+    # STEP 4: STORY GENERATION
+    # =========================================================================
+    - id: "story_generation"
+      name: "Story Generation"
+      description: |
+        Stories are MANDATORY before planning proceeds.
+        Spawn build-story-writer to generate or verify user stories:
+
+        The story-writer:
+        - Discovers existing stories in docs/userstories/
+        - Generates new stories if needed for the epic objective
+        - Outputs stories to docs/userstories/EpicStories/{epic_folder}.yml
+
+        FENCE: Planning MUST NOT proceed without stories or an explicit
+        no_stories_rationale for internal-only changes.
+
+    # =========================================================================
+    # STEP 5: PARALLEL EXPLORATION
+    # =========================================================================
+    - id: "parallel_exploration"
+      name: "Parallel Exploration"
+      description: |
+        Spawn planner-explore agents in parallel — one per story category:
+
+        For each story category from Step 4:
+        1. Spawn planner-explore with category context
+        2. Explorer analyzes codebase for affected files
+        3. Explorer updates tickets with target-files and guidance
+
+        Explorers run concurrently via ThreadPoolExecutor pattern.
+        Wait for all explorers to complete before proceeding.
+
+    # =========================================================================
+    # STEP 6: PLANNING LOOPS
+    # =========================================================================
+    - id: "planning_loops"
+      name: "Planning Loops"
+      description: |
+        For each required phase from Step 3, run a planning loop:
+
+        1. Spawn the appropriate planner agent (planner-build, planner-test, etc.)
+        2. Planner creates tickets in TinyDB via CLI
+        3. Run pre-flight validation on planner output:
+           - All tickets have required fields (title, description, success_criteria)
+           - Ticket agent assignments are valid agent types
+           - No duplicate ticket IDs
+        4. If validation fails → provide feedback, re-run planner (max 5 iterations)
+        5. If validation passes → proceed to next phase
+
+        Pre-flight validation checks:
+        - Tickets exist for the phase
+        - Each ticket has success_criteria
+        - Agent types are from the valid roster
+        - Story IDs are present on build tickets
+
+    # =========================================================================
+    # STEP 7: PHASE RECORD GENERATION
+    # =========================================================================
+    - id: "phase_record_generation"
+      name: "Phase Record Generation"
+      description: |
+        After all planning loops complete, delegate phase record creation
+        to planner-orchestration:
+
+        Spawn planner-orchestration with:
+        - epic_folder_path: path to the epic folder
+        - target_project_path: path to the target project
+
+        planner-orchestration:
+        1. Reads TinyDB tickets for the epic
+        2. Determines agent routing per phase
+        3. Creates TinyDB phase records via `agentic epic phase add`
+        4. Sets cross-epic dependencies if needed
+
+        If phase record creation fails, retry up to 3 times then escalate to user.
+
+    # =========================================================================
+    # STEP 8: PRE-FLIGHT VALIDATION
+    # =========================================================================
+    - id: "preflight_validation"
+      name: "Pre-Flight Validation"
+      description: |
+        Validate the complete epic before presenting for approval:
+
+        1. All phases have agent routing assigned
+        2. All tickets have required fields populated
+        3. Phase execution order is valid (no circular dependencies)
+        4. Story coverage: affected_stories or no_stories_rationale present
+        5. UAT phase exists for build epics
+
+        ```bash
+        agentic epic status --epic <folder>
+        agentic epic ticket list --epic <folder>
+        agentic epic phase list --epic <folder>
+        ```
+
+    # =========================================================================
+    # STEP 9: HUMAN APPROVAL GATE
+    # =========================================================================
+    - id: "human_approval"
+      name: "Human Approval Gate"
+      description: |
+        POLICY: Gate is for CLARIFICATION, not routine sign-off.
+
+        - If all requirements are clear AND no open questions → auto-approve
+        - If requirements are unclear OR open questions exist → present for user approval
+
+        Present summary:
+        - Epic objective and folder path
+        - Phases created with agent routing
+        - Ticket count per phase
+        - Affected stories
+        - Estimated scope
+
+        If user requests changes → return to Step 6 (planning loops) with feedback.
+        Max approval iterations: 3. Escalate if exceeded.
+
+    # =========================================================================
+    # STEP 10: OUTPUT
+    # =========================================================================
+    - id: "output"
+      name: "Output"
+      description: |
+        Report planning completion:
+
+        1. Epic folder path (live location)
+        2. Phases created with agent assignments
+        3. Total ticket count
+        4. Next step command:
+           ```bash
+           agentic orchestrate session implement --plan <epic-folder>
+           ```
+
+        MANDATE: Output must include the exact next-step command for execution.
+
+  # =============================================================================
+  # GUIDELINES
+  # =============================================================================
+  guidelines:
+    - "Planning ONLY — no execution, no code implementation"
+    - "User provides all necessary context in prompt — no unbounded discovery"
+    - "Epics created in docs/epics/live/ for visibility"
+    - "Orchestrators OWN loop strategy selection"
+    - "Planners REQUEST validation needs but do NOT dictate specific loop structures"
+    - "Phase records must be at phase level — NO ticket-level routing"
+    - "NEVER use Edit tool to change ticket status — use CLI commands"
+    - "NEVER use rm or mv commands on epic folders — CLI handles archival"
+
+  # =============================================================================
+  # SPAWNABLE AGENTS
+  # =============================================================================
+  # FENCE: Only these agents may be spawned by this orchestrator
+  spawns:
+    - agent: "build-story-writer"
+      when: "Step 4 — story generation"
+    - agent: "planner-explore"
+      when: "Step 5 — parallel exploration per story category"
+    - agent: "planner-build"
+      when: "Step 6 — build/teach/cleanup phase planning"
+    - agent: "planner-test"
+      when: "Step 6 — test/uat phase planning"
+    - agent: "planner-audit"
+      when: "Step 6 — audit phase planning"
+    - agent: "planner-orchestration"
+      when: "Step 7 — TinyDB phase record creation"
