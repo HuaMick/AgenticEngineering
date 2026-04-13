@@ -1,0 +1,200 @@
+stories:
+- id: US-260411AG-001
+  title: Story Pattern Infrastructure
+  category: pattern-system
+  priority: high
+  lifecycle: under-construction
+  description: "As a developer managing cross-cutting code quality rules, I want a\
+    \ pattern\nverification system that defines reusable verification patterns with\n\
+    file-watch declarations, so that stories can inherit shared quality checks\nand\
+    \ staleness tracking without duplicating rules across individual stories.\n\n\
+    The pattern system is an orphan code path \u2014 it exists in the codebase\n(Pattern\
+    \ dataclass, PatternService, five pattern-* CLI commands) but was\nnever claimed\
+    \ by a story. This epic (260411AG) adds the watch_files field\nto patterns, which\
+    \ is the diagnostic signal that exposed the missing story.\n\nBy the depender-owns-the-story\
+    \ rule, this is a CLI story: the only way a\nuser reaches pattern behavior is\
+    \ via `agentic stories pattern-*` commands,\neven though Pattern/PatternService\
+    \ live in AgenticGuidance.\n"
+  prerequisites:
+  - docs/userstories/Patterns/ directory exists with at least one pattern YAML file
+  - At least one story file contains an inherits_patterns entry referencing a valid
+    pattern ID
+  steps:
+  - step: 1
+    when: a pattern YAML file exists under docs/userstories/Patterns/{domain}/
+    then:
+    - PatternService loads it into a Pattern dataclass with id, title, description,
+      tags, applicable_categories, parameters, verification, and optionally watch_files
+    - Pattern IDs follow the PAT-{DOMAIN}-NNN format (e.g., PAT-CLI-001); the domain
+      is extracted from the ID prefix
+    - watch_files is a list of glob patterns relative to repo root; when absent, defaults
+      to empty list (no staleness propagation from that pattern)
+  - step: 2
+    when: '`agentic stories patterns` runs'
+    then:
+    - Lists all loaded patterns grouped by domain, showing ID, title, and parameter
+      names
+  - step: 3
+    when: '`agentic stories pattern-cat <id>` runs'
+    then:
+    - 'Displays the full pattern content: parameters (with required markers), behavioral
+      verification steps, structural checks, enforcement config, and watch_files'
+    - JSON mode (`-j`) emits id, title, description, domain, tags, applicable_categories,
+      parameters, verification, watch_files, source_file
+    - When watch_files is empty or absent, the field is omitted from rich output but
+      present (as empty list) in JSON
+  - step: 4
+    when: '`agentic stories pattern-claimants <id>` runs'
+    then:
+    - Lists all stories that inherit the pattern via inherits_patterns, showing each
+      story's ID, title, and parameter bindings
+    - Each claimant row also shows inherited watch_files (the union of the pattern's
+      watch_files expanded for that claimant)
+    - JSON mode emits pattern_id, pattern_title, claimant_count, claimants[] with
+      id, title, source_file, bindings, and inherited_watch_files
+  - step: 5
+    when: '`agentic stories pattern-verify <id>` runs'
+    then:
+    - Runs the pattern's enforcement sweep against all claimant stories
+    - For each claimant, resolves parameter bindings and executes the verification
+      steps
+    - Reports pass/fail per claimant with details of which checks failed
+  - step: 6
+    when: '`agentic stories pattern-check <story-id>` runs'
+    then:
+    - Shows all patterns the story inherits and their binding completeness
+    - Missing required bindings are flagged; unbound optional parameters show defaults
+  - step: 7
+    when: a story inherits a pattern that declares watch_files
+    then:
+    - PatternService.get_watch_files_for_story() collects watch_files from all patterns
+      the story claims via inherits_patterns
+    - Glob patterns in watch_files are expanded via expand_watch_patterns() against
+      repo root
+    - Expanded watch_files participate in staleness computation alongside related_files
+      and global_watch
+    - When pattern-watched files change since last_pass_commit, the story becomes
+      stale with stale_reason='pattern_watch'
+  - step: 8
+    when: a story inherits multiple patterns with overlapping watch_files
+    then:
+    - watch_files are deduplicated after expansion; each concrete file path is counted
+      once in the staleness diff
+    - The stale_reason is 'pattern_watch' regardless of which specific pattern declared
+      the changed file
+  - step: 9
+    when: pattern-cat is called with a non-existent pattern ID
+    then:
+    - CLI exits non-zero with a 'Pattern not found' error naming the ID
+    - Same behavior for pattern-claimants, pattern-verify with unknown IDs
+  - step: 10
+    when: a pattern YAML file is malformed
+    then:
+    - PatternService logs a warning and skips the file; other patterns load normally
+    - "The pattern commands degrade gracefully \u2014 they show fewer patterns, not\
+      \ a crash"
+  uat_plan:
+    persona: agent-blind-test
+    starting_state: 'Clean checkout with docs/userstories/Patterns/ populated with
+      at least
+
+      PAT-CLI-001 (in Patterns/cli/01_json_output.yml). At least one story
+
+      (e.g., US-STR-020) inherits PAT-CLI-001 via inherits_patterns.
+
+      A pattern with watch_files declared is available (or one has been
+
+      manually added for testing).
+
+      '
+    preconditions:
+    - US-STR-001
+    journey:
+    - step: 1
+      action: Run `agentic stories patterns`
+      observe:
+      - command exits 0
+      - output lists patterns grouped by domain (CLI, DAT, EXE, AGT)
+      - each pattern shows ID, title, and parameter names
+    - step: 2
+      action: Run `agentic stories pattern-cat PAT-CLI-001`
+      observe:
+      - command exits 0
+      - output shows Parameters section with command (*required) and expected_keys
+        (*required)
+      - output shows Behavioral Verification and Structural Checks sections
+    - step: 3
+      action: Run `agentic -j stories pattern-cat PAT-CLI-001`
+      observe:
+      - output is valid JSON
+      - JSON contains id, title, description, domain, tags, parameters, verification,
+        source_file
+    - step: 4
+      action: Run `agentic stories pattern-claimants PAT-CLI-001`
+      observe:
+      - command exits 0
+      - lists claimant stories with their bindings (e.g., command=agentic stories
+        health)
+    - step: 5
+      action: Run `agentic -j stories pattern-claimants PAT-CLI-001`
+      observe:
+      - JSON contains pattern_id, pattern_title, claimant_count, claimants[]
+      - each claimant has id, title, source_file
+    - step: 6
+      action: Run `agentic stories pattern-check US-STR-020`
+      observe:
+      - command exits 0
+      - shows PAT-CLI-001 with bound parameters and their values
+    - step: 7
+      action: Run `agentic stories pattern-cat NONEXISTENT-999`
+      observe:
+      - command exits non-zero
+      - stderr or output contains 'Pattern not found'
+    - step: 8
+      action: If a pattern with watch_files exists, run `agentic stories pattern-cat
+        <id>` and verify watch_files appears in output
+      observe:
+      - watch_files list is displayed in rich output
+      - JSON mode includes watch_files as an array
+    success_signals:
+    - All five pattern-* commands exit 0 for valid inputs and non-zero for invalid
+    - Pattern content displays correctly in both rich and JSON modes
+    - Claimant resolution matches stories with inherits_patterns entries
+    - Pattern-check shows binding completeness for a given story
+    - watch_files field is visible in pattern-cat output when present
+    cleanup: []
+  related_commands:
+  - agentic stories patterns
+  - agentic stories pattern-cat <id>
+  - agentic stories pattern-claimants <id>
+  - agentic stories pattern-verify <id>
+  - agentic stories pattern-check <story-id>
+  related_agents:
+  - build-story-writer
+  - test-builder
+  related_files:
+  - modules/AgenticGuidance/src/agenticguidance/services/story.py
+  - modules/AgenticCLI/src/agenticcli/commands/stories.py
+  - docs/userstories/Patterns/cli/01_json_output.yml
+  - docs/userstories/Patterns/data/01_filelock.yml
+  - docs/userstories/Patterns/agent/01_spawn_lifecycle.yml
+  - docs/userstories/Patterns/execution/01_test_fix_loop.yml
+  - docs/userstories/.config.yml
+  related_stories:
+  - US-STR-020
+  - US-STR-001
+  last_tested: null
+  test_status: untested
+  test_notes: ''
+  tested_by_plan: null
+categories:
+- name: pattern-system
+  description: 'Pattern verification infrastructure: dataclass, service, CLI commands,
+    and watch_files staleness propagation'
+  codebase_scope:
+  - modules/AgenticGuidance/src/agenticguidance/services/story.py
+  - modules/AgenticCLI/src/agenticcli/commands/stories.py
+  - docs/userstories/Patterns/
+  - docs/userstories/.config.yml
+  story_ids:
+  - US-260411AG-001

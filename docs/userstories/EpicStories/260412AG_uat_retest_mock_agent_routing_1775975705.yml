@@ -1,0 +1,118 @@
+# Epic: 260412AG_uat_retest_mock_agent_routing_1775975705
+# Purpose: Add pytest coverage for ExecutionRunner mock agent routing paths
+#          (crash, no-agent, feedback triggers, stale recovery, blocked-phase halt)
+#
+# Verification result: zero new stories. All mechanics the epic tests are
+# already described by existing stories. One story (US-PLN-047) was updated
+# to fill a gap exposed by the epic (feedback trigger rerouting mechanic).
+#
+# This file is intentionally empty of new stories — it serves as the
+# reconciliation record for downstream agents and the planning pipeline.
+
+reconciliation:
+  epic_folder: 260412AG_uat_retest_mock_agent_routing_1775975705
+  epic_prefix: 260412AG
+  verification_date: "2026-04-12"
+  summary: |
+    This epic adds pytest coverage for ExecutionRunner mock agent routing
+    paths. The mechanics being tested already exist in code and are described
+    by existing stories. The verification pass found one undocumented mechanic
+    (feedback trigger rerouting in _check_feedback_triggers_tinydb) which was
+    added to US-PLN-047 as step 5.
+
+  searches_performed:
+    - query: "agentic stories find ExecutionRunner"
+      results: [US-GDN-097]
+    - query: "agentic stories find orchestration"
+      results: [US-GDN-005, US-GDN-100, US-GDN-061, US-GDN-097, US-PLN-046, US-PLN-047, US-PLN-048, US-PLN-080, US-SES-001, US-SES-014, US-SES-020, US-SES-030, US-SES-035]
+    - query: "agentic stories find phase routing"
+      results: [US-PLN-047, US-PLN-048]
+    - query: "agentic stories find crash"
+      results: [US-SES-006, US-SES-035]
+    - query: "agentic stories find blocked"
+      results: [US-GDN-061, US-PLN-065]
+    - query: "agentic stories find feedback trigger"
+      results: []
+    - query: "agentic stories find mock"
+      results: [US-GDN-081]
+    - query: "agentic stories find mock agent"
+      results: []
+    - query: "agentic stories find phase status"
+      results: []
+
+  overlapping_stories:
+    - id: US-GDN-097
+      title: Phase-to-Agent Routing via TinyDB
+      classification: OVERLAPS
+      reason: |
+        Epic's Build_001 (crash-path routing), Build_002 (no-agent routing),
+        and Build_005 (mock agent workaround) directly test mechanics this
+        story describes (steps 1-3).
+      action: NO_CHANGE
+      rationale: |
+        The story already accurately describes: static routing via phase.agent
+        (step 1), ExecutionRunner spawn via agent registry (step 2), missing
+        agent fails closed (step 3). The epic adds pytest coverage for these
+        existing mechanics — no story gap caused this epic. The diagnostic
+        question ("Could this epic have been avoided if the story was more
+        accurate?") yields NO — the mechanics were correctly described, the
+        tests were simply missing.
+
+    - id: US-PLN-047
+      title: Orchestrate Session Implement
+      classification: OVERLAPS
+      reason: |
+        Epic's Build_001 (crash-path), Build_003 (feedback triggers),
+        Build_004 (stale recovery), Build_006 (blocked-phase halt) test
+        mechanics described (or that should be described) in this story.
+      action: UPDATE
+      changes_made:
+        - "Added step 5: feedback trigger rerouting mechanic (_check_feedback_triggers_tinydb). This was an undocumented ExecutionRunner code path — PhaseData.feedback_triggers dict is read on failure, matching key triggers target phase reset to planning."
+        - "Updated step 6 (was step 5): stale phase recovery now describes the auto-promotion nuance from _recover_stale_phases — phases whose last session completed successfully are promoted to completed, not re-attempted."
+        - "Renumbered steps 5-8 to 6-9 to accommodate the new step"
+        - "Updated step 4 'when' clause to reference step 5 as the priority path"
+        - "Updated test_notes with verification audit trail"
+      rationale: |
+        Diagnostic question yields YES for the feedback trigger gap: the
+        _check_feedback_triggers_tinydb mechanic existed in code but no story
+        described it. An agent building the system from the stories would not
+        have implemented feedback trigger rerouting because it was undocumented.
+        The stale recovery update tightens the contract — the prior description
+        ("re-attempted from the start") was incomplete.
+
+  adjacent_stories:
+    - id: US-SES-035
+      title: Session Crash Recovery
+      classification: ADJACENT
+      reason: |
+        Build_004 (stale phase recovery) is related, but this story describes
+        tmux session-level crash visibility, not ExecutionRunner's phase-level
+        startup reconciliation. Different system layer.
+
+    - id: US-PLN-046
+      title: Orchestrate Session Plan
+      classification: ADJACENT
+      reason: |
+        Shares the mock-crash-fast routing workaround in its UAT plan (step 7)
+        but the epic targets session implement paths, not planning paths.
+
+    - id: US-PLN-061
+      title: Phase Execution and Validation
+      classification: ADJACENT
+      reason: |
+        Covers ticket-level execution mechanics (test-fix loops, validation
+        gates). Feedback triggers at the phase level are now in US-PLN-047
+        step 5; ticket-level looping remains in US-PLN-061 steps 9-11.
+
+  unrelated_stories:
+    - id: US-SES-014
+      title: Session Spawn Feedback
+      note: "False positive from 'orchestration' keyword — about token estimation and progress spinners"
+    - id: US-PLN-048
+      title: Orchestrate Session UAT
+      note: "About UAT runner workflow, not ExecutionRunner crash/routing paths"
+
+# No new stories — all epic mechanics are covered by existing stories after
+# the US-PLN-047 update.
+stories: []
+categories: []

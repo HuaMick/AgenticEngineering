@@ -1,0 +1,154 @@
+area: shared_infrastructure
+description: >
+  Shared infrastructure dependencies whose state is load-bearing for
+  specific stories. Stories opt in to these patterns only when their
+  verification concretely depends on the watched file — edits to a
+  shared file then invalidate just the claimants, not every story.
+patterns:
+- id: PAT-INFRA-001
+  title: Python Build Configuration
+  description: >
+    Stories whose pass/fail state depends on pyproject.toml or lockfile
+    content — installation, packaging, dependency resolution, or build
+    wiring. Edits to these files should re-run claimant stories.
+  tags: [infra, build, pyproject, packaging]
+  applicable_categories: [US-SET, US-PLN]
+  watch_files:
+    - "pyproject.toml"
+    - "modules/*/pyproject.toml"
+
+  parameters:
+    target_file:
+      description: "The pyproject/lockfile whose state the story depends on"
+      required: false
+    install_command:
+      description: "Install or build command being verified"
+      required: false
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Run {install_command} against {target_file}"
+        expect: "Install completes without dependency resolution errors"
+
+    structural:
+      checks:
+      - description: "Story references packaging/build wiring in verification"
+        look_for: "pyproject|install|dependency|lockfile"
+        in_files: "docs/userstories/**/*.yml"
+
+    enforcement:
+      sweep: "all_claimants"
+      method: |
+        For each story inheriting PAT-INFRA-001, re-run install/build
+        verification when any watch_file changes.
+
+- id: PAT-INFRA-002
+  title: Test Infrastructure
+  description: >
+    Stories whose tests rely on shared conftest fixtures — session
+    fixtures, autouse hooks, collection tweaks. Edits to conftest.py
+    should re-run claimants because the fixture contract changed.
+  tags: [infra, testing, conftest, fixtures]
+  applicable_categories: [US-PLN, US-SES, US-STR]
+  watch_files:
+    - "conftest.py"
+    - "modules/**/conftest.py"
+
+  parameters:
+    fixture:
+      description: "The shared fixture the story depends on"
+      required: false
+    conftest_path:
+      description: "The conftest file providing the fixture"
+      required: false
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Run the story's test suite with the shared fixture active"
+        expect: "Tests exercise the bound {fixture} and pass"
+
+    structural:
+      checks:
+      - description: "Story verification references shared conftest fixtures"
+        look_for: "conftest|fixture"
+        in_files: "docs/userstories/**/*.yml"
+
+    enforcement:
+      sweep: "all_claimants"
+      method: |
+        For each story inheriting PAT-INFRA-002, re-run the bound tests
+        when any watch_file changes.
+
+- id: PAT-INFRA-003
+  title: Environment Config
+  description: >
+    Setup / environment stories that read or assert against .env.example.
+    Edits to .env.example (new variable, renamed key) should invalidate
+    claimant stories so the env contract is re-verified.
+  tags: [infra, environment, dotenv, setup]
+  applicable_categories: [US-SET]
+  watch_files:
+    - ".env.example"
+
+  parameters:
+    variable:
+      description: "The env variable the story depends on"
+      required: false
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Copy .env.example to .env and load environment"
+        expect: "All documented variables load without missing-key errors"
+
+    structural:
+      checks:
+      - description: "Story verification references .env.example or env vars"
+        look_for: "\\.env|environment|ENV"
+        in_files: "docs/userstories/Setup/**/*.yml"
+
+    enforcement:
+      sweep: "all_claimants"
+      method: |
+        For each story inheriting PAT-INFRA-003, re-run env setup
+        verification when .env.example changes.
+
+- id: PAT-INFRA-004
+  title: CLI Entrypoint
+  description: >
+    Stories that assert Typer entrypoint wiring — command-tree shape,
+    top-level router, subcommand registration. Edits to cli.py should
+    invalidate claimants because the entrypoint contract changed.
+  tags: [infra, cli, typer, entrypoint]
+  applicable_categories: [US-SET, US-PLN, US-STR, US-SES]
+  watch_files:
+    - "modules/AgenticCLI/src/agenticcli/cli.py"
+
+  parameters:
+    command:
+      description: "The CLI command whose wiring the story verifies"
+      required: false
+
+  verification:
+    behavioral:
+      steps:
+      - step: 1
+        action: "Run `agentic --help` and the bound {command}"
+        expect: "Command is registered in the Typer tree and dispatches correctly"
+
+    structural:
+      checks:
+      - description: "Story verification references the CLI entrypoint / command tree"
+        look_for: "agentic |typer|command tree|entrypoint"
+        in_files: "docs/userstories/**/*.yml"
+
+    enforcement:
+      sweep: "all_claimants"
+      method: |
+        For each story inheriting PAT-INFRA-004, re-run entrypoint
+        verification when cli.py changes.
