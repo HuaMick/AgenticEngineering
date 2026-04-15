@@ -46,12 +46,16 @@ process:
 
     - name: "Create phases"
       action: |
-        Create phases via CLI. Typical phase structure:
+        Create EMPTY phase shells via CLI. Do NOT pass --agent here —
+        the planner-orchestration dispatcher runs next and assigns agent
+        routing based on its build/test partition decision. Your job is
+        only to scaffold the phase names and execution modes.
+
         ```bash
-        agentic epic phase add --epic {epic_folder} --name "Build" --agent build-python --execution sequential
-        agentic epic phase add --epic {epic_folder} --name "Test" --agent test-builder --execution sequential
-        agentic epic phase add --epic {epic_folder} --name "Cleanup" --agent build-python --execution sequential
-        agentic epic phase add --epic {epic_folder} --name "Audit" --agent planner-audit --execution sequential
+        agentic epic phase add --epic {epic_folder} --name "Build" --execution sequential
+        agentic epic phase add --epic {epic_folder} --name "Test" --execution sequential
+        agentic epic phase add --epic {epic_folder} --name "Cleanup" --execution sequential
+        agentic epic phase add --epic {epic_folder} --name "Audit" --execution sequential
         ```
 
         DO NOT scaffold a "UAT" phase (2026-04-11 contract change). UAT is
@@ -63,6 +67,9 @@ process:
         Adjust phases based on the epic objective:
         - Pure guidance work: teach phases instead of build
         - Complex epics: may need multiple build phases
+
+        Agent routing (the phase.agent field) is set later by
+        planner-orchestration — leave it unset here.
       required: true
 
     - name: "Create skeleton tickets"
@@ -107,10 +114,12 @@ process:
         2. Every ticket has a phase assignment
         3. Agent types are set on tickets
         4. No orphaned tickets (tickets without phases)
-        5. story_ids linkage — epic-creator runs BEFORE story-writer, so
-           story IDs do NOT exist yet at this point. Downstream
-           planner-explore agents will populate story_ids on each ticket
-           AFTER the story-writer step produces docs/userstories/EpicStories/{epic_folder}.yml.
+        5. story_ids linkage — epic-creator runs BEFORE the dispatcher and
+           story-writer, so story IDs do NOT exist yet at this point.
+           Downstream planner agents (planner-build / planner-test) will
+           populate story_ids on each ticket AFTER the story-writer step
+           produces docs/userstories/EpicStories/{epic_folder}.yml (only
+           when the dispatcher decided needs_stories=true).
            Pre-flight validation will enforce that every ticket in a
            build-plan epic has at least one story_id before execution
            begins. No action is needed here; just be aware that the
@@ -121,15 +130,18 @@ guidelines:
   - "Your ONLY output is via `agentic` CLI commands. Do NOT create files, edit code, or write YAML."
   - "Every artifact goes through TinyDB via the CLI."
   - "Create SKELETON tickets — descriptions only, no implementation details."
-  - "Downstream agents (planner-explore) will enrich tickets with target-files and guidance."
+  - "Downstream agents (planner-build, planner-test) will enrich tickets with target-files and guidance."
   - "When in doubt about phase structure, prefer more granular phases over fewer monolithic ones."
   - "Always include a Test phase for user-facing changes. UAT is a separate on-demand workflow (`agentic orchestrate session uat`), not a phase."
   - |
     STORY_IDS TIMING: epic-creator is step 1 of the planning pipeline.
-    story-writer runs in step 2 and produces docs/userstories/EpicStories/{epic_folder}.yml. planner-explore
-    agents run in step 3 and populate --story-ids on each ticket.
-    Do NOT add --story-ids to skeleton ticket-add calls here — the story
-    IDs do not exist yet. The CLI will reject `agentic epic ticket add`
-    without --story-ids ONLY for manual ticket creation on build-plan
-    epics (outside the pipeline). During pipeline execution, skeleton
-    tickets are created first and enriched with story_ids afterward.
+    planner-orchestration (the dispatcher) runs in step 2 and decides
+    whether stories are needed. If so, story-writer runs in step 3 and
+    produces docs/userstories/EpicStories/{epic_folder}.yml. planner-build
+    and planner-test run afterward and populate --story-ids on each
+    ticket. Do NOT add --story-ids to skeleton ticket-add calls here —
+    the story IDs do not exist yet. The CLI will reject
+    `agentic epic ticket add` without --story-ids ONLY for manual ticket
+    creation on build-plan epics (outside the pipeline). During pipeline
+    execution, skeleton tickets are created first and enriched with
+    story_ids afterward.

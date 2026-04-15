@@ -469,7 +469,9 @@ def cmd_status(args):
     """Display test status for a specific story."""
     from agenticcli.console import console, is_json_output, print_error, print_header, print_json
 
-    story_id = args.id
+    # Typer binding in cli.py passes `story_id` (matches the typer.Argument name);
+    # fall back to `id` for legacy dispatch paths that used the shorter attribute.
+    story_id = getattr(args, "story_id", None) or getattr(args, "id", None)
     svc = StoryService(_find_userstories_dir())
     story_obj = svc.get_by_id(story_id)
 
@@ -1057,19 +1059,30 @@ def cmd_health(args):
         pf = project_filter.lower()
         all_story_objs = [s for s in all_story_objs if pf in s.project.lower()]
 
+    # Resolve pattern_watch per story (dict of file -> owning pattern_id).
+    pat_svc = PatternService(userstories_dir)
+    pattern_watch_by_story: dict[str, dict[str, str]] = {}
+    if repo_root:
+        for s in all_story_objs:
+            if s.inherits_patterns:
+                pattern_watch_by_story[s.id] = pat_svc.get_watch_files_for_story(s, repo_root)
+
     # --- Compute status and flags for every story ---
     # Each entry: (story, status, flags_dict)
     story_results: list[tuple] = []
     for s in all_story_objs:
+        pw = pattern_watch_by_story.get(s.id, {})
         status = story_svc.compute_story_status(
             s, repo_root,
             story_markers=story_marker_ids,
             global_watch=global_watch_files,
+            pattern_watch=pw,
         )
         flags = story_svc.compute_story_flags(
             s, repo_root,
             global_watch=global_watch_files,
             flaky_ids=flaky_story_ids,
+            pattern_watch=pw,
         )
         story_results.append((s, status, flags))
 
@@ -1133,12 +1146,17 @@ def cmd_health(args):
             # For related_files_changed / global_config_changed, do one diff call.
             related_files_changed: list[str] = []
             global_config_changed: list[str] = []
+            pattern_watch_changed: list[str] = []
             stale_reason = flags.get("stale_reason")
-            if stale_reason in ("related_file", "global_config") and repo_root and s.last_pass_commit:
+            pw_for_story = pattern_watch_by_story.get(s.id, {})
+            is_pattern_reason = isinstance(stale_reason, str) and stale_reason.startswith("pattern:")
+            if (stale_reason in ("related_file", "global_config") or is_pattern_reason) \
+                    and repo_root and s.last_pass_commit:
                 changed = _git_changed_files_since(s.last_pass_commit, repo_root)
                 if changed and changed is not ANCHOR_UNREACHABLE:
                     related_files_changed = sorted(set(s.related_files) & changed)
                     global_config_changed = sorted(set(global_watch_files) & changed)
+                    pattern_watch_changed = sorted(set(pw_for_story.keys()) & changed)
 
             stories_json.append({
                 "id": s.id,
@@ -1163,6 +1181,7 @@ def cmd_health(args):
                     "reason": stale_reason,
                     "related_files_changed": related_files_changed,
                     "global_config_changed": global_config_changed,
+                    "pattern_watch_changed": pattern_watch_changed,
                 },
                 "related_files": s.related_files,
                 "lifecycle": s.lifecycle,
@@ -2444,6 +2463,7 @@ def cmd_pattern_cat(args):
             "parameters": pattern.parameters,
             "verification": pattern.verification,
             "source_file": pattern.source_file,
+            "watch_files": list(pattern.watch_files),
         })
         return
 
@@ -2479,6 +2499,11 @@ def cmd_pattern_cat(args):
         console.print("\n  [bold]Enforcement:[/bold]")
         console.print(f"    Sweep: {verification['enforcement'].get('sweep', 'N/A')}")
 
+    if pattern.watch_files:
+        console.print("\n  [bold]Watch Files:[/bold]")
+        for wf in pattern.watch_files:
+            console.print(f"    {wf}")
+
 
 def cmd_pattern_claimants(args):
     """List stories that inherit a given pattern."""
@@ -2494,6 +2519,14 @@ def cmd_pattern_claimants(args):
         sys.exit(1)
 
     claimants = pat_svc.get_claimants(args.id, story_svc)
+    repo_root = _find_repo_root()
+
+    def _inherited_watch_files(story) -> list[str]:
+        if not pattern.watch_files or repo_root is None:
+            return []
+        pw = pat_svc.get_watch_files_for_story(story, repo_root)
+        # Restrict to files claimed by this pattern (first-match ownership).
+        return sorted(f for f, pid in pw.items() if pid == args.id)
 
     if is_json_output():
         print_json({
@@ -2501,7 +2534,12 @@ def cmd_pattern_claimants(args):
             "pattern_title": pattern.title,
             "claimant_count": len(claimants),
             "claimants": [
-                {"id": s.id, "title": s.title, "source_file": s.source_file}
+                {
+                    "id": s.id,
+                    "title": s.title,
+                    "source_file": s.source_file,
+                    "inherited_watch_files": _inherited_watch_files(s),
+                }
                 for s in claimants
             ],
         })
@@ -2521,7 +2559,9 @@ def cmd_pattern_claimants(args):
             {},
         )
         bind_summary = ", ".join(f"{k}={v}" for k, v in binding.items()) if binding else "no bindings"
-        console.print(f"  {s.id}  {s.title}  [dim]({bind_summary})[/dim]")
+        wf = _inherited_watch_files(s)
+        wf_suffix = f"  [dim]watch_files: {len(wf)} files[/dim]" if pattern.watch_files else ""
+        console.print(f"  {s.id}  {s.title}  [dim]({bind_summary})[/dim]{wf_suffix}")
 
 
 def cmd_pattern_verify(args):

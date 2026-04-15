@@ -1,5 +1,9 @@
 process:
   goal: |
+    NOTE ON PARALLEL INVOCATION:
+    This agent may be invoked in parallel with peers (one per phase). When `phase_id`
+    is set, stay strictly within that phase to avoid write contention.
+
     Create a phased test plan for validating the implementation using test-fix-loop
     and audit-test-fix-loop patterns with user story validation. Handles all test
     plan types including code testing, guidance walkthrough validation, and UAT planning.
@@ -36,6 +40,15 @@ process:
       # Get current ticket if working from an epic
       agentic epic ticket current -j
       ```
+
+      PHASE SCOPING (parallel safety):
+      If the optional `phase_id` input is provided, you MUST stay strictly within
+      that phase — only refine/create test tickets whose phase matches `phase_id`.
+      When listing tickets, append `--phase <phase_id>`:
+        `agentic -j epic ticket list --epic <epic_folder> --phase <phase_id>`
+      This prevents write contention when peer planner-test agents are running in
+      parallel for other phases. If `phase_id` is absent, behavior is unchanged
+      (operate on all pending tickets).
 
       CLI output provides:
       - Your objective and process summary
@@ -124,7 +137,7 @@ process:
       EPIC FOLDER STRUCTURE:
       See modules/AgenticGuidance/assets/definitions/epics.yml for folder structure and lifecycle.
       - Load all tickets from TinyDB to understand what was built (your test targets):
-        `agentic -j epic ticket list --epic {epic_folder_name}`
+        `agentic -j epic ticket list --epic {epic_folder_name}` (or append `--phase {phase_id}` when `phase_id` input is provided, to scope discovery to a single phase for parallel-safe operation)
       - Create your test phases in TinyDB via CLI: `agentic epic phase add` and `agentic epic ticket add`
       - Output ONLY to TinyDB (do not modify other phase tickets, do not create ticket_*.yml on disk)
     - |
@@ -154,7 +167,7 @@ process:
       - Component testing and user flow testing integration
 
       INPUT SOURCE (what you're testing):
-      - Load build tickets from TinyDB: `agentic -j epic ticket list --epic {epic_folder_name}`
+      - Load build tickets from TinyDB: `agentic -j epic ticket list --epic {epic_folder_name}` (or append `--phase {phase_id}` when `phase_id` input is provided, to scope discovery to a single phase for parallel-safe operation)
       - Review phase descriptions and ticket target_files to understand what components were built
       - Use this to determine what needs to be tested and which files to include in test inputs
 

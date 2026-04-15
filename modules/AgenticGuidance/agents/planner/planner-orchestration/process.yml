@@ -1,241 +1,218 @@
-goal: "Create TinyDB phase records with agent routing from approved ticket data for downstream execution by orchestration-executor."
+goal: |
+  Dispatcher. Read the epic and its skeleton phases, decide whether stories
+  are needed for this epic, partition phases into build vs test, assign agent
+  routing on each phase, and emit a planning_decision record in TinyDB that
+  downstream planning steps consume.
 
 context:
   role: |
-    planner-orchestration is a PLANNING artifact creator. It reads tickets from TinyDB
-    and creates TinyDB phase records with agent routing that orchestration-executor can consume.
+    planner-orchestration runs SECOND in the planning pipeline, immediately
+    after epic-creator has scaffolded empty phase shells and skeleton tickets.
+    It acts as a DISPATCHER for the rest of planning — it does not itself
+    write build guidance, test cases, or stories.
 
-    This agent runs directly after parallel explore agents (no design/review gate upstream).
-    It does NOT execute plans. It does NOT orchestrate other agents.
-    It creates phase records in TinyDB with the correct agent routing, execution mode,
-    feedback triggers, and loop structure fields.
+    Its outputs are:
+      1. Agent routing set on every phase record (phase.agent field).
+      2. A planning_decision TinyDB record describing whether story-writer
+         should run, whether pre-flight story checks should run, and which
+         phase ids are in the build partition vs the test partition.
+
+    Downstream agents (build-story-writer, planner-build, planner-test) read
+    the planning_decision record to know whether to execute or no-op.
+
+    This agent does NOT:
+      - Create or delete phases (epic-creator owns scaffolding).
+      - Author stories (build-story-writer does, when dispatched).
+      - Write tickets guidance/target files (planner-build / planner-test do).
+      - Produce any files on disk. TinyDB is the sole store.
 
   naming_convention: |
-    This agent follows the planner-* naming convention because it creates planning artifacts
-    (phase records). orchestration-* agents execute workflows; planner-* agents create artifacts.
+    planner-* because this agent creates a planning artifact (the
+    planning_decision record). orchestration-* agents execute workflows;
+    planner-* agents describe / decide.
 
 process:
   steps:
     # ========================================
-    # STEP 1: Load Plan Context
+    # STEP 1: Load Epic + Phase Context
     # ========================================
     - name: "Load Epic Context"
       action: |
-        Load tickets from TinyDB: `agentic -j epic ticket list --epic {epic_folder_name}`
-        Extract:
-        - Epic name and metadata
-        - All existing phases (name, execution mode, description)
-        - All tasks per phase (id, name, agent_type, status)
-        - Loop structures (type, applies_to_phase, exit_criteria)
-        - Success criteria
-        - Affected stories (if present in epic metadata)
+        Read the epic and its current phase/ticket scaffolding from TinyDB:
+        ```bash
+        agentic epic status --epic {epic_folder_name}
+        agentic -j epic ticket list --epic {epic_folder_name}
+        agentic -j epic phase list --epic {epic_folder_name}
+        ```
+        Collect:
+        - The epic objective / description (from status output or README).
+        - Every existing phase: phase_id, name, description.
+        - Every existing ticket: id, phase, name, description.
 
-        NOTE: Phases and skeleton tickets may already exist from the epic-creator agent.
-        Your job is to ensure agent routing is correctly set on ALL phase records, not to
-        recreate them. Check existing phases first: `agentic -j epic phase list --epic {epic_folder_name}`
-        Only create phases that don't exist yet. Update existing phases with agent routing if missing.
+        Phases and skeleton tickets already exist. Your job is to CLASSIFY
+        and ROUTE them, not to recreate them.
       inputs:
-        - epic_folder_path: "Provided by orchestration-planning or user"
+        - epic_folder_name: "Provided by orchestration-planning or user"
+      required: true
 
     # ========================================
-    # STEP 2: Extract Phase Sequence
+    # STEP 2: Decide needs_stories
     # ========================================
-    - name: "Extract Phase Sequence"
+    - name: "Decide needs_stories"
       action: |
-        From the TinyDB ticket phases, determine the execution order.
-        Map each phase to its execution mode (sequential or parallel).
-        Identify cross-phase dependencies.
+        Classify the epic objective into one of two buckets. This decision
+        controls whether build-story-writer runs.
+
+        needs_stories = FALSE when the objective contains any of these
+        intent keywords (case-insensitive match on the objective text):
+          refactor, cleanup, clean up, extract, decommission, migrate,
+          migration, rename, DRY, hardening, harden, consolidate,
+          reorganise, reorganize, tech-debt, tech debt, dead code,
+          dead-code removal
+
+        Rationale: such epics modify existing mechanics described by
+        existing stories. The correct action is to update an existing
+        story (if at all), and that work is handled by the verify-first
+        branch of story-writer only when explicitly invoked — the
+        dispatcher usually skips it entirely for these epics.
+
+        needs_stories = TRUE when the objective describes:
+          - New user-visible behavior.
+          - A new feature, command, workflow, or surface.
+          - A new system component or mechanic that did not previously
+            exist.
+
+        UNCERTAIN → default TRUE. story-writer's own verify-first path
+        will no-op if it finds no genuinely new component.
+
+        Record your reasoning in one sentence. You will include it in the
+        planning_decision emission below.
+      required: true
 
     # ========================================
-    # STEP 3: Determine Agent Routing
+    # STEP 3: Partition phases into build vs test
     # ========================================
-    - name: "Determine Agent Routing"
+    - name: "Partition phases"
       action: |
-        Map each phase to the appropriate agent type using the routing table below
-        to set the phase.agent field in the TinyDB phase record:
+        Walk every phase record returned in step 1 and classify it:
 
-        Agent routing mapping:
-        - teach phases -> teacher agents (teacher-update-guidance, teacher-update-assets)
-        - build phases -> builder agents (build-python, build-flutter)
-        - test phases -> tester agents (test-builder, test-builder)
-        - cleanup phases -> builder agents (cleanup tasks use builders)
-        - audit phases -> planner-audit (epic folder compliance)
+        - build_phase_ids — phases whose work produces or modifies CODE.
+          Typical names: "Build", "Implement", "Refactor", "Cleanup",
+          "Migrate", "Teach" (for guidance edits), "Audit" (folder
+          compliance edits).
 
-        DO NOT create "uat" phases. As of 2026-04-11 UAT is a standalone
-        workflow (`agentic orchestrate session uat`) that runs on-demand
-        against story uat_plan blocks. Epic phase lists contain only
-        build/test/cleanup/audit/teach phases.
+        - test_phase_ids — phases whose work produces or modifies TESTS.
+          Typical names: "Test", "Validate", "Coverage".
 
-        For each phase, resolve the generic type to the specific agent based on:
-        - Task agent_type fields in TinyDB
-        - Project technology (Python -> build-python, Flutter -> build-flutter)
-        - Phase type defaults from the mapping above
+        - Phases that do BOTH (rare, e.g. a phase whose description
+          mentions both implementation and its tests) — include the
+          phase_id in BOTH lists. planner-test refines the test surface
+          after planner-build is done, so double-listing is safe.
+
+        Classification is by phase name + description, not by any
+        pre-existing agent field (that field may be unset; this step is
+        what populates it).
+      required: true
 
     # ========================================
-    # STEP 4: Validate Loop Structure
+    # STEP 4: Set phase agent routing
     # ========================================
-    - name: "Validate Loop Structure"
+    - name: "Set phase agent routing"
       action: |
-        Verify that all non-trivial phases include loop_structure definitions.
-
-        FENCE: PLANS-MUST-INCLUDE-LOOPS
-        Plans for non-trivial work MUST include loop_structure section.
-        Reject plans without loops for:
-        - Build phases (requires test-fix-loop)
-        - Test phases (requires audit-test-fix-loop)
-        - Cleanup phases (requires audit-test-fix-loop)
-        - Teach phases (requires guidance-self-review-loop OR agent-self-review)
-
-        If loops are missing, STOP and report back to orchestration-planning.
-        Do NOT create phase records without proper loop definitions.
-      reference: "modules/AgenticGuidance/assets/definitions/agent-loops.yml"
-
-    # ========================================
-    # STEP 5: Create Phase Records in TinyDB
-    # ========================================
-    - name: "Create Phase Records in TinyDB"
-      action: |
-        For each phase determined in step 2, create a TinyDB phase record
-        using the CLI commands:
+        For every phase, set the phase.agent field via the CLI so the
+        executor can route work correctly:
 
         ```bash
-        # Create a phase with agent routing
-        agentic epic phase add \
-          --epic {epic_folder_name} \
-          --name "{phase_name}" \
-          --agent {resolved_agent_type} \
-          --execution sequential
+        # For each phase in build_phase_ids:
+        agentic epic phase update {phase_id} --epic {epic_folder_name} --agent build-python
 
-        # Add tickets to the phase
-        agentic epic ticket add \
-          --epic {epic_folder_name} \
-          --phase "{phase_name}" \
-          --id {ticket_id} \
-          --name "{ticket_name}" \
-          --story-ids "US-XXX-001,US-XXX-002"
+        # For each phase in test_phase_ids:
+        agentic epic phase update {phase_id} --epic {epic_folder_name} --agent test-builder
         ```
 
-        NOTE: For build-plan epics, --story-ids is MANDATORY on every ticket.
-        The CLI enforcement gate rejects ticket creation without it. Copy
-        story_ids from the approved plan metadata for each ticket. Infra/guidance
-        epics bypass this requirement.
+        Agent mapping:
+          - build partition → build-python (Python projects; use
+            build-flutter only if the epic is explicitly a Flutter epic).
+          - test partition → test-builder.
+          - phases in BOTH partitions → set agent to build-python; the
+            test pass will be attached by planner-test as a follow-up
+            ticket on the same phase.
 
-        Required fields per phase record:
-        - name: Phase name (e.g., "Build", "Test", "Cleanup", "Audit")
-        - agent: Resolved agent type (e.g., "build-python", "test-builder")
-        - execution: "sequential" or "parallel"
-        - status: "pending" (initial value)
-
-        Optional fields per phase record:
-        - feedback_triggers: Failure handling paths (TEST_FAILURE, BUILD_FAILURE, etc.)
-        - loop_structure: Loop type, max iterations, exit conditions
-        - max_iterations: Retry limit (default 3)
-        - affected_stories: Story IDs from plan metadata (if present)
-
-        STORY METADATA IN PHASE RECORDS:
-        Ticket.story_ids links each ticket to the stories it validates.
-        The executor uses this mapping to record `last_pass_commit` for
-        every covered story when the phase completes successfully. UAT
-        validation is separate (see `agentic orchestrate session uat`).
-
-      example: |
-        # Example phase creation for a build epic:
-        agentic epic phase add --epic 260207PO_refactor --name "Build" --agent build-python --execution sequential
-        agentic epic phase add --epic 260207PO_refactor --name "Test" --agent test-builder --execution sequential
-        agentic epic phase add --epic 260207PO_refactor --name "Audit" --agent planner-audit --execution sequential
+        Do NOT create new phases here. Do NOT create "UAT" phases —
+        UAT is an on-demand workflow (`agentic orchestrate session uat`),
+        never a phase in the plan.
+      required: true
 
     # ========================================
-    # STEP 6: Validate Phase Records
+    # STEP 5: Emit planning_decision record
     # ========================================
-    - name: "Validate Phase Records"
+    - name: "Emit planning_decision"
       action: |
-        Validate the created phase records by reading them back from TinyDB:
-        `agentic -j epic ticket list --epic {epic_folder_name}`
+        Write the planning_decision record directly to TinyDB using the
+        EpicRepository helper. There is no `agentic epic decision set` CLI
+        subcommand yet — invoke the repository via a python3 one-liner:
 
-        Verify:
-        1. All phases from the ticket data are represented in phase records
-        2. Every phase has an agent field set to a valid agent type
-        3. Agent types exist in the manifest spawns fence
-        4. Loop structures match definitions in agent-loops.yml
-        5. Feedback trigger targets reference valid phase names
-        6. Cross-epic dependencies were evaluated (see Step 7)
+        ```bash
+        python3 -c "
+        from agenticguidance.services.epic_repository import EpicRepository
+        r = EpicRepository()
+        r.write_planning_decision(
+            epic_folder_name='{epic_folder_name}',
+            needs_stories={True|False},
+            needs_preflight_story_check={True|False},
+            build_phase_ids=[{comma-separated quoted phase ids from step 3}],
+            test_phase_ids=[{comma-separated quoted phase ids from step 3}],
+        )
+        "
+        ```
 
-        If validation fails, update the phase records and re-validate.
-      cli_reference: "agentic epic phase add --help"
+        Substitute the actual values from steps 2 and 3:
+          - needs_stories: boolean from step 2.
+          - needs_preflight_story_check: MUST equal needs_stories. The
+            pre-flight story check is only meaningful when stories are
+            expected; for refactor / cleanup epics it is suppressed.
+          - build_phase_ids / test_phase_ids: the partitions from step 3.
+
+        The helper stamps `decided_at` with an ISO timestamp automatically.
+
+        Verify by reading it back:
+        ```bash
+        python3 -c "
+        from agenticguidance.services.epic_repository import EpicRepository
+        print(EpicRepository().read_planning_decision('{epic_folder_name}'))
+        "
+        ```
+        Confirm the dict has the expected boolean and list values. If the
+        read-back fails, re-run the write; do not proceed until the record
+        is present.
+      required: true
 
     # ========================================
-    # STEP 7: Set Cross-Epic Dependencies
+    # STEP 6: Validate routing + decision
     # ========================================
-    - name: "Set Cross-Epic Dependencies"
+    - name: "Validate"
       action: |
-        Analyze this epic's relationship to other live epics and set dependency
-        links and priority accordingly.
+        Final sanity checks before handing back to orchestration-planning:
 
-        1. READ ALL LIVE EPICS:
-           ```bash
-           agentic -j epic list
-           ```
-           From the JSON output, collect each epic's name, target_files (from tickets),
-           and current status.
+        1. Every phase listed by `agentic -j epic phase list --epic
+           {epic_folder_name}` has a non-empty `agent` field.
+        2. Every phase_id in build_phase_ids or test_phase_ids exists in
+           the phase list (no stale ids).
+        3. planning_decision record exists and round-trips via
+           EpicRepository().read_planning_decision(...).
+        4. No MMD or YAML files were written — TinyDB is the sole store.
 
-        2. DETECT TARGET FILE OVERLAP:
-           For each other live epic, compare its ticket target_files with this epic's
-           ticket target_files. Overlapping target_files indicate potential ordering
-           dependencies (two epics modifying the same files must run in sequence).
-
-           ```bash
-           # Get this epic's tickets with target_files
-           agentic -j epic ticket list --epic {epic_folder_name}
-           # Get other epic's tickets
-           agentic -j epic ticket list --epic {other_epic_folder_name}
-           ```
-
-           If target_files overlap, the epic with higher priority or earlier date
-           should run first. Set a dependency link so the later epic waits:
-           ```bash
-           agentic epic link --epic {this_epic} --depends-on {earlier_epic}
-           ```
-
-        3. SET EPIC PRIORITY:
-           Determine priority based on the epic's objective:
-           - bugfix / hotfix → critical or high
-           - cleanup / refactor / tech-debt → low
-           - feature / enhancement → medium
-           - infrastructure / tooling → medium
-           - test / validation → low
-
-           ```bash
-           agentic epic set-priority --epic {epic_folder_name} --priority {level}
-           ```
-
-           Priority levels: critical, high, medium, low.
-           These affect execution ordering — higher priority epics are executed
-           first when multiple epics are ready.
-
-        4. VERIFY NO CYCLES:
-           The `agentic epic link` command automatically rejects cyclic dependencies.
-           If a link is rejected due to a cycle, re-evaluate the dependency direction
-           or remove a conflicting link:
-           ```bash
-           agentic epic unlink --epic {epic_name} --depends-on {dep_name}
-           ```
-
-        FENCE: DEPENDENCY-EVALUATION-REQUIRED
-        You MUST evaluate cross-epic dependencies for every plan. If no overlaps
-        exist and no dependencies are needed, document that in the validation
-        output (Step 6 check #6). Do NOT skip this step.
-
-      cli_reference: |
-        agentic epic link --help
-        agentic epic unlink --help
-        agentic epic set-priority --help
+        If any check fails, correct the offending step and re-run steps 4
+        and 5. Report final status back to orchestration-planning.
+      required: true
 
 guidelines:
-  - "NEVER start implementation. Only create TinyDB phase records."
-  - "ALWAYS validate agent routing before creating phase records."
-  - "ALWAYS include agent field on every phase record - the executor depends on it."
-  - "NEVER create ticket_*.yml or plan_*.yml YAML files on disk. Use TinyDB only."
-  - "If loop structures are missing from the ticket data, report back - do not create phase records without them."
-  - "Use `agentic epic phase add` CLI command - do NOT use the Edit tool to modify TinyDB files directly."
+  - "DO NOT create new phases. epic-creator owns scaffolding; you only classify and route."
+  - "DO NOT author stories, guidance, target files, or tests. You are a dispatcher."
+  - "NEVER write MMD / YAML files on disk. TinyDB is the sole store."
+  - "needs_preflight_story_check must equal needs_stories — never diverge the two booleans."
+  - "When uncertain about needs_stories, default TRUE; story-writer's verify-first path will no-op if nothing to do."
+  - "Every phase must end with an `agent` value set; empty `agent` fields will block the executor."
+  - "Do NOT create 'UAT' phases — UAT is a separate on-demand workflow."
 
 inputs_reference: "modules/AgenticGuidance/agents/planner/planner-orchestration/inputs.yml"

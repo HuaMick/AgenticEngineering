@@ -29,6 +29,7 @@ from agenticcli.utils.sdk_runner import (
     SDK_AVAILABLE,
     SessionResult,
     get_allowed_tools_for_role,
+    get_model_for_role,
     run_agent_sync,
     ROLE_TIMEOUT_SECONDS,
     get_timeout_for_role,
@@ -94,8 +95,6 @@ DEFAULT_COMPLETION_PROMISE = "Planning complete. All epics have phases in TinyDB
 # update, or review tickets/phases/stories/architecture docs.
 _PLANNING_PHASE_ROLES = frozenset({
     "epic-creator",
-    "planner-explore",
-    "explore",
     "build-story-writer",
     "planner-build",
     "planner-test",
@@ -172,21 +171,21 @@ def _build_sdk_options(working_dir: str, role: str | None = None) -> object:
     from claude_agent_sdk import ClaudeAgentOptions
 
     allowed_tools = get_allowed_tools_for_role(role) if role else None
+    model = get_model_for_role(role) if role else None
+    logger.info("sdk options: role=%s model=%s", role, model or "default")
     clean_env = get_clean_env()
 
+    kwargs = {
+        "permission_mode": "bypassPermissions",
+        "cwd": working_dir,
+        "env": clean_env,
+    }
     if allowed_tools is not None:
-        return ClaudeAgentOptions(
-            permission_mode="bypassPermissions",
-            cwd=working_dir,
-            allowed_tools=allowed_tools,
-            env=clean_env,
-        )
-    else:
-        return ClaudeAgentOptions(
-            permission_mode="bypassPermissions",
-            cwd=working_dir,
-            env=clean_env,
-        )
+        kwargs["allowed_tools"] = allowed_tools
+    if model is not None:
+        kwargs["model"] = model
+
+    return ClaudeAgentOptions(**kwargs)
 
 
 class PlannerLoopWorkflow:
@@ -296,7 +295,7 @@ class PlannerLoopWorkflow:
         Args:
             role: Agent role identifier.
             epic_folder: Epic folder name.
-            extra_prompt: Optional per-call extra instructions (e.g. category scope).
+            extra_prompt: Optional per-call extra instructions (e.g. phase scope).
                 Appended after self.prompt if both are present.
 
         Returns:
@@ -477,10 +476,16 @@ class PlannerLoopWorkflow:
                 session_data["started_at"] = datetime.now().isoformat()
 
             # Spawn via CLI (routes to sdk-tmux path)
+            resolved_model = get_model_for_role(role)
+            logger.info(
+                "spawn_cmd role=%s model=%s epic=%s",
+                role, resolved_model or "default", epic_folder,
+            )
             spawn_cmd = build_spawn_command(
                 role=role,
                 epic_folder=epic_folder,
                 skip_permissions=True,
+                model=resolved_model,
             )
 
             try:
@@ -640,82 +645,79 @@ class PlannerLoopWorkflow:
         """
         return self._run_role_agent("epic-creator", epic_folder)
 
-    def _build_category_prompt(self, category: dict) -> str:
-        """Build category-scoped prompt for an explore agent.
-
-        Args:
-            category: Category dict with keys: name, description, codebase_scope, story_ids.
-
-        Returns:
-            Prompt string scoping the agent to this category.
-        """
-        parts = [
-            f"CATEGORY SCOPE: You are exploring category '{category['name']}'.",
-            f"Description: {category.get('description', 'N/A')}",
-        ]
-        if category.get("codebase_scope"):
-            scope_paths = ", ".join(category["codebase_scope"])
-            parts.append(f"Focus your exploration on these paths: {scope_paths}")
-        if category.get("story_ids"):
-            ids = ", ".join(category["story_ids"])
-            parts.append(f"Relevant story IDs: {ids}")
-        parts.append("Only update tickets related to stories in your category.")
-        return "\n".join(parts)
-
-    def spawn_explore_agents(self, epic_folder: str, categories: list[dict] | None = None) -> SessionResult:
-        """Spawn explore agents — one per category if provided, else single agent.
+    def spawn_planner_phases(
+        self, epic_folder: str, phase_ids: list[str], role: str
+    ) -> SessionResult:
+        """Spawn planner agents in parallel — one per phase_id.
 
         Uses ThreadPoolExecutor for parallel spawning. Each agent runs in its own
-        tmux pane via sdk-tmux transport (safe for concurrent use).
+        tmux pane via sdk-tmux transport (safe for concurrent use). Falls back
+        to a single run when ``len(phase_ids) <= 1``.
 
         Args:
             epic_folder: Epic folder name.
-            categories: Optional list of category dicts from the story file. When
-                provided and contains more than one entry, one agent is spawned
-                per category in parallel.
+            phase_ids: Phase IDs to scope each parallel agent to.
+            role: Agent role (e.g. "planner-build", "planner-test").
 
         Returns:
-            SessionResult with completion status (aggregated when parallel).
+            Aggregated SessionResult (sum of costs, max duration, combined text).
         """
-        if not categories or len(categories) <= 1:
-            extra = None
-            if categories and len(categories) == 1:
-                extra = self._build_category_prompt(categories[0])
-            return self._run_role_agent("planner-explore", epic_folder, extra_prompt=extra)
+        if not phase_ids:
+            return SessionResult(
+                status="completed",
+                result=f"No phases for role {role} — skipped",
+                cost_usd=0.0,
+                duration_ms=0,
+            )
+
+        if len(phase_ids) <= 1:
+            pid = phase_ids[0]
+            extra = f"Scope your work to phase {pid} only."
+            return self._run_role_agent(role, epic_folder, extra_prompt=extra)
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        results = []
-        with ThreadPoolExecutor(max_workers=len(categories)) as executor:
+        results: list[SessionResult] = []
+        with ThreadPoolExecutor(max_workers=len(phase_ids)) as executor:
             futures = {
                 executor.submit(
-                    self._run_role_agent, "planner-explore", epic_folder,
-                    self._build_category_prompt(cat)
-                ): cat["name"]
-                for cat in categories
+                    self._run_role_agent, role, epic_folder,
+                    f"Scope your work to phase {pid} only.",
+                ): pid
+                for pid in phase_ids
             }
             for future in as_completed(futures):
-                cat_name = futures[future]
+                pid = futures[future]
                 try:
                     result = future.result()
-                    logger.info("Explore agent for category '%s' completed: %s", cat_name, result.status)
+                    logger.info(
+                        "%s agent for phase '%s' completed: %s",
+                        role, pid, result.status,
+                    )
                     results.append(result)
                 except Exception as e:
-                    logger.error("Explore agent for category '%s' failed: %s", cat_name, e)
+                    logger.error(
+                        "%s agent for phase '%s' failed: %s", role, pid, e,
+                    )
                     results.append(SessionResult(
                         status="failed", result=str(e), cost_usd=0.0,
-                        duration_ms=0, is_error=True
+                        duration_ms=0, is_error=True,
                     ))
 
-        # Aggregate results
         any_failed = any(r.status != "completed" for r in results)
         total_cost = sum(r.cost_usd for r in results)
         max_duration = max((r.duration_ms for r in results), default=0)
         completed = sum(1 for r in results if r.status == "completed")
+        combined_text = " | ".join(
+            f"{pid}:{r.status}" for pid, r in zip(phase_ids, results)
+        )
 
         return SessionResult(
             status="completed" if not any_failed else "failed",
-            result=f"Parallel explore: {completed}/{len(results)} categories completed",
+            result=(
+                f"Parallel {role}: {completed}/{len(results)} phases completed "
+                f"[{combined_text}]"
+            ),
             cost_usd=total_cost,
             duration_ms=max_duration,
             is_error=any_failed,
@@ -1377,8 +1379,7 @@ class PlannerLoopRunner:
         """Wait for a file to exist and have non-zero size.
 
         Polls until the file is present and has content, or until timeout.
-        This is an upfront guard before attempting to parse — separate from
-        the retry logic in ``_parse_story_categories``.
+        This is an upfront guard before attempting to parse downstream.
 
         Args:
             path: File path to check.
@@ -1403,166 +1404,11 @@ class PlannerLoopRunner:
         except OSError:
             return False
 
-    def _parse_story_categories(self, epic_folder: str) -> list[dict] | None:
-        """Read categories from the epic story file in docs/userstories/EpicStories/.
-
-        Stories are REQUIRED — the build-story-writer agent must produce a valid
-        story file with at least one category before exploration can proceed.
-
-        Retries with exponential backoff (0.5s, 1s, 2s) to handle transient
-        file visibility failures — a race condition where the story agent has
-        completed but the file is not yet visible or fully flushed to this
-        process.
-
-        Retries on: FileNotFoundError, empty file content, YAML parse errors.
-        Does NOT retry on: valid YAML with missing ``categories`` key (data
-        error, not a race condition).
-
-        Args:
-            epic_folder: Epic folder name.
-
-        Returns:
-            List of category dicts, or None if the story file is missing/invalid
-            after all retry attempts are exhausted.
-        """
-        import yaml
-
-        stories_path = get_epic_stories_path(epic_folder)
-
-        # Deprecation check: warn if stories.yml still exists at the old location
-        old_path = self.workflow.epics_dir / epic_folder / "stories.yml"
-        if old_path.exists():
-            logger.warning(
-                "DEPRECATED: stories.yml found at old location %s — "
-                "stories should be at %s. Run migration to consolidate.",
-                old_path, stories_path,
-            )
-
-        max_retries = len(self._STORY_PARSE_BACKOFF)
-        total_attempts = max_retries + 1  # 1 initial + retries
-
-        for attempt in range(total_attempts):
-            # Backoff before retry (not before the first attempt)
-            if attempt > 0:
-                delay = self._STORY_PARSE_BACKOFF[attempt - 1]
-                logger.info(
-                    "Retry %d/%d for story file read (backoff %.1fs): %s",
-                    attempt,
-                    max_retries,
-                    delay,
-                    epic_folder,
-                )
-                time.sleep(delay)
-
-            # --- Check file exists ---
-            if not stories_path.exists():
-                if attempt < max_retries:
-                    logger.warning(
-                        "Story file not found for %s (attempt %d/%d) — retrying",
-                        epic_folder,
-                        attempt + 1,
-                        total_attempts,
-                    )
-                    continue
-                logger.error(
-                    "No story file found for %s after %d attempts — stories are required. "
-                    "The build-story-writer agent must produce the story file before exploration.",
-                    epic_folder,
-                    total_attempts,
-                )
-                return None
-
-            try:
-                with open(stories_path) as f:
-                    content = f.read()
-
-                # --- Empty content (file visible but not yet flushed) ---
-                if not content.strip():
-                    if attempt < max_retries:
-                        logger.warning(
-                            "Story file is empty for %s (attempt %d/%d) — retrying",
-                            epic_folder,
-                            attempt + 1,
-                            total_attempts,
-                        )
-                        continue
-                    logger.error(
-                        "Story file is empty for %s after %d attempts",
-                        epic_folder,
-                        total_attempts,
-                    )
-                    return None
-
-                data = yaml.safe_load(content)
-
-                # --- Valid YAML, missing categories — data error, do NOT retry ---
-                categories = data.get("categories", [])
-                if not categories:
-                    logger.error(
-                        "Story file for %s has no categories — "
-                        "build-story-writer must define at least one category.",
-                        epic_folder,
-                    )
-                    return None
-
-                if attempt > 0:
-                    logger.info(
-                        "Story file parsed successfully on attempt %d/%d for %s",
-                        attempt + 1,
-                        total_attempts,
-                        epic_folder,
-                    )
-                return categories
-
-            except FileNotFoundError:
-                # File disappeared between exists() check and open()
-                if attempt < max_retries:
-                    logger.warning(
-                        "Story file disappeared for %s (attempt %d/%d) — retrying",
-                        epic_folder,
-                        attempt + 1,
-                        total_attempts,
-                    )
-                    continue
-                logger.error(
-                    "Story file not found for %s after %d attempts.",
-                    epic_folder,
-                    total_attempts,
-                )
-                return None
-
-            except yaml.YAMLError as e:
-                # YAML parse error — could be partial write, retry
-                if attempt < max_retries:
-                    logger.warning(
-                        "YAML parse error for story file in %s (attempt %d/%d): %s — retrying",
-                        epic_folder,
-                        attempt + 1,
-                        total_attempts,
-                        e,
-                    )
-                    continue
-                logger.error(
-                    "Failed to parse story file for %s after %d attempts: %s",
-                    epic_folder,
-                    total_attempts,
-                    e,
-                )
-                return None
-
-        # Should not be reached — all paths return within the loop
-        return None
-
     def _process_plan(self, epic_folder: str) -> bool:
         """Process a single epic through the full planning workflow.
 
-        Pipeline (5 steps + promotion):
-        1. Epic Creator    → scaffold phases + skeleton tickets
-        2. Story Writer    → generate user stories + categories → docs/userstories/EpicStories/
-        3. Parallel Explore → N agents, one per category
-        4. Pre-flight      → Python validation (advisory, replaces design+review)
-        5. Orchestration   → add agent routing to phases
-        6. Ticket Promotion → proposed → pending
+        Dispatcher-first pipeline; see :meth:`_process_plan_inner` for the
+        authoritative step list.
 
         Uses SDK-first agent execution — no spawn+wait pattern needed.
         Each agent call blocks until completion and returns a SessionResult.
@@ -1586,12 +1432,16 @@ class PlannerLoopRunner:
         finally:
             release_epic_lock(epic_folder)
 
-    def _validate_planning_output(self, epic_folder: str) -> tuple[bool, list[str]]:
+    def _validate_planning_output(
+        self, epic_folder: str, skip_story_ids_check: bool = False,
+    ) -> tuple[bool, list[str]]:
         """Pre-flight validation replacing planner-design and planner-reviewer.
 
-        Checks ticket quality after explore agents finish. Returns (False, errors)
+        Checks ticket quality after planner waves finish. Returns (False, errors)
         for blocking issues (missing tickets, missing story references on build/test
-        epics). Advisory warnings are logged but do not block.
+        epics). Advisory warnings are logged but do not block. When
+        ``skip_story_ids_check`` is True, the story_ids per-ticket block is
+        skipped (used when planning_decision indicates stories are not needed).
 
         Args:
             epic_folder: Epic folder name.
@@ -1654,7 +1504,7 @@ class PlannerLoopRunner:
         except ImportError:
             is_build = False
 
-        if is_build:
+        if is_build and not skip_story_ids_check:
             for t in tickets:
                 ticket_stories = getattr(t, "story_ids", None) or []
                 if not ticket_stories:
@@ -1771,13 +1621,17 @@ class PlannerLoopRunner:
     def _process_plan_inner(self, epic_folder: str) -> bool:
         """Inner implementation of _process_plan (lock already held).
 
-        Pipeline (5 steps + promotion):
-        1. Epic Creator    → scaffold phases + skeleton tickets
-        2. Story Writer    → generate user stories + categories → docs/userstories/EpicStories/
-        3. Parallel Explore → N agents, one per category
-        4. Pre-flight      → Python validation (advisory, replaces design+review)
-        5. Orchestration   → create TinyDB phase records with agent routing
-        6. Ticket Promotion → proposed → pending
+        Pipeline (dispatcher-first):
+        1. Epic Creator           → scaffold phases + skeleton tickets
+        2. Planner Orchestration  → dispatcher writes planning_decision
+        3. Story Writer           → conditional on decision["needs_stories"]
+        4. Planner-build wave     → parallel per decision["build_phase_ids"]
+        5. [implicit barrier — ThreadPool.as_completed joins before step 6]
+        6. Planner-test wave      → parallel per decision["test_phase_ids"]
+        7. Pre-flight validation  → story_ids check gated by
+                                    decision["needs_preflight_story_check"]
+        8. Ticket promotion       → proposed → pending
+        9. Epic status transition → planning → in_progress / blocked
         """
         logger.info("Processing epic: %s", epic_folder)
 
@@ -1839,105 +1693,9 @@ class PlannerLoopRunner:
         stories_dir = get_epic_stories_path(epic_folder).parent
         stories_dir.mkdir(parents=True, exist_ok=True)
 
-        # 2. Story generation: run story agent
-        story_result = self.workflow.spawn_story_agent(epic_folder)
-        self.workflow._validate_result(story_result, "build-story-writer")
-        if self._track_cost(story_result):
-            return False
-        if story_result.status != "completed":
-            self.state["errors"].append({
-                "plan": epic_folder,
-                "error": f"Story agent failed: {story_result.result[:200]}",
-                "phase": "story_generation",
-            })
-            return False
-
-        # File readiness gate: wait for story file to exist and have content
-        # before attempting to parse.  This guards against filesystem sync delay
-        # after the story agent process exits (separate from parse retry logic).
-        stories_path = get_epic_stories_path(epic_folder)
-        if not self._wait_for_file_ready(stories_path):
-            self.state["errors"].append({
-                "plan": epic_folder,
-                "error": (
-                    "Story file not ready after build-story-writer completed — "
-                    "file missing or empty"
-                ),
-                "phase": "story_parsing",
-            })
-            return False
-
-        # Parse categories from story file (written by the story agent).
-        # Stories are REQUIRED — if missing or empty, abort the pipeline.
-        story_categories = self._parse_story_categories(epic_folder)
-        if story_categories is None:
-            self.state["errors"].append({
-                "plan": epic_folder,
-                "error": "Story file missing or invalid after build-story-writer completed — stories are required",
-                "phase": "story_parsing",
-            })
-            return False
-        if not story_categories:
-            self.state["errors"].append({
-                "plan": epic_folder,
-                "error": "Story file has no categories — build-story-writer must define at least one category",
-                "phase": "story_parsing",
-            })
-            return False
-
-        # Refresh TinyDB cache — build-story-writer may have modified data from a separate process
-        if self.workflow._repository:
-            self.workflow._repository.refresh()
-
-        # 3. Explore: optionally skip if all tickets already enriched from story tags
-        _skip_explore = False
-        try:
-            enriched, unenriched = self._enrich_tickets_from_stories(epic_folder)
-            if unenriched == 0 and enriched > 0:
-                logger.info(
-                    "All tickets enriched from story tags — skipping explore (%d tickets enriched)",
-                    enriched,
-                )
-                _skip_explore = True
-            else:
-                logger.info(
-                    "Story enrichment: %d enriched, %d unenriched — proceeding with explore",
-                    enriched, unenriched,
-                )
-        except Exception as e:
-            logger.warning("Story enrichment failed (%s) — falling through to explore", e)
-
-        if not _skip_explore:
-            explore_result = self.workflow.spawn_explore_agents(epic_folder, categories=story_categories)
-            self.workflow._validate_result(explore_result, "planner-explore")
-            if self._track_cost(explore_result):
-                return False
-            if explore_result.status != "completed":
-                self.state["errors"].append({
-                    "plan": epic_folder,
-                    "error": explore_result.result[:200],
-                    "phase": "explore",
-                    "session_id": explore_result.session_id,
-                })
-                return False
-
-        # Refresh TinyDB cache — explore agents wrote tickets from separate processes
-        if self.workflow._repository:
-            self.workflow._repository.refresh()
-
-        # 4. Pre-flight validation (blocking for story requirements)
-        valid, issues = self._validate_planning_output(epic_folder)
-        if not valid:
-            self.state["errors"].append({
-                "plan": epic_folder,
-                "error": f"Pre-flight validation failed: {'; '.join(issues[:3])}",
-                "phase": "validation",
-            })
-            return False
-
-        # 5. Orchestration: create TinyDB phase records with agent routing
-        #    Without this step, discover_plans_needing_orchestration() will
-        #    keep finding this epic (no phases with agent field) → infinite loop.
+        # 2. Planner-orchestration (dispatcher): writes planning_decision
+        #    — tells us which phase_ids need build/test planners and whether
+        #    stories + story_ids checks are required.
         orch_result = self.workflow.spawn_orchestration_agent(epic_folder)
         self.workflow._validate_result(orch_result, "planner-orchestration")
         if self._track_cost(orch_result):
@@ -1950,7 +1708,132 @@ class PlannerLoopRunner:
             })
             return False
 
-        # 6. Promote all "proposed" tickets to "pending" to signal planning is done.
+        # Refresh TinyDB cache — orchestration agent wrote from separate process
+        if self.workflow._repository:
+            self.workflow._repository.refresh()
+
+        # Read the planning decision. Missing decision ⇒ safe legacy default:
+        # stories required, preflight story_ids check required, empty phase waves.
+        decision: dict
+        if self.workflow._repository:
+            decision = self.workflow._repository.read_planning_decision(epic_folder) or {}
+        else:
+            decision = {}
+        decision.setdefault("needs_stories", True)
+        decision.setdefault("needs_preflight_story_check", True)
+        decision.setdefault("build_phase_ids", [])
+        decision.setdefault("test_phase_ids", [])
+
+        # 3. Story-writer (conditional)
+        if decision["needs_stories"]:
+            story_result = self.workflow.spawn_story_agent(epic_folder)
+            self.workflow._validate_result(story_result, "build-story-writer")
+            if self._track_cost(story_result):
+                return False
+            if story_result.status != "completed":
+                self.state["errors"].append({
+                    "plan": epic_folder,
+                    "error": f"Story agent failed: {story_result.result[:200]}",
+                    "phase": "story_generation",
+                })
+                return False
+
+            # File readiness gate: wait for story file to exist with content
+            stories_path = get_epic_stories_path(epic_folder)
+            if not self._wait_for_file_ready(stories_path):
+                self.state["errors"].append({
+                    "plan": epic_folder,
+                    "error": (
+                        "Story file not ready after build-story-writer completed — "
+                        "file missing or empty"
+                    ),
+                    "phase": "story_parsing",
+                })
+                return False
+
+            if self.workflow._repository:
+                self.workflow._repository.refresh()
+
+            # Best-effort enrichment from story tags
+            try:
+                enriched, unenriched = self._enrich_tickets_from_stories(epic_folder)
+                logger.info(
+                    "Story enrichment: %d enriched, %d unenriched",
+                    enriched, unenriched,
+                )
+            except Exception as e:
+                logger.warning("Story enrichment failed (%s) — continuing", e)
+        else:
+            logger.info(
+                "Skipping story-writer for %s (decision.needs_stories=False)",
+                epic_folder,
+            )
+
+        # 4. Planner-build wave (parallel per phase_id, implicit barrier)
+        build_phase_ids = list(decision.get("build_phase_ids") or [])
+        if build_phase_ids:
+            build_result = self.workflow.spawn_planner_phases(
+                epic_folder, build_phase_ids, "planner-build",
+            )
+            self.workflow._validate_result(build_result, "planner-build")
+            if self._track_cost(build_result):
+                return False
+            if build_result.status != "completed":
+                self.state["errors"].append({
+                    "plan": epic_folder,
+                    "error": f"Planner-build wave failed: {build_result.result[:200]}",
+                    "phase": "planner_build",
+                })
+                return False
+        else:
+            logger.info(
+                "No build_phase_ids in planning_decision for %s — skipping planner-build wave",
+                epic_folder,
+            )
+
+        # 5. [BARRIER] — ThreadPool.as_completed above completed before step 6.
+        if self.workflow._repository:
+            self.workflow._repository.refresh()
+
+        # 6. Planner-test wave (parallel per phase_id)
+        test_phase_ids = list(decision.get("test_phase_ids") or [])
+        if test_phase_ids:
+            test_result = self.workflow.spawn_planner_phases(
+                epic_folder, test_phase_ids, "planner-test",
+            )
+            self.workflow._validate_result(test_result, "planner-test")
+            if self._track_cost(test_result):
+                return False
+            if test_result.status != "completed":
+                self.state["errors"].append({
+                    "plan": epic_folder,
+                    "error": f"Planner-test wave failed: {test_result.result[:200]}",
+                    "phase": "planner_test",
+                })
+                return False
+        else:
+            logger.info(
+                "No test_phase_ids in planning_decision for %s — skipping planner-test wave",
+                epic_folder,
+            )
+
+        if self.workflow._repository:
+            self.workflow._repository.refresh()
+
+        # 7. Pre-flight validation. story_ids check gated by the decision.
+        skip_story_ids = not decision.get("needs_preflight_story_check", True)
+        valid, issues = self._validate_planning_output(
+            epic_folder, skip_story_ids_check=skip_story_ids,
+        )
+        if not valid:
+            self.state["errors"].append({
+                "plan": epic_folder,
+                "error": f"Pre-flight validation failed: {'; '.join(issues[:3])}",
+                "phase": "validation",
+            })
+            return False
+
+        # 8. Promote all "proposed" tickets to "pending" to signal planning is done.
         # Without this, the loop's termination check (all tickets proposed → re-plan)
         # would rediscover this epic and create an infinite re-planning loop.
         if self.workflow._repository:
@@ -1994,8 +1877,8 @@ class PlannerLoopRunner:
                                     epic_folder, t.id, {"status": "pending"}
                                 )
 
-        # Promote epic status: planning → in_progress (if preconditions met)
-        # or planning → blocked (if deps unsatisfied)
+        # 9. Promote epic status: planning → in_progress (if preconditions met)
+        #    or planning → blocked (if deps unsatisfied)
         if self.workflow._repository:
             try:
                 self.workflow._repository.transition_epic_status(epic_folder, "in_progress")

@@ -95,7 +95,7 @@ Agents are defined in `modules/AgenticGuidance/agents/<category>/<agent-name>/` 
 | Category | Agents | Purpose |
 |----------|--------|---------|
 | **orchestration** | orchestration-planning, orchestration-executor | Route work to planners/builders, execute TinyDB phases |
-| **planner** | epic-creator, planner-audit, planner-build, planner-explore, planner-orchestration, planner-test | Generate ticket files and plans |
+| **planner** | epic-creator, planner-audit, planner-build, planner-orchestration, planner-test | Generate ticket files and plans |
 | **build** | build-python, build-flutter, build-story-writer, build-docs-writer | Implement code changes |
 | **test** | test-builder, test-audit, test-uat, trace-explorer | Validate implementations |
 | **teacher** | teacher-update-guidance, teacher-update-assets | Improve agent guidance |

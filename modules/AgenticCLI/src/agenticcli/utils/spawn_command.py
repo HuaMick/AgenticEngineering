@@ -11,6 +11,7 @@ def build_spawn_command(
     use_tmux: bool = True,
     json_output: bool = True,
     phase_id: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> list[str]:
     """Build a normalized 'agentic orchestrate session spawn' command.
 
@@ -30,4 +31,6 @@ def build_spawn_command(
         cmd.append("--dangerously-skip-permissions")
     if phase_id is not None:
         cmd.extend(["--phase", phase_id])
+    if model is not None:
+        cmd.extend(["--model", model])
     return cmd

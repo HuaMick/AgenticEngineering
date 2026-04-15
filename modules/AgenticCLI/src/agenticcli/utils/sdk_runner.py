@@ -37,6 +37,8 @@ __all__ = [
     "DEFAULT_TIMEOUT_SECONDS",
     "ROLE_TIMEOUT_SECONDS",
     "get_timeout_for_role",
+    "ROLE_MODEL_MAP",
+    "get_model_for_role",
 ]
 
 
@@ -113,6 +115,23 @@ ROLE_TIMEOUT_SECONDS: dict[str, int] = {
 def get_timeout_for_role(role: str) -> int:
     """Return timeout for a role, or DEFAULT_TIMEOUT_SECONDS if unknown."""
     return ROLE_TIMEOUT_SECONDS.get(role, DEFAULT_TIMEOUT_SECONDS)
+
+
+# Role-based model routing. Roles not listed use the SDK default model.
+# Haiku for mechanical scaffolding, Opus for high-judgment planning/routing,
+# Sonnet for structured writing.
+ROLE_MODEL_MAP: dict[str, str] = {
+    "epic-creator": "claude-haiku-4-5-20251001",
+    "planner-orchestration": "claude-opus-4-6",
+    "planner-build": "claude-opus-4-6",
+    "planner-test": "claude-opus-4-6",
+    "build-story-writer": "claude-sonnet-4-6",
+}
+
+
+def get_model_for_role(role: str) -> Optional[str]:
+    """Return the model id for a role, or None to use the SDK default."""
+    return ROLE_MODEL_MAP.get(role)
 
 
 def get_allowed_tools_for_role(role: str) -> list[str] | None:

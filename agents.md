@@ -129,7 +129,6 @@ modules/AgenticGuidance/agents/
 | **Planner** | `epic-creator` | `--role epic-creator` | Epic scaffolding and initialization |
 | | `planner-build` | `--role planner-build` | Implementation phase planning |
 | | `planner-test` | `--role planner-test` | Test phase planning |
-| | `planner-explore` | `--role planner-explore` | Discovery and exploration planning |
 | | `planner-orchestration` | `--role planner-orchestration` | TinyDB phase record creation |
 | | `planner-audit` | `--role planner-audit` | Plan folder compliance |
 | **Teacher** | `teacher-update-guidance` | `--role teacher-update-guidance` | Improve process.yml/inputs.yml |

@@ -101,17 +101,24 @@ High-level coordination of planning and execution workflows.
 | `orchestration-planning` | Human-in-the-loop epic creation and approval |
 | `orchestration-executor` | TinyDB-driven dynamic agent routing |
 
-### Planner (6 agents)
+### Planner (5 agents)
 Create executable implementation epics from objectives.
 
 | Agent | Purpose |
 |-------|---------|
 | `epic-creator` | Epic scaffolding and initialization |
-| `planner-build` | Implementation planning for code changes |
-| `planner-test` | Test planning with execution loops |
-| `planner-explore` | Discovery and exploration planning |
-| `planner-orchestration` | TinyDB phase record creation with agent routing |
+| `planner-orchestration` | Dispatcher: partitions phases, decides needs_stories, creates TinyDB phase records |
+| `planner-build` | Implementation planning for code changes (parallel per phase) |
+| `planner-test` | Test planning with execution loops (parallel per phase) |
 | `planner-audit` | Epic folder compliance auditing |
+
+Planning pipeline order:
+1. `epic-creator` — scaffold the epic folder
+2. `planner-orchestration` — dispatch: partition phases and emit planning_decision
+3. `build-story-writer` — conditional on `decision.needs_stories`
+4. `planner-build` × N — parallel fan-out over `decision.build_phase_ids` (barrier waits for all)
+5. `planner-test` × M — parallel fan-out over `decision.test_phase_ids`
+6. Pre-flight validation and promotion of tickets from proposed → pending
 
 ### Test (4 agents)
 Validation through testing and quality assurance.
@@ -308,10 +315,9 @@ This section is the **source of truth** for agent implementation status. Epic-re
 | Agent | Status | Notes |
 |-------|--------|-------|
 | epic-creator | Implemented | Epic scaffolding and initialization |
-| planner-build | Implemented | Implementation planning for code changes |
-| planner-test | Implemented | Test planning with execution loops |
-| planner-explore | Implemented | Discovery and exploration planning |
-| planner-orchestration | Implemented | TinyDB phase record creation with agent routing |
+| planner-build | Implemented | Implementation planning for code changes (parallel per phase) |
+| planner-test | Implemented | Test planning with execution loops (parallel per phase) |
+| planner-orchestration | Implemented | Dispatcher — partitions phases and emits planning_decision; also creates TinyDB phase records |
 | planner-audit | Implemented | Epic folder compliance auditing |
 
 ### Test Agents
@@ -366,7 +372,7 @@ These categories have some infrastructure (definitions, guidelines) but no dedic
 
 | Category | Status | Workaround |
 |----------|--------|------------|
-| cleaner | Not Migrated | `planner-explore` handles discovery and cleanup planning |
+| cleaner | Not Migrated | `planner-build` handles cleanup planning as a build-style phase |
 | documentation | Not Migrated | `build-docs-writer` and `teacher-update-assets` handle doc updates |
 
 ---

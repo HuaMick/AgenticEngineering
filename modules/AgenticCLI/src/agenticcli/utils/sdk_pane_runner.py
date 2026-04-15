@@ -125,6 +125,7 @@ async def _run_sdk_query(
     working_dir: str,
     timeout: int,
     event_writer: "EventWriter | None" = None,
+    model: "str | None" = None,
 ) -> dict:
     """Run a single SDK query() and return structured result data.
 
@@ -161,6 +162,8 @@ async def _run_sdk_query(
     }
     if allowed_tools is not None:
         kwargs["allowed_tools"] = allowed_tools
+    if model:
+        kwargs["model"] = model
 
     options = ClaudeAgentOptions(**kwargs)
 
@@ -316,6 +319,7 @@ def run_pane(
     context_file: str,
     working_dir: str,
     timeout: int | None = None,
+    model: "str | None" = None,
 ) -> int:
     """Main entry point for the pane runner.
 
@@ -381,7 +385,7 @@ def run_pane(
     try:
         # Run the SDK query (pass event_writer for tool_use/tool_result emission)
         result = asyncio.run(
-            _run_sdk_query(prompt, role, working_dir, effective_timeout, event_writer=event_writer)
+            _run_sdk_query(prompt, role, working_dir, effective_timeout, event_writer=event_writer, model=model)
         )
 
         # --- Event bus: emit completed / error events ---
@@ -463,6 +467,7 @@ def main():
     parser.add_argument("--context-file", required=True, help="Path to compiled context file")
     parser.add_argument("--timeout", type=int, help="Timeout in seconds (overrides role default)")
     parser.add_argument("--working-dir", default=os.getcwd(), help="Working directory for agent")
+    parser.add_argument("--model", default=None, help="Model id to pass through to ClaudeAgentOptions")
 
     args = parser.parse_args()
 
@@ -473,13 +478,54 @@ def main():
         stream=sys.stdout,
     )
 
-    exit_code = run_pane(
-        role=args.role,
-        session_id=args.session_id,
-        context_file=args.context_file,
-        working_dir=args.working_dir,
-        timeout=args.timeout,
-    )
+    # Top-level safety net: no matter how run_pane exits (uncaught exception,
+    # signal, asyncio internal error) we MUST finalize the session state file so
+    # downstream consumers don't observe a session stuck in "running" forever.
+    try:
+        exit_code = run_pane(
+            role=args.role,
+            session_id=args.session_id,
+            context_file=args.context_file,
+            working_dir=args.working_dir,
+            timeout=args.timeout,
+            model=args.model if args.model else None,
+        )
+    except BaseException as exc:  # noqa: BLE001 - intentionally broad for terminal write
+        exit_code = 1
+        try:
+            state_file = _get_state_file(args.session_id)
+            state = _load_existing_state(state_file)
+            state.setdefault("session_id", args.session_id)
+            state.setdefault("transport", "sdk-tmux")
+            state["ended_at"] = datetime.now().isoformat()
+            state["exit_code"] = 1
+            state["error"] = f"pane runner crashed: {type(exc).__name__}: {exc}"[:500]
+            mark_failed(
+                state,
+                error_code="pane_runner_crash",
+                error_type=type(exc).__name__,
+                detail=str(exc)[:500],
+                retryable=True,
+            )
+            _write_state_atomic(state_file, state)
+        except Exception:
+            pass  # Last-resort: never mask the original crash
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+    else:
+        # run_pane returned normally. Defensive check: if state file somehow
+        # still reads "running", finalize it now.
+        try:
+            state_file = _get_state_file(args.session_id)
+            state = _load_existing_state(state_file)
+            if state.get("status") == "running":
+                state["status"] = "failed"
+                state["ended_at"] = datetime.now().isoformat()
+                state["exit_code"] = exit_code or 1
+                state.setdefault("error", "pane runner returned without finalizing state")
+                _write_state_atomic(state_file, state)
+        except Exception:
+            pass
     sys.exit(exit_code)
 
 

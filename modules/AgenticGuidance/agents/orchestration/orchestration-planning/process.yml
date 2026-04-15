@@ -23,7 +23,17 @@ process:
   # =============================================================================
   # PLANNING WORKFLOW
   # =============================================================================
-  # Sequential steps: Validate → Setup → Stories → Explore → Plan → Validate → Approve
+  # Pipeline (new order, dispatcher-first):
+  #   1. epic-creator
+  #   2. planner-orchestration (dispatcher) — decides needs_stories, partitions
+  #      phases, emits planning_decision
+  #   3. build-story-writer — conditional on decision.needs_stories
+  #   4. planner-build × N — parallel fan-out over decision.build_phase_ids
+  #      (barrier waits for all)
+  #   5. planner-test × M — parallel fan-out over decision.test_phase_ids
+  #   6. pre-flight validation — story_ids check skipped when
+  #      decision.needs_preflight_story_check is false
+  #   7. promotion (proposed → pending)
   # =============================================================================
 
   steps:
@@ -72,107 +82,93 @@ process:
         Check with: `agentic epic list`
 
     # =========================================================================
-    # STEP 3: PHASE DETERMINATION
+    # STEP 3: DISPATCH (planner-orchestration as dispatcher)
     # =========================================================================
-    - id: "phase_determination"
-      name: "Phase Determination"
+    - id: "dispatch"
+      name: "Dispatch via planner-orchestration"
       description: |
-        Analyze the objective to determine required phases:
+        Spawn planner-orchestration as the pipeline dispatcher. It runs SECOND
+        (immediately after epic-creator) and is responsible for:
+
+        1. Analyzing the objective and existing epic state
+        2. Partitioning work into phases and creating TinyDB phase records
+           with agent routing (planner-build, planner-test, planner-audit, etc.)
+        3. Emitting a `planning_decision` with at least these fields:
+           - needs_stories: bool — whether build-story-writer must run
+           - build_phase_ids: list[str] — phases to fan-out planner-build over
+           - test_phase_ids: list[str] — phases to fan-out planner-test over
+           - needs_preflight_story_check: bool — whether Step 7 enforces story_ids
 
         Phase types and their planners:
-        - **build**: Code implementation → planner-build
-        - **teach**: Guidance improvements → planner-build (includes guidance scope)
-        - **test**: Test strategy/validation → planner-test
-        - **cleanup**: Code removal/cleanup → planner-build
-        - **audit**: Epic folder compliance → planner-audit
-        - **uat**: User acceptance testing → planner-test (MANDATORY for build epics)
-
-        Phase sequence: stories → explore → build → teach → test → cleanup → audit → uat
+        - **build / teach / cleanup**: → planner-build
+        - **test / uat**: → planner-test
+        - **audit**: → planner-audit
 
         Planning intent influences priority:
         - planning_intent: "build" → prioritize planner-build
         - planning_intent: "teach" → prioritize guidance phases
         - planning_intent: "test" → prioritize planner-test
 
+        If phase record creation fails, retry up to 3 times then escalate.
+
     # =========================================================================
-    # STEP 4: STORY GENERATION
+    # STEP 4: STORY GENERATION (conditional)
     # =========================================================================
     - id: "story_generation"
-      name: "Story Generation"
+      name: "Story Generation (conditional)"
       description: |
-        Stories are MANDATORY before planning proceeds.
-        Spawn build-story-writer to generate or verify user stories:
+        Conditional on `decision.needs_stories` from Step 3.
 
-        The story-writer:
-        - Discovers existing stories in docs/userstories/
-        - Generates new stories if needed for the epic objective
-        - Outputs stories to docs/userstories/EpicStories/{epic_folder}.yml
+        If `decision.needs_stories` is true:
+          Spawn build-story-writer to generate or verify user stories. Output
+          lands in docs/userstories/EpicStories/{epic_folder}.yml. Stories are
+          discovered from docs/userstories/ and generated as needed.
 
-        FENCE: Planning MUST NOT proceed without stories or an explicit
-        no_stories_rationale for internal-only changes.
+        If `decision.needs_stories` is false:
+          Skip this step entirely (e.g., internal-only / guidance-only epics
+          or epics whose stories already exist).
+
+        FENCE: When stories are required by the decision, planning MUST NOT
+        proceed past this step without either the story file or an explicit
+        no_stories_rationale recorded in the epic.
 
     # =========================================================================
-    # STEP 5: PARALLEL EXPLORATION
+    # STEP 5: PARALLEL planner-build FAN-OUT
     # =========================================================================
-    - id: "parallel_exploration"
-      name: "Parallel Exploration"
+    - id: "planner_build_fanout"
+      name: "planner-build × N (parallel per phase)"
       description: |
-        Spawn planner-explore agents in parallel — one per story category:
+        Fan out planner-build across `decision.build_phase_ids`. One planner-build
+        invocation per phase, running in parallel. Each invocation is scoped to
+        a single phase via the optional `phase_id` input (see planner-build
+        inputs.yml) so that peer agents do not contend on each other's tickets.
 
-        For each story category from Step 4:
-        1. Spawn planner-explore with category context
-        2. Explorer analyzes codebase for affected files
-        3. Explorer updates tickets with target-files and guidance
+        Barrier: wait for ALL parallel planner-build invocations to complete
+        before proceeding to Step 6. If any invocation fails, retry that phase
+        (max 5 iterations) with feedback; other phases remain completed.
 
-        Explorers run concurrently via ThreadPoolExecutor pattern.
-        Wait for all explorers to complete before proceeding.
-
-    # =========================================================================
-    # STEP 6: PLANNING LOOPS
-    # =========================================================================
-    - id: "planning_loops"
-      name: "Planning Loops"
-      description: |
-        For each required phase from Step 3, run a planning loop:
-
-        1. Spawn the appropriate planner agent (planner-build, planner-test, etc.)
-        2. Planner creates tickets in TinyDB via CLI
-        3. Run pre-flight validation on planner output:
-           - All tickets have required fields (title, description, success_criteria)
-           - Ticket agent assignments are valid agent types
-           - No duplicate ticket IDs
-        4. If validation fails → provide feedback, re-run planner (max 5 iterations)
-        5. If validation passes → proceed to next phase
-
-        Pre-flight validation checks:
+        Per-phase validation (run on each returned result):
         - Tickets exist for the phase
-        - Each ticket has success_criteria
+        - Each ticket has required fields (title, description, success_criteria)
         - Agent types are from the valid roster
-        - Story IDs are present on build tickets
+        - No duplicate ticket IDs
+        - Story IDs on build tickets (only when
+          decision.needs_preflight_story_check is true)
 
     # =========================================================================
-    # STEP 7: PHASE RECORD GENERATION
+    # STEP 6: PARALLEL planner-test FAN-OUT
     # =========================================================================
-    - id: "phase_record_generation"
-      name: "Phase Record Generation"
+    - id: "planner_test_fanout"
+      name: "planner-test × M (parallel per phase)"
       description: |
-        After all planning loops complete, delegate phase record creation
-        to planner-orchestration:
+        Fan out planner-test across `decision.test_phase_ids`. One planner-test
+        invocation per phase, running in parallel, each scoped via `phase_id`.
 
-        Spawn planner-orchestration with:
-        - epic_folder_path: path to the epic folder
-        - target_project_path: path to the target project
-
-        planner-orchestration:
-        1. Reads TinyDB tickets for the epic
-        2. Determines agent routing per phase
-        3. Creates TinyDB phase records via `agentic epic phase add`
-        4. Sets cross-epic dependencies if needed
-
-        If phase record creation fails, retry up to 3 times then escalate to user.
+        Barrier: wait for ALL parallel planner-test invocations to complete
+        before proceeding. Retry failing phases up to 5 iterations each.
 
     # =========================================================================
-    # STEP 8: PRE-FLIGHT VALIDATION
+    # STEP 7: PRE-FLIGHT VALIDATION
     # =========================================================================
     - id: "preflight_validation"
       name: "Pre-Flight Validation"
@@ -182,13 +178,30 @@ process:
         1. All phases have agent routing assigned
         2. All tickets have required fields populated
         3. Phase execution order is valid (no circular dependencies)
-        4. Story coverage: affected_stories or no_stories_rationale present
+        4. Story coverage: affected_stories or no_stories_rationale present —
+           SKIP this check when decision.needs_preflight_story_check is false
+           (e.g., internal/guidance-only epics explicitly opted out during
+           dispatch).
         5. UAT phase exists for build epics
 
         ```bash
         agentic epic status --epic <folder>
         agentic epic ticket list --epic <folder>
         agentic epic phase list --epic <folder>
+        ```
+
+    # =========================================================================
+    # STEP 8: PROMOTION (proposed → pending)
+    # =========================================================================
+    - id: "promotion"
+      name: "Promotion"
+      description: |
+        Promote tickets from `proposed` to `pending` status so the executor
+        can pick them up. This is the commit point — only tickets that passed
+        Step 7 are promoted. Use:
+
+        ```bash
+        agentic epic ticket update <id> --status pending --epic <folder>
         ```
 
     # =========================================================================
@@ -209,7 +222,7 @@ process:
         - Affected stories
         - Estimated scope
 
-        If user requests changes → return to Step 6 (planning loops) with feedback.
+        If user requests changes → return to Step 5/6 (planner fan-out) with feedback.
         Max approval iterations: 3. Escalate if exceeded.
 
     # =========================================================================
@@ -248,15 +261,13 @@ process:
   # =============================================================================
   # FENCE: Only these agents may be spawned by this orchestrator
   spawns:
-    - agent: "build-story-writer"
-      when: "Step 4 — story generation"
-    - agent: "planner-explore"
-      when: "Step 5 — parallel exploration per story category"
-    - agent: "planner-build"
-      when: "Step 6 — build/teach/cleanup phase planning"
-    - agent: "planner-test"
-      when: "Step 6 — test/uat phase planning"
-    - agent: "planner-audit"
-      when: "Step 6 — audit phase planning"
     - agent: "planner-orchestration"
-      when: "Step 7 — TinyDB phase record creation"
+      when: "Step 3 — dispatch: emits planning_decision and creates TinyDB phase records"
+    - agent: "build-story-writer"
+      when: "Step 4 — story generation (conditional on decision.needs_stories)"
+    - agent: "planner-build"
+      when: "Step 5 — parallel fan-out per build/teach/cleanup phase (decision.build_phase_ids)"
+    - agent: "planner-test"
+      when: "Step 6 — parallel fan-out per test/uat phase (decision.test_phase_ids)"
+    - agent: "planner-audit"
+      when: "Step 5/6 — audit phase planning (when included in decision)"

@@ -9,13 +9,13 @@ This directory contains agent process definitions for the AgenticGuidance module
 | Category | Agents | Description |
 |----------|--------|-------------|
 | [orchestration](#orchestration) | 2 | High-level coordination of planning and execution workflows |
-| [planner](#planner) | 6 | Create executable implementation epics from objectives |
+| [planner](#planner) | 5 | Create executable implementation epics from objectives |
 | [build](#build) | 4 | Code implementation for production deployment |
 | [test](#test) | 4 | Validation through testing and quality assurance |
 | [teacher](#teacher) | 2 | Improve agent guidance (paths, fences, signposts) |
 | [deploy](#deploy) | 1 | Infrastructure and deployment tooling |
 
-**Total: 19 active agents**
+**Total: 18 active agents**
 
 ---
 
@@ -41,18 +41,25 @@ Planner agents are responsible for creating executable implementation epics from
 | Agent | Version | Description | Status |
 |-------|---------|-------------|--------|
 | epic-creator | 2.0 | Epic scaffolding and initialization | Complete |
-| planner-build | 2.0 | Create phased implementation epics for build/development tasks with proper context routing, parallelization, and CI/CD validation | Complete |
-| planner-test | 2.0 | Create phased test epics including component testing, user flow testing, audit loops, and documentation validation | Complete |
-| planner-explore | 2.0 | Discovery and exploration planning for codebase analysis and research tasks | Complete |
-| planner-orchestration | 2.0 | Create TinyDB phase records with agent routing from approved ticket data | Complete |
+| planner-orchestration | 2.0 | Dispatcher: partitions phases, emits planning_decision, creates TinyDB phase records with agent routing | Complete |
+| planner-build | 2.0 | Phased implementation planning for build/development tasks (invoked in parallel per phase) | Complete |
+| planner-test | 2.0 | Phased test planning including component testing, user flow testing, audit loops (invoked in parallel per phase) | Complete |
 | planner-audit | 2.0 | Audit epic folder compliance and identify files that should be archived, completed, or removed | Complete |
+
+**Pipeline order:**
+1. `epic-creator` — scaffold the epic folder
+2. `planner-orchestration` (dispatcher) — decide `needs_stories`, partition phases, emit planning_decision
+3. `build-story-writer` — conditional on `decision.needs_stories`
+4. `planner-build` × N — parallel fan-out over `decision.build_phase_ids` (barrier waits for all)
+5. `planner-test` × M — parallel fan-out over `decision.test_phase_ids`
+6. Pre-flight validation (story_ids check skipped when `decision.needs_preflight_story_check` is false)
+7. Promotion (proposed → pending)
 
 **Routing Logic:**
 - `epic-creator`: Scaffolding new epics with folder structure and initial tickets
-- `planner-build`: Planning code implementation and build tasks
-- `planner-test`: Planning test strategy and validation tasks
-- `planner-explore`: Planning discovery, research, and codebase exploration tasks
-- `planner-orchestration`: Creating TinyDB phase records with agent routing
+- `planner-orchestration`: Dispatcher and TinyDB phase record creator
+- `planner-build`: Planning code implementation and build tasks (per-phase, parallel)
+- `planner-test`: Planning test strategy and validation tasks (per-phase, parallel)
 - `planner-audit`: Auditing epic folders for compliance with lifecycle rules
 
 ---
@@ -129,7 +136,7 @@ Each agent directory contains:
 - **Partial**: Some files missing
 - **Stub**: Only manifest.yml exists
 
-All 19 agents in this directory are **Complete**.
+All 18 agents in this directory are **Complete**.
 
 ---
 
@@ -139,7 +146,7 @@ The following categories have infrastructure (definitions, guidelines, shared in
 
 | Category | Infrastructure | Current Workaround | Status |
 |----------|---------------|-------------------|--------|
-| cleaner | 2 files (cleaner-shared-guidelines.yml, cleaner-shared.yml) | `planner-explore` handles discovery and cleanup planning | Planned |
+| cleaner | 2 files (cleaner-shared-guidelines.yml, cleaner-shared.yml) | `planner-build` handles cleanup planning as a build-style phase | Planned |
 | documentation | Minimal | `build-docs-writer` and `teacher-update-assets` handle doc updates | Planned |
 
 These categories may be implemented if dedicated agents become necessary, but current workarounds are sufficient.
@@ -161,7 +168,6 @@ modules/AgenticGuidance/agents/
 │   ├── epic-creator/
 │   ├── planner-build/
 │   ├── planner-test/
-│   ├── planner-explore/
 │   ├── planner-orchestration/
 │   └── planner-audit/
 ├── build/                          # Build agents

@@ -227,6 +227,7 @@ class EpicRepository:
             self._phases = self._db.table("phases")
             self._story_tests = self._db.table("story_tests")
             self._story_code = self._db.table("story_code")
+            self._planning_decisions = self._db.table("planning_decisions")
 
             # Migrate legacy "plans" / "tasks" tables if they exist
             self._migrate_from_plans_table()
@@ -1793,3 +1794,51 @@ class EpicRepository:
             )
 
         return None
+
+    # ── planning_decision table ──────────────────────────────────────────
+    def write_planning_decision(
+        self,
+        epic_folder_name: str,
+        needs_stories: bool,
+        needs_preflight_story_check: bool,
+        build_phase_ids: Optional[list[str]] = None,
+        test_phase_ids: Optional[list[str]] = None,
+    ) -> None:
+        """Upsert a planning_decision record for an epic.
+
+        Emitted by planner-orchestration (dispatcher) to drive downstream
+        pipeline branching: whether to spawn story-writer, which phases need
+        build vs test planning, and whether pre-flight story_ids validation
+        should run.
+        """
+        from datetime import datetime, timezone
+
+        record = {
+            "epic_folder_name": epic_folder_name,
+            "needs_stories": bool(needs_stories),
+            "needs_preflight_story_check": bool(needs_preflight_story_check),
+            "build_phase_ids": list(build_phase_ids or []),
+            "test_phase_ids": list(test_phase_ids or []),
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with self._retrying_lock:
+            Decision = Query()
+            existing = self._planning_decisions.search(
+                Decision.epic_folder_name == epic_folder_name
+            )
+            if existing:
+                self._planning_decisions.update(
+                    record, Decision.epic_folder_name == epic_folder_name
+                )
+            else:
+                self._planning_decisions.insert(record)
+
+    def read_planning_decision(
+        self, epic_folder_name: str
+    ) -> Optional[dict]:
+        """Return planning_decision dict for an epic, or None if absent."""
+        Decision = Query()
+        docs = self._planning_decisions.search(
+            Decision.epic_folder_name == epic_folder_name
+        )
+        return docs[0] if docs else None

@@ -16,6 +16,7 @@ from agenticcli.utils.epic_lock import acquire_epic_lock, release_epic_lock
 from agenticcli.utils.retry import SPAWN_RETRY_BACKOFF, static_backoff
 from agenticcli.utils.session_diagnostics import diagnose_quick_exit
 from agenticcli.utils.session_state import read_sdk_metrics
+from agenticcli.utils.sdk_runner import get_model_for_role
 from agenticcli.utils.spawn_command import build_spawn_command
 from agenticcli.workflows.planner_loop import PlannerLoopWorkflow, PlannerLoopRunner
 
@@ -826,6 +827,7 @@ class ExecutionRunner:
             max_turns=effective_max_turns,
             skip_permissions=self.dangerously_skip_permissions,
             phase_id=phase_id,
+            model=get_model_for_role(agent_type),
         )
 
         # SDK-in-tmux: spawn uses sdk_pane_runner.py inside tmux pane for

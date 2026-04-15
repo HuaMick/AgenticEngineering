@@ -300,8 +300,8 @@ class TestPlannerLoopRunner:
                             overrides.get("discover", lambda: []))
         monkeypatch.setattr(workflow, "spawn_epic_creator",
                             overrides.get("spawn_epic_creator", lambda pf: _ok_result()))
-        monkeypatch.setattr(workflow, "spawn_explore_agents",
-                            overrides.get("spawn_explore", lambda pf, **kw: _ok_result()))
+        monkeypatch.setattr(workflow, "spawn_planner_phases",
+                            overrides.get("spawn_planner_phases", lambda pf, phase_ids, role: _ok_result()))
         monkeypatch.setattr(workflow, "spawn_story_agent",
                             overrides.get("spawn_story", _default_spawn_story))
         monkeypatch.setattr(workflow, "spawn_orchestration_agent",
@@ -309,7 +309,7 @@ class TestPlannerLoopRunner:
 
         runner = PlannerLoopRunner(workflow=workflow)
         # Mock validation to pass (these tests don't have a TinyDB repo)
-        monkeypatch.setattr(runner, "_validate_planning_output", lambda pf: (True, []))
+        monkeypatch.setattr(runner, "_validate_planning_output", lambda pf, skip_story_ids_check=False: (True, []))
         return runner
 
     def test_completes_when_no_plans(self, monkeypatch, capsys):
@@ -321,7 +321,7 @@ class TestPlannerLoopRunner:
         assert "Planning complete" in capsys.readouterr().out
 
     def test_processes_single_plan(self, monkeypatch, capsys):
-        """Runner processes a plan through the 5-step pipeline."""
+        """Runner processes a plan through the pipeline: epic-creator → orchestration → story → spawn_planner_phases."""
         call_log = []
 
         def tracking_discover():
@@ -338,9 +338,9 @@ class TestPlannerLoopRunner:
             call_log.append(("spawn_story", pf))
             return _ok_result(session_id="story-session-abc")
 
-        def tracking_spawn_explore(pf, **kw):
-            call_log.append(("spawn_explore", pf))
-            return _ok_result(session_id="explore-session-abc")
+        def tracking_spawn_planner_phases(pf, phase_ids, role):
+            call_log.append(("spawn_planner_phases", pf, role))
+            return _ok_result(session_id="planner-session-abc")
 
         def tracking_orchestration(pf):
             call_log.append(("orchestration", pf))
@@ -351,26 +351,24 @@ class TestPlannerLoopRunner:
             discover=tracking_discover,
             spawn_epic_creator=tracking_epic_creator,
             spawn_story=tracking_spawn_story,
-            spawn_explore=tracking_spawn_explore,
+            spawn_planner_phases=tracking_spawn_planner_phases,
             spawn_orchestration=tracking_orchestration,
         )
         result = runner.run(max_iterations=5)
 
         assert result is True
-        # Verify call sequence includes all pipeline steps
+        # Verify call sequence includes core pipeline steps
         step_names = [c[0] for c in call_log]
         assert "discover" in step_names
         assert "epic_creator" in step_names
         assert "spawn_story" in step_names
-        assert "spawn_explore" in step_names
         assert "orchestration" in step_names
 
-        # Verify ordering: epic_creator -> story -> explore -> orchestration
+        # Verify ordering: epic_creator -> orchestration -> story
         idx_creator = next(i for i, c in enumerate(call_log) if c[0] == "epic_creator")
-        idx_story = next(i for i, c in enumerate(call_log) if c[0] == "spawn_story")
-        idx_explore = next(i for i, c in enumerate(call_log) if c[0] == "spawn_explore")
         idx_orch = next(i for i, c in enumerate(call_log) if c[0] == "orchestration")
-        assert idx_creator < idx_story < idx_explore < idx_orch
+        idx_story = next(i for i, c in enumerate(call_log) if c[0] == "spawn_story")
+        assert idx_creator < idx_orch < idx_story
 
     def test_epic_creator_failure_skips_plan(self, monkeypatch):
         """Plan is skipped when epic-creator agent fails."""
@@ -392,24 +390,47 @@ class TestPlannerLoopRunner:
 
         assert "bad_creator_plan" in runner.state["plans_skipped"]
 
-    def test_explore_agent_failure_skips_plan(self, monkeypatch):
-        """Plan is skipped when explore agent fails."""
+    def test_planner_build_failure_skips_plan(self, monkeypatch):
+        """Plan is skipped when planner-build spawn fails."""
         call_count = {"discover": 0}
 
         def discover():
             call_count["discover"] += 1
             if call_count["discover"] <= 1:
-                return ["bad_explore_plan"]
+                return ["bad_planner_build_plan"]
             return []
+
+        def _failing_planner_phases(pf, phase_ids, role):
+            if role == "planner-build":
+                return _fail_result()
+            return _ok_result()
 
         runner = self._make_runner(
             monkeypatch,
+            epic_folders=["bad_planner_build_plan"],
             discover=discover,
-            spawn_explore=lambda pf, **kw: _fail_result(),
+            spawn_planner_phases=_failing_planner_phases,
         )
+
+        # Override the planning decision to provide build_phase_ids so the
+        # planner-build wave is triggered and can fail.
+        import agenticcli.workflows.planner_loop as _plmod
+        from agenticguidance.services.epic_repository import EpicRepository
+        import unittest.mock as _mock
+        runner.workflow._repository = _mock.MagicMock()
+        runner.workflow._repository.refresh = _mock.MagicMock()
+        runner.workflow._repository.read_planning_decision = _mock.MagicMock(
+            return_value={
+                "needs_stories": True,
+                "needs_preflight_story_check": True,
+                "build_phase_ids": ["p1"],
+                "test_phase_ids": [],
+            }
+        )
+
         result = runner.run(max_iterations=5)
 
-        assert "bad_explore_plan" in runner.state["plans_skipped"]
+        assert "bad_planner_build_plan" in runner.state["plans_skipped"]
 
     def test_story_agent_failure_skips_plan(self, monkeypatch):
         """Plan is skipped when story agent fails."""
@@ -990,7 +1011,7 @@ class TestValidateResult:
         monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "in_progress")
         monkeypatch.setattr(workflow, "run_health_check", lambda: None)
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda pf: _ok_result(duration_ms=100))
-        monkeypatch.setattr(workflow, "spawn_explore_agents", lambda pf, **kw: _ok_result(duration_ms=100))
+        monkeypatch.setattr(workflow, "spawn_planner_phases", lambda pf, phase_ids, role: _ok_result(duration_ms=100))
 
         # Story mock: writes story file to EpicStories (stories are required)
         def _story_mock(pf):
@@ -1007,7 +1028,7 @@ class TestValidateResult:
 
         runner = PlannerLoopRunner(workflow=workflow)
         # Mock validation to pass (this test verifies _validate_result, not validation logic)
-        monkeypatch.setattr(runner, "_validate_planning_output", lambda pf: (True, []))
+        monkeypatch.setattr(runner, "_validate_planning_output", lambda pf, skip_story_ids_check=False: (True, []))
         call_count = {"n": 0}
 
         def one_shot_discover():
@@ -1018,10 +1039,9 @@ class TestValidateResult:
 
         runner.run(max_iterations=5)
 
-        # epic-creator, build-story-writer, planner-explore, and planner-orchestration should all be validated
+        # epic-creator, planner-orchestration, and build-story-writer should all be validated
         assert "epic-creator" in validated_roles
         assert "build-story-writer" in validated_roles
-        assert "planner-explore" in validated_roles
         assert "planner-orchestration" in validated_roles
 
 
@@ -1583,329 +1603,251 @@ class TestValidatePlanningOutput:
         assert any("guidance" in w for w in warnings)
 
 
+# ---------------------------------------------------------------------------
+# TestPlanningDecision: new dispatcher-first pipeline
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.story("US-PLN-046")
-class TestParseStoryCategories:
-    """Tests for _parse_story_categories — stories are required."""
+class TestPlanningDecision:
+    """Tests for the dispatcher-first planning pipeline using planning_decision from TinyDB.
 
-    def _make_runner(self, tmp_path, monkeypatch):
-        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
-        import agenticcli.workflows.planner_loop as _plmod
-        workflow = PlannerLoopWorkflow(epics_dir=tmp_path)
-        # Monkeypatch get_epic_stories_path to use test-local EpicStories dir
-        epic_stories_dir = tmp_path / "userstories" / "EpicStories"
-        epic_stories_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(_plmod, "get_epic_stories_path",
-                            lambda name: epic_stories_dir / f"{name}.yml")
-        return PlannerLoopRunner(workflow=workflow)
-
-    def _epic_stories_path(self, tmp_path, epic_folder):
-        path = tmp_path / "userstories" / "EpicStories" / f"{epic_folder}.yml"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
-
-    def test_missing_stories_yml_returns_none(self, tmp_path, monkeypatch):
-        """Missing story file returns None (not empty list)."""
-        epic_folder = "my_epic"
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
-        assert result is None
-
-    def test_empty_categories_returns_none(self, tmp_path, monkeypatch):
-        """Story file with no categories returns None."""
-        import yaml
-        epic_folder = "my_epic"
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        stories_path.write_text(yaml.dump({"stories": [{"id": "US-001"}], "categories": []}))
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
-        assert result is None
-
-    def test_valid_categories_returned(self, tmp_path, monkeypatch):
-        """Story file with categories returns the list."""
-        import yaml
-        epic_folder = "my_epic"
-        categories = [{"name": "cli", "story_ids": ["US-001"]}]
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        stories_path.write_text(yaml.dump({"stories": [], "categories": categories}))
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
-        assert result == categories
-
-    def test_invalid_yaml_returns_none(self, tmp_path, monkeypatch):
-        """Unparseable story file returns None."""
-        epic_folder = "my_epic"
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        stories_path.write_text(": invalid: yaml: [")
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
-        assert result is None
-
-
-# @story US-PLN-091
-@pytest.mark.story("US-PLN-046")
-class TestParseStoryCategoriesRetry:
-    """Tests for _parse_story_categories retry-with-backoff logic.
-
-    Validates that transient file visibility failures (FileNotFoundError,
-    empty file, YAML parse errors) are retried with exponential backoff,
-    while data errors (valid YAML missing categories) are NOT retried.
+    The planner-orchestration agent runs second (after epic-creator) and writes
+    a planning_decision record into TinyDB. The runner reads that decision to
+    control whether story-writer runs, which phase_ids get planner-build/test
+    waves, and whether the preflight story_ids check fires.
     """
 
-    def _make_runner(self, tmp_path, monkeypatch):
+    def _make_runner_with_stubs(self, monkeypatch, tmp_path, planning_decision):
+        """Build a PlannerLoopRunner with stubbed agent spawns and a mocked planning decision.
+
+        Returns:
+            (runner, role_call_log) — list records (role, epic_folder) for each
+            _run_role_agent invocation.
+        """
+        import tempfile
+        import yaml
+        from pathlib import Path
+        from unittest.mock import MagicMock
         from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
+
+        tmp_epics_dir = Path(tempfile.mkdtemp()) / "docs" / "epics" / "live"
+        tmp_epics_dir.mkdir(parents=True, exist_ok=True)
+        (tmp_epics_dir / "test_plan").mkdir(exist_ok=True)
+
+        workflow = PlannerLoopWorkflow(epics_dir=tmp_epics_dir)
+
+        # Patch get_epic_stories_path to use temp dir
         import agenticcli.workflows.planner_loop as _plmod
-        workflow = PlannerLoopWorkflow(epics_dir=tmp_path)
-        # Monkeypatch get_epic_stories_path to use test-local EpicStories dir
-        epic_stories_dir = tmp_path / "userstories" / "EpicStories"
-        epic_stories_dir.mkdir(parents=True, exist_ok=True)
+        userstories_dir = tmp_epics_dir.parent.parent / "userstories" / "EpicStories"
+        userstories_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(_plmod, "get_epic_stories_path",
-                            lambda name: epic_stories_dir / f"{name}.yml")
-        return PlannerLoopRunner(workflow=workflow)
+                            lambda name: userstories_dir / f"{name}.yml")
 
-    def _epic_stories_path(self, tmp_path, epic_folder):
-        path = tmp_path / "userstories" / "EpicStories" / f"{epic_folder}.yml"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
+        # Story mock: writes story file so _wait_for_file_ready passes
+        def _story_mock(pf):
+            stories_path = userstories_dir / f"{pf}.yml"
+            stories_path.write_text(yaml.dump({
+                "stories": [{"id": "US-001", "title": "Test story"}],
+                "categories": [{"name": "default", "story_ids": ["US-001"]}],
+            }))
+            return _ok_result()
 
-    def test_retry_on_file_not_found_then_success(self, tmp_path, monkeypatch):
-        """File appears on 2nd attempt after FileNotFoundError — retries succeed."""
-        import yaml
+        # Record all _run_role_agent calls
+        role_call_log = []
+        real_run_role_agent = workflow._run_role_agent
 
-        epic_folder = "my_epic"
-        epic_dir = tmp_path / epic_folder
-        epic_dir.mkdir()
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        categories = [{"name": "cli", "story_ids": ["US-001"]}]
+        def tracking_run_role_agent(role, epic_folder, extra_prompt=None):
+            role_call_log.append(role)
+            if role == "build-story-writer":
+                return _story_mock(epic_folder)
+            return _ok_result()
 
-        # Track sleep calls to verify backoff
-        sleep_calls = []
-        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+        monkeypatch.setattr(workflow, "_run_role_agent", tracking_run_role_agent)
 
-        # On first call, stories_path.exists() returns True but open() raises
-        # FileNotFoundError (file disappeared between exists() and open()).
-        # On second call, file is written and valid.
-        call_count = {"open": 0}
-        _real_open = open
+        # Mock get_plan_status so the early-exit guard passes
+        monkeypatch.setattr(workflow, "get_plan_status", lambda pf: "active")
 
-        def _mock_open(path, *args, **kwargs):
-            if str(path) == str(stories_path):
-                call_count["open"] += 1
-                if call_count["open"] == 1:
-                    raise FileNotFoundError(str(path))
-            return _real_open(path, *args, **kwargs)
+        # Mock file-based epic lock so tests don't conflict with each other
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop.acquire_epic_lock", lambda ef: True
+        )
+        monkeypatch.setattr(
+            "agenticcli.workflows.planner_loop.release_epic_lock", lambda ef: None
+        )
 
-        # Write the file so exists() returns True on first attempt
-        stories_path.write_text(yaml.dump({"categories": categories}))
+        # Mock repository with injectable planning_decision
+        mock_repo = MagicMock()
+        mock_repo.read_planning_decision.return_value = planning_decision
+        mock_repo.get_epic.return_value = MagicMock(tasks=[])
+        mock_repo.refresh = MagicMock()
+        mock_repo.update_epic = MagicMock()
+        mock_repo.transition_epic_status = MagicMock()
+        workflow._repository = mock_repo
 
-        monkeypatch.setattr("builtins.open", _mock_open)
+        runner = PlannerLoopRunner(workflow=workflow)
+        # Mock validation to pass
+        monkeypatch.setattr(runner, "_validate_planning_output",
+                            lambda pf, skip_story_ids_check=False: (True, []))
+        return runner, role_call_log
 
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
+    def test_dispatcher_pipeline_ordering(self, monkeypatch, tmp_path):
+        """epic-creator runs before planner-orchestration, which runs before story-writer and planner waves."""
+        decision = {
+            "needs_stories": True,
+            "needs_preflight_story_check": True,
+            "build_phase_ids": ["p1"],
+            "test_phase_ids": ["p3"],
+        }
+        runner, role_call_log = self._make_runner_with_stubs(monkeypatch, tmp_path, decision)
 
-        assert result == categories
-        assert call_count["open"] == 2  # Failed once, succeeded once
-        assert len(sleep_calls) == 1  # One backoff sleep
-        assert sleep_calls[0] == 0.5  # First backoff delay
+        result = runner._process_plan("test_plan")
 
-    def test_retry_on_empty_file_then_success(self, tmp_path, monkeypatch):
-        """File is empty on first read, has content on retry — succeeds."""
-        import yaml
+        assert result is True
+        # epic-creator must be first
+        assert role_call_log[0] == "epic-creator"
+        # planner-orchestration must come before story-writer
+        idx_orch = role_call_log.index("planner-orchestration")
+        idx_story = role_call_log.index("build-story-writer")
+        assert idx_orch < idx_story
+        # planner-build and planner-test must come after story-writer
+        idx_build = next(
+            (i for i, r in enumerate(role_call_log) if r == "planner-build"), None
+        )
+        idx_test = next(
+            (i for i, r in enumerate(role_call_log) if r == "planner-test"), None
+        )
+        assert idx_build is not None
+        assert idx_test is not None
+        assert idx_story < idx_build
+        assert idx_build < idx_test
 
-        epic_folder = "my_epic"
-        epic_dir = tmp_path / epic_folder
-        epic_dir.mkdir()
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        categories = [{"name": "backend", "story_ids": ["US-002"]}]
+    def test_story_writer_skipped_when_needs_stories_false(self, monkeypatch, tmp_path):
+        """When decision.needs_stories is False, build-story-writer is never called."""
+        decision = {
+            "needs_stories": False,
+            "needs_preflight_story_check": True,
+            "build_phase_ids": [],
+            "test_phase_ids": [],
+        }
+        runner, role_call_log = self._make_runner_with_stubs(monkeypatch, tmp_path, decision)
 
-        sleep_calls = []
-        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+        result = runner._process_plan("test_plan")
 
-        # Start with empty file, then populate it after first read
-        stories_path.write_text("")
-        read_count = {"n": 0}
-        _real_open = open
+        assert result is True
+        assert "build-story-writer" not in role_call_log
 
-        def _mock_open(path, *args, **kwargs):
-            if str(path) == str(stories_path):
-                read_count["n"] += 1
-                if read_count["n"] == 1:
-                    # Return a file-like object with empty content
-                    import io
-                    return io.StringIO("")
-                # Second read: write real content first
-                stories_path.write_text(yaml.dump({"categories": categories}))
-            return _real_open(path, *args, **kwargs)
+    def test_parallel_planner_build_spawn_count(self, monkeypatch, tmp_path):
+        """When decision.build_phase_ids has 3 entries, planner-build is called 3 times."""
+        decision = {
+            "needs_stories": False,
+            "needs_preflight_story_check": True,
+            "build_phase_ids": ["p1", "p2", "p3"],
+            "test_phase_ids": [],
+        }
+        runner, role_call_log = self._make_runner_with_stubs(monkeypatch, tmp_path, decision)
 
-        monkeypatch.setattr("builtins.open", _mock_open)
+        result = runner._process_plan("test_plan")
 
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
+        assert result is True
+        planner_build_calls = [r for r in role_call_log if r == "planner-build"]
+        assert len(planner_build_calls) == 3
 
-        assert result == categories
-        assert len(sleep_calls) == 1
-        assert sleep_calls[0] == 0.5
+    def test_preflight_skipped_when_decision_says_so(self, monkeypatch, tmp_path):
+        """When decision.needs_preflight_story_check is False, _validate_planning_output
+        is called with skip_story_ids_check=True."""
+        from unittest.mock import MagicMock
 
-    def test_retry_on_yaml_parse_error_then_success(self, tmp_path, monkeypatch):
-        """YAML parse error on first read, valid YAML on retry — succeeds."""
-        import yaml
+        decision = {
+            "needs_stories": False,
+            "needs_preflight_story_check": False,
+            "build_phase_ids": [],
+            "test_phase_ids": [],
+        }
+        runner, role_call_log = self._make_runner_with_stubs(monkeypatch, tmp_path, decision)
 
-        epic_folder = "my_epic"
-        epic_dir = tmp_path / epic_folder
-        epic_dir.mkdir()
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        categories = [{"name": "frontend", "story_ids": ["US-003"]}]
+        validate_calls = []
 
-        sleep_calls = []
-        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+        def tracking_validate(pf, skip_story_ids_check=False):
+            validate_calls.append({"pf": pf, "skip": skip_story_ids_check})
+            return (True, [])
 
-        # Start with invalid YAML (simulating partial write)
-        stories_path.write_text(": broken: yaml: [")
+        runner._validate_planning_output = tracking_validate
 
-        read_count = {"n": 0}
-        _real_open = open
+        result = runner._process_plan("test_plan")
 
-        def _mock_open(path, *args, **kwargs):
-            if str(path) == str(stories_path):
-                read_count["n"] += 1
-                if read_count["n"] >= 2:
-                    # Fix the file content before second read
-                    stories_path.write_text(yaml.dump({"categories": categories}))
-            return _real_open(path, *args, **kwargs)
+        assert result is True
+        assert len(validate_calls) == 1
+        assert validate_calls[0]["skip"] is True
 
-        monkeypatch.setattr("builtins.open", _mock_open)
+    def test_missing_planning_decision_uses_safe_defaults(self, monkeypatch, tmp_path):
+        """When read_planning_decision returns None, pipeline uses safe defaults:
+        story-writer is called and preflight story_ids check runs (skip=False)."""
+        # None means decision is absent — defaults must be applied
+        runner, role_call_log = self._make_runner_with_stubs(monkeypatch, tmp_path, None)
 
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
+        validate_calls = []
 
-        assert result == categories
-        assert len(sleep_calls) == 1
-        assert sleep_calls[0] == 0.5
+        def tracking_validate(pf, skip_story_ids_check=False):
+            validate_calls.append({"pf": pf, "skip": skip_story_ids_check})
+            return (True, [])
 
-    def test_no_retry_on_valid_yaml_missing_categories(self, tmp_path, monkeypatch):
-        """Valid YAML with empty categories is a data error — NOT retried."""
-        import yaml
+        runner._validate_planning_output = tracking_validate
 
-        epic_folder = "my_epic"
-        epic_dir = tmp_path / epic_folder
-        epic_dir.mkdir()
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        stories_path.write_text(yaml.dump({"stories": [{"id": "US-001"}], "categories": []}))
+        result = runner._process_plan("test_plan")
 
-        sleep_calls = []
-        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+        assert result is True
+        # story-writer must run (needs_stories defaults to True)
+        assert "build-story-writer" in role_call_log
+        # preflight must not be skipped (needs_preflight_story_check defaults to True)
+        assert len(validate_calls) == 1
+        assert validate_calls[0]["skip"] is False
 
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
 
-        assert result is None
-        assert len(sleep_calls) == 0  # No retries — immediate failure
+# ---------------------------------------------------------------------------
+# TestRoleModelMapping: model routing per role
+# ---------------------------------------------------------------------------
 
-    def test_exponential_backoff_timing(self, tmp_path, monkeypatch):
-        """All retries exhausted — verify backoff delays match _STORY_PARSE_BACKOFF."""
-        epic_folder = "my_epic"
-        epic_dir = tmp_path / epic_folder
-        epic_dir.mkdir()
-        # No story file — all attempts will hit FileNotFoundError path
 
-        sleep_calls = []
-        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+@pytest.mark.story("US-PLN-046")
+class TestRoleModelMapping:
+    """Tests for role-based model injection in _build_sdk_options."""
 
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
+    def test_build_sdk_options_injects_role_model(self, monkeypatch):
+        """_build_sdk_options passes model=claude-opus-4-6 for planner-build role.
 
-        assert result is None
-        # 3 retries after initial attempt: backoff 0.5, 1.0, 2.0
-        assert sleep_calls == [0.5, 1.0, 2.0]
+        Skipped when SDK_AVAILABLE is False (mirrors existing conditional skips
+        in this file).
+        """
+        from agenticcli.workflows.planner_loop import _build_sdk_options
+        from agenticcli.workflows.planner_loop import SDK_AVAILABLE
 
-    def test_file_not_found_all_retries_exhausted(self, tmp_path, monkeypatch):
-        """FileNotFoundError on every attempt returns None after exhausting retries."""
-        epic_folder = "my_epic"
-        epic_dir = tmp_path / epic_folder
-        epic_dir.mkdir()
-        # No story file created — stays missing for all attempts
+        if not SDK_AVAILABLE:
+            pytest.skip("SDK not available — cannot test ClaudeAgentOptions model injection")
 
-        sleep_calls = []
-        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+        captured = {}
 
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
+        class FakeOptions:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
 
-        assert result is None
-        assert len(sleep_calls) == 3  # 3 retries
+        import agenticcli.workflows.planner_loop as _plmod
+        monkeypatch.setattr(_plmod, "SDK_AVAILABLE", True)
 
-    def test_empty_file_all_retries_exhausted(self, tmp_path, monkeypatch):
-        """Empty file on every attempt returns None after exhausting retries."""
-        epic_folder = "my_epic"
-        epic_dir = tmp_path / epic_folder
-        epic_dir.mkdir()
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        stories_path.write_text("")  # Empty file persists
+        try:
+            import claude_agent_sdk
+            monkeypatch.setattr("claude_agent_sdk.ClaudeAgentOptions", FakeOptions, raising=False)
+        except ImportError:
+            pytest.skip("claude_agent_sdk not importable")
 
-        sleep_calls = []
-        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+        # planner-build should inject model=claude-opus-4-6
+        _build_sdk_options("/tmp", role="planner-build")
+        assert captured.get("model") == "claude-opus-4-6"
 
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
-
-        assert result is None
-        assert len(sleep_calls) == 3
-
-    def test_yaml_parse_error_all_retries_exhausted(self, tmp_path, monkeypatch):
-        """YAML parse error on every attempt returns None after exhausting retries."""
-        epic_folder = "my_epic"
-        epic_dir = tmp_path / epic_folder
-        epic_dir.mkdir()
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        stories_path.write_text(": invalid: yaml: [")
-
-        sleep_calls = []
-        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
-
-        runner = self._make_runner(tmp_path, monkeypatch)
-        result = runner._parse_story_categories(epic_folder)
-
-        assert result is None
-        assert len(sleep_calls) == 3
-
-    def test_success_on_third_attempt_logs_recovery(self, tmp_path, monkeypatch, caplog):
-        """Success after retries logs recovery message with attempt number."""
-        import logging
-        import yaml
-
-        epic_folder = "my_epic"
-        epic_dir = tmp_path / epic_folder
-        epic_dir.mkdir()
-        stories_path = self._epic_stories_path(tmp_path, epic_folder)
-        categories = [{"name": "infra", "story_ids": ["US-004"]}]
-
-        sleep_calls = []
-        monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
-
-        # File missing on attempts 1 and 2, appears on attempt 3
-        attempt_count = {"n": 0}
-        _real_exists = Path.exists
-
-        def _mock_exists(self_path):
-            if str(self_path) == str(stories_path):
-                attempt_count["n"] += 1
-                if attempt_count["n"] <= 2:
-                    return False
-                # Write file on 3rd attempt
-                stories_path.write_text(yaml.dump({"categories": categories}))
-                return True
-            return _real_exists(self_path)
-
-        monkeypatch.setattr(Path, "exists", _mock_exists)
-
-        runner = self._make_runner(tmp_path, monkeypatch)
-        with caplog.at_level(logging.INFO):
-            result = runner._parse_story_categories(epic_folder)
-
-        assert result == categories
-        assert len(sleep_calls) == 2  # Two backoff sleeps
-        assert sleep_calls == [0.5, 1.0]
-        # Verify recovery log message
-        assert any("parsed successfully on attempt 3/4" in r.message for r in caplog.records)
+        # build-python has no model mapping → model key must be absent
+        captured.clear()
+        _build_sdk_options("/tmp", role="build-python")
+        assert "model" not in captured
 
 
 @pytest.mark.story("US-PLN-046")
@@ -1954,7 +1896,7 @@ class TestTicketPromotion:
         # Mock all agent spawn steps to succeed
         monkeypatch.setattr(workflow, "spawn_epic_creator", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "spawn_story_agent", _story_mock)
-        monkeypatch.setattr(workflow, "spawn_explore_agents", lambda f, **kw: _ok_result())
+        monkeypatch.setattr(workflow, "spawn_planner_phases", lambda f, phase_ids, role: _ok_result())
         monkeypatch.setattr(workflow, "spawn_orchestration_agent", lambda f: _ok_result())
         monkeypatch.setattr(workflow, "_validate_result", lambda result, name: None)
 

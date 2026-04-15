@@ -1,5 +1,9 @@
 process:
   goal: |
+    NOTE ON PARALLEL INVOCATION:
+    This agent may be invoked in parallel with peers (one per phase). When `phase_id`
+    is set, stay strictly within that phase to avoid write contention.
+
     Create a phased implementation plan for completing the task using subagents.
     Handles all build plan types including code implementation, guidance/process
     file updates (agent guidance, process.yml, inputs.yml), and SDK projects. Route to appropriate build agents based on file types:
@@ -60,7 +64,20 @@ process:
 
       # Get current ticket if working from an epic
       agentic epic ticket current -j
+
+      # List tickets for this epic. If phase_id is provided (parallel per-phase
+      # invocation), SCOPE ticket discovery and updates to only that phase:
+      #   agentic epic ticket list --epic <epic_folder> --phase <phase_id> -j
+      # Otherwise, operate on all pending tickets:
+      #   agentic epic ticket list --epic <epic_folder> -j
       ```
+
+      PHASE SCOPING (parallel safety):
+      If the optional `phase_id` input is provided, you MUST stay strictly within
+      that phase — only refine/create tickets whose phase matches `phase_id`. This
+      prevents write contention when peer planner-build agents are running in
+      parallel for other phases. If `phase_id` is absent, behavior is unchanged
+      (operate on all pending tickets).
 
       CLI output provides:
       - Your objective and process summary
