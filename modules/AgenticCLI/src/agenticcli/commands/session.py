@@ -440,8 +440,6 @@ This ensures gaps are tracked and fixed systematically rather than patched ad-ho
 # Mirrors _PLANNING_PHASE_ROLES from planner_loop.py.
 _PLANNING_PHASE_ROLES_SESSION = frozenset({
     "epic-creator",
-    "planner-explore",
-    "explore",
     "build-story-writer",
     "planner-build",
     "planner-test",
@@ -626,6 +624,7 @@ def _build_sdk_tmux_cmd(
     context_file: "Path",
     working_dir: str,
     timeout: "int | None" = None,
+    model: "str | None" = None,
 ) -> str:
     """Build command string for SDK pane runner in tmux.
 
@@ -654,6 +653,8 @@ def _build_sdk_tmux_cmd(
     ]
     if timeout is not None:
         cmd_parts.extend(["--timeout", str(timeout)])
+    if model:
+        cmd_parts.extend(["--model", shlex.quote(model)])
 
     return " ".join(cmd_parts)
 
@@ -709,6 +710,17 @@ def cmd_spawn(args, ctx=None):
     dry_run = getattr(args, "dry_run", False)
     phase_id = getattr(args, "phase", None)
     working_dir = getattr(args, "directory", None) or os.getcwd()
+
+    # Resolve Claude model: explicit --model wins; otherwise fall back to
+    # ROLE_MODEL_MAP so planners get Opus, epic-creator gets Haiku, etc.
+    explicit_model = getattr(args, "model", None)
+    if explicit_model:
+        resolved_model = explicit_model
+    elif role:
+        from agenticcli.utils.sdk_runner import get_model_for_role
+        resolved_model = get_model_for_role(role)
+    else:
+        resolved_model = None
 
     # Safety net: apply a default max_turns for background/tmux sessions to
     # prevent agents from running indefinitely.  Foreground sessions are not
@@ -862,7 +874,10 @@ def cmd_spawn(args, ctx=None):
             context_file=context_file,
             working_dir=working_dir,
             timeout=None,  # Let pane runner use role-based timeout from ROLE_TIMEOUT_SECONDS
+            model=resolved_model,
         )
+        if resolved_model:
+            logger.info("Spawning %s with model=%s", role, resolved_model)
 
         try:
             tmux_result = subprocess.run(

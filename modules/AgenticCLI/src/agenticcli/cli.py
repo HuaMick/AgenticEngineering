@@ -387,6 +387,8 @@ def session_spawn(
         "--dry-run", help="Report spawn diagnostics without actually spawning")] = False,
     phase: Annotated[Optional[str], typer.Option(
         "--phase", help="Phase ID to scope this agent to")] = None,
+    model: Annotated[Optional[str], typer.Option(
+        "--model", help="Override the Claude model for this spawn (e.g. claude-haiku-4-5-20251001). Defaults to ROLE_MODEL_MAP lookup when unset.")] = None,
 ):
     """Spawn a new Claude Code session with a prompt."""
     # Mutual exclusion check (--role and --task cannot both be set)
@@ -408,6 +410,7 @@ def session_spawn(
         tmux=tmux,
         dry_run=dry_run,
         phase=phase,
+        model=model,
     ))
 
 

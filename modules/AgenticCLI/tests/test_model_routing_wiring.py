@@ -88,3 +88,49 @@ class TestRoleModelMapFires:
         assert get_model_for_role("build-python") is None, (
             "Roles not in ROLE_MODEL_MAP must return None (default model)"
         )
+
+
+class TestSpawnCliAcceptsModelFlag:
+    """End-to-end contract: `agentic orchestrate session spawn` must accept
+    --model, otherwise the spawn subprocess constructed by planner_loop and
+    orchestration will fail with 'No such option: --model'.
+    """
+
+    def test_spawn_cli_help_lists_model_flag(self):
+        import subprocess
+
+        result = subprocess.run(
+            ["agentic", "orchestrate", "session", "spawn", "--help"],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0
+        # The option docstring wraps across lines in typer rich output, so just
+        # check the flag name appears somewhere in the help output.
+        assert "--model" in result.stdout
+
+    def test_sdk_tmux_cmd_includes_model_when_provided(self):
+        from agenticcli.commands.session import _build_sdk_tmux_cmd
+        from pathlib import Path
+
+        cmd = _build_sdk_tmux_cmd(
+            session_id="abc",
+            role="epic-creator",
+            context_file=Path("/tmp/x.md"),
+            working_dir="/tmp",
+            model="claude-haiku-4-5-20251001",
+        )
+        assert "--model" in cmd
+        assert "claude-haiku-4-5-20251001" in cmd
+
+    def test_sdk_tmux_cmd_omits_model_when_none(self):
+        from agenticcli.commands.session import _build_sdk_tmux_cmd
+        from pathlib import Path
+
+        cmd = _build_sdk_tmux_cmd(
+            session_id="abc",
+            role="build-python",
+            context_file=Path("/tmp/x.md"),
+            working_dir="/tmp",
+            model=None,
+        )
+        assert "--model" not in cmd
