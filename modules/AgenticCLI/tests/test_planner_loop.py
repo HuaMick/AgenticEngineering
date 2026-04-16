@@ -508,12 +508,12 @@ class TestRunRoleAgent:
         monkeypatch.setattr("shutil.which", lambda x: None)
 
         workflow = PlannerLoopWorkflow()
-        result = workflow._run_role_agent("explore", "test_plan")
+        result = workflow._run_role_agent("epic-creator", "test_plan")
 
         assert result.status == "completed"
         assert saved_data["status"] == "completed"
         assert saved_data["transport"] == "sdk"
-        assert saved_data["role"] == "explore"
+        assert saved_data["role"] == "epic-creator"
         assert saved_data["cost_usd"] == 0.03
 
     def test_sdk_direct_fallback_when_tmux_unavailable(self, monkeypatch):
@@ -534,7 +534,7 @@ class TestRunRoleAgent:
         monkeypatch.setattr("agenticcli.workflows.planner_loop.SDK_AVAILABLE", True)
         monkeypatch.setattr("agenticcli.utils.transport.shutil.which", lambda cmd: None)  # no tmux
 
-        result = workflow._run_role_agent("explore", "test_plan")
+        result = workflow._run_role_agent("epic-creator", "test_plan")
         assert result.status == "completed"
 
 
@@ -903,9 +903,9 @@ class TestRunViaSdkRetry:
 
         monkeypatch.setattr("agenticcli.workflows.planner_loop.run_agent_sync", mock_run_agent_sync)
 
-        # Explore role
-        workflow._run_via_sdk("s1", "explore", "p", "prompt")
-        assert captured_timeouts["last"] == ROLE_TIMEOUT_SECONDS["explore"]  # 600
+        # Epic-creator role
+        workflow._run_via_sdk("s1", "epic-creator", "p", "prompt")
+        assert captured_timeouts["last"] == ROLE_TIMEOUT_SECONDS["epic-creator"]  # 600
 
         # Orchestration role
         workflow._run_via_sdk("s2", "planner-orchestration", "p", "prompt")
@@ -1077,7 +1077,7 @@ class TestBuildSdkOptionsWithRole:
 
         # Use get_allowed_tools_for_role directly to know expected tools
         from agenticcli.utils.sdk_runner import get_allowed_tools_for_role
-        expected = get_allowed_tools_for_role("explore")
+        expected = get_allowed_tools_for_role("epic-creator")
         assert expected is not None  # pre-condition
 
     def test_unknown_role_does_not_restrict_tools(self, monkeypatch):
@@ -1101,7 +1101,7 @@ class TestBuildSdkOptionsWithRole:
         )
         from agenticcli.workflows.planner_loop import _build_sdk_options
 
-        result = _build_sdk_options("/some/dir", role="explore")
+        result = _build_sdk_options("/some/dir", role="epic-creator")
         assert result is None
 
     def test_role_passed_to_build_sdk_options_in_run_via_sdk(self, monkeypatch):
@@ -2370,7 +2370,7 @@ def test_fixture_crash_fast_halts_after_one_attempt(tmp_path, monkeypatch):
     )
 
     workflow = MagicMock()
-    workflow.spawn_explore_agents = MagicMock(return_value=explore_result)
+    workflow.spawn_planner_phases = MagicMock(return_value=explore_result)
     workflow._validate_result = MagicMock()
     runner.workflow = workflow
 

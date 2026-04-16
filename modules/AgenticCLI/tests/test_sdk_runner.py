@@ -388,21 +388,20 @@ class TestRoleToolAllowlist:
         """Known roles return non-empty tool lists."""
         from agenticcli.utils.sdk_runner import get_allowed_tools_for_role
 
-        explore_tools = get_allowed_tools_for_role("explore")
-        assert explore_tools is not None
-        assert isinstance(explore_tools, list)
-        assert len(explore_tools) > 0
+        tools = get_allowed_tools_for_role("epic-creator")
+        assert tools is not None
+        assert isinstance(tools, list)
+        assert len(tools) > 0
 
-    def test_explore_role_has_correct_tools(self):
-        """explore role gets read-only tools plus Bash."""
+    def test_planner_role_has_read_only_tools(self):
+        """Planner roles (e.g., epic-creator) get read-only tools plus Bash."""
         from agenticcli.utils.sdk_runner import get_allowed_tools_for_role
 
-        tools = get_allowed_tools_for_role("explore")
+        tools = get_allowed_tools_for_role("epic-creator")
         assert "Read" in tools
         assert "Glob" in tools
         assert "Grep" in tools
         assert "Bash" in tools
-        # Should NOT have write tools
         assert "Edit" not in tools
         assert "Write" not in tools
 

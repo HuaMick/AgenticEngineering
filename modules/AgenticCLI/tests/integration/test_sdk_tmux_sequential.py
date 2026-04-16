@@ -36,8 +36,8 @@ pytestmark = pytest.mark.story("US-SES-001")
 PLANNING_ROLES = [
     "epic-creator",
     "build-story-writer",
-    "planner-explore",
     "planner-orchestration",
+    "planner-build",
 ]
 
 TEST_EPIC = "260309TM_sdk_in_tmux_spawn_unification"
@@ -68,7 +68,7 @@ class TestSequentialSDKTmuxSpawns:
     def test_spawn_command_skip_permissions_flag(self):
         """skip_permissions=True appends --dangerously-skip-permissions."""
         cmd = build_spawn_command(
-            role="planner-explore",
+            role="epic-creator",
             epic_folder=TEST_EPIC,
             skip_permissions=True,
         )
@@ -76,7 +76,7 @@ class TestSequentialSDKTmuxSpawns:
 
     def test_spawn_command_no_skip_permissions_by_default(self):
         """skip_permissions defaults to False — flag absent unless requested."""
-        cmd = build_spawn_command(role="planner-explore", epic_folder=TEST_EPIC)
+        cmd = build_spawn_command(role="epic-creator", epic_folder=TEST_EPIC)
         assert "--dangerously-skip-permissions" not in cmd
 
     def test_spawn_command_json_flag_present_by_default(self):
@@ -177,12 +177,12 @@ class TestSequentialSDKTmuxSpawns:
         """Different roles produce different tmux session names.
 
         Note: tmux_session_name truncates role to 8 chars, so roles sharing the
-        same first-8-char prefix (e.g. planner-explore / planner-orchestration)
+        same first-8-char prefix (e.g. planner-build / planner-orchestration)
         collide.  We test with roles that are provably distinct after truncation.
         """
         sid = generate_session_id()
         # Use roles whose first 8 chars are unique to avoid truncation collisions.
-        distinct_roles = ["epic-creator", "build-story-writer", "planner-explore"]
+        distinct_roles = ["epic-creator", "build-story-writer", "test-builder"]
         names = {
             tmux_session_name(sid, epic_folder=Path(TEST_EPIC), role=role)
             for role in distinct_roles

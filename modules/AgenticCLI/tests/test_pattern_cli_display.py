@@ -416,4 +416,6 @@ class TestHealthPatternWatchDisplay:
         )
         assert stale_story is not None
         assert stale_story["staleness"]["related_files_changed"] == []
-        assert "global_config_changed" not in stale_story["staleness"]
+        # global_config_changed key remains in schema for backward compat, but
+        # must be empty when only pattern_watch triggered staleness.
+        assert stale_story["staleness"].get("global_config_changed", []) == []

@@ -68,7 +68,7 @@ class TestAgentNameDetection:
 
     def test_all_agents_registered(self):
         """Verify all agents are in KNOWN_AGENTS."""
-        assert len(KNOWN_AGENTS) == 19, f"Expected 19 agents, got {len(KNOWN_AGENTS)}"
+        assert len(KNOWN_AGENTS) == 18, f"Expected 18 agents, got {len(KNOWN_AGENTS)}"
 
     def test_all_agents_have_categories(self):
         """Verify all agents have category mappings."""
@@ -418,9 +418,9 @@ class TestAgentCategories:
     """Tests for agent category organization."""
 
     def test_planner_agents_count(self):
-        """Verify 6 planner agents."""
+        """Verify 5 planner agents (planner-explore removed in dispatcher-first refactor)."""
         planners = [a for a in KNOWN_AGENTS if AGENT_CATEGORIES.get(a) == "planner"]
-        assert len(planners) == 6
+        assert len(planners) == 5
 
     def test_test_agents_count(self):
         """Verify 4 test agents."""

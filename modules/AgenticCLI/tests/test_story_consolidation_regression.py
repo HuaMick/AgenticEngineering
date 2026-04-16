@@ -8,7 +8,7 @@ Key scenarios:
 2. Stories in EpicStories/ survive epic archiving (they're outside epic folder)
 3. Deprecation warning when old stories.yml still exists
 4. StoryService discovers stories from EpicStories/
-5. _parse_story_categories reads from EpicStories/ path
+5. [OBSOLETE] _parse_story_categories reads from EpicStories/ path — removed in dispatcher-first refactor
 
 @story US-STR-009
 """
@@ -130,41 +130,12 @@ class TestStoriesSurviveArchiving:
 # ---------------------------------------------------------------------------
 
 class TestDeprecationWarning:
-    """Deprecation warning fires when old stories.yml exists at epic-folder location."""
+    """Obsolete: _parse_story_categories removed in dispatcher-first refactor.
 
-    def test_parse_story_categories_warns_on_old_path(self, tmp_path, monkeypatch, caplog):
-        """_parse_story_categories logs deprecation when old stories.yml exists."""
-        import logging
-        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
-        import agenticcli.workflows.planner_loop as _plmod
-
-        epic_folder = "my_old_epic"
-
-        # Create epic folder with old-style stories.yml
-        (tmp_path / epic_folder).mkdir()
-        (tmp_path / epic_folder / "stories.yml").write_text(yaml.dump({
-            "stories": [{"id": "US-001"}],
-        }))
-
-        # Set up the EpicStories path with new-style file
-        epic_stories_dir = tmp_path / "userstories" / "EpicStories"
-        epic_stories_dir.mkdir(parents=True)
-        (epic_stories_dir / f"{epic_folder}.yml").write_text(yaml.dump({
-            "stories": [{"id": "US-001"}],
-            "categories": [{"name": "default", "story_ids": ["US-001"]}],
-        }))
-
-        monkeypatch.setattr(_plmod, "get_epic_stories_path",
-                            lambda name: epic_stories_dir / f"{name}.yml")
-
-        workflow = PlannerLoopWorkflow(epics_dir=tmp_path)
-        runner = PlannerLoopRunner(workflow=workflow)
-
-        with caplog.at_level(logging.WARNING):
-            result = runner._parse_story_categories(epic_folder)
-
-        assert result is not None
-        assert any("DEPRECATED" in r.message for r in caplog.records)
+    Story categories are no longer parsed by the planner loop; stories are
+    produced by build-story-writer and categories were dropped. The old
+    stories.yml deprecation warning moved out of the consumer code path.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -234,29 +205,12 @@ class TestNoOldPathReads:
     """Production code does NOT read from epic-folder stories.yml (except deprecation check)."""
 
     def test_planner_loop_reads_from_epic_stories_dir(self, tmp_path, monkeypatch):
-        """_parse_story_categories reads from get_epic_stories_path, not epic_folder/stories.yml."""
-        from agenticcli.workflows.planner_loop import PlannerLoopRunner, PlannerLoopWorkflow
-        import agenticcli.workflows.planner_loop as _plmod
+        """Obsolete: _parse_story_categories removed in dispatcher-first refactor.
 
-        epic_folder = "my_epic"
-
-        # Only write to EpicStories — NOT to epic_folder/stories.yml
-        epic_stories_dir = tmp_path / "userstories" / "EpicStories"
-        epic_stories_dir.mkdir(parents=True)
-        categories = [{"name": "infra", "story_ids": ["US-001"]}]
-        (epic_stories_dir / f"{epic_folder}.yml").write_text(yaml.dump({
-            "stories": [{"id": "US-001"}],
-            "categories": categories,
-        }))
-
-        monkeypatch.setattr(_plmod, "get_epic_stories_path",
-                            lambda name: epic_stories_dir / f"{name}.yml")
-
-        workflow = PlannerLoopWorkflow(epics_dir=tmp_path)
-        runner = PlannerLoopRunner(workflow=workflow)
-        result = runner._parse_story_categories(epic_folder)
-
-        assert result == categories
+        The planner loop no longer parses story categories — categories have
+        been eliminated in favor of dispatcher-driven phase partitioning.
+        """
+        pytest.skip("_parse_story_categories removed in dispatcher-first refactor")
 
     def test_cmd_audit_reads_from_epic_stories_dir(self, tmp_path, monkeypatch, _isolate_tinydb):
         """cmd_audit reads stories from EpicStories/, not epic_folder/stories.yml."""

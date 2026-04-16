@@ -1,0 +1,112 @@
+# Epic 260414AG — DRY Hardening: Extract Shared Utilities and Eliminate Duplication
+#
+# VERIFICATION REPORT
+# ===================
+# This epic is a PURE INTERNAL REFACTORING — it extracts duplicated code into
+# shared utilities, centralizes scattered constants, and consolidates test
+# fixtures. No user-facing behavioral contract changes. All 15 overlapping
+# existing stories were verified and found to correctly describe the system's
+# user-facing mechanics; the DRY violations are code organization issues, not
+# story contract gaps.
+#
+# Diagnostic question applied: "Could this epic have been avoided if the prior
+# story was accurate enough?"
+# Answer: NO. Stories describe WHAT the system does (CLI surface, routing
+# contracts, manifest specifications), not HOW the code is organized internally.
+# No story is responsible for preventing StateStore from being instantiated 7
+# times instead of 1, or for preventing copy-paste of 200 lines of conftest.py.
+# These are code quality issues orthogonal to behavioral specification.
+#
+# OVERLAPPING STORIES VERIFIED (15 total, all NO CHANGE):
+#
+# US-SES-006 (Session State Registry) — verified, no change
+#   DRY-C1 creates get_session_store singleton; DRY-O2 extracts state_colors.
+#   Story describes CLI commands (list/show/clear/cleanup), not internal
+#   StateStore instantiation or color dict location. Contract intact.
+#
+# US-SES-001 (Session Lifecycle) — verified, no change
+#   DRY-C1 affects session.py StateStore usage. Story describes spawn/list/
+#   stop/health/logs user journey. Internal plumbing unchanged.
+#
+# US-SES-014 (Session Spawn Feedback) — verified, no change
+#   DRY-W4 extracts safe_read_sdk_metrics. Story describes pre-spawn context
+#   estimation and progress feedback UX. Metrics parsing is implementation
+#   detail behind the same UX surface.
+#
+# US-SES-030 (Session Spawn Transport) — verified, no change
+#   DRY-W1 extracts spawn_and_parse_session_id. Story describes transport
+#   selection chain (sdk-tmux → tmux → subprocess) and one-query-per-process
+#   constraint. The extraction moves code, doesn't change the selection logic.
+#
+# US-PLN-001 (Epic Lifecycle) — verified, no change
+#   DRY-C3 centralizes path constants; DRY-D1 deletes vestigial disk folders.
+#   Story describes epic new/list/status/archive via TinyDB. Paths are internal;
+#   disk folder deletion removes orphaned READMEs, not TinyDB records.
+#
+# US-PLN-015 (Epic Populate) — verified, no change
+#   DRY-S1 extracts _dict_to_ticketdata; DRY-W3 extracts get_repository.
+#   Story describes phase add/list/update CLI surface. Internal helpers
+#   don't affect the user-observable contract.
+#
+# US-PLN-046 (Orchestrate Session Plan) — verified, no change
+#   DRY-W1/W2/W3 affect planner_loop.py; DRY-O1 affects orchestrate.py.
+#   Story describes planning workflow CLI surface. Spawn/retry/repository
+#   access patterns are internal plumbing behind the same CLI commands.
+#
+# US-PLN-047 (Orchestrate Session Implement) — verified, no change
+#   DRY-W1/W2/W3/W4/W5 and DRY-O1 all affect orchestration.py.
+#   Story describes phase execution order, idempotent resume, feedback
+#   triggers, status transitions. All user-observable. Internal helpers
+#   are behind the same behavioral surface.
+#
+# US-PLN-048 (Orchestrate Session UAT) — verified, no change
+#   DRY-W1 affects uat.py spawn patterns. Story describes UAT workflow
+#   (--story/--epic/--stale modes, stamp verification). Spawn pattern
+#   extraction doesn't change the workflow contract.
+#
+# US-GDN-005 (Agent Manifest Archetypes) — verified, no change
+#   DRY-C2 creates centralized agent_manifest service replacing KNOWN_AGENTS
+#   hardcoded list. Story describes the manifest CONTRACT (archetypes, spawn
+#   fence, outputs validation), not the discovery mechanism. The contract is
+#   unchanged; how agents are discovered internally is implementation detail.
+#
+# US-GDN-097 (Phase-to-Agent Routing via TinyDB) — verified, no change
+#   DRY-W5 fixes direct _phases.search() bypassing public API. Story
+#   describes the routing CONTRACT (phase.agent set at plan time, no runtime
+#   detection). The API encapsulation fix aligns with the story's contract
+#   without changing it.
+#
+# US-GDN-061 (Test Execution and Audit Loop) — verified, no change
+#   DRY-T1/T2/T3 affect conftest.py fixtures. Story describes test-builder/
+#   test-audit role separation and structured output parsing. Conftest
+#   fixture location is test infrastructure, not role separation.
+#
+# US-GDN-105 (Agent Context Bootstrap) — verified, no change
+#   DRY-G1/G2/G3 extract process.yml guidance text to shared templates.
+#   Story describes the bootstrap CLI contract (JSON response, fail-closed
+#   on unknown role/malformed guidance). Template extraction is guidance
+#   asset content, not the CLI bootstrap mechanic.
+#
+# US-STR-001 (Story Discovery and Coverage) — verified, no change
+#   DRY-S2 extracts _find_and_update_story; DRY-S3 consolidates path
+#   resolution. Story describes stories find/health/untested CLI commands.
+#   Internal helper extraction doesn't change the CLI surface.
+#
+# PAT-INFRA-002 (Test Infrastructure) — verified, no change
+#   DRY-T1/T2 move conftest code to shared modules. Pattern's watch_files
+#   (conftest.py, modules/**/conftest.py) remain correct — conftest.py
+#   will still import the shared plugin.
+#
+# NEW STORY ASSESSMENT:
+# Each new utility was tested against the blind rebuild question: "Would an
+# agent building from scratch independently make this exact design choice?"
+# All extractions are STANDARD DRY PRACTICES (centralize repeated patterns,
+# extract shared fixtures, create utility modules). They are code organization
+# decisions that any experienced agent would independently arrive at.
+# No new user-facing mechanics are introduced by this epic.
+#
+# Conclusion: zero new stories.
+
+stories: []
+
+categories: []

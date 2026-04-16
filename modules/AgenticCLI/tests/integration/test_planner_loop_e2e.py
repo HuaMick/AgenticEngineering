@@ -5,7 +5,7 @@ calls mocked.  No real API calls or real tmux sessions are used.
 
 The suite verifies:
 - All expected agent roles are invoked (epic-creator, build-story-writer,
-  planner-explore, planner-orchestration)
+  planner-orchestration, planner-build, planner-test)
 - Spawn commands include the --tmux flag (sdk-tmux path)
 - SDK metrics are collected after each agent completes
 - Failed spawns are retried with a new session ID
@@ -196,8 +196,9 @@ class TestPlannerLoopE2E:
         # Always patch spawn methods — defaults to _ok_result() unless overridden
         monkeypatch.setattr(workflow, "spawn_epic_creator",
                             overrides.get("spawn_epic_creator", lambda pf: _ok_result()))
-        monkeypatch.setattr(workflow, "spawn_explore_agents",
-                            overrides.get("spawn_explore", lambda pf, categories=None: _ok_result()))
+        monkeypatch.setattr(workflow, "spawn_planner_phases",
+                            overrides.get("spawn_planner_phases",
+                                          lambda pf, phase_ids, role: _ok_result()))
         monkeypatch.setattr(workflow, "spawn_story_agent",
                             overrides.get("spawn_story", _default_spawn_story))
         if "spawn_orchestration" in overrides:
@@ -206,7 +207,8 @@ class TestPlannerLoopE2E:
 
         runner = PlannerLoopRunner(workflow=workflow)
         # Mock validation to pass (e2e tests don't set up full TinyDB for validation)
-        monkeypatch.setattr(runner, "_validate_planning_output", lambda pf: (True, []))
+        monkeypatch.setattr(runner, "_validate_planning_output",
+                            lambda pf, skip_story_ids_check=False: (True, []))
         return runner
 
     # ------------------------------------------------------------------ #
@@ -216,8 +218,9 @@ class TestPlannerLoopE2E:
     def test_planning_loop_spawns_all_roles(self, tmp_path, monkeypatch):
         """Full planning loop invokes all expected agent roles.
 
-        Verifies that epic-creator, build-story-writer, planner-explore,
-        and planner-orchestration are each invoked for a single unplanned epic.
+        Verifies that epic-creator, planner-orchestration, and
+        build-story-writer are each invoked for a single unplanned epic
+        (dispatcher-first pipeline; stories enabled by safe default).
         """
         epic_folder = "260309AA_test_epic"
         workflow, _ = _make_workflow_with_tinydb(
@@ -230,9 +233,9 @@ class TestPlannerLoopE2E:
             spawned_roles.append("epic-creator")
             return _ok_result(session_id="creator-001")
 
-        def tracking_spawn_explore(pf, **kw):
-            spawned_roles.append("planner-explore")
-            return _ok_result(session_id="explore-001")
+        def tracking_spawn_planner_phases(pf, phase_ids, role):
+            spawned_roles.append(role)
+            return _ok_result(session_id=f"{role}-001")
 
         def tracking_spawn_story(pf):
             spawned_roles.append("build-story-writer")
@@ -254,7 +257,7 @@ class TestPlannerLoopE2E:
             monkeypatch, workflow,
             discover=tracking_discover,
             spawn_epic_creator=tracking_epic_creator,
-            spawn_explore=tracking_spawn_explore,
+            spawn_planner_phases=tracking_spawn_planner_phases,
             spawn_story=tracking_spawn_story,
             spawn_orchestration=tracking_spawn_orchestration,
         )
@@ -262,11 +265,9 @@ class TestPlannerLoopE2E:
 
         assert result is True
 
-        # All roles must appear
         assert "epic-creator" in spawned_roles, f"epic-creator not in {spawned_roles}"
-        assert "build-story-writer" in spawned_roles, f"story-writer not in {spawned_roles}"
-        assert "planner-explore" in spawned_roles, f"planner-explore not in {spawned_roles}"
         assert "planner-orchestration" in spawned_roles, f"planner-orchestration not in {spawned_roles}"
+        assert "build-story-writer" in spawned_roles, f"story-writer not in {spawned_roles}"
 
     # ------------------------------------------------------------------ #
     # Test: spawn commands include --tmux flag                             #
@@ -557,9 +558,9 @@ class TestPlannerLoopE2E:
     # ------------------------------------------------------------------ #
 
     def test_planning_loop_phase_order(self, tmp_path, monkeypatch):
-        """Agents are invoked in the correct sequential order.
+        """Agents are invoked in the dispatcher-first sequential order.
 
-        Order must be: epic_creator -> story -> explore -> orchestration.
+        Order must be: epic_creator -> orchestration -> story.
         """
         from agenticcli.workflows.planner_loop import PlannerLoopWorkflow
 
@@ -574,8 +575,8 @@ class TestPlannerLoopE2E:
             invocation_log.append("epic_creator")
             return _ok_result()
 
-        def log_explore(pf, categories=None):
-            invocation_log.append("explore")
+        def log_planner_phases(pf, phase_ids, role):
+            invocation_log.append(role)
             return _ok_result()
 
         def log_story(pf):
@@ -598,7 +599,7 @@ class TestPlannerLoopE2E:
             monkeypatch, workflow,
             discover=one_shot_discover,
             spawn_epic_creator=log_epic_creator,
-            spawn_explore=log_explore,
+            spawn_planner_phases=log_planner_phases,
             spawn_story=log_story,
             spawn_orchestration=log_orchestration,
         )
@@ -606,8 +607,9 @@ class TestPlannerLoopE2E:
         result = runner.run(max_iterations=5)
 
         assert result is True
-        assert invocation_log == [
-            "epic_creator", "story", "explore", "orchestration",
+        # Dispatcher runs second; story conditional on decision (default True).
+        assert invocation_log[:3] == [
+            "epic_creator", "orchestration", "story",
         ], f"Unexpected phase order: {invocation_log}"
 
     # ------------------------------------------------------------------ #

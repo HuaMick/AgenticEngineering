@@ -441,7 +441,7 @@ class TestPhaseScopedContext:
         runner = ExecutionRunner(workflow=workflow, plan_folder="test_plan")
 
         mock_repo = MagicMock()
-        mock_repo.list_tickets.return_value = [
+        mock_repo.get_tickets.return_value = [
             MagicMock(id="T1", phase_name="P1", status="completed"),
             MagicMock(id="T2", phase_name="P1", status="pending"),
             MagicMock(id="T3", phase_name="P2", status="pending"),

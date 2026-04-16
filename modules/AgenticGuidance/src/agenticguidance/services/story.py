@@ -123,6 +123,7 @@ class Pattern:
     parameters: dict = field(default_factory=dict)
     verification: dict = field(default_factory=dict)
     source_file: str = ""
+    watch_files: list[str] = field(default_factory=list)
 
     @property
     def domain(self) -> str:
@@ -526,6 +527,7 @@ class StoryService:
         repo_root: Path | None = None,
         story_markers: set[str] | None = None,
         global_watch: list[str] | None = None,
+        pattern_watch: dict[str, str] | None = None,
     ) -> str:
         """Compute effective status for a story using the 7-value canonical enum.
 
@@ -570,13 +572,14 @@ class StoryService:
 
         # Story has passed at least once (test_status == pass/passing).
         # 4. Staleness check.
-        if story.related_files or global_watch:
+        pattern_watch = pattern_watch or {}
+        if story.related_files or global_watch or pattern_watch:
             if repo_root is None:
                 repo_root = _find_repo_root()
 
             if repo_root is not None and story.last_pass_commit:
                 extra = set(global_watch or [])
-                watch_set = set(story.related_files) | extra
+                watch_set = set(story.related_files) | extra | set(pattern_watch.keys())
                 changed = _git_changed_files_since(story.last_pass_commit, repo_root)
 
                 if changed is ANCHOR_UNREACHABLE:
@@ -605,6 +608,7 @@ class StoryService:
         repo_root: Path | None = None,
         global_watch: list[str] | None = None,
         flaky_ids: set[str] | None = None,
+        pattern_watch: dict[str, str] | None = None,
     ) -> dict:
         """Return orthogonal flags for a story: flaky and stale_reason.
 
@@ -618,13 +622,15 @@ class StoryService:
 
         stale_reason: str | None = None
 
-        if story.related_files or global_watch:
+        pattern_watch = pattern_watch or {}
+        if story.related_files or global_watch or pattern_watch:
             if repo_root is None:
                 repo_root = _find_repo_root()
 
             if repo_root is not None and story.last_pass_commit:
                 extra = set(global_watch or [])
-                watch_set = set(story.related_files) | extra
+                pw_keys = set(pattern_watch.keys())
+                watch_set = set(story.related_files) | extra | pw_keys
                 changed = _git_changed_files_since(story.last_pass_commit, repo_root)
 
                 if changed is ANCHOR_UNREACHABLE:
@@ -632,12 +638,22 @@ class StoryService:
                     if match is not True:
                         stale_reason = "anchor_unreachable"
                 elif changed is not None and watch_set & changed:
+                    # Priority: pattern:<id> > related_file > global_config
+                    # pattern_watch insertion order encodes inherits_patterns order;
+                    # pick the first pattern id whose file changed.
+                    pattern_hit: str | None = None
+                    for fpath, pid in pattern_watch.items():
+                        if fpath in changed:
+                            pattern_hit = pid
+                            break
                     related_changed = bool(set(story.related_files) & changed)
                     global_changed = bool(extra & changed)
-                    if global_changed:
-                        stale_reason = "global_config"
+                    if pattern_hit is not None:
+                        stale_reason = f"pattern:{pattern_hit}"
                     elif related_changed:
                         stale_reason = "related_file"
+                    elif global_changed:
+                        stale_reason = "global_config"
 
         return {"flaky": is_flaky, "stale_reason": stale_reason}
 
@@ -855,6 +871,7 @@ class PatternService:
                 parameters=item.get("parameters", {}),
                 verification=item.get("verification", {}),
                 source_file=str(path),
+                watch_files=list(item.get("watch_files", []) or []),
             )
             result.append(pattern)
         return result
@@ -870,6 +887,34 @@ class PatternService:
         """Get all patterns for a domain (e.g., 'CLI', 'DAT')."""
         domain_upper = domain.upper()
         return [p for p in self.load_all() if p.domain == domain_upper]
+
+    def get_watch_files_for_story(
+        self,
+        story: "Story",
+        repo_root: Path,
+    ) -> dict[str, str]:
+        """Collect watch_files from all patterns a story inherits.
+
+        Returns a dict mapping expanded file path (relative to repo_root) → the
+        pattern id that first claimed that file. Iteration order follows
+        ``story.inherits_patterns`` so the first-inherited pattern owns any
+        overlapping file.
+        """
+        result: dict[str, str] = {}
+        for ref in story.inherits_patterns or []:
+            if not isinstance(ref, dict):
+                continue
+            pid = ref.get("id")
+            if not pid:
+                continue
+            pattern = self.get_by_id(pid)
+            if pattern is None or not pattern.watch_files:
+                continue
+            expanded = expand_watch_patterns(pattern.watch_files, repo_root)
+            for f in expanded:
+                if f not in result:
+                    result[f] = pid
+        return result
 
     def get_claimants(self, pattern_id: str, story_svc: StoryService) -> list[Story]:
         """Find all stories that inherit a given pattern."""

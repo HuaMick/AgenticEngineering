@@ -42,9 +42,9 @@ class TestToolAllowlists:
 class TestTimeouts:
     """Verify timeout budgets for new/renamed agents."""
 
-    def test_build_story_writer_timeout_is_600(self):
+    def test_build_story_writer_timeout_is_1200(self):
         from agenticcli.utils.sdk_runner import get_timeout_for_role
-        assert get_timeout_for_role("build-story-writer") == 600
+        assert get_timeout_for_role("build-story-writer") == 1200
 
     def test_test_uat_timeout_is_3600(self):
         from agenticcli.utils.sdk_runner import get_timeout_for_role

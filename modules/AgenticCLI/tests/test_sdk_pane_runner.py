@@ -132,7 +132,7 @@ class TestAtomicWrite:
 
 class TestRoleConfig:
     def test_known_role_has_timeout(self):
-        assert ROLE_TIMEOUT_SECONDS["explore"] == 600
+        assert ROLE_TIMEOUT_SECONDS["epic-creator"] == 600
         assert ROLE_TIMEOUT_SECONDS["planner-build"] == 1800
         assert ROLE_TIMEOUT_SECONDS["planner-orchestration"] == 900
 
@@ -166,7 +166,7 @@ class TestRunPaneQueryResults:
 
         with patch("asyncio.run", return_value=mock_result):
             exit_code = run_pane(
-                role="explore",
+                role="epic-creator",
                 session_id="test-timeout-1",
                 context_file=str(context_file),
                 working_dir="/tmp",
@@ -193,7 +193,7 @@ class TestRunPaneQueryResults:
 
         with patch("asyncio.run", return_value=mock_result):
             exit_code = run_pane(
-                role="explore",
+                role="epic-creator",
                 session_id="test-empty-1",
                 context_file=str(context_file),
                 working_dir="/tmp",
@@ -219,7 +219,7 @@ class TestRunPaneQueryResults:
 
         with patch("asyncio.run", return_value=mock_result):
             exit_code = run_pane(
-                role="explore",
+                role="epic-creator",
                 session_id="test-error-1",
                 context_file=str(context_file),
                 working_dir="/tmp",
@@ -296,7 +296,7 @@ class TestRunPane:
     def test_context_file_missing(self, state_dir):
         """Missing context file writes failure state and returns 1."""
         exit_code = run_pane(
-            role="explore",
+            role="epic-creator",
             session_id="test-session-1",
             context_file="/nonexistent/path/context.md",
             working_dir="/tmp",
@@ -326,7 +326,7 @@ class TestRunPane:
 
         with patch("asyncio.run", return_value=mock_result):
             exit_code = run_pane(
-                role="explore",
+                role="epic-creator",
                 session_id="test-session-2",
                 context_file=str(context_file),
                 working_dir="/tmp",
@@ -359,7 +359,7 @@ class TestRunPane:
 
         with patch("asyncio.run", return_value=mock_result):
             exit_code = run_pane(
-                role="explore",
+                role="epic-creator",
                 session_id="test-session-3",
                 context_file=str(context_file),
                 working_dir="/tmp",
@@ -384,7 +384,7 @@ class TestRunPane:
             "started_at": "2026-03-09T10:00:00",
             "status": "running",
             "transport": "sdk-tmux",
-            "role": "explore",
+            "role": "epic-creator",
         }))
 
         mock_result = {
@@ -400,7 +400,7 @@ class TestRunPane:
 
         with patch("asyncio.run", return_value=mock_result):
             exit_code = run_pane(
-                role="explore",
+                role="epic-creator",
                 session_id="test-session-4",
                 context_file=str(context_file),
                 working_dir="/tmp",
@@ -411,7 +411,7 @@ class TestRunPane:
         # Preserved from original state
         assert state["pid"] == 12345
         assert state["started_at"] == "2026-03-09T10:00:00"
-        assert state["role"] == "explore"
+        assert state["role"] == "epic-creator"
         # Updated by pane runner
         assert state["status"] == "completed"
         assert state["cost_usd"] == 0.05
@@ -431,7 +431,7 @@ class TestRunPane:
 
         with patch("asyncio.run", return_value=mock_result) as mock_run:
             run_pane(
-                role="explore",
+                role="epic-creator",
                 session_id="test-session-5",
                 context_file=str(context_file),
                 working_dir="/tmp",
@@ -455,7 +455,7 @@ class TestRunPane:
 
         with patch("asyncio.run", return_value=mock_result):
             exit_code = run_pane(
-                role="explore",
+                role="epic-creator",
                 session_id="test-session-6",
                 context_file=str(context_file),
                 working_dir="/tmp",

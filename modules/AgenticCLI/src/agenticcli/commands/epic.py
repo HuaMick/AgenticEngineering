@@ -19,7 +19,7 @@ _FALLBACK_AGENT_TYPES = {
     "deploy-cicd",
     "epic-creator",
     "orchestration-executor", "orchestration-planning",
-    "planner-audit", "planner-build", "planner-explore", "planner-orchestration", "planner-test",
+    "planner-audit", "planner-build", "planner-orchestration", "planner-test",
     "teacher-update-assets", "teacher-update-guidance",
     "test-audit", "test-builder", "test-uat", "trace-explorer",
 }

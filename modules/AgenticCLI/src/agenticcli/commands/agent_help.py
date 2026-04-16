@@ -18,11 +18,10 @@ import yaml
 
 # All known agents - ordered by category
 KNOWN_AGENTS = [
-    # Planners (6)
+    # Planners (5)
     "epic-creator",
     "planner-audit",
     "planner-build",
-    "planner-explore",
     "planner-orchestration",
     "planner-test",
     # Test agents (4)
@@ -50,7 +49,6 @@ AGENT_CATEGORIES = {
     "epic-creator": "planner",
     "planner-audit": "planner",
     "planner-build": "planner",
-    "planner-explore": "planner",
     "planner-orchestration": "planner",
     "planner-test": "planner",
     "test-audit": "test",

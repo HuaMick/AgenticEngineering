@@ -1,0 +1,143 @@
+stories:
+  - id: US-260415AG-001
+    title: "Epic Export"
+    priority: high
+    lifecycle: proposal
+
+    description: |
+      As a developer or agent, I want to export a complete epic's data
+      (metadata, phases, tickets, dependencies, and progress) as structured
+      JSON, so that I can generate history reports, feed data to downstream
+      tools, or archive a machine-readable snapshot of the epic's state.
+
+    prerequisites:
+      - "At least one epic exists in TinyDB (created via `agentic epic new`)"
+
+    inherits_patterns:
+      - id: PAT-CLI-001
+        bind:
+          command: agentic epic export --epic <folder>
+          expected_keys:
+            - metadata
+            - phases
+            - tickets
+      - id: PAT-CLI-003
+        bind:
+          command: agentic epic export
+          error_trigger: "--epic nonexistent_epic_that_does_not_exist"
+          expected_message: "not found"
+
+    steps:
+      - step: 1
+        when: "running `agentic epic export --epic <folder>`"
+        then:
+          - "Command exits 0 and writes valid JSON to stdout containing top-level keys: metadata, phases, tickets, and progress"
+          - "metadata includes the epic's name, status, and folder_name from TinyDB"
+          - "phases is an array of phase records (id, name, agent, status)"
+          - "tickets is an array of ticket records (id, description, status, phase_id)"
+          - "progress contains at minimum a progress_percent numeric field"
+
+      - step: 2
+        when: "running `agentic epic export --epic <folder> --output /path/to/file.json`"
+        then:
+          - "Command exits 0 and writes JSON to the specified file path instead of stdout"
+          - "The file contains identical JSON content to what stdout would have received"
+          - "Stdout is either silent or contains a confirmation message (not the JSON data)"
+
+      - step: 3
+        when: "running `agentic epic export --epic <folder> --details summary`"
+        then:
+          - "Command exits 0 and produces a condensed JSON structure"
+          - "Summary mode omits per-ticket detail arrays but retains aggregate counts and metadata"
+
+      - step: 4
+        when: "running `agentic epic export --epic nonexistent_epic`"
+        then:
+          - "Command exits non-zero"
+          - "Stderr contains a clear error message indicating the epic was not found"
+          - "No JSON is written to stdout"
+
+      - step: 5
+        when: "the exported epic has zero phases and zero tickets"
+        then:
+          - "Command exits 0 and produces valid JSON"
+          - "phases and tickets fields are empty arrays, not null or missing"
+          - "progress.progress_percent is 0.0"
+
+      - step: 6
+        when: "using the global `-j` flag with `agentic -j epic export --epic <folder>`"
+        then:
+          - "Output is valid JSON (the export command always emits JSON regardless of `-j`, but the flag must not break the command)"
+
+    related_commands:
+      - "agentic epic export --epic <folder>"
+      - "agentic epic export --epic <folder> --output <path>"
+      - "agentic epic export --epic <folder> --details summary"
+
+    related_agents:
+      - "build-python"
+
+    uat_plan:
+      persona: agent-blind-test
+      starting_state: |
+        Fresh repo clone on main. A seed epic exists in TinyDB created via
+        `agentic epic new "UAT export test"`. One phase (P1) has been added
+        via `agentic epic phase add --epic <folder> --id P1 --name Build
+        --agent build-python`. One ticket has been added via
+        `agentic epic ticket add --epic <folder> --phase P1
+        --title "First ticket" --description "Implement the thing"`.
+      preconditions:
+        - US-PLN-001
+        - US-PLN-015
+        - US-PLN-009
+      journey:
+        - step: 1
+          action: "Run `agentic epic export --epic <folder>` and capture stdout"
+          observe:
+            - "command exits 0"
+            - "stdout is valid JSON (parseable by `python3 -c \"import json,sys; json.load(sys.stdin)\"`)"
+            - "parsed JSON has top-level keys: metadata, phases, tickets, progress"
+            - "metadata.status equals 'seed' or 'planning'"
+            - "phases array has exactly 1 element with id='P1'"
+            - "tickets array has exactly 1 element with status='proposed' or 'pending'"
+            - "progress.progress_percent is a number (0.0)"
+        - step: 2
+          action: "Run `agentic epic export --epic <folder> --output /tmp/uat_export_test.json`"
+          observe:
+            - "command exits 0"
+            - "file /tmp/uat_export_test.json exists"
+            - "file contents are valid JSON with the same structure as step 1"
+        - step: 3
+          action: "Run `agentic epic export --epic nonexistent_epic_zzz_does_not_exist`"
+          observe:
+            - "command exits non-zero"
+            - "stderr contains an error message (e.g. 'not found')"
+        - step: 4
+          action: "Create a bare epic via `agentic epic new \"UAT empty export\"` with no phases or tickets, then run `agentic epic export --epic <empty_folder>`"
+          observe:
+            - "command exits 0"
+            - "JSON output has phases as an empty array []"
+            - "JSON output has tickets as an empty array []"
+        - step: 5
+          action: "Run `agentic epic export --epic <folder> --details summary`"
+          observe:
+            - "command exits 0"
+            - "JSON output is valid and contains metadata"
+            - "output is a condensed form (fewer fields or no per-ticket details compared to step 1)"
+      success_signals:
+        - "`agentic epic export` produces valid, parseable JSON for a populated epic"
+        - "The `--output` flag writes to a file instead of stdout"
+        - "Nonexistent epic names produce a non-zero exit and error message"
+        - "Empty epics (no phases/tickets) produce valid JSON with empty arrays"
+      cleanup:
+        - "rm -f /tmp/uat_export_test.json"
+        - "`agentic epic archive <folder>` for both test epics"
+
+    related_files:
+      - modules/AgenticCLI/src/agenticcli/commands/epic.py
+      - modules/AgenticCLI/src/agenticcli/commands/cli.py
+      - modules/AgenticGuidance/src/agenticguidance/services/epic_repository.py
+    last_tested: null
+    test_status: "untested"
+    test_notes: ""
+    tested_by_plan: null

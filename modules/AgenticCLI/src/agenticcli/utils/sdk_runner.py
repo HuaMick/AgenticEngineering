@@ -64,8 +64,6 @@ DEFAULT_TIMEOUT_SECONDS = 1800  # 30 minutes
 ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
     # ── Planning phase: Read + Bash only (use `agentic` CLI for tickets/phases) ──
     "epic-creator": ["Read", "Glob", "Grep", "Bash"],
-    "planner-explore": ["Read", "Glob", "Grep", "Bash"],
-    "explore": ["Read", "Glob", "Grep", "Bash"],
     "planner-build": ["Read", "Glob", "Grep", "Bash"],
     "planner-test": ["Read", "Glob", "Grep", "Bash"],
     "planner-orchestration": ["Read", "Glob", "Grep", "Bash"],
@@ -87,8 +85,6 @@ ROLE_TOOL_ALLOWLIST: dict[str, list[str]] = {
 ROLE_TIMEOUT_SECONDS: dict[str, int] = {
     # ── Planning roles: 30 min or less ──
     "epic-creator": 600,           # 10 min — CLI scaffolding only
-    "planner-explore": 900,        # 15 min — codebase exploration + ticket updates
-    "explore": 600,                # 10 min — lightweight codebase analysis
     "planner-build": 1800,         # 30 min
     "planner-test": 1800,          # 30 min
     "planner-audit": 1800,         # 30 min

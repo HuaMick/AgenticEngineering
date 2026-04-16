@@ -25,7 +25,7 @@ class TestExecutorPassHashHook:
         runner = ExecutionRunner(workflow=MagicMock())
 
         fake_repo = MagicMock()
-        fake_repo.list_tickets.return_value = [
+        fake_repo.get_tickets.return_value = [
             SimpleNamespace(
                 id="T1", phase_name="Build",
                 story_ids=["US-XXX-001", "US-XXX-002"],
